@@ -428,7 +428,7 @@ async function scan(ctx) {
       } catch (err) { toast('İşlenemedi: ' + (err.message || err), 'err'); }
       ocrDone = false; renderPages();
     }
-  };
+  });
   qs('[data-cam]', root).addEventListener('click', () => qs('[data-camin]', root).click());
   qs('[data-gal]', root).addEventListener('click', () => qs('[data-galin]', root).click());
   qs('[data-camin]', root).addEventListener('change', (e) => addFiles([...e.target.files]));
@@ -570,7 +570,7 @@ async function doCsvZip(ctx) {
   const db = ctx.db;
   const data = await db.dumpAll();
   const enc = new TextEncoder();
-  const bom = '\uFEFF';
+  const bom = '﻿';
   const files = [];
   for (const [store, base] of Object.entries(STORE_CSV)) {
     const rows = data[store] || [];
