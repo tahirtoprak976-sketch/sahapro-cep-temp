@@ -222,7 +222,7 @@ async function docDetail(ctx, id) {
       ${d.doc_no ? kv('Belge No', d.doc_no) : ''}
       ${d.customer_id ? kv('Müşteri', names.customers[d.customer_id] || '—') : ''}
       ${d.site_id ? kv('Şantiye', names.sites[d.site_id] || '—') : ''}
-      ${d.vehicle_id ? kv('Araç', names.vehicles[m.vehicle_id] || '—') : ''}
+      ${d.vehicle_id ? kv('Araç', names.vehicles[d.vehicle_id] || '—') : ''}
       ${d.personnel_id ? kv('Personel', names.personnel[d.personnel_id] || '—') : ''}
       ${d.description ? kv('Açıklama', d.description) : ''}
       ${d.archive_folder || d.archive_shelf || d.archive_kocan || d.archive_file_no ? kv('Arşiv', ['Klasör ' + (d.archive_folder || '—'), 'Raf ' + (d.archive_shelf || '—'), 'Koçan ' + (d.archive_kocan || '—'), 'Dosya ' + (d.archive_file_no || '—')].join(' · ')) : ''}
