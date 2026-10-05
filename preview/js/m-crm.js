@@ -614,7 +614,9 @@ async function settings(ctx) {
   const craneFirst = await db.metaGet('crane_first');
   const craneNext = await db.metaGet('crane_next');
   const pinSet = !!(await db.metaGet('pin_hash'));
-  const aliases = (await db.getAll('aliases')).filter(isActive).sort((a, b) => String(a.key).localeCompare(String(b.key), 'tr'));
+  const vehiclesL = await db.listActive('vehicles');
+  const vehName = {}; for (const v of vehiclesL) vehName[v.id] = v.name;
+  const aliases = (await db.getAll('aliases')).filter(isActive).sort((a, b) => String(a.alias || '').localeCompare(String(b.alias || ''), 'tr'));
   let recCount = 0; const data = await db.dumpAll();
   for (const s of ENTITY_STORES) recCount += (data[s] || []).filter(isActive).length;
   const atts = await db.getAll('attachments');
@@ -641,7 +643,7 @@ async function settings(ctx) {
     </div>
     <div class="section-title">Alias Listesi (WhatsApp/sesli komut)</div>
     <div class="card">
-      ${aliases.length ? aliases.map(a => `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="small"><b>${esc(a.key)}</b> → ${esc(a.target)}</span><button class="btn sm ghost" data-aldel="${a.id}">✕</button></div>`).join('') : '<div class="muted small">Alias yok</div>'}
+      ${aliases.length ? aliases.map(a => `<div class="row between" style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="small"><b>${esc(a.alias || '')}</b> → ${esc(vehName[a.target_id] || a.target_id || '')}</span><button class="btn sm ghost" data-aldel="${a.id}">✕</button></div>`).join('') : '<div class="muted small">Alias yok</div>'}
       <div class="formgrid2" style="margin-top:10px"><div class="field"><label>Yazım</label><input data-alkey placeholder="ör. mini kato"></div><div class="field"><label>Hedef</label><input data-altarget placeholder="ör. U55"></div></div>
       <button class="btn block" data-aladd>+ Alias Ekle</button>
     </div>
@@ -681,8 +683,10 @@ async function settings(ctx) {
     const k = qs('[data-alkey]', root).value.trim().toLocaleLowerCase('tr-TR');
     const t = qs('[data-altarget]', root).value.trim();
     if (!k || !t) { toast('Yazım ve hedef girin', 'err'); return; }
-    await db.saveNew('aliases', { key: k, target: t }, 'Alias eklendi');
-    toast('Alias eklendi', 'ok'); ctx.reload();
+    const tv = vehiclesL.find(v => String(v.name).toLocaleLowerCase('tr-TR') === t.toLocaleLowerCase('tr-TR')) || vehiclesL.find(v => String(v.name).toLocaleLowerCase('tr-TR').includes(t.toLocaleLowerCase('tr-TR')));
+    if (!tv) { toast('Hedef araç listede bulunamadı: ' + t, 'err'); return; }
+    await db.saveNew('aliases', { alias: k, target_type: 'vehicle', target_id: tv.id, active: true }, 'Alias eklendi');
+    toast('Alias eklendi: ' + k + ' → ' + tv.name, 'ok'); ctx.reload();
   });
   for (const b of qsa('[data-aldel]', root)) b.addEventListener('click', async () => {
     await db.softDelete('aliases', b.dataset.aldel, 'Kullanıcı sildi'); toast('Alias silindi', 'ok'); ctx.reload();
