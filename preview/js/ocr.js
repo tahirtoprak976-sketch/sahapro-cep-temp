@@ -4,6 +4,7 @@
 // OCR sonucu ASLA otomatik kesin veri olmaz: BELGE → OCR → ALAN ÖNERİSİ → KULLANICI ONAYI.
 // Harici ücretli OCR/AI API kullanılmaz; görüntü cihazdan çıkmaz.
 // ============================================================
+import { VEHICLE_DOC_TYPES } from './core.js';
 
 const CDN_TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const LANG_PATH = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/tur@1.0.0/4.0.0_best_int';
@@ -171,7 +172,7 @@ export function extractFields(docType, text, ocrConf) {
     const mat = textNear(t, ['MALZEME', 'MICIR', 'KUM', 'GRAVAK', 'HAFRİYAT']);
     if (mat) f.material = mat;
     for (const k of ['date']) if (f[k] == null) missing.push(k);
-  } else if (['Ruhsat', 'Sigorta / Poliçe', 'Muayene Belgesi'].includes(docType)) {
+  } else if (VEHICLE_DOC_TYPES.includes(docType)) {
     const dates = findAllDates(t);
     if (dates.length >= 2) { f.date_start = dates[0]; f.date_end = dates[dates.length - 1]; }
     else if (dates.length === 1) f.date_start = dates[0];
@@ -187,6 +188,6 @@ export function suggestionFor(docType, fields) {
   if (docType === 'Akaryakıt Fişi') return { kind: 'fuel', label: '⛽ Yakıt Kaydı Oluştur' };
   if (['Fatura', 'Gider Fişi', 'Servis Belgesi', 'Makbuz', 'İrsaliye'].includes(docType)) return { kind: 'expense', label: '💸 Gider Kaydı Oluştur' };
   if (docType === 'Döküm Fişi') return { kind: 'work_match', label: '🔗 İş Kaydı ile Eşleştir' };
-  if (['Ruhsat', 'Sigorta / Poliçe', 'Muayene Belgesi'].includes(docType)) return { kind: 'vehicle_doc', label: '🚜 Araç Belge Takibine Bağla' };
+  if (VEHICLE_DOC_TYPES.includes(docType)) return { kind: 'vehicle_doc', label: '🚜 Araç Belge Takibine Bağla' };
   return null;
 }

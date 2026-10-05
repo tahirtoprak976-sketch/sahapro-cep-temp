@@ -1,6 +1,6 @@
 // SAHAPRO SOLO — Service Worker (offline-first app shell + CDN runtime cache)
-const CACHE = 'sahapro-solo-v2-preview';
-const CDN_CACHE = 'sahapro-solo-cdn-v1-preview';
+const CACHE = 'sahapro-solo-v3';
+const CDN_CACHE = 'sahapro-solo-cdn-v1';
 const ASSETS = [
   './',
   './index.html',

@@ -1,6 +1,6 @@
 // SAHAPRO SOLO — Dashboard · Gün Sonu · Yönetici · Raporlar · Daha Fazla
 import { qs, qsa, esc, appbar, stat, li, emptyState, notice, kv, badge, statusBadge, segBar, searchBar, sheet, toast, downloadBlob, shareText, printHTML, fmtTL, fmtNum, trDate, todayStr, confirmDialog } from './ui.js';
-import { daySummary, smartAlerts, buildWhatsAppText, calcTankBalance, profitability, isActive, matchSearch, addDays, toCSV, WORK_TYPES } from './core.js';
+import { daySummary, smartAlerts, buildWhatsAppText, calcTankBalance, profitability, isActive, matchSearch, addDays, toCSV, WORK_TYPES, APP_VERSION } from './core.js';
 
 export async function screen(ctx) {
   const sub = ctx.parts[0] || '';
@@ -26,7 +26,7 @@ async function dashboard(ctx) {
   const data = await loadAll(db);
   const sum = daySummary(today, data);
   const lastBackup = await db.metaGet('last_backup_at');
-  const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup });
+  const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup, tankLowThreshold: await db.metaGet('tank_low_threshold') });
   const tank = calcTankBalance(data.fuel_tank_movements);
 
   // Son 7 gün yakıt grafiği
@@ -123,7 +123,7 @@ async function dayClose(ctx) {
   const today = todayStr();
   const data = await loadAll(db);
   const sum = daySummary(today, data);
-  const alerts = smartAlerts(data, { today, lastBackupAt: await db.metaGet('last_backup_at') });
+  const alerts = smartAlerts(data, { today, lastBackupAt: await db.metaGet('last_backup_at'), tankLowThreshold: await db.metaGet('tank_low_threshold') });
   const missing = [];
   if (sum.work_count === 0) missing.push('Bugün hiç iş kaydı yok');
   for (const w of data.work_records.filter(w => isActive(w) && w.date === today && !w.slip_id)) missing.push(`Fişsiz iş: ${w.work_type || 'İş'} ${w.quantity ?? ''} ${w.unit || ''}`);
@@ -311,7 +311,7 @@ async function reports(ctx) {
   let st; qs('[data-search]', root).addEventListener('input', () => { clearTimeout(st); st = setTimeout(applyFilters, 450); });
 
   qs('[data-csv]', root).addEventListener('click', () => {
-    const bom = '\ufeff';
+    const bom = '﻿';
     downloadBlob(new Blob([bom + toCSV(headers, frows)], { type: 'text/csv;charset=utf-8' }), csvName);
     toast('CSV indirildi', 'ok');
   });
@@ -340,7 +340,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join('')}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv('Sürüm', 'SAHAPRO SOLO v2.0')}
+      ${kv('Sürüm', APP_VERSION)}
       ${kv('Veri', 'Yalnızca bu cihazda (IndexedDB)')}
       ${kv('Bulut', 'Bağlı değil — hiçbir veri gönderilmez')}
     </div>`;

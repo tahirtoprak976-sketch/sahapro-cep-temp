@@ -1,14 +1,15 @@
 // SAHAPRO SOLO — IndexedDB katmanı (local-first, offline-first)
 // Backend YOK · Supabase YOK · ana SAHAPRO API YOK.
-// v1 (sahapro_cep_db @ version 1) → v2 (version 2) VERSIONED MIGRATION — kayıtlar korunur.
+// v1 (sahapro_cep_db @ version 1) → v2 → v3 (belge sahipliği + fiyat/tank alanları) VERSIONED MIGRATION — kayıtlar korunur.
 
 import {
   ENTITY_STORES, newRecord, touchRecord, isActive, nowISO, uuid,
-  SEED_VEHICLES, SEED_PERSONNEL, SEED_ALIASES, VEHICLE_OWNERSHIP, SCHEMA_VERSION
+  SEED_VEHICLES, SEED_PERSONNEL, SEED_ALIASES, VEHICLE_OWNERSHIP, SCHEMA_VERSION,
+  VEHICLE_DOC_TYPES, PERSONNEL_DOC_TYPES, CUSTOMER_DOC_TYPES
 } from './core.js';
 
 const DB_NAME = 'sahapro_cep_db'; // v1 ile AYNI isim — veri bu DB'de
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let _db = null;
 
 // Test harness için: ?db=<isim> ile ayrı DB açılabilir (migration simülasyonu)
@@ -187,6 +188,75 @@ export async function ensureSeeded() {
       await metaSet('seeded_pricebook_v2', true);
     }
     await metaSet('migrated_v2', true);
+    await metaSet('schema_version_current', SCHEMA_VERSION);
+  }
+
+  // v3 migration: belge sahipliği (owner_type/owner_id) + fiyat/tank/araç/personel yeni alanları (additive, kayıp YOK)
+  if (!(await metaGet('migrated_v3'))) {
+    // 1) Belgeler: eski kategori adları yeni registry'ye taşınır, sahiplik türetilir (legacy alanlar korunur)
+    const CAT_RENAME = {
+      'Muayene Belgesi': 'TÜVTÜRK / Periyodik Muayene',
+      'Sigorta / Poliçe': 'Zorunlu Trafik Sigortası',
+      'Personel Evrakı': 'Diğer (Personel)'
+    };
+    for (const d of await getAll('documents')) {
+      const upd = { ...d };
+      let ch = false;
+      if (CAT_RENAME[upd.category]) { upd.category = CAT_RENAME[upd.category]; ch = true; }
+      if (upd.owner_type === undefined || upd.owner_id === undefined) {
+        let ot = null, oid = null;
+        if (VEHICLE_DOC_TYPES.includes(upd.category)) { ot = 'vehicle'; oid = upd.vehicle_id || null; }
+        else if (PERSONNEL_DOC_TYPES.includes(upd.category)) { ot = 'personnel'; oid = upd.personnel_id || null; }
+        else if (CUSTOMER_DOC_TYPES.includes(upd.category)) { ot = 'customer'; oid = upd.customer_id || null; }
+        else if (upd.category === 'Akaryakıt Fişi' || upd.category === 'Servis Belgesi') {
+          if (upd.vehicle_id) { ot = 'vehicle'; oid = upd.vehicle_id; }
+        } else {
+          if (upd.vehicle_id) { ot = 'vehicle'; oid = upd.vehicle_id; }
+          else if (upd.personnel_id) { ot = 'personnel'; oid = upd.personnel_id; }
+          else if (upd.customer_id) { ot = 'customer'; oid = upd.customer_id; }
+          else if (upd.site_id) { ot = 'site'; oid = upd.site_id; }
+        }
+        upd.owner_type = ot; upd.owner_id = oid; ch = true;
+      }
+      if (upd.issue_date === undefined) { upd.issue_date = null; ch = true; }
+      if (upd.issuer === undefined) { upd.issuer = null; ch = true; }
+      if (upd.reminder_date === undefined) { upd.reminder_date = null; ch = true; }
+      if (upd.amount === undefined) { upd.amount = null; ch = true; }
+      if (ch) await put('documents', upd);
+    }
+    // 2) İş kayıtları: fiyat alanları (null = fiyat yok; asla 0 yazma)
+    for (const r of await getAll('work_records')) {
+      const upd = { ...r }; let ch = false;
+      if (upd.unit_price === undefined) { upd.unit_price = null; ch = true; }
+      if (upd.kdv_rate === undefined) { upd.kdv_rate = null; ch = true; }
+      if (upd.price_source === undefined) { upd.price_source = null; ch = true; }
+      if (ch) await put('work_records', upd);
+    }
+    // 3) Yakıt ↔ tank çapraz link + iptal (reversal) alanları
+    for (const r of await getAll('fuel_records')) {
+      if (r.tank_movement_id === undefined) await put('fuel_records', { ...r, tank_movement_id: null });
+    }
+    for (const m of await getAll('fuel_tank_movements')) {
+      const upd = { ...m }; let ch = false;
+      if (upd.fuel_record_id === undefined) { upd.fuel_record_id = null; ch = true; }
+      if (upd.reversed_at === undefined) { upd.reversed_at = null; ch = true; }
+      if (upd.reverses_id === undefined) { upd.reverses_id = null; ch = true; }
+      if (ch) await put('fuel_tank_movements', upd);
+    }
+    // 4) Araç / personel genişletilmiş alanlar
+    for (const v of await getAll('vehicles')) {
+      const upd = { ...v }; let ch = false;
+      for (const k of ['plate', 'brand', 'model', 'model_year', 'fuel_type']) if (upd[k] === undefined) { upd[k] = null; ch = true; }
+      if (ch) await put('vehicles', upd);
+    }
+    for (const p of await getAll('personnel')) {
+      const upd = { ...p }; let ch = false;
+      if (upd.phone === undefined) { upd.phone = null; ch = true; }
+      if (upd.hire_date === undefined) { upd.hire_date = null; ch = true; }
+      if (ch) await put('personnel', upd);
+    }
+    if ((await metaGet('tank_low_threshold')) == null) await metaSet('tank_low_threshold', 200);
+    await metaSet('migrated_v3', true);
     await metaSet('schema_version_current', SCHEMA_VERSION);
   }
   return installId;
