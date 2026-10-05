@@ -524,8 +524,8 @@ async function globalSearch(ctx) {
       ['👷 Personel', hit(data.personnel, r => matchSearch(r.name, qq)).map(r => ({ href: '#/personel/' + r.id, t1: r.name, t2: r.role || '' }))],
       ['⚒ İşler', hit(data.work_records, r => matchSearch(`${r.work_type || ''} ${r.description || ''} ${r.material || ''}`, qq)).map(r => ({ href: '#/isler/' + r.id, t1: `${r.work_type || 'İş'} · ${fmtNum(r.quantity)} ${r.unit || ''}`, t2: `${trDate(r.date)} · ${names.customers[r.customer_id] || ''}` }))],
       ['🧾 Fişler', hit(data.slips, r => matchSearch(String(r.slip_no || '').padStart(6, '0') + ' ' + (r.work_text || '') + ' ' + (r.plate || ''), qq.replace(/^#/, ''))).map(r => ({ href: '#/fisler/' + r.id, t1: '#' + String(r.slip_no).padStart(6, '0'), t2: `${trDate(r.date)} · ${r.work_text || ''}` }))],
-      ['📄 Teklifler', hit(data.quotes, r => matchSearch(String(r.quote_no || '').padStart(4, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/teklif/' + r.id, t1: 'Teklif #' + String(r.quote_no).padStart(4, '0'), t2: trDate(r.date) }))],
-      ['📑 Hakedişler', hit(data.hakedis, r => matchSearch(String(r.hakedis_no || '').padStart(6, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/hakedis/' + r.id, t1: 'Hakediş #' + String(r.hakedis_no).padStart(6, '0'), t2: fmtTL(r.grand_total) + ' ₺' }))],
+      ['📄 Teklifler', hit(data.quotes, r => matchSearch(String(r.quote_no || '').padStart(4, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/teklif/' + r.id, t1: 'Teklif #' + String(t.quote_no).padStart(4, '0'), t2: trDate(r.date) }))],
+      ['📑 Hakedişler', hit(data.hakedis, r => matchSearch(String(r.hakedis_no || '').padStart(6, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/hakedis/' + r.id, t1: 'Hakediş #' + String(h.hakedis_no).padStart(6, '0'), t2: fmtTL(r.grand_total) + ' ₺' }))],
       ['🗂 Belgeler (OCR dahil)', hit(data.documents, r => matchSearch(`${r.category || ''} ${r.doc_no || ''} ${r.description || ''} ${(r.ocr && r.ocr.searchable_text) || ''}`, qq)).map(r => ({ href: '#/belgeler/' + r.id, t1: r.category || 'Belge', t2: `${trDate(r.date)}${r.doc_no ? ' · #' + r.doc_no : ''}` }))],
       ['💸 Giderler', hit(data.expense_records, r => matchSearch(`${r.category || ''} ${r.company || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/gider', t1: `${r.category || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))],
       ['💰 Kasa', hit(data.cash_records, r => matchSearch(`${r.cash_type || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/kasa', t1: `${r.cash_type || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))]
@@ -570,7 +570,7 @@ async function doCsvZip(ctx) {
   const db = ctx.db;
   const data = await db.dumpAll();
   const enc = new TextEncoder();
-  const bom = '﻿';
+  const bom = '\uFEFF';
   const files = [];
   for (const [store, base] of Object.entries(STORE_CSV)) {
     const rows = data[store] || [];
@@ -611,8 +611,8 @@ async function settings(ctx) {
   const { root, db } = ctx;
   const lastBackup = await db.metaGet('last_backup_at');
   const kdv = await db.metaGet('kdv_default');
-  const craneFirst = await db.metaGet('crane_first');
-  const craneNext = await db.metaGet('crane_next');
+  const craneFirst = await db.metaGet('crane_first_hour');
+  const craneNext = await db.metaGet('crane_next_hour');
   const pinSet = !!(await db.metaGet('pin_hash'));
   const vehiclesL = await db.listActive('vehicles');
   const vehName = {}; for (const v of vehiclesL) vehName[v.id] = v.name;
@@ -694,8 +694,8 @@ async function settings(ctx) {
   qs('[data-finset]', root).addEventListener('click', async () => {
     const val = collectForm(root);
     await db.metaSet('kdv_default', Number(val.kdv) || 20);
-    await db.metaSet('crane_first', Number(val.crane_first) || 9000);
-    await db.metaSet('crane_next', Number(val.crane_next) || 3000);
+    await db.metaSet('crane_first_hour', Number(val.crane_first) || 9000);
+    await db.metaSet('crane_next_hour', Number(val.crane_next) || 3000);
     toast('Tarife kaydedildi', 'ok');
   });
   const pinBtn = qs('[data-pinset]', root);
