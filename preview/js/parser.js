@@ -87,7 +87,7 @@ export function parseWhatsApp(raw, ctx) {
 
 function splitJobs(text) {
   // "3 sefer hafriyat 2 sefer moloz" → iki iş; aksi halde tek parça
-  const re = /(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)/gi;
+  const re = /(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/gi;
   const hits = []; let m;
   while ((m = re.exec(text)) !== null) hits.push(m.index);
   if (hits.length <= 1) return [text];
@@ -144,9 +144,9 @@ function parseJob(text, ctx) {
   let work_type = null;
   for (const [t, keys] of TYPE_PATTERNS) { if (keys.some(k => low.includes(k))) { work_type = t; break; } }
   let unit = null;
-  for (const [u, keys] of UNIT_PATTERNS) { if (keys.some(k => new RegExp(`\\b${k}\\b`, 'i').test(low))) { unit = u; break; } }
+  for (const [u, keys] of UNIT_PATTERNS) { if (keys.some(k => new RegExp(`(^|[^a-z0-9çğıöşü])${k}($|[^a-zçğıöşü0-9])`, 'i').test(low))) { unit = u; break; } }
   let quantity = null;
-  const qm = low.match(/(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)/i);
+  const qm = low.match(/(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/i);
   if (qm) quantity = Number(qm[1].replace(',', '.'));
   if (!unit) { kontrol = true; notes.push('Birim yok'); }
   if (quantity == null && unit) { quantity = unit === 'Yevmiye' ? 1 : null; kontrol = true; notes.push('Miktar belirsiz'); }
