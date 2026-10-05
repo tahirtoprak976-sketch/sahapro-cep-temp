@@ -428,7 +428,7 @@ async function scan(ctx) {
       } catch (err) { toast('İşlenemedi: ' + (err.message || err), 'err'); }
       ocrDone = false; renderPages();
     }
-  });
+  };
   qs('[data-cam]', root).addEventListener('click', () => qs('[data-camin]', root).click());
   qs('[data-gal]', root).addEventListener('click', () => qs('[data-galin]', root).click());
   qs('[data-camin]', root).addEventListener('change', (e) => addFiles([...e.target.files]));
@@ -570,7 +570,7 @@ async function doCsvZip(ctx) {
   const db = ctx.db;
   const data = await db.dumpAll();
   const enc = new TextEncoder();
-  const bom = '﻿';
+  const bom = '\uFEFF';
   const files = [];
   for (const [store, base] of Object.entries(STORE_CSV)) {
     const rows = data[store] || [];
@@ -611,8 +611,8 @@ async function settings(ctx) {
   const { root, db } = ctx;
   const lastBackup = await db.metaGet('last_backup_at');
   const kdv = await db.metaGet('kdv_default');
-  const craneFirst = await db.metaGet('crane_first');
-  const craneNext = await db.metaGet('crane_next');
+  const craneFirst = await db.metaGet('crane_first_hour');
+  const craneNext = await db.metaGet('crane_next_hour');
   const pinSet = !!(await db.metaGet('pin_hash'));
   const vehiclesL = await db.listActive('vehicles');
   const vehName = {}; for (const v of vehiclesL) vehName[v.id] = v.name;
@@ -694,8 +694,8 @@ async function settings(ctx) {
   qs('[data-finset]', root).addEventListener('click', async () => {
     const val = collectForm(root);
     await db.metaSet('kdv_default', Number(val.kdv) || 20);
-    await db.metaSet('crane_first', Number(val.crane_first) || 9000);
-    await db.metaSet('crane_next', Number(val.crane_next) || 3000);
+    await db.metaSet('crane_first_hour', Number(val.crane_first) || 9000);
+    await db.metaSet('crane_next_hour', Number(val.crane_next) || 3000);
     toast('Tarife kaydedildi', 'ok');
   });
   const pinBtn = qs('[data-pinset]', root);
