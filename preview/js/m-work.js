@@ -1,6 +1,7 @@
 // SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
+// v3: iş türüne göre dinamik form (döküm/ocak yalnız anlamlıysa) + birim fiyat/KDV/kaynak alanları
 import { qs, qsa, esc, appbar, stat, li, emptyState, notice, kv, badge, statusBadge, segBar, searchBar, sheet, sheetClose, toast, confirmDialog, promptDialog, fText, fNum, fDate, fArea, fSelect, collectForm, setForm, fmtTL, fmtNum, trDate, todayStr, pagedRender, shareOrDownload, back, go } from './ui.js';
-import { WORK_UNITS, WORK_TYPES, isActive, todayStr as td, matchSearch, newRecord } from './core.js';
+import { WORK_UNITS, WORK_TYPES, isActive, todayStr as td, matchSearch, newRecord, workFormConfig, resolvePrice, priceSourceLabel, toKurus, fromKurus } from './core.js';
 import { parseWhatsApp, buildAliasIndex, voiceSupported, startVoice } from './parser.js';
 
 export async function screen(ctx) {
@@ -45,7 +46,7 @@ async function workList(ctx) {
     ic: '⚒', href: '#/isler/' + w.id,
     t1: `${esc(names.customers[w.customer_id] || '—')} · ${esc(w.work_type || 'İş')}`,
     t2: `${trDate(w.date)} · ${esc(names.vehicles[w.vehicle_id] || '—')} — ${esc(names.personnel[w.personnel_id] || '—')}${w.site_id ? ' · ' + esc(names.sites[w.site_id]) : ''}`,
-    badgeHtml: w.slip_id ? badge('Fişli', 'ok') : (w.slip_status === 'Fiş Var' ? badge('Fiş Var', 'info') : ''),
+    badgeHtml: w.slip_id ? badge('Fişli', 'ok') : (w.slip_status === 'Fiş Var' ? badge('Fiş Var', 'info') : (w.unit_price == null ? badge('Fiyatsız', 'warn') : '')),
     end: `<div class="amt nowrap">${fmtNum(w.quantity)} ${esc(w.unit || '')}</div>`
   }));
 
@@ -55,7 +56,10 @@ async function workList(ctx) {
 
 async function workForm(ctx, editId) {
   const { root, db, names, query } = ctx;
-  const [customers, sites, vehicles, personnel] = await Promise.all([db.listActive('customers'), db.listActive('sites'), db.listActive('vehicles'), db.listActive('personnel')]);
+  const [customers, sites, vehicles, personnel, pricebook] = await Promise.all([db.listActive('customers'), db.listActive('sites'), db.listActive('vehicles'), db.listActive('personnel'), db.listActive('price_book')]);
+  const kdvDefault = (await db.metaGet('kdv_default')) ?? 20;
+  const craneFirst = (await db.metaGet('crane_first_hour')) ?? 9000;
+  const craneNext = (await db.metaGet('crane_next_hour')) ?? 3000;
   let rec = editId ? await db.get('work_records', editId) : null;
 
   // Ön-doldurma: WhatsApp taslağı / son kayıt kopyası
@@ -91,15 +95,21 @@ async function workForm(ctx, editId) {
         ${fSelect('Şoför / Operatör', 'personnel_id', [...perOpts, { v: '__new__', t: '➕ Yeni…' }], v.personnel_id)}
       </div>
       ${fSelect('İş Türü', 'work_type', WORK_TYPES, v.work_type || '')}
+      <div class="hint" data-wf="crane" style="display:none">🏷 Vinç tarifesi: ilk saat ${fmtTL(craneFirst)} ₺ + sonraki ${fmtTL(craneNext)} ₺/sa — tutar hakedişte uygulanır.</div>
       <div class="formgrid2">
         ${fNum('Miktar', 'quantity', v.quantity ?? '', { req: true, step: 'any' })}
         ${fSelect('Birim', 'unit', WORK_UNITS, v.unit || 'Sefer', { empty: false })}
       </div>
-      ${fText('Malzeme', 'material', v.material || '', { ph: 'mıcır, kum…' })}
+      <div data-wf="material">${fText('Malzeme', 'material', v.material || '', { ph: 'mıcır, kum…' })}</div>
       <div class="formgrid2">
-        ${fText('Döküm Sahası', 'dump_area', v.dump_area || '')}
-        ${fText('Malzeme Ocağı', 'quarry', v.quarry || '')}
+        <div data-wf="dump">${fText('Döküm Sahası', 'dump_area', v.dump_area || '')}</div>
+        <div data-wf="quarry">${fText('Malzeme Ocağı', 'quarry', v.quarry || '')}</div>
       </div>
+      <div class="formgrid2">
+        ${fNum('Birim Fiyat (₺, ops.)', 'unit_price', v.unit_price ?? '', { step: 'any' })}
+        ${fNum('KDV %', 'kdv_rate', v.kdv_rate ?? kdvDefault)}
+      </div>
+      <div data-pricesuggest></div>
       <div class="formgrid2">
         ${fSelect('Fiş Durumu', 'slip_status', ['Fiş Var', 'Fiş Yok'], v.slip_status || '')}
         ${fText('Fiş No', 'slip_no', v.slip_no || '')}
@@ -110,12 +120,11 @@ async function workForm(ctx, editId) {
     </form>
     <div class="actionbar">
       ${editId ? '' : '<button class="btn" data-copylast>Son Kaydı Kopyala</button>'}
-      <button class="btn primary" data-save>Kaydet</button>
-    </div>`;
+      <button class="btn primary" data-save>Kaydet</button></div>`;
 
   const form = qs('[data-form]', root);
   // Yeni ekleme akışları
-  const bindNew = (name, store, label, extra = {}) => {
+  const bindNew = (name, store, label) => {
     const sel = qs(`select[name=${name}]`, form);
     sel.addEventListener('change', async () => {
       if (sel.value !== '__new__') return;
@@ -128,7 +137,7 @@ async function workForm(ctx, editId) {
         sel.insertAdjacentHTML('beforeend', `<option value="${created.id}">${esc(name2)}</option>`);
         sel.value = created.id;
       } else {
-        const fields = store === 'vehicles' ? { name: name2, type: 'Araç/Makine', ownership: 'Özmal', active: true } : store === 'personnel' ? { name: name2, active: true } : { name: name2, active: true };
+        const fields = store === 'vehicles' ? { name: name2, type: 'Araç/Makine', ownership: 'Özmal', active: true } : { name: name2, active: true };
         const created = await db.saveNew(store, fields);
         sel.insertAdjacentHTML('beforeend', `<option value="${created.id}">${esc(name2)}</option>`);
         sel.value = created.id;
@@ -149,6 +158,54 @@ async function workForm(ctx, editId) {
     sel.innerHTML = '<option value="">— seç —</option>' + opts.map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('') + '<option value="__new__">➕ Yeni şantiye…</option>';
   });
 
+  // ---- İş türüne göre dinamik form (DEVAM #8: ilgisiz alan GÖSTERİLMEZ) ----
+  const wtSel = qs('select[name=work_type]', form);
+  const unitSel = qs('select[name=unit]', form);
+  function applyWfc() {
+    const wfc = workFormConfig(wtSel.value || '');
+    for (const el of qsa('[data-wf]', form)) {
+      const k = el.dataset.wf;
+      if (k === 'dump') el.style.display = wfc.showDump ? '' : 'none';
+      else if (k === 'quarry') el.style.display = wfc.showQuarry ? '' : 'none';
+      else if (k === 'material') el.style.display = wfc.showMaterial ? '' : 'none';
+      else if (k === 'crane') el.style.display = wfc.crane ? '' : 'none';
+    }
+    // Etiketler
+    const vLbl = qs('select[name=vehicle_id]', form).closest('.field').querySelector('label');
+    const pLbl = qs('select[name=personnel_id]', form).closest('.field').querySelector('label');
+    if (vLbl) vLbl.textContent = wfc.vehicleLabel;
+    if (pLbl) pLbl.textContent = wfc.personnelLabel;
+    // Birim seçenekleri — mevcut değer grup dışındaysa varsayılana çek
+    const cur = unitSel.value;
+    const units = wfc.units;
+    unitSel.innerHTML = units.map(u => `<option ${u === (units.includes(cur) ? cur : wfc.defaultUnit) ? 'selected' : ''}>${u}</option>`).join('');
+  }
+  wtSel.addEventListener('change', () => { applyWfc(); priceSuggest(); });
+  applyWfc();
+
+  // ---- Fiyat önerisi (PRICE SOURCE; elle giriş "Manuel") ----
+  let suggested = null;
+  function priceSuggest() {
+    const val = collectForm(form);
+    const el = qs('[data-pricesuggest]', root);
+    suggested = null;
+    if (!val.unit || !val.date) { el.innerHTML = ''; return; }
+    const entry = resolvePrice(pricebook, { customer_id: val.customer_id || null, site_id: val.site_id || null, vehicle_id: val.vehicle_id || null, work_type: val.work_type || null, unit: val.unit, date: val.date });
+    if (!entry) { el.innerHTML = ''; return; }
+    suggested = entry;
+    if (entry.formula === 'CRANE_FIRST_HOUR') {
+      el.innerHTML = `<div class="hint">🏷 Vinç tarifesi çözüldü (${esc(priceSourceLabel(entry))}) — tutar hakedişte hesaplanır.</div>`;
+      return;
+    }
+    el.innerHTML = `<div style="margin-bottom:10px"><button type="button" class="chip" data-applyprice>Önerilen: ${fmtTL(entry.price)} ₺/${esc(val.unit)} · ${esc(priceSourceLabel(entry))} — dokun, dolsun</button></div>`;
+    qs('[data-applyprice]', el).addEventListener('click', () => {
+      qs('input[name=unit_price]', form).value = entry.price;
+      qs('input[name=kdv_rate]', form).value = entry.kdv_rate ?? kdvDefault;
+    });
+  }
+  form.addEventListener('change', priceSuggest);
+  priceSuggest();
+
   // Autosave (yeni kayıtta)
   if (!editId) {
     let t;
@@ -161,6 +218,20 @@ async function workForm(ctx, editId) {
     const val = collectForm(form);
     if (!val.quantity || Number(val.quantity) <= 0) { toast('Miktar girin (0\'dan büyük)', 'err'); return; }
     if (!val.vehicle_id && !val.personnel_id) { toast('Araç veya personel seçin', 'err'); return; }
+    // Fiyat + kaynak: boşsa öneriyle dolar; elle girildiyse "Manuel"
+    let unit_price = val.unit_price !== '' && val.unit_price != null ? Number(val.unit_price) : null;
+    let kdv_rate = val.kdv_rate !== '' && val.kdv_rate != null ? Number(val.kdv_rate) : null;
+    let price_source = null;
+    if (unit_price != null) {
+      if (editId && rec && rec.unit_price != null && Number(rec.unit_price) === unit_price && rec.price_source) price_source = rec.price_source;
+      else price_source = (suggested && suggested.formula !== 'CRANE_FIRST_HOUR' && Number(suggested.price) === unit_price) ? priceSourceLabel(suggested) : 'Manuel';
+    } else if (suggested && suggested.formula === 'CRANE_FIRST_HOUR') {
+      price_source = 'Vinç Tarifesi (' + priceSourceLabel(suggested) + ')';
+    } else if (suggested) {
+      unit_price = Number(suggested.price);
+      kdv_rate = suggested.kdv_rate ?? kdvDefault;
+      price_source = priceSourceLabel(suggested);
+    }
     const fields = {
       date: val.date || todayStr(), time: val.time || null,
       customer_id: val.customer_id || null, site_id: val.site_id || null,
@@ -168,6 +239,7 @@ async function workForm(ctx, editId) {
       work_type: val.work_type || 'Diğer', description: val.description || '',
       material: val.material || '', quantity: Number(val.quantity), unit: val.unit || 'Sefer',
       dump_area: val.dump_area || '', quarry: val.quarry || '',
+      unit_price, kdv_rate, price_source,
       slip_status: val.slip_status || null, slip_no: val.slip_no || '',
       customer_note: val.customer_note || '', internal_note: val.internal_note || ''
     };
@@ -198,7 +270,8 @@ async function workDetail(ctx, id) {
   if (!w) { root.innerHTML = appbar('İş') + emptyState('⚒', 'Kayıt bulunamadı'); return; }
   const slip = w.slip_id ? await db.get('slips', w.slip_id) : null;
   const inHakedis = (await db.getAll('hakedis')).some(h => isActive(h) && h.status !== 'İptal' && (h.items || []).some(it => it.work_record_id === id));
-  root.innerHTML = appbar('İş Detayı', trDate(w.date)) + `
+  const lineTotal = (w.unit_price != null && w.quantity != null) ? fromKurus(toKurus(w.unit_price) * (Number(w.quantity) || 0)) : null;
+  root.innerHTML = appbar('İş Detayı', trDate(w.date), { right: w.unit_price == null ? badge('Fiyat Yok', 'warn') : '' }) + `
     <div class="card">
       <div class="row between"><span class="strong" style="font-size:16px">${esc(w.work_type || 'İş')}</span><span class="amt">${fmtNum(w.quantity)} ${esc(w.unit || '')}</span></div>
       <div class="divider"></div>
@@ -210,6 +283,10 @@ async function workDetail(ctx, id) {
       ${w.material ? kv('Malzeme', w.material) : ''}
       ${w.dump_area ? kv('Döküm', w.dump_area) : ''}
       ${w.quarry ? kv('Ocak', w.quarry) : ''}
+      ${w.unit_price != null ? kv('Birim Fiyat', fmtTL(w.unit_price) + ' ₺ / ' + (w.unit || '')) : ''}
+      ${lineTotal != null ? kv('Tutar (KDV hariç)', fmtTL(lineTotal) + ' ₺') : ''}
+      ${w.kdv_rate != null && w.unit_price != null ? kv('KDV', '%' + w.kdv_rate) : ''}
+      ${w.price_source ? kv('Fiyat Kaynağı', w.price_source) : ''}
       ${w.slip_status ? kv('Fiş', w.slip_status + (w.slip_no ? ' #' + w.slip_no : '')) : ''}
       ${w.description ? kv('Açıklama', w.description) : ''}
       ${w.customer_note ? kv('Müşteri Notu', w.customer_note) : ''}
@@ -489,10 +566,12 @@ async function whatsapp(ctx) {
           date: d.date, customer_id: d.customer_id, site_id: d.site_id, vehicle_id: d.vehicle_id, personnel_id: d.personnel_id,
           work_type: d.work_type || 'Diğer', quantity: d.quantity || 1, unit: d.unit || 'Adet',
           description: d.description || '', dump_area: d.dump_area || '', quarry: d.quarry || '', slip_status: d.slip_status,
+          unit_price: null, kdv_rate: null, price_source: null,
           raw_message: d.raw_message, parse_confidence: d.confidence, kontrol_gerekli: d.kontrol_gerekli
         }, 'WhatsApp onay');
         if (d.fuel_liters && d.vehicle_id) {
-          await db.saveNew('fuel_records', { date: d.date, vehicle_id: d.vehicle_id, personnel_id: d.personnel_id, liters: d.fuel_liters, fuel_source: 'Depo Tankı', receipt: 'Hayır', customer_billable: false, description: 'WhatsApp: ' + d.raw_message }, 'WhatsApp onay');
+          // Depo kuralı: kaynağı bilinmeyen hızlı yakıt "Diğer" — depo çıkışı yalnız tank bağlantılı akışlardan yapılır
+          await db.saveNew('fuel_records', { date: d.date, vehicle_id: d.vehicle_id, personnel_id: d.personnel_id, liters: d.fuel_liters, fuel_source: 'Diğer', receipt: 'Hayır', customer_billable: false, tank_movement_id: null, description: 'WhatsApp: ' + d.raw_message }, 'WhatsApp onay');
         }
         sb.closest('.card').style.opacity = '.4';
         sb.disabled = true; sb.textContent = 'Kaydedildi ✓';

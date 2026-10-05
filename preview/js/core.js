@@ -3,11 +3,11 @@
 
 export const APP_ID = 'SAHAPRO_SOLO';
 export const LEGACY_APP_IDS = ['SAHAPRO_CEP'];
-export const APP_VERSION = 'SAHAPRO SOLO v2.0';
-export const SCHEMA_VERSION = 2;
+export const APP_VERSION = 'SAHAPRO SOLO v3.0-dev';
+export const SCHEMA_VERSION = 3;
 export const SOURCE = 'SAHAPRO_SOLO';
 export const LEGACY_SOURCES = ['temporary_mobile_logger'];
-export const SW_CACHE = 'sahapro-solo-v2';
+export const SW_CACHE = 'sahapro-solo-v3';
 export const COMPANY_NAME = 'Muratoğlu Hafriyat';
 
 // ---- Kayıt depoları (IndexedDB store adları = backup JSON anahtarları) ----
@@ -18,7 +18,9 @@ export const ENTITY_STORES = [
   'maintenance_records', 'cash_records', 'personnel_events', 'documents',
   // v2 yeniler
   'slips', 'quotes', 'price_book', 'hakedis', 'cari_movements',
-  'contractors', 'aliases', 'audit_log'
+  'contractors', 'aliases', 'audit_log',
+  // v3 yeniler
+  'contracts'
 ];
 export const SYSTEM_STORES = ['attachments', 'meta', 'drafts'];
 
@@ -56,12 +58,38 @@ export function isActive(rec) { return !rec.deleted_at; }
 export const WORK_UNITS = ['Sefer', 'Saat', 'Yevmiye', 'Ton', 'm³', 'Adet'];
 export const WORK_TYPES = [
   'Hafriyat Nakliye', 'Moloz Nakliye', 'Çöp Nakliye', 'Mıcır Nakliye', 'Kum Nakliye', 'Gravak Nakliye',
-  'Kazı', 'Yıkım', 'Kırım', 'Tesviye', 'Yükleme',
+  'Malzeme Taşıma',
+  'Kazı', 'Yıkım', 'Kırım', 'Tesviye', 'Yükleme', 'Boşaltma',
   'Makine Çalışması', 'Mini Kato Çalışması', 'JCB Çalışması', 'Manitou Çalışması', 'Vinç Çalışması',
-  'Lowbed Nakliye', 'Diğer'
+  'Lowbed Nakliye', 'İç Hareket', 'Diğer'
 ];
 export const TRUCK_TYPES = ['Hafriyat Nakliye', 'Moloz Nakliye', 'Çöp Nakliye', 'Mıcır Nakliye', 'Kum Nakliye', 'Gravak Nakliye'];
 export const MACHINE_TYPES = ['Makine Çalışması', 'Mini Kato Çalışması', 'JCB Çalışması', 'Manitou Çalışması', 'Vinç Çalışması', 'Kazı', 'Yıkım', 'Kırım', 'Tesviye', 'Yükleme'];
+
+// ---- İş türüne göre form davranışı (brief §Y/§AR + DEVAM #8: dinamik iş formu) ----
+// Döküm/ocak yalnız anlamlı olduğunda görünür; makine çalışmasında GİZLİ; vinçte özel tarife rozeti.
+export const WORK_FORM_GROUPS = {
+  DUMP_TRUCK: ['Hafriyat Nakliye', 'Moloz Nakliye', 'Çöp Nakliye'],
+  QUARRY_TRUCK: ['Mıcır Nakliye', 'Kum Nakliye', 'Gravak Nakliye'],
+  MACHINE: ['Makine Çalışması', 'Mini Kato Çalışması', 'JCB Çalışması', 'Manitou Çalışması', 'Kazı', 'Yıkım', 'Kırım', 'Tesviye', 'Yükleme', 'Boşaltma'],
+  CRANE: ['Vinç Çalışması'],
+  OTHER: ['Lowbed Nakliye', 'Malzeme Taşıma', 'İç Hareket', 'Diğer']
+};
+export function workFormConfig(workType) {
+  if (WORK_FORM_GROUPS.DUMP_TRUCK.includes(workType)) {
+    return { group: 'DUMP_TRUCK', units: ['Sefer'], defaultUnit: 'Sefer', showDump: true, showQuarry: false, showMaterial: true, vehicleLabel: 'Araç / Kamyon', personnelLabel: 'Şoför', crane: false };
+  }
+  if (WORK_FORM_GROUPS.QUARRY_TRUCK.includes(workType)) {
+    return { group: 'QUARRY_TRUCK', units: ['Sefer', 'Ton', 'm³'], defaultUnit: 'Sefer', showDump: false, showQuarry: true, showMaterial: true, vehicleLabel: 'Araç / Kamyon', personnelLabel: 'Şoför', crane: false };
+  }
+  if (WORK_FORM_GROUPS.MACHINE.includes(workType)) {
+    return { group: 'MACHINE', units: ['Saat', 'Yevmiye'], defaultUnit: 'Saat', showDump: false, showQuarry: false, showMaterial: false, vehicleLabel: 'Makine', personnelLabel: 'Operatör', crane: false };
+  }
+  if (WORK_FORM_GROUPS.CRANE.includes(workType)) {
+    return { group: 'CRANE', units: ['Saat'], defaultUnit: 'Saat', showDump: false, showQuarry: false, showMaterial: false, vehicleLabel: 'Vinç / Makine', personnelLabel: 'Operatör', crane: true };
+  }
+  return { group: 'OTHER', units: WORK_UNITS, defaultUnit: '', showDump: false, showQuarry: false, showMaterial: true, vehicleLabel: 'Araç / Makine', personnelLabel: 'Şoför / Operatör', crane: false };
+}
 export const FUEL_SOURCES = ['Depo Tankı', 'Akaryakıt İstasyonu', 'Şantiye', 'Diğer'];
 export const EXPENSE_CATEGORIES = [
   'Yakıt', 'Otoyol / HGS', 'Otopark', 'Yemek', 'Döküm', 'Malzeme', 'Yedek Parça', 'Tamir',
@@ -85,10 +113,65 @@ export function nextCashStatus(s) {
   return null;
 }
 export const PERSONNEL_EVENT_TYPES = ['Avans', 'Mesai', 'İzin', 'Devamsızlık', 'Zimmet Notu', 'Personel Gideri', 'Tahsilat', 'Kasa Teslimi', 'Diğer'];
-export const DOC_TYPES = [
-  'Dijital İş Fişi', 'Döküm Fişi', 'Akaryakıt Fişi', 'Gider Fişi', 'Servis Belgesi', 'İrsaliye',
-  'Makbuz', 'Fatura', 'Sözleşme', 'Ruhsat', 'Sigorta / Poliçe', 'Muayene Belgesi', 'Personel Evrakı', 'Diğer'
+// ---- BELGE SAHİPLİK DİSİPLİNİ (brief §A/§Q/§T/§V + DEVAM #2/#3 — BAĞLAYICI) ----
+// Belge kendi sahibinde yaşar; Belge Merkezi yalnız merkezi görünüm/arama katmanıdır.
+// Her belge owner_type + owner_id ile TEK gerçek sahibine bağlanır.
+// İlgisiz entity seçicileri formlarda GÖSTERİLMEZ (IRRELEVANT FIELD VIOLATIONS = 0 hedefi).
+export const VEHICLE_DOC_TYPES = [
+  'Ruhsat', 'TÜVTÜRK / Periyodik Muayene', 'Zorunlu Trafik Sigortası', 'Kasko',
+  'Egzoz Muayenesi', 'Takograf / Kalibrasyon', 'Yetki / Taşıma Belgesi', 'Makine Tescil Belgesi',
+  'Periyodik Kontrol', 'Ekspertiz', 'Diğer (Araç)'
 ];
+export const PERSONNEL_DOC_TYPES = [
+  'Ehliyet', 'SRC', 'Psikoteknik', 'Operatör Belgesi', 'Mesleki Yeterlilik',
+  'İSG Eğitimi', 'Sağlık Raporu', 'SGK / İşe Giriş Evrakı', 'Kimlik', 'Sertifika', 'Diğer (Personel)'
+];
+export const CUSTOMER_DOC_TYPES = ['Sözleşme', 'İrsaliye', 'Fatura', 'Makbuz', 'Diğer (Müşteri)'];
+export const OP_DOC_TYPES = ['Akaryakıt Fişi', 'Döküm Fişi', 'Gider Fişi', 'Servis Belgesi', 'Dijital İş Fişi', 'Diğer'];
+export const ALL_DOC_TYPES = [...VEHICLE_DOC_TYPES, ...PERSONNEL_DOC_TYPES, ...CUSTOMER_DOC_TYPES, ...OP_DOC_TYPES];
+// Geriye dönük ad (eski kod DOC_TYPES kullanıyorsa ALL_DOC_TYPES'a düşer)
+export const DOC_TYPES = ALL_DOC_TYPES;
+
+// Kategori → alan kuralı: required/optional/hidden + sahiplik + bitiş takibi
+export function docFieldRule(category) {
+  if (VEHICLE_DOC_TYPES.includes(category)) {
+    return { owner: 'vehicle', expiry: true, fields: { vehicle: 'required', personnel: 'hidden', customer: 'hidden', site: 'hidden' } };
+  }
+  if (PERSONNEL_DOC_TYPES.includes(category)) {
+    return { owner: 'personnel', expiry: true, fields: { personnel: 'required', vehicle: 'hidden', customer: 'hidden', site: 'hidden' } };
+  }
+  if (CUSTOMER_DOC_TYPES.includes(category)) {
+    return { owner: 'customer', expiry: false, fields: { customer: 'required', site: 'optional', vehicle: 'hidden', personnel: 'hidden' } };
+  }
+  switch (category) {
+    case 'Akaryakıt Fişi':
+      return { owner: 'vehicle', expiry: false, fields: { vehicle: 'required', personnel: 'optional', customer: 'hidden', site: 'hidden' } };
+    case 'Servis Belgesi':
+      return { owner: 'vehicle', expiry: false, fields: { vehicle: 'required', personnel: 'optional', customer: 'hidden', site: 'hidden' } };
+    case 'Döküm Fişi':
+      return { owner: null, expiry: false, fields: { customer: 'optional', site: 'optional', vehicle: 'optional', personnel: 'hidden' } };
+    case 'Gider Fişi':
+      return { owner: null, expiry: false, fields: { personnel: 'optional', vehicle: 'optional', customer: 'hidden', site: 'hidden' } };
+    case 'Dijital İş Fişi':
+      return { owner: null, expiry: false, fields: { customer: 'optional', site: 'optional', vehicle: 'optional', personnel: 'optional' } };
+    default: // 'Diğer' — gerçekten genel kaçış kapısı
+      return { owner: null, expiry: false, fields: { customer: 'optional', site: 'optional', vehicle: 'optional', personnel: 'optional' } };
+  }
+}
+// Belge kaydını kurala göre normalize et: owner_* + legacy ayna alanlar (görüntü/sorgu uyumu)
+export function docApplyRule(category, val) {
+  const rule = docFieldRule(category);
+  const f = rule.fields;
+  const pick = (k) => (f[k] && f[k] !== 'hidden') ? (val[k + '_id'] || null) : null;
+  const out = {
+    customer_id: pick('customer'), site_id: pick('site'),
+    vehicle_id: pick('vehicle'), personnel_id: pick('personnel')
+  };
+  const ownerType = rule.owner;
+  out.owner_type = ownerType;
+  out.owner_id = ownerType ? out[ownerType + '_id'] : null;
+  return out;
+}
 export const VEHICLE_OWNERSHIP = ['Özmal', 'Taşeron'];
 export const SLIP_STATUS = ['Taslak', 'İmzalandı', 'Revize', 'İptal'];
 export const QUOTE_TYPES = ['UNIT_PRICE', 'QUANTITY_BASED', 'LUMP_SUM', 'ALTERNATIVE'];
@@ -183,6 +266,15 @@ export function priceForQuantity(entry, quantity, craneDefaults) {
   return fromKurus(toKurus(entry.price) * q);
 }
 
+// ---- Fiyat kaynağı etiketi (brief §L + DEVAM #9 — her fiyatlı işte PRICE SOURCE saklanır) ----
+export function priceSourceLabel(entry) {
+  if (!entry) return null;
+  if (entry.customer_id && entry.site_id) return 'Müşteri+Şantiye Özel Fiyat';
+  if (entry.customer_id) return 'Müşteriye Özel Fiyat';
+  if (entry.site_id) return 'Şantiyeye Özel Fiyat';
+  return 'Genel Liste';
+}
+
 // ---- Teklif toplamları (§11) ----
 // UNIT_PRICE: satır fiyatları TOPLANMAZ (toplam gösterilmez). QUANTITY_BASED: miktar×birim.
 // LUMP_SUM: anlaşılan toplam authoritative. ALTERNATIVE: alternatifler toplanmaz.
@@ -234,9 +326,12 @@ export function cariBalance(movements) {
 }
 
 // ---- Depo yakıt dengesi ----
+// Reverse movement mantığı (DEVAM #4): iptal edilen hareket + onun ters kaydı
+// dengeden düşülür; defter görünümünde ikisi de "iptal" rozetiyle kalır, stok bozulmaz.
 export function calcTankBalance(movements) {
   let inn = 0, out = 0;
   for (const m of (movements || []).filter(isActive)) {
+    if (m.reversed_at || m.reverses_id) continue; // iptal edilmiş orijinal + ters kayıt: dengede nötr
     const l = Number(m.liters) || 0;
     if (m.move_type === 'GİRİŞ') inn += l; else if (m.move_type === 'ÇIKIŞ') out += l;
   }
@@ -285,9 +380,31 @@ export function smartAlerts(data, opts = {}) {
     if (v.next_maintenance_date && v.next_maintenance_date <= today) alerts.push({ kind: 'alert', key: 'maint_due', text: `Bakım zamanı geldi: ${v.name}`, ref: { type: 'vehicle', id: v.id } });
     else if (v.next_maintenance_date && v.next_maintenance_date <= addDays(today, 7)) alerts.push({ kind: 'warn', key: 'maint_soon', text: `Bakım yaklaşıyor: ${v.name} (${trDate(v.next_maintenance_date)})`, ref: { type: 'vehicle', id: v.id } });
   }
+  // Belge bitiş uyarıları — kademeli (geçti / 7 gün / 30 gün) + sahip adı (DEVAM #21/#22 + §AU)
+  const vehName = {}; for (const v of act(data.vehicles)) vehName[v.id] = v.name;
+  const perName = {}; for (const p of act(data.personnel)) perName[p.id] = p.name;
   for (const d of act(data.documents)) {
-    if (d.expiry_date && d.expiry_date <= addDays(today, 30)) alerts.push({ kind: d.expiry_date <= today ? 'alert' : 'warn', key: 'doc_expiry', text: `Belge bitiş${d.expiry_date <= today ? 'İ GEÇTİ' : 'i yaklaşıyor'}: ${d.category || 'Belge'} (${trDate(d.expiry_date)})`, ref: { type: 'document', id: d.id } });
+    if (!d.expiry_date) continue;
+    const ownerTxt = d.owner_type === 'vehicle' ? (vehName[d.owner_id] || 'Araç')
+      : d.owner_type === 'personnel' ? (perName[d.owner_id] || 'Personel')
+      : (vehName[d.vehicle_id] || perName[d.personnel_id] || d.category || 'Belge');
+    const days = Math.round((new Date(d.expiry_date + 'T12:00:00') - new Date(today + 'T12:00:00')) / 86400000);
+    if (days < 0) alerts.push({ kind: 'alert', key: 'doc_expired', text: `SÜRESİ GEÇMİŞ: ${ownerTxt} — ${d.category || 'Belge'} (${trDate(d.expiry_date)})`, ref: { type: 'document', id: d.id } });
+    else if (days <= 7) alerts.push({ kind: 'alert', key: 'doc_7d', text: `Belge ${days} gün içinde bitiyor: ${ownerTxt} — ${d.category || 'Belge'}`, ref: { type: 'document', id: d.id } });
+    else if (days <= 30) alerts.push({ kind: 'warn', key: 'doc_30d', text: `Belge bitişi yaklaşıyor (${days} gün): ${ownerTxt} — ${d.category || 'Belge'}`, ref: { type: 'document', id: d.id } });
   }
+  // Düşük depo yakıt seviyesi (DEVAM #5 + §AU)
+  const tankMoves = data.fuel_tank_movements || [];
+  if (tankMoves.some(isActive)) {
+    const tankBal = calcTankBalance(tankMoves);
+    const lowTh = opts.tankLowThreshold == null ? 200 : Number(opts.tankLowThreshold);
+    if (tankBal.remaining <= lowTh) alerts.push({ kind: tankBal.remaining <= 0 ? 'alert' : 'warn', key: 'tank_low', text: `Depo yakıt düşük: ${fmtNum(tankBal.remaining)} Lt kaldı (eşik ${fmtNum(lowTh)} Lt)`, ref: { type: 'tank' } });
+  }
+  // Fiyatı olmayan açık iş — tek gruplu uyarı (spam yok)
+  const inHak = new Set();
+  for (const h of act(data.hakedis)) if (h.status !== 'İptal') for (const it of h.items || []) inHak.add(it.work_record_id);
+  const noPrice = act(data.work_records).filter(w => !inHak.has(w.id) && (w.unit_price == null || w.unit_price === '') && String(w.date || '') >= addDays(today, -90));
+  if (noPrice.length) alerts.push({ kind: 'info', key: 'work_noprice', text: `Fiyatı olmayan açık iş: ${noPrice.length} adet (son 90 gün)`, ref: { type: 'work' } });
   const lb = opts.lastBackupAt;
   if (!lb || (Date.now() - new Date(lb).getTime()) > 24 * 3600 * 1000) alerts.push({ kind: 'warn', key: 'backup_old', text: 'Son yedek 24 saatten eski — Ayarlar → Tüm Verileri Yedekle', ref: { type: 'settings' } });
   const todayWorks = act(data.work_records).filter(w => w.date === today);
