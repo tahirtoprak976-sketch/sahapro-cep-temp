@@ -1,0 +1,17 @@
+{
+  "name": "SAHAPRO CEP — Geçici Mobil Operasyon Sistemi",
+  "short_name": "SAHAPRO CEP",
+  "description": "Ana SAHAPRO devreye alınana kadar günlük işletme verilerinizi güvenle kaydeder. Daha sonra ana sisteme aktarılabilir.",
+  "id": "sahapro-cep-temp",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1b2d",
+  "theme_color": "#0f1b2d",
+  "lang": "tr",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
