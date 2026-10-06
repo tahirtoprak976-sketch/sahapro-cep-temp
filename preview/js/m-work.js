@@ -85,7 +85,7 @@ async function workForm(ctx, editId) {
     ${editId ? '' : notice('info', 'Farklı iş veya malzeme türlerini ayrı kayıt girin. HER İŞ AYRI KAYIT.')}
     ${!editId && prefill && !rec ? '<div class="notice info"><span>ℹ</span><span>Taslak/son kayıt bilgileri yüklendi.</span></div>' : ''}
     <form data-form novalidate>
-      ${fDate('Tarih', 'date', v.date)}
+      ${fDate('Tarih', 'date', v.date || todayStr())}
       <div class="formgrid2">
         ${fSelect('Müşteri', 'customer_id', [...custOpts, { v: '__new__', t: '➕ Yeni müşteri…' }], v.customer_id)}
         ${fSelect('Şantiye', 'site_id', [...siteOpts, { v: '__new__', t: '➕ Yeni şantiye…' }], v.site_id)}
@@ -353,7 +353,7 @@ async function slipForm(ctx, editId) {
 
   root.innerHTML = appbar(editId ? 'Fiş Düzenle' : '+ Dijital Fiş', editId ? 'Seri #' + String(rec.slip_no).padStart(6, '0') : 'Seri no otomatik verilir') + `
     <form data-form novalidate>
-      ${fDate('Tarih', 'date', v.date)}
+      ${fDate('Tarih', 'date', v.date || todayStr())}
       <div class="formgrid2">
         ${fSelect('Müşteri', 'customer_id', customers.map(c => ({ v: c.id, t: c.name })), v.customer_id, { req: true })}
         ${fSelect('Şantiye', 'site_id', sites.map(s => ({ v: s.id, t: s.name })), v.site_id)}

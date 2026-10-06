@@ -457,7 +457,7 @@ async function maintForm(ctx, editId) {
   const [vehicles, personnel] = await Promise.all([db.listActive('vehicles'), db.listActive('personnel')]);
   root.innerHTML = appbar(editId ? 'Bakım Düzenle' : '+ Arıza / Bakım', '') + `
     <form data-form novalidate>
-      ${fDate('Tarih', 'date', v.date)}
+      ${fDate('Tarih', 'date', v.date || todayStr())}
       <div class="formgrid2">
         ${fSelect('Araç / Makine', 'vehicle_id', vehicles.map(x => ({ v: x.id, t: x.name })), v.vehicle_id, { req: true })}
         ${fSelect('Personel', 'personnel_id', personnel.map(p => ({ v: p.id, t: p.name })), v.personnel_id)}
