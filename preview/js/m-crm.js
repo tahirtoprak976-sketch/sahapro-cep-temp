@@ -676,7 +676,7 @@ async function globalSearch(ctx) {
       ['📑 Hakedişler', hit(data.hakedis, r => matchSearch(String(r.hakedis_no || '').padStart(6, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/hakedis/' + r.id, t1: 'Hakediş #' + String(r.hakedis_no).padStart(6, '0'), t2: fmtTL(r.grand_total) + ' ₺' }))],
       ['🗂 Belgeler (OCR dahil)', hit(data.documents, r => matchSearch(`${r.category || ''} ${r.doc_no || ''} ${r.description || ''} ${(r.ocr && r.ocr.searchable_text) || ''}`, qq)).map(r => ({ href: '#/belgeler/' + r.id, t1: r.category || 'Belge', t2: `${trDate(r.date)}${r.doc_no ? ' · #' + r.doc_no : ''}` }))],
       ['💸 Giderler', hit(data.expense_records, r => matchSearch(`${r.category || ''} ${r.company || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/gider/' + r.id, t1: `${r.category || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))],
-      ['💰 Kasa', hit(data.cash_records, r => matchSearch(`${r.cash_type || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/finans/kasa/' + r.id, t1: `${r.cash_type || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))]
+      ['💰 Kasa', hit(data.cash_records, r => matchSearch(`${r.cash_type || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/kasa/' + r.id, t1: `${r.cash_type || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))]
     ];
     const html = groups.filter(([, rows]) => rows.length).map(([title, rows]) => `<div class="section-title">${title}</div>` + rows.map(r => li({ ic: '›', href: r.href, t1: esc(r.t1), t2: esc(r.t2) })).join('')).join('');
     resEl.innerHTML = html || emptyState('🔎', 'Sonuç yok');
