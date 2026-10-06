@@ -509,6 +509,7 @@ async function cariDetail(ctx, cid) {
 async function cash(ctx) {
   const sub = ctx.parts[1];
   if (sub === 'new') return cashForm(ctx);
+  if (sub) return cashDetail(ctx, sub);
   const { root, db, names } = ctx;
   const rows = (await db.getAll('cash_records')).filter(isActive).sort((a, b) => (b.date + (b.created_at || '')) < (a.date + (a.created_at || '')) ? -1 : 1);
   root.innerHTML = appbar('Kasa / Tahsilat', 'Personelde → Teslim Bildirildi → Kasaya Teslim') + `
@@ -518,7 +519,7 @@ async function cash(ctx) {
   const listEl = qs('[data-list]', root);
   if (!rows.length) listEl.innerHTML = emptyState('💰', 'Kayıt yok');
   else pagedRender(listEl, rows, (c) => li({
-    ic: '💰',
+    ic: '💰', href: '#/finans/kasa/' + c.id,
     t1: `${esc(c.cash_type || '')} · ${esc(names.personnel[c.personnel_id] || '')}`,
     t2: `${trDate(c.date)}${names.customers[c.customer_id] ? ' · ' + esc(names.customers[c.customer_id]) : ''}${c.description ? ' · ' + esc(c.description) : ''}`,
     badgeHtml: statusBadge(c.cash_status || ''),
@@ -526,12 +527,13 @@ async function cash(ctx) {
   }));
   listEl.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-next]'); if (!b) return;
+    e.stopPropagation();
     const rec = await db.get('cash_records', b.dataset.next);
     const nx = nextCashStatus(rec.cash_status);
     await db.saveExisting('cash_records', rec, { cash_status: nx }, 'Durum: ' + nx);
     toast('Durum: ' + nx, 'ok');
     ctx.reload();
-  });
+  }, true);
 }
 
 async function cashForm(ctx) {
@@ -564,6 +566,46 @@ async function cashForm(ctx) {
       await db.saveNew('cari_movements', { date: val.date, customer_id: val.customer_id, type: 'Tahsilat', amount: -Number(val.amount), ref_id: created.id, note: 'Tahsilat' }, 'Tahsilat cari');
     }
     toast('Kaydedildi', 'ok');
+    go('#/finans/kasa/' + created.id);
+  });
+}
+
+async function cashDetail(ctx, id) {
+  const { root, db, names } = ctx;
+  const c = await db.get('cash_records', id);
+  if (!c || !isActive(c)) { root.innerHTML = appbar('Kasa') + emptyState('💰', 'Kayıt yok'); return; }
+  const nx = nextCashStatus(c.cash_status);
+  root.innerHTML = appbar(c.cash_type || 'Kasa', trDate(c.date), { right: statusBadge(c.cash_status || '') }) + `
+    <div style="height:10px"></div>
+    <div class="card">
+      ${kv('Tutar', fmtTL(c.amount) + ' ₺')}
+      ${kv('İşlem Türü', c.cash_type || '—')}
+      ${kv('Personel', names.personnel[c.personnel_id] || '—')}
+      ${c.customer_id ? kv('Müşteri', names.customers[c.customer_id] || '—') : ''}
+      ${kv('Ödeme Şekli', c.payment_method || '—')}
+      ${kv('Durum', c.cash_status || '—')}
+      ${c.description ? kv('Açıklama', c.description) : ''}
+    </div>
+    <div class="actionbar">
+      ${nx ? `<button class="btn primary" data-next>${nx === 'TESLIM_BILDIRILDI' ? '→ Teslim Bildirildi' : '→ Kasaya Teslim Edildi'}</button>` : ''}
+      <button class="btn danger" data-del>Sil</button>
+    </div>`;
+  const nxBtn = qs('[data-next]', root);
+  if (nxBtn) nxBtn.addEventListener('click', async () => {
+    await db.saveExisting('cash_records', c, { cash_status: nx }, 'Durum: ' + nx);
+    toast('Durum: ' + nx, 'ok');
+    ctx.reload();
+  });
+  qs('[data-del]', root).addEventListener('click', async () => {
+    const linked = c.cash_type === 'Müşteriden Para Alındı'
+      ? (await db.getAll('cari_movements')).filter(m => isActive(m) && m.ref_id === id && m.type === 'Tahsilat')
+      : [];
+    const ok = await confirmDialog('Kasa kaydı silinsin mi?',
+      linked.length ? 'Bu tahsilatın cari hareketi de silinir (müşteri bakiyesi düzelir).' : 'Çöp kutusuna taşınır.', 'Sil', true);
+    if (!ok) return;
+    await db.softDelete('cash_records', id, 'Kullanıcı sildi');
+    for (const m of linked) await db.softDelete('cari_movements', m.id, 'Kasa kaydı silindi');
+    toast('Silindi', 'ok');
     go('#/finans/kasa');
   });
 }
@@ -572,6 +614,8 @@ async function cashForm(ctx) {
 async function expenses(ctx) {
   const sub = ctx.parts[1];
   if (sub === 'new') return expenseForm(ctx);
+  if (sub && ctx.parts[2] === 'edit') return expenseForm(ctx, sub);
+  if (sub) return expenseDetail(ctx, sub);
   const { root, db, names, query } = ctx;
   const q = query.q || '';
   let rows = (await db.getAll('expense_records')).filter(isActive).sort((a, b) => b.date < a.date ? -1 : 1);
@@ -585,39 +629,38 @@ async function expenses(ctx) {
   const listEl = qs('[data-list]', root);
   if (!rows.length) listEl.innerHTML = emptyState('💸', 'Gider yok');
   else pagedRender(listEl, rows, (e) => li({
-    ic: '💸',
+    ic: '💸', href: '#/gider/' + e.id,
     t1: `${esc(e.category || 'Gider')} · ${fmtTL(e.amount)} ₺`,
     t2: `${trDate(e.date)} · ${esc(names.personnel[e.personnel_id] || '—')} · ${esc(e.payment_method || '')}${attMap[e.id] ? ' · 📷' + attMap[e.id] : ''}${e.description ? ' · ' + esc(e.description) : ''}`,
     badgeHtml: e.payment_method === 'Personel Ödedi' ? statusBadge(e.reimbursement_status || 'Bekliyor') : (e.receipt === 'Hayır' ? badge('Fişsiz', 'warn') : '')
   }));
   let st;
   qs('[data-search]', root).addEventListener('input', (ev) => { clearTimeout(st); st = setTimeout(() => go('#/gider?q=' + encodeURIComponent(ev.target.value)), 450); });
-  listEl.addEventListener('click', async (e) => {
-    const card = e.target.closest('.li'); if (!card) return;
-  });
 }
 
-async function expenseForm(ctx) {
+async function expenseForm(ctx, editId) {
   const { root, db } = ctx;
+  const rec = editId ? await db.get('expense_records', editId) : null;
+  const v = rec || {};
   const [personnel, vehicles] = await Promise.all([db.listActive('personnel'), db.listActive('vehicles')]);
-  root.innerHTML = appbar('+ Gider', 'Fiş fotoğrafı eklenebilir') + `
+  root.innerHTML = appbar(editId ? 'Gider Düzenle' : '+ Gider', 'Fiş fotoğrafı eklenebilir') + `
     <form data-form novalidate>
-      ${fDate('Tarih', 'date', todayStr())}
+      ${fDate('Tarih', 'date', v.date)}
       <div class="formgrid2">
-        ${fSelect('Kategori', 'category', EXPENSE_CATEGORIES, 'Yakıt', { empty: false })}
-        ${fNum('Tutar (₺)', 'amount', '', { req: true, step: 'any' })}
+        ${fSelect('Kategori', 'category', EXPENSE_CATEGORIES, v.category || 'Yakıt', { empty: false })}
+        ${fNum('Tutar (₺)', 'amount', v.amount ?? '', { req: true, step: 'any' })}
       </div>
       <div class="formgrid2">
-        ${fSelect('Personel', 'personnel_id', personnel.map(p => ({ v: p.id, t: p.name })), '')}
-        ${fSelect('İlgili Araç', 'vehicle_id', vehicles.map(v => ({ v: v.id, t: v.name })), '')}
+        ${fSelect('Personel', 'personnel_id', personnel.map(p => ({ v: p.id, t: p.name })), v.personnel_id)}
+        ${fSelect('İlgili Araç', 'vehicle_id', vehicles.map(x => ({ v: x.id, t: x.name })), v.vehicle_id)}
       </div>
       <div class="formgrid2">
-        ${fSelect('Ödeme Şekli', 'payment_method', PAYMENT_METHODS, 'Şirket Ödedi', { empty: false })}
-        ${fSelect('Fiş Var mı?', 'receipt', ['Evet', 'Hayır'], 'Evet', { empty: false })}
+        ${fSelect('Ödeme Şekli', 'payment_method', PAYMENT_METHODS, v.payment_method || 'Şirket Ödedi', { empty: false })}
+        ${fSelect('Fiş Var mı?', 'receipt', ['Evet', 'Hayır'], v.receipt || 'Evet', { empty: false })}
       </div>
-      <div class="field" data-reimb style="display:none">${fSelect('Personele Ödeme', 'reimbursement_status', REIMBURSEMENT_STATUS, 'Bekliyor', { empty: false })}</div>
-      ${fText('Firma', 'company', '')}
-      ${fArea('Açıklama', 'description', '')}
+      <div class="field" data-reimb style="display:${v.payment_method === 'Personel Ödedi' ? 'block' : 'none'}">${fSelect('Personele Ödeme', 'reimbursement_status', REIMBURSEMENT_STATUS, v.reimbursement_status || 'Bekliyor', { empty: false })}</div>
+      ${fText('Firma', 'company', v.company || '')}
+      ${fArea('Açıklama', 'description', v.description || '')}
       <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
@@ -633,10 +676,56 @@ async function expenseForm(ctx) {
       reimbursement_status: val.payment_method === 'Personel Ödedi' ? (val.reimbursement_status || 'Bekliyor') : null,
       company: val.company || '', description: val.description || ''
     };
-    const created = await db.saveNew('expense_records', fields, 'Gider');
+    let saved;
+    if (editId) saved = await db.saveExisting('expense_records', rec, fields, 'Gider güncellendi');
+    else saved = await db.saveNew('expense_records', fields, 'Gider');
     const file = qs('input[name=photo]', root).files[0];
-    if (file) await db.addAttachment('expense', created.id, file);
+    if (file) await db.addAttachment('expense', saved.id, file);
     toast('Gider kaydedildi', 'ok');
+    go('#/gider/' + saved.id);
+  });
+}
+
+async function expenseDetail(ctx, id) {
+  const { root, db, names } = ctx;
+  const e = await db.get('expense_records', id);
+  if (!e || !isActive(e)) { root.innerHTML = appbar('Gider') + emptyState('💸', 'Kayıt yok'); return; }
+  const atts = await db.attachmentsFor('expense', id);
+  root.innerHTML = appbar(e.category || 'Gider', trDate(e.date), { right: e.payment_method === 'Personel Ödedi' ? statusBadge(e.reimbursement_status || 'Bekliyor') : (e.receipt === 'Hayır' ? badge('Fişsiz', 'warn') : '') }) + `
+    <div style="height:10px"></div>
+    <div class="card">
+      ${kv('Tutar', fmtTL(e.amount) + ' ₺')}
+      ${kv('Kategori', e.category || '—')}
+      ${kv('Personel', names.personnel[e.personnel_id] || '—')}
+      ${e.vehicle_id ? kv('İlgili Araç', names.vehicles[e.vehicle_id] || '—') : ''}
+      ${kv('Ödeme Şekli', e.payment_method || '—')}
+      ${kv('Fiş', e.receipt || '—')}
+      ${e.payment_method === 'Personel Ödedi' ? kv('Personele Ödeme', e.reimbursement_status || 'Bekliyor') : ''}
+      ${e.company ? kv('Firma', e.company) : ''}
+      ${e.description ? kv('Açıklama', e.description) : ''}
+    </div>
+    ${atts.length ? `<div class="section-title">Fiş / Fotoğraf</div><div class="row" style="flex-wrap:wrap">${atts.map((a) => `<img data-att="${a.id}" style="width:calc(50% - 5px);border-radius:10px;cursor:pointer" src="">`).join('')}</div>` : ''}
+    <div class="actionbar">
+      ${e.payment_method === 'Personel Ödedi' && e.reimbursement_status !== 'Ödendi' ? '<button class="btn ok" data-paid>Ödendi ✓</button>' : ''}
+      <button class="btn" data-go="#/gider/${id}/edit">Düzenle</button>
+      <button class="btn danger" data-del>Sil</button>
+    </div>`;
+  for (const img of qsa('[data-att]', root)) {
+    const a = atts.find(x => x.id === img.dataset.att);
+    if (a) img.src = URL.createObjectURL(a.blob);
+    img.addEventListener('click', () => { sheet(`<h3>Fiş</h3><img src="${img.src}" style="width:100%;border-radius:10px">`); });
+  }
+  const paid = qs('[data-paid]', root);
+  if (paid) paid.addEventListener('click', async () => {
+    await db.saveExisting('expense_records', e, { reimbursement_status: 'Ödendi' }, 'Personele ödeme yapıldı');
+    toast('Ödendi olarak işaretlendi', 'ok');
+    ctx.reload();
+  });
+  qs('[data-del]', root).addEventListener('click', async () => {
+    const ok = await confirmDialog('Gider silinsin mi?', 'Çöp kutusuna taşınır.', 'Sil', true);
+    if (!ok) return;
+    await db.softDelete('expense_records', id, 'Kullanıcı sildi');
+    toast('Silindi', 'ok');
     go('#/gider');
   });
 }
