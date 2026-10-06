@@ -1,9 +1,10 @@
 // ============================================================
 // SAHAPRO SOLO — CRM & Sistem: Müşteriler · Şantiyeler · Belge Merkezi
 // · Belge Tara (OCR) · Global Arama · Ayarlar (yedek/restore/alias/PIN) · Çöp Kutusu
+// v3: BELGE SAHİPLİK DİSİPLİNİ — kategori kuralına göre alanlar; ilgisiz seçici GÖSTERİLMEZ
 // ============================================================
 import { qs, qsa, esc, appbar, stat, li, emptyState, notice, kv, badge, statusBadge, searchBar, toast, confirmDialog, promptDialog, fText, fNum, fDate, fArea, fSelect, collectForm, pagedRender, downloadBlob, go, fmtTL, fmtNum, trDate, todayStr } from './ui.js';
-import { isActive, matchSearch, DOC_TYPES, ENTITY_STORES, toCSV, buildBackup, isValidBackup, mergePreview, buildZip, cariBalance, APP_VERSION, SCHEMA_VERSION, addDays } from './core.js';
+import { isActive, matchSearch, DOC_TYPES, ALL_DOC_TYPES, VEHICLE_DOC_TYPES, PERSONNEL_DOC_TYPES, CUSTOMER_DOC_TYPES, OP_DOC_TYPES, docFieldRule, docApplyRule, ENTITY_STORES, toCSV, buildBackup, isValidBackup, mergePreview, buildZip, cariBalance, APP_VERSION, SCHEMA_VERSION, addDays } from './core.js';
 
 export async function screen(ctx) {
   const sub = ctx.parts[0];
@@ -47,7 +48,9 @@ async function customerDetail(ctx, id) {
     db.getAll('hakedis'), db.getAll('cash_records'), db.getAll('cari_movements'), db.getAll('documents')
   ]);
   const mine = (arr) => arr.filter(r => isActive(r) && r.customer_id === id);
-  const mSites = mine(sitesA), mWorks = mine(works), mSlips = mine(slips), mQuotes = mine(quotes), mHaks = mine(haks), mDocs = mine(docs);
+  const mSites = mine(sitesA), mWorks = mine(works), mSlips = mine(slips), mQuotes = mine(quotes), mHaks = mine(haks);
+  const mDocs = docs.filter(r => isActive(r) && (r.customer_id === id || (r.owner_type === 'customer' && r.owner_id === id)));
+  const mCash = mine(cash);
   const hakSum = mHaks.filter(h => h.status === 'Kesinleşti').reduce((s, h) => s + (Number(h.grand_total) || 0), 0);
   const tahSum = mCash.filter(x => x.cash_type === 'Müşteriden Para Alındı').reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const bakiye = cariBalance(mine(cari));
@@ -58,7 +61,7 @@ async function customerDetail(ctx, id) {
     </div>
     ${(c.phone || c.note) ? `<div class="card">${c.phone ? kv('Telefon', c.phone) : ''}${c.note ? kv('Not', c.note) : ''}</div>` : ''}
     <div class="section-title">Şantiyeler (${mSites.length})</div>
-    ${mSites.length ? mSites.slice(0, 5).map(s => li({ ic: '📍', href: '#/santiyeler/' + s.id + '/edit', t1: esc(s.name), t2: esc(s.address || '') })).join('') : emptyState('📍', 'Şantiye yok')}
+    ${mSites.length ? mSites.slice(0, 5).map(s => li({ ic: '📍', href: '#/santiyeler/' + s.id, t1: esc(s.name), t2: esc(s.address || '') })).join('') : emptyState('📍', 'Şantiye yok')}
     <div class="section-title">Son İşler (${mWorks.length})</div>
     ${mWorks.length ? mWorks.sort((a, b) => b.date < a.date ? -1 : 1).slice(0, 5).map(w => li({ ic: '⚒', href: '#/isler/' + w.id, t1: `${esc(w.work_type || '')} · ${fmtNum(w.quantity)} ${esc(w.unit || '')}`, t2: `${trDate(w.date)} · ${esc(names.vehicles[w.vehicle_id] || '—')}` })).join('') : emptyState('⚒', 'İş yok')}
     <div class="section-title">Fişler (${mSlips.length})</div>
@@ -106,6 +109,7 @@ async function sites(ctx) {
   const sub = ctx.parts[1];
   if (sub === 'new') return siteForm(ctx, null);
   if (sub && ctx.parts[2] === 'edit') return siteForm(ctx, sub);
+  if (sub) return siteDetail(ctx, sub);
   const { root, db, names, query } = ctx;
   const q = query.q || '';
   let rows = (await db.listActive('sites')).sort((a, b) => String(a.name).localeCompare(String(b.name), 'tr'));
@@ -115,8 +119,45 @@ async function sites(ctx) {
     <div class="actionbar"><button class="btn primary" data-go="#/santiyeler/new">+ Şantiye</button></div>`;
   const listEl = qs('[data-list]', root);
   if (!rows.length) listEl.innerHTML = emptyState('📍', 'Şantiye yok', '<button class="btn primary" data-go="#/santiyeler/new">+ Şantiye Ekle</button>');
-  else pagedRender(listEl, rows, (s) => li({ ic: '📍', href: '#/santiyeler/' + s.id + '/edit', t1: esc(s.name), t2: esc(names.customers[s.customer_id] || '—') + (s.address ? ' · ' + esc(s.address) : ''), badgeHtml: s.active === false ? badge('Pasif', '') : '' }));
+  else pagedRender(listEl, rows, (s) => li({ ic: '📍', href: '#/santiyeler/' + s.id, t1: esc(s.name), t2: esc(names.customers[s.customer_id] || '—') + (s.address ? ' · ' + esc(s.address) : ''), badgeHtml: s.active === false ? badge('Pasif', '') : '' }));
   let st; qs('[data-search]', root).addEventListener('input', (e) => { clearTimeout(st); st = setTimeout(() => go('#/santiyeler?q=' + encodeURIComponent(e.target.value)), 450); });
+}
+
+async function siteDetail(ctx, id) {
+  const { root, db, names } = ctx;
+  const s = await db.get('sites', id);
+  if (!s) { root.innerHTML = appbar('Şantiye') + emptyState('📍', 'Kayıt yok'); return; }
+  const [works, pricebook, quotes, haks, docs] = await Promise.all([
+    db.getAll('work_records'), db.getAll('price_book'), db.getAll('quotes'), db.getAll('hakedis'), db.getAll('documents')
+  ]);
+  const mine = (arr) => arr.filter(r => isActive(r) && r.site_id === id);
+  const mWorks = mine(works).sort((a, b) => b.date < a.date ? -1 : 1);
+  const mPrices = mine(pricebook);
+  const mQuotes = mine(quotes).sort((a, b) => (b.quote_no || 0) - (a.quote_no || 0));
+  const mHaks = mine(haks).sort((a, b) => (b.hakedis_no || 0) - (a.hakedis_no || 0));
+  const mDocs = docs.filter(r => isActive(r) && (r.site_id === id || (r.owner_type === 'site' && r.owner_id === id)));
+  const sefer = mWorks.filter(w => w.unit === 'Sefer').reduce((sum, w) => sum + (Number(w.quantity) || 0), 0);
+  const saat = mWorks.filter(w => w.unit === 'Saat').reduce((sum, w) => sum + (Number(w.quantity) || 0), 0);
+  const hakSum = mHaks.filter(h => h.status === 'Kesinleşti').reduce((sum, h) => sum + (Number(h.grand_total) || 0), 0);
+  root.innerHTML = appbar(s.name, names.customers[s.customer_id] || 'Şantiye', { back: '#/santiyeler', right: badge(s.active === false ? 'Pasif' : 'Aktif', s.active === false ? '' : 'ok') }) + `
+    <div class="statgrid" style="margin-top:10px">
+      ${stat(fmtNum(mWorks.length), 'İş')}${stat(fmtNum(sefer), 'Sefer')}${stat(fmtNum(saat), 'Saat')}${stat(fmtTL(hakSum), 'Hakediş ₺')}
+    </div>
+    <div class="card">
+      ${kv('Müşteri', names.customers[s.customer_id] || '—')}
+      ${s.address ? kv('Adres', s.address) : ''}
+      ${s.location ? kv('Konum', s.location) : ''}
+      ${s.contact ? kv('Yetkili', s.contact) : ''}
+      ${s.phone ? kv('Telefon', s.phone) : ''}
+      ${s.note ? kv('Not', s.note) : ''}
+    </div>
+    <div class="actionbar"><button class="btn" data-go="#/santiyeler/${id}/edit">Kartı Düzenle</button></div>
+    <div class="section-title">İş Geçmişi (${mWorks.length})</div>
+    ${mWorks.length ? mWorks.slice(0, 10).map(w => li({ ic: '⚒', href: '#/isler/' + w.id, t1: `${trDate(w.date)} · ${esc(w.work_type || '')}`, t2: `${esc(names.vehicles[w.vehicle_id] || '—')} · ${fmtNum(w.quantity)} ${esc(w.unit || '')}` })).join('') : emptyState('⚒', 'İş yok')}
+    ${mPrices.length ? `<div class="section-title">Şantiyeye Özel Fiyatlar (${mPrices.length})</div>` + mPrices.map(p => li({ ic: '🏷', href: '#/fiyat/' + p.id + '/edit', t1: esc(p.work_type || names.vehicles[p.vehicle_id] || 'Genel'), t2: `KDV %${p.kdv_rate ?? 20}`, end: `<span class="amt nowrap">${p.formula === 'CRANE_FIRST_HOUR' ? 'vinç' : fmtTL(p.price) + ' ₺/' + esc(p.unit)}</span>` })).join('') : ''}
+    ${mQuotes.length ? `<div class="section-title">Teklifler (${mQuotes.length})</div>` + mQuotes.slice(0, 3).map(t => li({ ic: '📄', href: '#/teklif/' + t.id, t1: 'Teklif #' + String(t.quote_no).padStart(4, '0'), t2: trDate(t.date), badgeHtml: statusBadge(t.status || 'Taslak') })).join('') : ''}
+    ${mHaks.length ? `<div class="section-title">Hakedişler (${mHaks.length})</div>` + mHaks.slice(0, 3).map(h => li({ ic: '📑', href: '#/hakedis/' + h.id, t1: 'Hakediş #' + String(h.hakedis_no).padStart(6, '0'), t2: fmtTL(h.grand_total) + ' ₺', badgeHtml: statusBadge(h.status) })).join('') : ''}
+    ${mDocs.length ? `<div class="section-title">Belgeler (${mDocs.length})</div>` + mDocs.slice(0, 5).map(d => li({ ic: '🗂', href: '#/belgeler/' + d.id, t1: esc(d.category || 'Belge'), t2: trDate(d.date) })).join('') : ''}`;
 }
 
 async function siteForm(ctx, editId) {
@@ -124,7 +165,7 @@ async function siteForm(ctx, editId) {
   const rec = editId ? await db.get('sites', editId) : null;
   const v = rec || {};
   const customersL = await db.listActive('customers');
-  root.innerHTML = appbar(editId ? 'Şantiye Düzenle' : '+ Şantiye', '', { back: '#/santiyeler' }) + `
+  root.innerHTML = appbar(editId ? 'Şantiye Düzenle' : '+ Şantiye', '', { back: editId ? '#/santiyeler/' + editId : '#/santiyeler' }) + `
     <form data-form novalidate style="margin-top:10px">
       ${fSelect('Müşteri', 'customer_id', customersL.map(c => ({ v: c.id, t: c.name })), v.customer_id || '', { req: true })}
       ${fText('Şantiye Adı', 'name', v.name || '', { req: true })}
@@ -139,16 +180,62 @@ async function siteForm(ctx, editId) {
     if (!val.customer_id) { toast('Müşteri seçin', 'err'); return; }
     if (!val.name || !val.name.trim()) { toast('Şantiye adı girin', 'err'); return; }
     const fields = { customer_id: val.customer_id, name: val.name.trim(), address: val.address || '', location: val.location || '', contact: val.contact || '', phone: val.phone || '', note: val.note || '', active: val.active !== '0' };
-    if (editId) { await db.saveExisting('sites', rec, fields, 'Şantiye düzenlendi'); toast('Güncellendi', 'ok'); }
-    else { await db.saveNew('sites', fields, 'Şantiye eklendi'); toast('Şantiye eklendi', 'ok'); }
-    go('#/santiyeler');
+    if (editId) { await db.saveExisting('sites', rec, fields, 'Şantiye düzenlendi'); toast('Güncellendi', 'ok'); go('#/santiyeler/' + editId); }
+    else { const created = await db.saveNew('sites', fields, 'Şantiye eklendi'); toast('Şantiye eklendi', 'ok'); go('#/santiyeler/' + created.id); }
   });
+}
+
+// ============ BELGE SAHİPLİK — kategori kuralına göre dinamik alanlar (DEVAM #2/#3) ============
+function ownerBadgeText(owner) {
+  if (owner === 'vehicle') return 'Bu belge ARACA bağlanır — müşteri/şantiye/personel sorulmaz.';
+  if (owner === 'personnel') return 'Bu belge PERSONELE bağlanır — müşteri/şantiye/araç sorulmaz.';
+  if (owner === 'customer') return 'Bu belge MÜŞTERİYE bağlanır (şantiye isteğe bağlı).';
+  return 'Genel belge — ilişkiler isteğe bağlıdır.';
+}
+// Kural → sahiplik/ilişki alanları HTML'i (hidden alan DOM'da YOK)
+function ownerFieldsHtml(rule, lists, val = {}) {
+  const F = rule.fields;
+  const mk = (key, label, options) => {
+    const mode = F[key];
+    if (!mode || mode === 'hidden') return '';
+    return fSelect(label + (mode === 'required' ? ' *' : ''), key + '_id', options, val[key + '_id'] || '', { req: mode === 'required' });
+  };
+  const rows = [
+    mk('vehicle', 'Araç / Makine', lists.vehicles),
+    mk('personnel', 'Personel', lists.personnel),
+    mk('customer', 'Müşteri', lists.customers),
+    mk('site', 'Şantiye', lists.sites)
+  ].filter(Boolean);
+  return rows.length ? `<div class="formgrid2">${rows.join('')}</div>` : '';
+}
+function expiryFieldsHtml(rule, v = {}) {
+  if (!rule.expiry) return '';
+  return `<div class="formgrid2">${fDate('Düzenleme Tarihi', 'issue_date', v.issue_date || '', false)}${fDate('Bitiş Tarihi', 'expiry_date', v.expiry_date || '', false)}</div>
+    <div class="formgrid2">${fText('Veren Kurum', 'issuer', v.issuer || '')}${fDate('Hatırlatma', 'reminder_date', v.reminder_date || '', false)}</div>`;
+}
+// Zorunlu sahip kontrolü — eksikse toast + false
+function ownerValidate(rule, val) {
+  for (const key of ['vehicle', 'personnel', 'customer', 'site']) {
+    if (rule.fields[key] === 'required' && !val[key + '_id']) {
+      toast(({ vehicle: 'Araç', personnel: 'Personel', customer: 'Müşteri', site: 'Şantiye' })[key] + ' seçimi zorunlu', 'err');
+      return false;
+    }
+  }
+  return true;
+}
+function docCategorySelect(name, val) {
+  const grp = (label, arr) => `<optgroup label="${label}">${arr.map(c => `<option ${c === val ? 'selected' : ''}>${c}</option>`).join('')}</optgroup>`;
+  return `<div class="field"><label>Belge Türü</label><select name="${name}">`
+    + grp('Araç Belgeleri', VEHICLE_DOC_TYPES) + grp('Personel Belgeleri', PERSONNEL_DOC_TYPES)
+    + grp('Müşteri Belgeleri', CUSTOMER_DOC_TYPES) + grp('Operasyon', OP_DOC_TYPES) + `</select></div>`;
 }
 
 // ============ BELGE MERKEZİ (§30–§32) ============
 function docIcon(cat) {
+  if (VEHICLE_DOC_TYPES.includes(cat)) return '📇';
+  if (PERSONNEL_DOC_TYPES.includes(cat)) return '🪪';
   return cat === 'Akaryakıt Fişi' ? '⛽' : cat === 'Döküm Fişi' ? '🪨' : cat === 'Fatura' || cat === 'Gider Fişi' ? '💸' :
-    cat === 'Dijital İş Fişi' ? '🧾' : cat === 'Ruhsat' || cat === 'Sigorta / Poliçe' || cat === 'Muayene Belgesi' ? '📇' : '🗂';
+    cat === 'Dijital İş Fişi' ? '🧾' : cat === 'Sözleşme' ? '📜' : '🗂';
 }
 async function documents(ctx) {
   const sub = ctx.parts[1];
@@ -157,7 +244,7 @@ async function documents(ctx) {
   const { root, db, names, query } = ctx;
   const q = query.q || '';
   let rows = (await db.getAll('documents')).filter(isActive).sort((a, b) => String(b.date) < String(a.date) ? -1 : 1);
-  rows = rows.filter(r => matchSearch(`${r.category || ''} ${r.doc_no || ''} ${r.description || ''} ${names.customers[r.customer_id] || ''} ${names.vehicles[r.vehicle_id] || ''} ${(r.ocr && r.ocr.searchable_text) || ''}`, q));
+  rows = rows.filter(r => matchSearch(`${r.category || ''} ${r.doc_no || ''} ${r.description || ''} ${names.customers[r.customer_id] || ''} ${names.vehicles[r.vehicle_id] || ''} ${names.personnel[r.personnel_id] || ''} ${(r.ocr && r.ocr.searchable_text) || ''}`, q));
   root.innerHTML = appbar('Belge Merkezi', `${rows.length} belge`, { right: '<button class="iconbtn" data-go="#/tara">📷</button>' }) + `
     <div style="height:10px"></div>
     <div class="row" style="gap:8px;margin-bottom:10px">
@@ -170,22 +257,33 @@ async function documents(ctx) {
   else pagedRender(listEl, rows, (d) => li({
     ic: docIcon(d.category), href: '#/belgeler/' + d.id,
     t1: `${esc(d.category || 'Belge')}${d.doc_no ? ' · #' + esc(d.doc_no) : ''}`,
-    t2: `${trDate(d.date)}${d.customer_id ? ' · ' + esc(names.customers[d.customer_id]) : ''}${d.vehicle_id ? ' · ' + esc(names.vehicles[d.vehicle_id]) : ''}`,
+    t2: `${trDate(d.date)}${d.customer_id ? ' · ' + esc(names.customers[d.customer_id]) : ''}${d.vehicle_id ? ' · ' + esc(names.vehicles[d.vehicle_id]) : ''}${d.personnel_id ? ' · ' + esc(names.personnel[d.personnel_id]) : ''}`,
     badgeHtml: d.ocr && d.ocr.status === 'TAMAM' ? badge('OCR', 'ok') : d.ocr && (d.ocr.status === 'BEKLIYOR' || d.ocr.status === 'HATA') ? badge('OCR bekliyor', 'warn') : (d.expiry_date ? badge(trDate(d.expiry_date), d.expiry_date <= todayStr() ? 'danger' : '') : '')
   }));
   let st; qs('[data-search]', root).addEventListener('input', (e) => { clearTimeout(st); st = setTimeout(() => go('#/belgeler?q=' + encodeURIComponent(e.target.value)), 450); });
 }
 
 async function docForm(ctx) {
-  const { root, db } = ctx;
+  const { root, db, query } = ctx;
   const [customersL, sitesL, vehiclesL, personnelL] = await Promise.all([db.listActive('customers'), db.listActive('sites'), db.listActive('vehicles'), db.listActive('personnel')]);
-  root.innerHTML = appbar('+ Manuel Belge', 'Fotoğraf ekleyebilirsiniz', { back: '#/belgeler' }) + `
+  const lists = {
+    customers: customersL.map(c => ({ v: c.id, t: c.name })), sites: sitesL.map(c => ({ v: c.id, t: c.name })),
+    vehicles: vehiclesL.map(c => ({ v: c.id, t: c.name })), personnel: personnelL.map(c => ({ v: c.id, t: c.name }))
+  };
+  // Ön-doldurma: ?owner=vehicle|personnel|customer&id=<id>&cat=<kategori>
+  const preCat = query.cat && ALL_DOC_TYPES.includes(query.cat) ? query.cat
+    : query.owner === 'vehicle' ? 'Ruhsat' : query.owner === 'personnel' ? 'Ehliyet' : query.owner === 'customer' ? 'Sözleşme' : 'Diğer';
+  const prefill = {};
+  if (query.owner && query.id) prefill[query.owner + '_id'] = query.id;
+
+  root.innerHTML = appbar('+ Manuel Belge', 'Belge kendi sahibine bağlanır', { back: '#/belgeler' }) + `
     <form data-form novalidate style="margin-top:10px">
-      <div class="formgrid2">${fDate('Tarih', 'date', todayStr())}${fSelect('Kategori', 'category', DOC_TYPES, 'Diğer', { empty: false })}</div>
-      ${fSelect('Müşteri', 'customer_id', customersL.map(c => ({ v: c.id, t: c.name })), '')}
-      <div class="formgrid2">${fSelect('Şantiye', 'site_id', sitesL.map(c => ({ v: c.id, t: c.name })), '')}${fSelect('Araç', 'vehicle_id', vehiclesL.map(c => ({ v: c.id, t: c.name })), '')}</div>
-      ${fSelect('Personel', 'personnel_id', personnelL.map(c => ({ v: c.id, t: c.name })), '')}
-      <div class="formgrid2">${fText('Belge / Fiş No', 'doc_no', '')}${fDate('Bitiş Tarihi (varsa)', 'expiry_date', '', false)}</div>
+      <div class="formgrid2">${fDate('Tarih', 'date', todayStr())}${docCategorySelect('category', preCat)}</div>
+      <div class="notice info" data-ownerbadge style="margin-bottom:10px"><span>ℹ</span><span></span></div>
+      <div data-ownerfields></div>
+      ${fText('Belge / Fiş No', 'doc_no', '')}
+      <div data-expiryfields></div>
+      ${fNum('Tutar (₺, ops.)', 'amount', '', { step: 'any' })}
       ${fArea('Açıklama', 'description', '')}
       <div class="section-title">Fiziksel Arşiv (ops.)</div>
       <div class="formgrid2">${fText('Klasör', 'archive_folder', '')}${fText('Raf', 'archive_shelf', '')}</div>
@@ -193,12 +291,31 @@ async function docForm(ctx) {
       <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+
+  const catSel = qs('select[name=category]', root);
+  const renderRule = () => {
+    const rule = docFieldRule(catSel.value);
+    qs('[data-ownerbadge] span:last-child', root).textContent = ownerBadgeText(rule.owner);
+    qs('[data-ownerfields]', root).innerHTML = ownerFieldsHtml(rule, lists, prefill);
+    qs('[data-expiryfields]', root).innerHTML = expiryFieldsHtml(rule, {});
+  };
+  catSel.addEventListener('change', renderRule);
+  renderRule();
+
   qs('[data-save]', root).addEventListener('click', async () => {
     const val = collectForm(qs('[data-form]', root));
+    const rule = docFieldRule(val.category);
+    if (!ownerValidate(rule, val)) return;
     const fields = {
-      date: val.date, category: val.category, customer_id: val.customer_id || null, site_id: val.site_id || null,
-      vehicle_id: val.vehicle_id || null, personnel_id: val.personnel_id || null, doc_no: val.doc_no || '',
-      expiry_date: val.expiry_date || null, description: val.description || '',
+      date: val.date, category: val.category,
+      ...docApplyRule(val.category, val),
+      doc_no: val.doc_no || '',
+      issue_date: rule.expiry ? (val.issue_date || null) : null,
+      expiry_date: rule.expiry ? (val.expiry_date || null) : null,
+      issuer: rule.expiry ? (val.issuer || '') : '',
+      reminder_date: rule.expiry ? (val.reminder_date || null) : null,
+      amount: val.amount ? Number(val.amount) : null,
+      description: val.description || '',
       archive_folder: val.archive_folder || '', archive_shelf: val.archive_shelf || '', archive_kocan: val.archive_kocan || '', archive_file_no: val.archive_file_no || '',
       ocr: { status: 'YOK' }
     };
@@ -216,18 +333,27 @@ async function docDetail(ctx, id) {
   const atts = await db.attachmentsFor('document', id);
   const ocr = d.ocr || { status: 'YOK' };
   const confBadge = ocr.confidence == null ? '' : badge('Güven: ' + (ocr.confidence >= 85 ? 'Yüksek' : ocr.confidence >= 60 ? 'Orta' : 'Düşük') + ' %' + Math.round(ocr.confidence), ocr.confidence >= 85 ? 'ok' : ocr.confidence >= 60 ? 'warn' : 'danger');
+  const ownerInfo = d.owner_type && d.owner_id
+    ? { type: d.owner_type, id: d.owner_id, name: d.owner_type === 'vehicle' ? names.vehicles[d.owner_id] : d.owner_type === 'personnel' ? names.personnel[d.owner_id] : d.owner_type === 'customer' ? names.customers[d.owner_id] : names.sites[d.owner_id], href: d.owner_type === 'vehicle' ? '#/filo/' + d.owner_id : d.owner_type === 'personnel' ? '#/personel/' + d.owner_id : d.owner_type === 'customer' ? '#/musteriler/' + d.owner_id : '#/santiyeler/' + d.owner_id }
+    : null;
   root.innerHTML = appbar(d.category || 'Belge', trDate(d.date), { back: '#/belgeler', right: d.expiry_date ? badge('Bitiş ' + trDate(d.expiry_date), d.expiry_date <= todayStr() ? 'danger' : d.expiry_date <= addDays(todayStr(), 30) ? 'warn' : '') : '' }) + `
     <div style="height:10px"></div>
     <div class="card">
+      ${ownerInfo ? kv('Sahip', (ownerInfo.type === 'vehicle' ? '🚜 ' : ownerInfo.type === 'personnel' ? '👷 ' : ownerInfo.type === 'customer' ? '🏢 ' : '📍 ') + (ownerInfo.name || '—')) : ''}
       ${d.doc_no ? kv('Belge No', d.doc_no) : ''}
       ${d.customer_id ? kv('Müşteri', names.customers[d.customer_id] || '—') : ''}
       ${d.site_id ? kv('Şantiye', names.sites[d.site_id] || '—') : ''}
       ${d.vehicle_id ? kv('Araç', names.vehicles[d.vehicle_id] || '—') : ''}
       ${d.personnel_id ? kv('Personel', names.personnel[d.personnel_id] || '—') : ''}
+      ${d.issue_date ? kv('Düzenleme', trDate(d.issue_date)) : ''}
+      ${d.issuer ? kv('Veren Kurum', d.issuer) : ''}
+      ${d.reminder_date ? kv('Hatırlatma', trDate(d.reminder_date)) : ''}
+      ${d.amount ? kv('Tutar', fmtTL(d.amount) + ' ₺') : ''}
       ${d.description ? kv('Açıklama', d.description) : ''}
       ${d.archive_folder || d.archive_shelf || d.archive_kocan || d.archive_file_no ? kv('Arşiv', ['Klasör ' + (d.archive_folder || '—'), 'Raf ' + (d.archive_shelf || '—'), 'Koçan ' + (d.archive_kocan || '—'), 'Dosya ' + (d.archive_file_no || '—')].join(' · ')) : ''}
       ${d.linked_record ? kv('Bağlı Kayıt', d.linked_record.type === 'fuel_records' ? '⛽ Yakıt kaydı' : '💸 Gider kaydı') : ''}
     </div>
+    ${ownerInfo ? `<div class="actionbar"><button class="btn" data-go="${ownerInfo.href}">→ Sahibine Git</button></div>` : ''}
     <div class="section-title">Ekler (${atts.length})</div>
     <div class="row" style="gap:8px;flex-wrap:wrap" data-atts>${atts.length ? '' : '<span class="muted small">Ek yok</span>'}</div>
     <div class="section-title">OCR</div>
@@ -321,7 +447,7 @@ async function createFromOcr(ctx, d, kind, f) {
       date: f.date || d.date, vehicle_id, personnel_id: d.personnel_id || null,
       liters: Number(f.liters), unit_price: f.unit_price != null ? Number(f.unit_price) : null,
       total: f.total != null ? Number(f.total) : null, fuel_source: 'Akaryakıt İstasyonu', receipt: 'Evet',
-      pump_no: '', km: null, machine_hours: null, description: 'OCR: ' + (f.firma || d.doc_no || d.category), customer_billable: false
+      pump_no: '', km: null, machine_hours: null, description: 'OCR: ' + (f.firma || d.doc_no || d.category), customer_billable: false, tank_movement_id: null
     }, 'OCR onaylı yakıt');
     await db.saveExisting('documents', d, { linked_record: { type: 'fuel_records', id: rec.id } }, 'Belge yakıt kaydına bağlandı');
     toast('Yakıt kaydı oluşturuldu', 'ok'); ctx.reload();
@@ -340,7 +466,7 @@ async function createFromOcr(ctx, d, kind, f) {
     if (!vehicle_id) { toast('Önce belgeye araç bağlayın (veya plaka okutun)', 'err'); return; }
     const ok = await confirmDialog('Araç belge takibine bağlansın mı?', `${names.vehicles[vehicle_id] || ''} · bitiş: ${f.date_end ? trDate(f.date_end) : '—'}`, 'Bağla');
     if (!ok) return;
-    const fields = { vehicle_id };
+    const fields = { vehicle_id, owner_type: 'vehicle', owner_id: vehicle_id };
     if (f.date_end) fields.expiry_date = f.date_end;
     await db.saveExisting('documents', d, fields, 'Araç belge takibi');
     toast('Araç belge takibine bağlandı — bitiş tarihi yaklaşınca uyarı verilir', 'ok'); ctx.reload();
@@ -355,6 +481,10 @@ async function scan(ctx) {
   const ocrMod = await import('./ocr.js').catch(() => null);
   if (ocrMod) window.__ocr = ocrMod;
   const [customersL, sitesL, vehiclesL, personnelL] = await Promise.all([db.listActive('customers'), db.listActive('sites'), db.listActive('vehicles'), db.listActive('personnel')]);
+  const lists = {
+    customers: customersL.map(c => ({ v: c.id, t: c.name })), sites: sitesL.map(c => ({ v: c.id, t: c.name })),
+    vehicles: vehiclesL.map(c => ({ v: c.id, t: c.name })), personnel: personnelL.map(c => ({ v: c.id, t: c.name }))
+  };
   const pages = [];
   let ocrText = '', ocrConf = 0, ocrDone = false;
 
@@ -375,17 +505,27 @@ async function scan(ctx) {
     </div>
     <div data-fields></div>
     <div class="card" style="margin-top:12px">
-      <div class="section-title" style="margin:0 0 8px">Belge Bilgisi &amp; İlişkiler</div>
+      <div class="section-title" style="margin:0 0 8px">Belge Bilgisi &amp; Sahibi</div>
       <form data-form novalidate>
-        <div class="formgrid2">${fSelect('Belge Türü', 'category', DOC_TYPES, 'Akaryakıt Fişi', { empty: false })}${fDate('Tarih', 'date', todayStr())}</div>
-        <div class="formgrid2">${fText('Belge / Fiş No', 'doc_no', '')}${fDate('Bitiş Tarihi (varsa)', 'expiry_date', '', false)}</div>
-        ${fSelect('Müşteri', 'customer_id', customersL.map(c => ({ v: c.id, t: c.name })), '')}
-        <div class="formgrid2">${fSelect('Şantiye', 'site_id', sitesL.map(c => ({ v: c.id, t: c.name })), '')}${fSelect('Araç', 'vehicle_id', vehiclesL.map(c => ({ v: c.id, t: c.name })), '')}</div>
-        ${fSelect('Personel', 'personnel_id', personnelL.map(c => ({ v: c.id, t: c.name })), '')}
+        <div class="formgrid2">${docCategorySelect('category', 'Akaryakıt Fişi')}${fDate('Tarih', 'date', todayStr())}</div>
+        ${fText('Belge / Fiş No', 'doc_no', '')}
+        <div class="notice info" data-ownerbadge style="margin-bottom:10px"><span>ℹ</span><span></span></div>
+        <div data-ownerfields></div>
+        <div data-expiryfields></div>
         ${fArea('Açıklama', 'description', '')}
       </form>
     </div>
     <div class="actionbar"><button class="btn primary" data-save>💾 Belgeyi Kaydet</button></div>`;
+
+  const catSel = qs('select[name=category]', root);
+  const renderRule = () => {
+    const rule = docFieldRule(catSel.value);
+    qs('[data-ownerbadge] span:last-child', root).textContent = ownerBadgeText(rule.owner);
+    qs('[data-ownerfields]', root).innerHTML = ownerFieldsHtml(rule, lists, {});
+    qs('[data-expiryfields]', root).innerHTML = expiryFieldsHtml(rule, {});
+  };
+  catSel.addEventListener('change', () => { renderRule(); if (ocrDone) renderFieldSuggestions(); });
+  renderRule();
 
   const pagesEl = qs('[data-pages]', root);
   const renderPages = () => {
@@ -456,7 +596,7 @@ async function scan(ctx) {
 
   const FIELD_LABELS = { date: 'Tarih', total: 'Toplam ₺', liters: 'Litre', unit_price: 'Birim Fiyat ₺', plate: 'Plaka', doc_no: 'Fiş/Belge No', firma: 'Firma', tax_no: 'Vergi No', subtotal: 'Ara Toplam ₺', kdv: 'KDV ₺', gross: 'Brüt', tare: 'Dara', net: 'Net', material: 'Malzeme', fuel_type: 'Yakıt Türü', date_start: 'Başlangıç', date_end: 'Bitiş', category_suggestion: 'Kategori Önerisi' };
   function renderFieldSuggestions() {
-    const cat = qs('select[name=category]', root).value;
+    const cat = catSel.value;
     const ext = ocrMod.extractFields(cat, ocrText, ocrConf);
     const keys = Object.keys(ext.fields);
     qs('[data-confbadge]', root).innerHTML = badge('Güven: ' + ext.conf + (ocrConf ? ' %' + Math.round(ocrConf) : ''), ext.conf === 'Yüksek' ? 'ok' : ext.conf === 'Orta' ? 'warn' : 'danger');
@@ -469,18 +609,21 @@ async function scan(ctx) {
     </div>`;
     if (ext.fields.date) qs('input[name=date]', root).value = ext.fields.date;
     if (ext.fields.doc_no) qs('input[name=doc_no]', root).value = String(ext.fields.doc_no);
-    if (ext.fields.date_end || ext.fields.date_start) qs('input[name=expiry_date]', root).value = ext.fields.date_end || ext.fields.date_start || '';
-    if (ext.fields.plate && !qs('select[name=vehicle_id]', root).value) {
+    const expInp = qs('input[name=expiry_date]', root);
+    if (expInp && (ext.fields.date_end || ext.fields.date_start)) expInp.value = ext.fields.date_end || ext.fields.date_start || '';
+    const vsel = qs('select[name=vehicle_id]', root);
+    if (ext.fields.plate && vsel && !vsel.value) {
       const p = String(ext.fields.plate).toUpperCase().replace(/\s+/g, '');
       const hit = vehiclesL.find(v => { const n2 = String(v.name).toUpperCase().replace(/\s+/g, ''); return n2.includes(p) || p.includes(n2); });
-      if (hit) qs('select[name=vehicle_id]', root).value = hit.id;
+      if (hit) vsel.value = hit.id;
     }
   }
-  qs('select[name=category]', root).addEventListener('change', () => { if (ocrDone) renderFieldSuggestions(); });
 
   qs('[data-save]', root).addEventListener('click', async () => {
     if (!pages.length) { toast('Önce belge görüntüsü ekleyin', 'err'); return; }
     const val = collectForm(qs('[data-form]', root));
+    const rule = docFieldRule(val.category);
+    if (!ownerValidate(rule, val)) return;
     const confirmed = {};
     for (const e of qsa('[data-ofield]', root)) {
       let v = e.value.trim();
@@ -491,9 +634,14 @@ async function scan(ctx) {
       ? { status: 'TAMAM', confidence: Math.round(ocrConf), fields: confirmed, confirmed_fields: confirmed, searchable_text: ocrText.slice(0, 6000), ran_at: new Date().toISOString() }
       : { status: 'BEKLIYOR' };
     const created = await db.saveNew('documents', {
-      date: val.date, category: val.category, customer_id: val.customer_id || null, site_id: val.site_id || null,
-      vehicle_id: val.vehicle_id || null, personnel_id: val.personnel_id || null, doc_no: val.doc_no || '',
-      expiry_date: val.expiry_date || null, description: val.description || '', ocr
+      date: val.date, category: val.category,
+      ...docApplyRule(val.category, val),
+      doc_no: val.doc_no || '',
+      issue_date: rule.expiry ? (val.issue_date || null) : null,
+      expiry_date: rule.expiry ? (val.expiry_date || null) : null,
+      issuer: rule.expiry ? (val.issuer || '') : '',
+      reminder_date: rule.expiry ? (val.reminder_date || null) : null,
+      description: val.description || '', ocr
     }, ocrDone ? 'Taranmış belge + OCR' : 'Taranmış belge (OCR bekliyor)');
     for (const p of pages) {
       const orig = await db.addAttachment('document', created.id, p.orig, { kind: 'scan_original' });
@@ -519,7 +667,7 @@ async function globalSearch(ctx) {
     const hit = (arr, fn) => arr.filter(isActive).filter(fn).slice(0, 8);
     const groups = [
       ['🏢 Müşteriler', hit(data.customers, r => matchSearch(`${r.name} ${r.contact || ''} ${r.phone || ''}`, qq)).map(r => ({ href: '#/musteriler/' + r.id, t1: r.name, t2: r.phone || '' }))],
-      ['📍 Şantiyeler', hit(data.sites, r => matchSearch(`${r.name} ${r.address || ''}`, qq)).map(r => ({ href: '#/santiyeler/' + r.id + '/edit', t1: r.name, t2: names.customers[r.customer_id] || '' }))],
+      ['📍 Şantiyeler', hit(data.sites, r => matchSearch(`${r.name} ${r.address || ''}`, qq)).map(r => ({ href: '#/santiyeler/' + r.id, t1: r.name, t2: names.customers[r.customer_id] || '' }))],
       ['🚜 Araç / Makine', hit(data.vehicles, r => matchSearch(r.name, qq)).map(r => ({ href: '#/filo/' + r.id, t1: r.name, t2: r.ownership || '' }))],
       ['👷 Personel', hit(data.personnel, r => matchSearch(r.name, qq)).map(r => ({ href: '#/personel/' + r.id, t1: r.name, t2: r.role || '' }))],
       ['⚒ İşler', hit(data.work_records, r => matchSearch(`${r.work_type || ''} ${r.description || ''} ${r.material || ''}`, qq)).map(r => ({ href: '#/isler/' + r.id, t1: `${r.work_type || 'İş'} · ${fmtNum(r.quantity)} ${r.unit || ''}`, t2: `${trDate(r.date)} · ${names.customers[r.customer_id] || ''}` }))],
@@ -527,8 +675,8 @@ async function globalSearch(ctx) {
       ['📄 Teklifler', hit(data.quotes, r => matchSearch(String(r.quote_no || '').padStart(4, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/teklif/' + r.id, t1: 'Teklif #' + String(r.quote_no).padStart(4, '0'), t2: trDate(r.date) }))],
       ['📑 Hakedişler', hit(data.hakedis, r => matchSearch(String(r.hakedis_no || '').padStart(6, '0'), qq.replace(/^#/, ''))).map(r => ({ href: '#/hakedis/' + r.id, t1: 'Hakediş #' + String(r.hakedis_no).padStart(6, '0'), t2: fmtTL(r.grand_total) + ' ₺' }))],
       ['🗂 Belgeler (OCR dahil)', hit(data.documents, r => matchSearch(`${r.category || ''} ${r.doc_no || ''} ${r.description || ''} ${(r.ocr && r.ocr.searchable_text) || ''}`, qq)).map(r => ({ href: '#/belgeler/' + r.id, t1: r.category || 'Belge', t2: `${trDate(r.date)}${r.doc_no ? ' · #' + r.doc_no : ''}` }))],
-      ['💸 Giderler', hit(data.expense_records, r => matchSearch(`${r.category || ''} ${r.company || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/gider', t1: `${r.category || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))],
-      ['💰 Kasa', hit(data.cash_records, r => matchSearch(`${r.cash_type || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/kasa', t1: `${r.cash_type || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))]
+      ['💸 Giderler', hit(data.expense_records, r => matchSearch(`${r.category || ''} ${r.company || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/gider/' + r.id, t1: `${r.category || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))],
+      ['💰 Kasa', hit(data.cash_records, r => matchSearch(`${r.cash_type || ''} ${r.description || ''}`, qq)).map(r => ({ href: '#/finans/kasa/' + r.id, t1: `${r.cash_type || ''} · ${fmtTL(r.amount)} ₺`, t2: trDate(r.date) }))]
     ];
     const html = groups.filter(([, rows]) => rows.length).map(([title, rows]) => `<div class="section-title">${title}</div>` + rows.map(r => li({ ic: '›', href: r.href, t1: esc(r.t1), t2: esc(r.t2) })).join('')).join('');
     resEl.innerHTML = html || emptyState('🔎', 'Sonuç yok');
@@ -545,13 +693,14 @@ const STORE_LABELS = {
   work_records: 'İş Kayıtları', fuel_records: 'Yakıt', fuel_tank_movements: 'Depo Tank', expense_records: 'Giderler',
   maintenance_records: 'Bakım/Arıza', cash_records: 'Kasa', personnel_events: 'Personel Hareketleri', documents: 'Belgeler',
   slips: 'Dijital Fişler', quotes: 'Teklifler', price_book: 'Fiyat Listesi', hakedis: 'Hakedişler', cari_movements: 'Cari',
-  contractors: 'Taşeronlar', aliases: 'Aliaslar', audit_log: 'İşlem Geçmişi'
+  contractors: 'Taşeronlar', aliases: 'Aliaslar', audit_log: 'İşlem Geçmişi', contracts: 'Sözleşmeler'
 };
 const STORE_CSV = {
   work_records: 'is_kayitlari', fuel_records: 'yakit', fuel_tank_movements: 'depo_tank', expense_records: 'giderler',
   maintenance_records: 'bakim_ariza', cash_records: 'kasa', personnel_events: 'personel_hareketleri', customers: 'musteriler',
   sites: 'santiyeler', vehicles: 'arac_makine', personnel: 'personel', slips: 'dijital_fisler', quotes: 'teklifler',
-  hakedis: 'hakedisler', cari_movements: 'cari', documents: 'belgeler', price_book: 'fiyat_listesi', contractors: 'taseronlar'
+  hakedis: 'hakedisler', cari_movements: 'cari', documents: 'belgeler', price_book: 'fiyat_listesi', contractors: 'taseronlar',
+  contracts: 'sozlesmeler'
 };
 function tsName() { const d = new Date(); const p = (x) => String(x).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`; }
 
@@ -613,6 +762,7 @@ async function settings(ctx) {
   const kdv = await db.metaGet('kdv_default');
   const craneFirst = await db.metaGet('crane_first_hour');
   const craneNext = await db.metaGet('crane_next_hour');
+  const tankLow = await db.metaGet('tank_low_threshold');
   const pinSet = !!(await db.metaGet('pin_hash'));
   const vehiclesL = await db.listActive('vehicles');
   const vehName = {}; for (const v of vehiclesL) vehName[v.id] = v.name;
@@ -653,7 +803,10 @@ async function settings(ctx) {
         ${fNum('Varsayılan KDV %', 'kdv', kdv ?? 20)}
         ${fNum('Vinç İlk Saat ₺', 'crane_first', craneFirst ?? 9000)}
       </div>
-      ${fNum('Vinç Sonraki Saat ₺', 'crane_next', craneNext ?? 3000)}
+      <div class="formgrid2">
+        ${fNum('Vinç Sonraki Saat ₺', 'crane_next', craneNext ?? 3000)}
+        ${fNum('Depo Düşük Yakıt Eşiği (Lt)', 'tank_low', tankLow ?? 200)}
+      </div>
       <button class="btn block" data-finset>Tarifeyi Kaydet</button>
       <div class="muted tiny" style="margin-top:8px">Kesinleşmiş belgeler (hakediş snapshot) bu değişiklikten ETKİLENMEZ.</div>
     </div>
@@ -696,6 +849,7 @@ async function settings(ctx) {
     await db.metaSet('kdv_default', Number(val.kdv) || 20);
     await db.metaSet('crane_first_hour', Number(val.crane_first) || 9000);
     await db.metaSet('crane_next_hour', Number(val.crane_next) || 3000);
+    await db.metaSet('tank_low_threshold', Number(val.tank_low) || 200);
     toast('Tarife kaydedildi', 'ok');
   });
   const pinBtn = qs('[data-pinset]', root);
@@ -751,7 +905,7 @@ async function restorePreview(ctx, file) {
     const policy = (qs('[data-cfpolicy]', view) || {}).value || 'skip';
     const ok = await confirmDialog('Geri yükleme uygulansın mı?', `${sumNew} yeni kayıt eklenecek${sumCf ? `, ${sumCf} çakışan ${policy === 'skip' ? 'atlanacak' : 'değiştirilecek'}` : ''}.`, 'Uygula');
     if (!ok) return;
-    const norm = (r) => ({ source: 'SAHAPRO_SOLO', schema_version: 1, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), deleted_at: null, migration_status: 'NOT_IMPORTED', ...r });
+    const norm = (r) => ({ source: 'SAHAPRO_SOLO', schema_version: SCHEMA_VERSION, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), deleted_at: null, migration_status: 'NOT_IMPORTED', ...r });
     let n = 0;
     for (const p of perStore) {
       for (const r of p.pv.new) { await db.put(p.store, norm(r)); n++; }
