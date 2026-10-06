@@ -82,7 +82,7 @@ async function quoteForm(ctx, editId) {
 
   root.innerHTML = appbar(editId ? 'Teklif Düzenle' : '+ Teklif', editId ? '#' + String(rec.quote_no).padStart(4, '0') : 'No otomatik') + `
     <form data-form novalidate>
-      ${fDate('Tarih', 'date', v.date)}
+      ${fDate('Tarih', 'date', v.date || todayStr())}
       <div class="formgrid2">
         ${fSelect('Müşteri', 'customer_id', customers.map(c => ({ v: c.id, t: c.name })), v.customer_id, { req: true })}
         ${fSelect('Şantiye', 'site_id', sites.map(s => ({ v: s.id, t: s.name })), v.site_id)}
@@ -515,11 +515,11 @@ async function cash(ctx) {
   root.innerHTML = appbar('Kasa / Tahsilat', 'Personelde → Teslim Bildirildi → Kasaya Teslim') + `
     <div style="height:10px"></div>
     <div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/finans/kasa/new">+ Tahsilat / Kasa İşlemi</button></div>`;
+    <div class="actionbar"><button class="btn primary" data-go="#/kasa/new">+ Tahsilat / Kasa İşlemi</button></div>`;
   const listEl = qs('[data-list]', root);
   if (!rows.length) listEl.innerHTML = emptyState('💰', 'Kayıt yok');
   else pagedRender(listEl, rows, (c) => li({
-    ic: '💰', href: '#/finans/kasa/' + c.id,
+    ic: '💰', href: '#/kasa/' + c.id,
     t1: `${esc(c.cash_type || '')} · ${esc(names.personnel[c.personnel_id] || '')}`,
     t2: `${trDate(c.date)}${names.customers[c.customer_id] ? ' · ' + esc(names.customers[c.customer_id]) : ''}${c.description ? ' · ' + esc(c.description) : ''}`,
     badgeHtml: statusBadge(c.cash_status || ''),
@@ -566,7 +566,7 @@ async function cashForm(ctx) {
       await db.saveNew('cari_movements', { date: val.date, customer_id: val.customer_id, type: 'Tahsilat', amount: -Number(val.amount), ref_id: created.id, note: 'Tahsilat' }, 'Tahsilat cari');
     }
     toast('Kaydedildi', 'ok');
-    go('#/finans/kasa/' + created.id);
+    go('#/kasa/' + created.id);
   });
 }
 
@@ -606,7 +606,7 @@ async function cashDetail(ctx, id) {
     await db.softDelete('cash_records', id, 'Kullanıcı sildi');
     for (const m of linked) await db.softDelete('cari_movements', m.id, 'Kasa kaydı silindi');
     toast('Silindi', 'ok');
-    go('#/finans/kasa');
+    go('#/kasa');
   });
 }
 
@@ -645,7 +645,7 @@ async function expenseForm(ctx, editId) {
   const [personnel, vehicles] = await Promise.all([db.listActive('personnel'), db.listActive('vehicles')]);
   root.innerHTML = appbar(editId ? 'Gider Düzenle' : '+ Gider', 'Fiş fotoğrafı eklenebilir') + `
     <form data-form novalidate>
-      ${fDate('Tarih', 'date', v.date)}
+      ${fDate('Tarih', 'date', v.date || todayStr())}
       <div class="formgrid2">
         ${fSelect('Kategori', 'category', EXPENSE_CATEGORIES, v.category || 'Yakıt', { empty: false })}
         ${fNum('Tutar (₺)', 'amount', v.amount ?? '', { req: true, step: 'any' })}
