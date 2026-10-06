@@ -108,7 +108,7 @@ export function fText(label, name, val = '', opts = {}) {
 }
 export function fNum(label, name, val = '', opts = {}) { return fText(label, name, val, { ...opts, type: 'number' }); }
 export function fDate(label, name, val = '', req = true) {
-  return `<div class="field"><label>${esc(label)}${req ? ' *' : ''}</label><input type="date" name="${name}" value="${esc(val || todayStr())}" ${req ? 'required' : ''}></div>`;
+  return `<div class="field"><label>${esc(label)}${req ? ' *' : ''}</label><input type="date" name="${name}" value="${esc(val)}" ${req ? 'required' : ''}></div>`;
 }
 export function fArea(label, name, val = '', ph = '') {
   return `<div class="field"><label>${esc(label)}</label><textarea name="${name}" placeholder="${esc(ph)}">${esc(val)}</textarea></div>`;

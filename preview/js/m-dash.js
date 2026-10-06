@@ -72,7 +72,7 @@ async function dashboard(ctx) {
       <button data-go="#/fisler/new"><span class="ic">🧾</span>Fiş</button>
       <button data-go="#/yakit/new"><span class="ic">⛽</span>Yakıt</button>
       <button data-go="#/gider/new"><span class="ic">💸</span>Gider</button>
-      <button data-go="#/finans/kasa/new"><span class="ic">💰</span>Tahsilat</button>
+      <button data-go="#/kasa/new"><span class="ic">💰</span>Tahsilat</button>
       <button data-go="#/bakim/new"><span class="ic">🔧</span>Arıza</button>
     </div>
 
