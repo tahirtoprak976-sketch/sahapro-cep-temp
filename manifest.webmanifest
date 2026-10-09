@@ -1,0 +1,27 @@
+{
+  "name": "SAHAPRO SOLO — Muratoğlu Hafriyat",
+  "short_name": "SAHAPRO SOLO",
+  "description": "Muratoğlu Hafriyat — mobil saha operasyon ve ERP sistemi. Tamamen çevrimdışı, cihazda çalışır.",
+  "id": "sahapro-cep-temp",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f2f5f9",
+  "theme_color": "#f2f5f9",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
