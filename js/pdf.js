@@ -1,5 +1,6 @@
 // Every module delegates to one offline document engine.
 import { fmtTL, fmtNum, trDate, daySummary } from "./core.js";
+import { customerWorkLines } from "./business.js";
 import { exportDocument } from "./document-engine.js";
 const tl = (n) => fmtTL(n) + " TL";
 const name = (names, store, id) => names[store]?.[id] || "—";
@@ -35,6 +36,20 @@ export function slipSpec(s, names, sigBlob) {
           ["Teslim alan", s.receiver_name],
         ],
       },
+      ...(s.customer_items?.length
+        ? [
+            {
+              headers: ["Şantiye", "İş", "Miktar", "Birim", "Birim fiyat"],
+              rows: customerWorkLines(s.customer_items).map((i) => [
+                name(names, "sites", i.site_id),
+                i.work_type,
+                fmtNum(i.quantity),
+                i.unit,
+                i.unit_price == null ? "—" : tl(i.unit_price),
+              ]),
+            },
+          ]
+        : []),
       ...(sigBlob
         ? [{ title: "Teslim Alan İmzası", image: sigBlob, text: s.signed_at }]
         : [{ text: "TASLAK — imza bekleniyor" }]),
@@ -120,11 +135,13 @@ export async function quotePdf(t, names, tot) {
 export function hakedisSpec(h, names) {
   const row = (i) => [
     trDate(i.date),
-    i.work_type,
+    [i.site_name, i.work_type, i.material].filter(Boolean).join(" · "),
     i.vehicle_name,
     fmtNum(i.quantity),
     i.unit,
-    i.formula ? "Vinç tarifesi" : tl(i.unit_price),
+    i.formula
+      ? "Vinç tarifesi"
+      : tl(i.unit_price) + (i.kdv_included ? " (KDV dahil)" : " (+KDV)"),
     tl(i.total),
   ];
   return {
@@ -142,16 +159,30 @@ export function hakedisSpec(h, names) {
           ["Durum", h.status],
         ],
       },
-      ...["Sefer", "Makine"].map((group) => ({
-        title:
-          group === "Sefer" ? "Nakliye Kalemleri" : "Makine / Diğer Kalemler",
-        headers: ["Tarih", "İş", "Araç", "Miktar", "Birim", "Fiyat", "Tutar"],
-        rows: (h.items || [])
-          .filter((i) =>
+      ...["Sefer", "Makine"]
+        .filter((group) =>
+          (h.items || []).some((i) =>
             group === "Sefer" ? i.unit === "Sefer" : i.unit !== "Sefer",
-          )
-          .map(row),
-      })),
+          ),
+        )
+        .map((group) => ({
+          title:
+            group === "Sefer" ? "Nakliye Kalemleri" : "Makine / Diğer Kalemler",
+          headers: [
+            "Tarih",
+            "İş",
+            "Araç",
+            "Miktar",
+            "Birim",
+            "Fiyat",
+            "KDV Dahil Tutar",
+          ],
+          rows: customerWorkLines(h.items || [])
+            .filter((i) =>
+              group === "Sefer" ? i.unit === "Sefer" : i.unit !== "Sefer",
+            )
+            .map(row),
+        })),
       {
         pairs: [
           ["Ara toplam", tl(h.subtotal)],

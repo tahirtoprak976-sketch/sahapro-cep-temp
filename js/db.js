@@ -126,6 +126,8 @@ export async function softDelete(store, id, reason) {
     ].includes(store)
   )
     throw Error("Bağlı finans/yakıt hareketi tek başına silinemez");
+  if (store === "work_records" && rec.work_batch_id && rec.slip_id)
+    throw Error("Toplu fişe bağlı iş tek başına silinemez");
   const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
   await put(store, upd);
   await audit(
@@ -424,6 +426,150 @@ export async function saveNew(store, fields, auditReason) {
   await audit(store, rec.id, "create", null, fields, auditReason || "");
   return rec;
 }
+
+// All transport rows commit together; invalid rows cannot leave a partial job.
+export async function saveWorkBatch(rows) {
+  if (!Array.isArray(rows) || rows.length < 2)
+    throw Error("En az iki satır gerekli");
+  const first = rows[0];
+  if (
+    rows.some(
+      (r) =>
+        r.customer_id !== first.customer_id ||
+        r.site_id !== first.site_id ||
+        r.date !== first.date ||
+        r.work_type !== first.work_type ||
+        r.unit !== "Sefer",
+    ) ||
+    !["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"].includes(
+      first.work_type,
+    )
+  )
+    throw Error(
+      "Satırlar aynı müşteri, şantiye, tarih ve nakliye işine ait olmalı",
+    );
+  const batch = uuid(),
+    validated = [];
+  for (const [index, row] of rows.entries()) {
+    if (!row.dump_site_id && !row.dump_area?.trim())
+      throw Error("Her satır için döküm yeri seçin");
+    if (!Number.isInteger(Number(row.quantity)))
+      throw Error("Sefer miktarı tam sayı olmalı");
+    if (
+      row.distance_km != null &&
+      (!Number.isFinite(Number(row.distance_km)) || Number(row.distance_km) < 0)
+    )
+      throw Error("Mesafe geçersiz");
+    if (
+      row.price_snapshot &&
+      (!Number.isFinite(Number(row.price_snapshot.unit_price)) ||
+        Number(row.price_snapshot.unit_price) < 0 ||
+        !Number.isFinite(Number(row.price_snapshot.kdv_rate)) ||
+        Number(row.price_snapshot.kdv_rate) < 0 ||
+        Number(row.price_snapshot.kdv_rate) > 100)
+    )
+      throw Error("Satır fiyatı veya KDV geçersiz");
+    const fields = await validateFields("work_records", row);
+    validated.push(
+      newRecord({ ...fields, work_batch_id: batch, batch_row: index + 1 }),
+    );
+  }
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["work_records", "audit_log"], "readwrite");
+    for (const rec of validated) {
+      t.objectStore("work_records").add(rec);
+      t.objectStore("audit_log").add(
+        newRecord({
+          entity: "work_records",
+          entity_id: rec.id,
+          action: "create",
+          old: null,
+          new: rec,
+          at: nowISO(),
+          reason: "Çok satırlı nakliye girişi",
+        }),
+      );
+    }
+    t.oncomplete = () => resolve(validated);
+    t.onabort = t.onerror = () =>
+      reject(t.error || Error("Satırlar kaydedilemedi"));
+  });
+}
+
+export async function saveWorkSlip(fields, workIds) {
+  if (
+    !Array.isArray(workIds) ||
+    !workIds.length ||
+    new Set(workIds).size !== workIds.length
+  )
+    throw Error("Fiş için geçerli işler gerekli");
+  fields = await validateFields("slips", fields);
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["slips", "work_records"], "readwrite");
+    const rows = [],
+      rec = newRecord({
+        ...fields,
+        work_record_id: workIds[0],
+        work_record_ids: workIds,
+      });
+    let error;
+    for (const id of workIds) {
+      const req = t.objectStore("work_records").get(id);
+      req.onsuccess = () => {
+        rows.push(req.result);
+        if (rows.length !== workIds.length) return;
+        if (
+          rows.some(
+            (w) =>
+              !w ||
+              !isActive(w) ||
+              w.slip_id ||
+              w.customer_id !== fields.customer_id ||
+              (w.site_id || null) !== (fields.site_id || null) ||
+              w.date !== fields.date ||
+              w.unit !== fields.unit ||
+              w.work_type !== fields.work_text,
+          ) ||
+          rows.some((w) => w.work_batch_id !== rows[0].work_batch_id) ||
+          (rows.length > 1 && !rows[0].work_batch_id) ||
+          rows.reduce((sum, w) => sum + Number(w.quantity), 0) !==
+            Number(fields.quantity)
+        ) {
+          error = Error(
+            "Fiş işleri değişmiş, başka fişe bağlı veya miktar/müşteri uyuşmuyor",
+          );
+          t.abort();
+          return;
+        }
+        // Frozen, whitelisted customer lines; neither owner-private fields nor dump locations enter the slip.
+        rec.customer_items = rows.map((w) => ({
+          date: w.date,
+          customer_id: w.customer_id,
+          site_id: w.site_id,
+          work_type: w.work_type,
+          material: w.material || "",
+          quantity: w.quantity,
+          unit: w.unit,
+          unit_price: w.price_snapshot?.unit_price ?? null,
+          kdv_rate: w.price_snapshot?.kdv_rate ?? 20,
+          kdv_included: !!w.price_snapshot?.kdv_included,
+        }));
+        t.objectStore("slips").add(rec);
+        for (const w of rows)
+          t.objectStore("work_records").put({
+            ...w,
+            slip_id: rec.id,
+            updated_at: nowISO(),
+          });
+      };
+    }
+    t.oncomplete = () => resolve(rec);
+    t.onabort = t.onerror = () => reject(error || t.error);
+  });
+}
+
 export async function saveExisting(store, rec, fields, auditReason) {
   const current = await get(store, rec.id);
   if (
@@ -450,6 +596,26 @@ export async function saveExisting(store, rec, fields, auditReason) {
       !(fields.status === "Revize" && Object.keys(fields).length === 1))
   )
     throw Error("Kesinleşmiş kayıt değiştirilemez; revizyon oluşturun");
+  if (
+    store === "work_records" &&
+    current?.work_batch_id &&
+    current?.slip_id &&
+    Object.keys(fields).some((k) =>
+      [
+        "date",
+        "customer_id",
+        "site_id",
+        "work_type",
+        "quantity",
+        "unit",
+        "material",
+        "price_snapshot",
+      ].includes(k),
+    )
+  )
+    throw Error(
+      "Toplu fişe bağlı iş değiştirilemez; düzeltme için yeni iş ve fiş oluşturun",
+    );
   fields = await validateFields(store, { ...current, ...fields });
   const upd = {
     ...touchRecord(rec),

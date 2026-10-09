@@ -1,3 +1,4 @@
+import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
 import {
   qs,
@@ -789,6 +790,9 @@ async function hakedisNew(ctx) {
         selected.set(w.id, {
           work_record_id: w.id,
           date: w.date,
+          customer_id: w.customer_id,
+          site_id: w.site_id,
+          material: w.material || "",
           site_name: names.sites[w.site_id] || "",
           vehicle_name: names.vehicles[w.vehicle_id] || "",
           work_type: w.work_type,
@@ -874,9 +878,23 @@ async function hakedisDetail(ctx, id) {
       ${kv("Kalem", String((h.items || []).length))}
       ${kv("Oluşturma", trDate(h.created_date))}
     </div>
-    <div class="section-title">Kalemler (snapshot)</div>
+    <div class="section-title">Müşteri özeti</div>
+    ${customerWorkLines(h.items || [])
+      .map((it) =>
+        li({
+          t1: esc(
+            [it.site_name, it.work_type, it.material]
+              .filter(Boolean)
+              .join(" · "),
+          ),
+          t2: `${fmtNum(it.quantity)} ${esc(it.unit)} × ${fmtTL(it.unit_price)} TL`,
+          end: `<span class="amt">${fmtTL(it.total)} TL</span>`,
+        }),
+      )
+      .join("")}
+    <details><summary>İç detay · kaynak işler (snapshot)</summary>
     ${(h.items || []).map((it) => li({ ic: it.unit === "Sefer" ? "🚛" : "🚜", t1: `${trDate(it.date)} · ${esc(it.work_type || "")}`, t2: `${esc(it.vehicle_name || "")} · ${fmtNum(it.quantity)} ${esc(it.unit || "")} × ${it.formula === "CRANE_FIRST_HOUR" ? "vinç tarifesi" : fmtTL(it.unit_price) + " ₺"}`, end: `<span class="amt nowrap">${fmtTL(it.total)} ₺</span>` })).join("")}
-    <div class="card">
+    </details><div class="card">
       ${kv("Ara Toplam", fmtTL(h.subtotal) + " ₺")}
       ${kv("KDV", fmtTL(h.kdv_total) + " ₺")}
       ${kv("GENEL TOPLAM", fmtTL(h.grand_total) + " ₺")}
