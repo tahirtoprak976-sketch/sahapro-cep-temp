@@ -2,18 +2,44 @@
 // Kurallar: sahapro-whatsapp-parser / sahapro-domain skill'leri.
 // Parser asla fiyat üretmez, bilinmeyeni uydurmaz, belirsizde kontrol_gerekli=true.
 
-import { normKey, todayStr, addDays, WORK_TYPES } from './core.js';
+import { normKey, todayStr, addDays, WORK_TYPES } from "./core.js";
 
 // ---- Alias motoru ----
-export function buildAliasIndex(aliases, vehicles, customers, sites, personnel) {
+export function buildAliasIndex(
+  aliases,
+  vehicles,
+  customers,
+  sites,
+  personnel,
+) {
   const idx = [];
-  for (const a of (aliases || []).filter(x => x.active !== false && !x.deleted_at)) {
+  for (const a of (aliases || []).filter(
+    (x) => x.active !== false && !x.deleted_at,
+  )) {
     let name = null;
-    if (a.target_type === 'vehicle') { const v = vehicles.find(x => x.id === a.target_id); name = v && v.name; }
-    if (a.target_type === 'customer') { const v = customers.find(x => x.id === a.target_id); name = v && v.name; }
-    if (a.target_type === 'site') { const v = sites.find(x => x.id === a.target_id); name = v && v.name; }
-    if (a.target_type === 'personnel') { const v = personnel.find(x => x.id === a.target_id); name = v && v.name; }
-    if (name) idx.push({ alias: normKey(a.alias), target_type: a.target_type, target_id: a.target_id, name });
+    if (a.target_type === "vehicle") {
+      const v = vehicles.find((x) => x.id === a.target_id);
+      name = v && v.name;
+    }
+    if (a.target_type === "customer") {
+      const v = customers.find((x) => x.id === a.target_id);
+      name = v && v.name;
+    }
+    if (a.target_type === "site") {
+      const v = sites.find((x) => x.id === a.target_id);
+      name = v && v.name;
+    }
+    if (a.target_type === "personnel") {
+      const v = personnel.find((x) => x.id === a.target_id);
+      name = v && v.name;
+    }
+    if (name)
+      idx.push({
+        alias: normKey(a.alias),
+        target_type: a.target_type,
+        target_id: a.target_id,
+        name,
+      });
   }
   idx.sort((a, b) => b.alias.length - a.alias.length);
   return idx;
@@ -33,34 +59,54 @@ export function matchByName(text, rows) {
   let best = null;
   for (const r of rows || []) {
     const n = normKey(r.name);
-    if (n.length >= 3 && t.includes(n)) { if (!best || n.length > normKey(best.name).length) best = r; }
+    if (n.length >= 3 && t.includes(n)) {
+      if (!best || n.length > normKey(best.name).length) best = r;
+    }
   }
   return best;
 }
 
 // ---- WhatsApp satır ayrıştırma ----
 const TYPE_PATTERNS = [
-  ['Hafriyat Nakliye', ['hafriyat']], ['Moloz Nakliye', ['moloz']], ['Çöp Nakliye', ['çöp', 'cop']],
-  ['Mıcır Nakliye', ['mıcır', 'micir']], ['Kum Nakliye', ['kum']], ['Gravak Nakliye', ['gravak']],
-  ['Kazı', ['kazı', 'kazi']], ['Yıkım', ['yıkım', 'yikim']], ['Kırım', ['kırım', 'kirim']],
-  ['Tesviye', ['tesviye']], ['Yükleme', ['yükleme', 'yukleme']],
-  ['Mini Kato Çalışması', ['mini kato']], ['JCB Çalışması', ['jcb']],
-  ['Manitou Çalışması', ['manitou']], ['Vinç Çalışması', ['vinç', 'vinc']],
-  ['Lowbed Nakliye', ['lowbed', 'lowbet']], ['Makine Çalışması', ['makine', 'makina']]
+  ["Hafriyat Nakliye", ["hafriyat"]],
+  ["Moloz Nakliye", ["moloz"]],
+  ["Çöp Nakliye", ["çöp", "cop"]],
+  ["Mıcır Nakliye", ["mıcır", "micir"]],
+  ["Kum Nakliye", ["kum"]],
+  ["Gravak Nakliye", ["gravak"]],
+  ["Kazı", ["kazı", "kazi"]],
+  ["Yıkım", ["yıkım", "yikim"]],
+  ["Kırım", ["kırım", "kirim"]],
+  ["Tesviye", ["tesviye"]],
+  ["Yükleme", ["yükleme", "yukleme"]],
+  ["Mini Kato Çalışması", ["mini kato"]],
+  ["JCB Çalışması", ["jcb"]],
+  ["Manitou Çalışması", ["manitou"]],
+  ["Vinç Çalışması", ["vinç", "vinc"]],
+  ["Lowbed Nakliye", ["lowbed", "lowbet"]],
+  ["Makine Çalışması", ["makine", "makina"]],
 ];
 const UNIT_PATTERNS = [
-  ['Sefer', ['sefer']], ['Saat', ['saat', 'sa']], ['Yevmiye', ['yevmiye', 'yovmiye', 'yevmıye']],
-  ['Ton', ['ton']], ['m³', ['m3', 'm³', 'metrekup']], ['Adet', ['adet']]
+  ["Sefer", ["sefer"]],
+  ["Saat", ["saat", "sa"]],
+  ["Yevmiye", ["yevmiye", "yovmiye", "yevmıye"]],
+  ["Ton", ["ton"]],
+  ["m³", ["m3", "m³", "metrekup"]],
+  ["Adet", ["adet"]],
 ];
 const PLATE_RE = /\b\d{2}\s?[A-ZÇĞİÖŞÜ]{1,3}\s?\d{2,4}\b/i;
 const DATE_RE = /(\d{1,2})[.\/](\d{1,2})[.\/](\d{2,4})/;
 const TIME_RE = /(\d{1,2}):(\d{2})/;
-const WA_LINE = /^\[?(\d{1,2}:\d{2})(?:[,\s]+(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}))?\]?\s*([^:]{2,25}):\s*(.+)$/;
+const WA_LINE =
+  /^\[?(\d{1,2}:\d{2})(?:[,\s]+(\d{1,2}[.\/]\d{1,2}[.\/]\d{2,4}))?\]?\s*([^:]{2,25}):\s*(.+)$/;
 
 export function parseWhatsApp(raw, ctx) {
   // ctx: { vehicles, customers, sites, personnel, aliasIdx, defaultDate }
   const out = [];
-  const lines = String(raw || '').split(/\n+/).map(l => l.trim()).filter(Boolean);
+  const lines = String(raw || "")
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   for (const line of lines) {
     let date = ctx.defaultDate || todayStr();
     let sender = null;
@@ -72,27 +118,35 @@ export function parseWhatsApp(raw, ctx) {
       text = m[4].trim();
     } else {
       const dm = line.match(DATE_RE);
-      if (dm) { const nd = normDate(dm[0]); if (nd) date = nd; }
+      if (dm) {
+        const nd = normDate(dm[0]);
+        if (nd) date = nd;
+      }
     }
     const low = normKey(text);
-    if (/\bdün\b|\bdun\b/.test(low)) date = addDays(ctx.defaultDate || todayStr(), -1);
+    if (/\bdün\b|\bdun\b/.test(low))
+      date = addDays(ctx.defaultDate || todayStr(), -1);
     // "bugün" zaten default
 
     // Birden çok iş: "<n> <birim> <tür>" gruplarını ayrı satırlara böl
     const jobs = splitJobs(text);
-    for (const job of jobs) out.push(parseJob(job, { ...ctx, date, sender, raw: line }));
+    for (const job of jobs)
+      out.push(parseJob(job, { ...ctx, date, sender, raw: line }));
   }
   return out;
 }
 
 function splitJobs(text) {
   // "3 sefer hafriyat 2 sefer moloz" → iki iş; aksi halde tek parça
-  const re = /(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/gi;
-  const hits = []; let m;
+  const re =
+    /(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/gi;
+  const hits = [];
+  let m;
   while ((m = re.exec(text)) !== null) hits.push(m.index);
   if (hits.length <= 1) return [text];
   const parts = [];
-  for (let i = 0; i < hits.length; i++) parts.push(text.slice(hits[i], hits[i + 1] || text.length).trim());
+  for (let i = 0; i < hits.length; i++)
+    parts.push(text.slice(hits[i], hits[i + 1] || text.length).trim());
   return parts.filter(Boolean);
 }
 
@@ -100,8 +154,8 @@ function normDate(dstr) {
   const m = String(dstr).match(DATE_RE);
   if (!m) return null;
   let [, d, mo, y] = m;
-  if (y.length === 2) y = '20' + y;
-  const p = (x) => String(x).padStart(2, '0');
+  if (y.length === 2) y = "20" + y;
+  const p = (x) => String(x).padStart(2, "0");
   return `${y}-${p(mo)}-${p(d)}`;
 }
 
@@ -112,18 +166,30 @@ function parseJob(text, ctx) {
 
   // Araç: alias → plaka → isim eşleşme
   let vehicle = null;
-  const al = applyAlias(low, ctx.aliasIdx, 'vehicle');
-  if (al) vehicle = ctx.vehicles.find(v => v.id === al.target_id) || null;
+  const al = applyAlias(low, ctx.aliasIdx, "vehicle");
+  if (al) vehicle = ctx.vehicles.find((v) => v.id === al.target_id) || null;
   if (!vehicle) {
     const pm = text.match(PLATE_RE);
     if (pm) {
-      const plate = pm[0].replace(/\s/g, '').toLocaleUpperCase('tr-TR');
-      vehicle = ctx.vehicles.find(v => normKey(v.name).replace(/\s/g, '') === normKey(plate)) || null;
-      if (!vehicle) { kontrol = true; notes.push('Plaka listede yok: ' + pm[0]); }
+      const plate = pm[0].replace(/\s/g, "").toLocaleUpperCase("tr-TR");
+      vehicle =
+        ctx.vehicles.find(
+          (v) => normKey(v.name).replace(/\s/g, "") === normKey(plate),
+        ) || null;
+      if (!vehicle) {
+        kontrol = true;
+        notes.push("Plaka listede yok: " + pm[0]);
+      }
     }
   }
   if (!vehicle) vehicle = matchByName(low, ctx.vehicles);
-  if (!vehicle && /(kato|makine|makina|kamyon|vinç|vinc|jcb|manitou|silindir)/.test(low)) { kontrol = true; notes.push('Araç belirsiz'); }
+  if (
+    !vehicle &&
+    /(kato|makine|makina|kamyon|vinç|vinc|jcb|manitou|silindir)/.test(low)
+  ) {
+    kontrol = true;
+    notes.push("Araç belirsiz");
+  }
 
   // Personel: gönderen + metin
   let person = null;
@@ -133,39 +199,73 @@ function parseJob(text, ctx) {
   // Müşteri / şantiye
   let customer = matchByName(low, ctx.customers);
   let site = matchByName(low, ctx.sites);
-  const cal = applyAlias(low, ctx.aliasIdx, 'customer');
-  if (!customer && cal) customer = ctx.customers.find(c => c.id === cal.target_id) || null;
-  const sal = applyAlias(low, ctx.aliasIdx, 'site');
-  if (!site && sal) site = ctx.sites.find(s => s.id === sal.target_id) || null;
-  if (site && !customer && site.customer_id) customer = ctx.customers.find(c => c.id === site.customer_id) || null;
-  if (!customer) { kontrol = true; notes.push('Müşteri eşleşmedi'); }
+  const cal = applyAlias(low, ctx.aliasIdx, "customer");
+  if (!customer && cal)
+    customer = ctx.customers.find((c) => c.id === cal.target_id) || null;
+  const sal = applyAlias(low, ctx.aliasIdx, "site");
+  if (!site && sal)
+    site = ctx.sites.find((s) => s.id === sal.target_id) || null;
+  if (site && !customer && site.customer_id)
+    customer = ctx.customers.find((c) => c.id === site.customer_id) || null;
+  if (!customer) {
+    kontrol = true;
+    notes.push("Müşteri eşleşmedi");
+  }
 
   // İş türü / birim / miktar
   let work_type = null;
-  for (const [t, keys] of TYPE_PATTERNS) { if (keys.some(k => low.includes(k))) { work_type = t; break; } }
+  for (const [t, keys] of TYPE_PATTERNS) {
+    if (keys.some((k) => low.includes(k))) {
+      work_type = t;
+      break;
+    }
+  }
   let unit = null;
-  for (const [u, keys] of UNIT_PATTERNS) { if (keys.some(k => new RegExp(`(^|[^a-z0-9çğıöşü])${k}($|[^a-zçğıöşü0-9])`, 'i').test(low))) { unit = u; break; } }
+  for (const [u, keys] of UNIT_PATTERNS) {
+    if (
+      keys.some((k) =>
+        new RegExp(`(^|[^a-z0-9çğıöşü])${k}($|[^a-zçğıöşü0-9])`, "i").test(low),
+      )
+    ) {
+      unit = u;
+      break;
+    }
+  }
   let quantity = null;
-  const qm = low.match(/(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/i);
-  if (qm) quantity = Number(qm[1].replace(',', '.'));
-  if (!unit) { kontrol = true; notes.push('Birim yok'); }
-  if (quantity == null && unit) { quantity = unit === 'Yevmiye' ? 1 : null; kontrol = true; notes.push('Miktar belirsiz'); }
+  const qm = low.match(
+    /(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/i,
+  );
+  if (qm) quantity = Number(qm[1].replace(",", "."));
+  if (!unit) {
+    kontrol = true;
+    notes.push("Birim yok");
+  }
+  if (quantity == null && unit) {
+    quantity = unit === "Yevmiye" ? 1 : null;
+    kontrol = true;
+    notes.push("Miktar belirsiz");
+  }
 
   // Yardımcı alanlar
   let fuelLiters = null;
   const fm = low.match(/(\d+(?:[.,]\d+)?)\s*(?:lt|litre)\b/);
-  if (fm) fuelLiters = Number(fm[1].replace(',', '.'));
+  if (fm) fuelLiters = Number(fm[1].replace(",", "."));
   let slip_status = null;
-  if (/fiş var|fis var|fişi aldım/.test(low)) slip_status = 'Fiş Var';
-  if (/fiş yok|fis yok/.test(low)) slip_status = 'Fiş Yok';
+  if (/fiş var|fis var|fişi aldım/.test(low)) slip_status = "Fiş Var";
+  if (/fiş yok|fis yok/.test(low)) slip_status = "Fiş Yok";
   let dump_area = null;
   const dm = low.match(/([a-zçğıöşü\s]+?)\s*döküm/);
-  if (dm) dump_area = dm[1].trim().split(' ').pop();
+  if (dm) dump_area = dm[1].trim().split(" ").pop();
   let quarry = null;
   const qz = low.match(/([a-zçğıöşü\s]+?)\s*ocağı|([a-zçğıöşü\s]+?)\s*ocagi/);
-  if (qz) quarry = (qz[1] || qz[2] || '').trim().split(' ').pop();
+  if (qz) quarry = (qz[1] || qz[2] || "").trim().split(" ").pop();
 
-  const score = 100 - (kontrol ? 40 : 0) - (!vehicle ? 15 : 0) - (!work_type ? 15 : 0) - (!customer ? 20 : 0);
+  const score =
+    100 -
+    (kontrol ? 40 : 0) -
+    (!vehicle ? 15 : 0) -
+    (!work_type ? 15 : 0) -
+    (!customer ? 20 : 0);
   return {
     date: ctx.date,
     personnel_id: person ? person.id : null,
@@ -173,14 +273,17 @@ function parseJob(text, ctx) {
     customer_id: customer ? customer.id : null,
     site_id: site ? site.id : null,
     work_type: work_type || null,
-    quantity, unit,
-    dump_area, quarry, slip_status,
+    quantity,
+    unit,
+    dump_area,
+    quarry,
+    slip_status,
     fuel_liters: fuelLiters,
     description: text,
     raw_message: ctx.raw,
     confidence: Math.max(10, score),
     kontrol_gerekli: kontrol || !customer || !vehicle,
-    notes
+    notes,
   };
 }
 
@@ -192,16 +295,24 @@ export function startVoice(onText, onEnd) {
   const SR = globalThis.SpeechRecognition || globalThis.webkitSpeechRecognition;
   if (!SR) return null;
   const rec = new SR();
-  rec.lang = 'tr-TR';
+  rec.lang = "tr-TR";
   rec.interimResults = false;
   rec.maxAlternatives = 1;
   rec.onresult = (ev) => {
-    const t = ev.results && ev.results[0] && ev.results[0][0] && ev.results[0][0].transcript;
+    const t =
+      ev.results &&
+      ev.results[0] &&
+      ev.results[0][0] &&
+      ev.results[0][0].transcript;
     if (t) onText(t);
   };
   rec.onend = () => onEnd && onEnd();
   rec.onerror = () => onEnd && onEnd();
-  try { rec.start(); } catch (e) { return null; }
+  try {
+    rec.start();
+  } catch (e) {
+    return null;
+  }
   return rec;
 }
 export { WORK_TYPES };
