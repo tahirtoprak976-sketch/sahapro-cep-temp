@@ -374,3 +374,61 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
     required,
   };
 }
+
+// Customer summaries deliberately omit dump locations and internal notes.
+// Source records and hakediş items always remain separate.
+export function customerWorkLines(items) {
+  const groups = new Map();
+  for (const [index, item] of items.entries()) {
+    const price = item.unit_price ?? item.price_snapshot?.unit_price ?? null;
+    const rate = item.kdv_rate ?? item.price_snapshot?.kdv_rate ?? 20;
+    const included =
+      item.kdv_included ?? item.price_snapshot?.kdv_included ?? false;
+    const formula = item.formula ?? item.price_snapshot?.formula;
+    const key = JSON.stringify([
+      item.customer_id || "",
+      item.date || "",
+      item.site_id || item.site_name || "",
+      item.work_type || item.work_text || "",
+      item.material || "",
+      item.unit,
+      price,
+      rate,
+      included,
+      item.unit === "Sefer" && !formula ? null : index,
+    ]);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.quantity += Number(item.quantity);
+      existing.total = fromKurus(
+        toKurus(existing.total) +
+          toKurus(
+            item.total ??
+              item.price_snapshot?.amount ??
+              Number(price || 0) * Number(item.quantity),
+          ),
+      );
+      if (existing.vehicle_name !== (item.vehicle_name || ""))
+        existing.vehicle_name = "Birden çok araç";
+    } else
+      groups.set(key, {
+        date: item.date,
+        site_id: item.site_id || null,
+        site_name: item.site_name || "",
+        work_type: item.work_type || item.work_text || "",
+        material: item.material || "",
+        vehicle_name: item.vehicle_name || "",
+        quantity: Number(item.quantity),
+        unit: item.unit,
+        unit_price: price,
+        kdv_rate: rate,
+        kdv_included: included,
+        formula,
+        total:
+          item.total ??
+          item.price_snapshot?.amount ??
+          Number(price || 0) * Number(item.quantity),
+      });
+  }
+  return [...groups.values()];
+}
