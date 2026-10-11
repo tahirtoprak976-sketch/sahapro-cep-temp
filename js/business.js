@@ -4,6 +4,7 @@ import {
   addDays,
   resolvePrice,
   priceForQuantity,
+  priceVehicleScope,
   newRecord,
   toKurus,
   fromKurus,
@@ -259,6 +260,7 @@ export function priceSnapshot(w, entries, crane) {
     next_hour_price: p.next_hour_price ?? crane?.next ?? 0,
     amount: priceForQuantity(p, w.quantity, crane),
     price_source: p.price_source,
+    price_scope: priceVehicleScope(p),
     price_rule_id: p.id,
     snapshot_at: new Date().toISOString(),
   };
@@ -289,7 +291,10 @@ export function filterRecords(records, f = {}) {
         "unit",
         "ownership",
         "dump_area",
+        "dump_site_id",
+        "quarry_id",
         "quarry",
+        "vehicle_group",
         "owner_type",
         "move_type",
         "contractor_id",
@@ -311,7 +316,12 @@ export function groupRecords(records, key) {
     if (r.unit)
       g.units[r.unit] = (g.units[r.unit] || 0) + (Number(r.quantity) || 0);
     g.amount_kurus += toKurus(
-      r.grand_total ?? r.amount ?? r.total ?? r.price_snapshot?.amount ?? 0,
+      r.gross_total ??
+        r.grand_total ??
+        r.amount ??
+        r.total ??
+        r.price_snapshot?.amount ??
+        0,
     );
     g.liters += Number(r.liters) || 0;
   }

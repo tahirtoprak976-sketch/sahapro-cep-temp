@@ -1,3 +1,4 @@
+import * as enterprise from "./enterprise.js";
 import * as pro from "./pro.js";
 // SAHAPRO SOLO — uygulama iskeleti: boot, router, alt navigasyon, PIN, SW güncelleme
 import * as core from "./core.js";
@@ -23,6 +24,7 @@ const MODULES = {
   isler: workScreen,
   fisler: workScreen,
   whatsapp: workScreen,
+  gecmis: async(ctx) => (await import("./history-ui.js")).screen(ctx),
   finans: finScreen,
   teklif: finScreen,
   hakedis: finScreen,
@@ -49,6 +51,7 @@ const SECTION = {
   gunsonu: "ana",
   isler: "isler",
   whatsapp: "isler",
+  gecmis: "isler",
   fisler: "fisler",
   belgeler: "fisler",
   tara: "fisler",
@@ -129,9 +132,11 @@ export async function renderCurrent() {
   root.innerHTML =
     '<div style="padding:40px 0"><div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div></div>';
   try {
-    const handled = await pro.screen(ctx);
+    const enterpriseHandled = await enterprise.screen(ctx);
+    const handled = enterpriseHandled || (await pro.screen(ctx));
     if (!handled) await mod(ctx);
     if (!handled) await pro.augment(ctx);
+    if (!enterpriseHandled) await enterprise.augment(ctx);
     professionalIcons(root);
   } catch (e) {
     console.error(e);
@@ -216,11 +221,14 @@ async function registerSW() {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return;
       reloaded = true;
-      if ((location.hash || "").includes("/new")) {
-        toast("Yeni sürüm yüklendi — formu kaydedip yenileyin", "ok");
-      } else {
-        setTimeout(() => location.reload(), 600);
-      }
+      const editing = () => (location.hash || "").includes("/new") || (location.hash || "").startsWith("#/gecmis");
+      const notify = () => toast("Yeni sürüm yüklendi — formu tamamlayıp yenileyin", "ok");
+      if (editing()) notify();
+      else setTimeout(() => {
+        // A file/preview form may have been opened while the reload was pending.
+        if (editing()) notify();
+        else location.reload();
+      }, 600);
     });
   } catch (e) {
     console.warn("SW", e);

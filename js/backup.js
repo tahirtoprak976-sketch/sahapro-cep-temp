@@ -1,4 +1,8 @@
 import {
+  ENTERPRISE_STORES,
+  validateEnterpriseData,
+} from "./enterprise-core.js";
+import {
   ENTITY_STORES,
   SCHEMA_VERSION,
   APP_ID,
@@ -88,7 +92,8 @@ export async function restoreBackup(db, obj, replace = false) {
           const existing = get.result;
           if (
             existing &&
-            ((s === "contracts" && existing.status === "İmzalandı") ||
+            (ENTERPRISE_STORES.includes(s) ||
+              (s === "contracts" && existing.status === "İmzalandı") ||
               (s === "hakedis" && existing.status === "Kesinleşti") ||
               (s === "slips" && existing.status === "İmzalandı"))
           ) {
@@ -146,7 +151,11 @@ export async function restoreBackup(db, obj, replace = false) {
       reject(error || t.error || Error("Geri yükleme iptal edildi"));
   });
 }
-async function saveRecovery(db, obj) {
+export async function backupBeforeHistoryImport(db) {
+  const snapshot = await fullBackup(db);
+  await saveRecovery(db, snapshot, "before-history-import");
+}
+async function saveRecovery(db, obj, prefix = "before-restore") {
   const name = (await db.openDB()).name + "_recovery";
   const connection = await new Promise((res, rej) => {
     const r = indexedDB.open(name, 1);
@@ -155,16 +164,16 @@ async function saveRecovery(db, obj) {
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
-  await new Promise((res, rej) => {
+  try { await new Promise((res, rej) => {
     const t = connection.transaction("snapshots", "readwrite");
     t.objectStore("snapshots").put({
-      id: "before-restore-" + Date.now(),
+      id: prefix + "-" + Date.now(),
       full: obj,
     });
     t.oncomplete = res;
-    t.onerror = () => rej(t.error);
+    t.onabort = t.onerror = () => rej(t.error || Error("Kurtarma yedeği kaydedilemedi"));
   });
-  connection.close();
+  } finally { connection.close(); }
 }
 
 export function validateRestoreLinks(local, obj, preview, replace = false) {
@@ -215,6 +224,11 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
       )
         throw Error("Yedekte kopuk tank / yakıt olayı");
     }
+  validateEnterpriseData(
+    Object.fromEntries(
+      Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),
+    ),
+  );
   const attachments = new Set();
   for (const a of obj.attachments || []) {
     if (attachments.has(a.id)) throw Error("Yedekte mükerrer ek");

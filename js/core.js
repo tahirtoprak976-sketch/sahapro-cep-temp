@@ -3,8 +3,8 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.1";
-export const SCHEMA_VERSION = 3;
+export const APP_VERSION = "SAHAPRO SOLO v3.3";
+export const SCHEMA_VERSION = 4;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
 export const SW_CACHE = "sahapro-solo-v2";
@@ -37,6 +37,20 @@ export const ENTITY_STORES = [
   "contracts",
   "dump_sites",
   "quarries",
+  "suppliers",
+  "payables",
+  "supplier_payments",
+  "bank_accounts",
+  "bank_movements",
+  "receivable_plans",
+  "settlement_allocations",
+  "purchase_orders",
+  "payroll_entries",
+  "service_plans",
+  "activities",
+  "expense_categories",
+  "daily_closings",
+  "instruments",
 ];
 export const SYSTEM_STORES = ["attachments", "meta", "drafts"];
 
@@ -332,14 +346,60 @@ export function calcCranePrice(hours, firstHour, nextHour) {
   return (Number(firstHour) || 0) + (h - 1) * (Number(nextHour) || 0);
 }
 
-// ---- Fiyat çözümleme önceliği: müşteri > şantiye > tarih > genel > manuel ----
+// ---- Fiyat önceliği: müşteri+şantiye > müşteri > genel; aynı kapsamda plaka > tür > grup > tüm araçlar ----
 // price_book kaydı: {vehicle_id, work_type, unit, price, kdv_rate, kdv_included, valid_from, valid_to, customer_id, site_id, formula, first_hour_price, next_hour_price, active}
+export const PRICE_VEHICLE_GROUPS = Object.assign(Object.create(null), {
+  TRUCK_TIR: { label: "Kamyon ve Tır", types: ["TRUCK", "TIR"] },
+  TRUCK: { label: "Yalnız Kamyon", types: ["TRUCK"] },
+  TIR: { label: "Yalnız Tır / Çekici", types: ["TIR"] },
+  VAN: { label: "Yalnız Kamyonet", types: ["VAN"] },
+});
+export function transportVehicleType(type) {
+  const key = String(type || "")
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/[\/()_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    [
+      "kamyon",
+      "damperli kamyon",
+      "hafriyat kamyonu",
+      "kamyon damperli",
+    ].includes(key)
+  )
+    return "TRUCK";
+  if (["tir", "cekici", "tir cekici", "damperli tir"].includes(key))
+    return "TIR";
+  if (["kamyonet"].includes(key)) return "VAN";
+  return null;
+}
+export function priceVehicleScope(entry, vehicleNames = {}) {
+  if (entry.vehicle_id)
+    return vehicleNames[entry.vehicle_id] || "Belirli araç / plaka";
+  if (entry.vehicle_group)
+    return (
+      PRICE_VEHICLE_GROUPS[entry.vehicle_group]?.label || "Geçersiz araç grubu"
+    );
+  if (entry.vehicle_type) return entry.vehicle_type;
+  return "Tüm araç / makineler";
+}
 export function resolvePrice(entries, ctx) {
   const cands = (entries || []).filter(
     (e) => isActive(e) && e.active !== false && e.unit === ctx.unit,
   );
   const result = [];
   for (const e of cands) {
+    if (
+      e.vehicle_group &&
+      !PRICE_VEHICLE_GROUPS[e.vehicle_group]?.types.includes(
+        transportVehicleType(ctx.vehicle_type),
+      )
+    )
+      continue;
     if (
       [
         "vehicle_id",
@@ -370,11 +430,21 @@ export function resolvePrice(entries, ctx) {
       ["vehicle_id", "vehicle_type", "work_type", "material"].filter(
         (k) => e[k],
       ).length + (e.distance_min != null || e.distance_max != null ? 1 : 0);
-    result.push({ e, tier, specificity });
+    const vehicleSpecificity = e.vehicle_id
+      ? 4
+      : e.vehicle_type
+        ? 3
+        : e.vehicle_group
+          ? PRICE_VEHICLE_GROUPS[e.vehicle_group].types.length === 1
+            ? 2
+            : 1
+          : 0;
+    result.push({ e, tier, specificity, vehicleSpecificity });
   }
   result.sort(
     (a, b) =>
       b.tier - a.tier ||
+      b.vehicleSpecificity - a.vehicleSpecificity ||
       b.specificity - a.specificity ||
       String(b.e.valid_from || "").localeCompare(
         String(a.e.valid_from || ""),

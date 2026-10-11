@@ -128,7 +128,7 @@ async function fuelForm(ctx) {
         ${fNum("Birim Fiyat (₺, ops.)", "unit_price", "", { step: "any" })}
       </div>
       <div class="formgrid2">
-        ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}
+        ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}${fNum("KDV % (biliniyorsa; toplam KDV dahil)", "kdv_rate", "", { step: "any" })}
         ${fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
       </div>
       <div class="formgrid2">
@@ -180,6 +180,10 @@ async function fuelForm(ctx) {
         machine_hours: val.machine_hours ? Number(val.machine_hours) : null,
         description: val.description || "",
         customer_billable: false,
+        kdv_rate:
+          val.kdv_rate !== "" && val.kdv_rate != null
+            ? Number(val.kdv_rate)
+            : null,
       },
       "Yakıt kaydı",
     );
@@ -557,7 +561,7 @@ async function maintForm(ctx, editId) {
       ${fSelect("Önem", "severity", ["Düşük", "Normal", "Yüksek", "Kritik"], v.severity || "Normal", { empty: false })}${fText("Parça", "part", v.part || "")}
       ${fArea("Arıza / Açıklama", "description", v.description || "")}
       <div class="formgrid2">
-        ${fNum("Maliyet (₺, ops.)", "cost", v.cost ?? "", { step: "any" })}
+        ${fNum("Maliyet (₺, ops.)", "cost", v.cost ?? "", { step: "any" })}${fNum("KDV % (biliniyorsa; maliyet KDV dahil)", "kdv_rate", v.kdv_rate ?? "", { step: "any" })}
         ${fText("Servis/Firma (ops.)", "service_company", v.service_company || "")}
       </div>
       ${fText("KM / Çalışma Saati (ops.)", "km_hours", v.km_hours || "")}
@@ -580,6 +584,10 @@ async function maintForm(ctx, editId) {
       status: val.status,
       description: val.description || "",
       cost: val.cost ? Number(val.cost) : null,
+      kdv_rate:
+        val.kdv_rate !== "" && val.kdv_rate != null
+          ? Number(val.kdv_rate)
+          : null,
       service_company: val.service_company || "",
       km_hours: val.km_hours || "",
     };

@@ -1,3 +1,4 @@
+import { ENTERPRISE_STORES, workHours } from "./enterprise-core.js";
 // SAHAPRO SOLO — IndexedDB katmanı (local-first, offline-first)
 // Backend YOK · Supabase YOK · ana SAHAPRO API YOK.
 // v1 (sahapro_cep_db @ version 1) → v2 (version 2) VERSIONED MIGRATION — kayıtlar korunur.
@@ -17,7 +18,7 @@ import {
 } from "./core.js";
 
 const DB_NAME = "sahapro_cep_db"; // v1 ile AYNI isim — veri bu DB'de
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 let _db = null;
 
 // Test harness için: ?db=<isim> ile ayrı DB açılabilir (migration simülasyonu)
@@ -50,6 +51,11 @@ export async function openDB() {
           "vehicle_id",
           "personnel_id",
           "owner_id",
+          "party_id",
+          "due_date",
+          "payable_id",
+          "bank_account_id",
+          "work_record_id",
         ])
           if (!st.indexNames.contains(key))
             st.createIndex(key, key, { unique: false });
@@ -103,6 +109,58 @@ export async function listActive(store) {
 export async function softDelete(store, id, reason) {
   const rec = await get(store, id);
   if (!rec) return null;
+  if (ENTERPRISE_STORES.includes(store))
+    throw Error(
+      "İşletme defteri kaydı silinemez; ilgili işlem ekranını kullanın",
+    );
+  const linked = (await getAll("payables")).some(
+    (b) =>
+      isActive(b) &&
+      b.status !== "İptal" &&
+      ((b.source_store === store && b.source_id === id) ||
+        (b.party_id === id &&
+          {
+            supplier: "suppliers",
+            contractor: "contractors",
+            dump_site: "dump_sites",
+            quarry: "quarries",
+          }[b.party_type] === store) ||
+        (b.items || []).some(
+          (i) => store === "work_records" && i.work_record_id === id,
+        )),
+  );
+  if (linked) throw Error("Borç/maliyete bağlı kayıt silinemez");
+  if (
+    [
+      "vehicles",
+      "personnel",
+      "customers",
+      "sites",
+      "quotes",
+      "contracts",
+    ].includes(store)
+  ) {
+    const type = {
+      vehicles: "vehicle",
+      personnel: "personnel",
+      customers: "customer",
+      sites: "site",
+      quotes: "quote",
+      contracts: "contract",
+    }[store];
+    if (
+      (await listActive("activities")).some(
+        (r) => r.owner_type === type && r.owner_id === id,
+      ) ||
+      (store === "vehicles" &&
+        (await listActive("service_plans")).some((r) => r.vehicle_id === id)) ||
+      (store === "personnel" &&
+        (await listActive("payroll_entries")).some(
+          (r) => r.personnel_id === id,
+        ))
+    )
+      throw Error("İşletme defterine bağlı kart silinemez");
+  }
   if (
     ["contracts", "hakedis", "slips"].includes(store) &&
     ["İmzalandı", "Kesinleşti"].includes(rec.status)
@@ -410,6 +468,8 @@ export async function dumpAll() {
 
 // ---- kayıt yardımcıları ----
 export async function saveNew(store, fields, auditReason) {
+  if (ENTERPRISE_STORES.includes(store))
+    throw Error("İşletme defteri ilgili işlem ekranından oluşturulmalı");
   fields = await validateFields(store, fields);
   if (store === "fuel_records") return saveFuelEvent(fields, auditReason);
   if (store === "fuel_tank_movements" && fields.move_type === "ÇIKIŞ") {
@@ -571,7 +631,25 @@ export async function saveWorkSlip(fields, workIds) {
 }
 
 export async function saveExisting(store, rec, fields, auditReason) {
+  if (ENTERPRISE_STORES.includes(store))
+    throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   const current = await get(store, rec.id);
+  if (
+    current?.bank_movement_id &&
+    Object.keys(fields).some((k) =>
+      [
+        "amount",
+        "date",
+        "customer_id",
+        "personnel_id",
+        "bank_account_id",
+        "bank_movement_id",
+        "payment_method",
+        "cash_type",
+      ].includes(k),
+    )
+  )
+    throw Error("Bankaya bağlı hareket tek başına değiştirilemez");
   if (
     (store === "contracts" && current?.status === "İmzalandı") ||
     (store === "hakedis" && current?.status === "Kesinleşti") ||
@@ -589,6 +667,9 @@ export async function saveExisting(store, rec, fields, auditReason) {
           "quantity",
           "unit",
           "price_snapshot",
+          "time_start",
+          "time_end",
+          "break_minutes",
         ].includes(k),
       )) ||
     (store === "slips" &&
@@ -615,6 +696,36 @@ export async function saveExisting(store, rec, fields, auditReason) {
   )
     throw Error(
       "Toplu fişe bağlı iş değiştirilemez; düzeltme için yeni iş ve fiş oluşturun",
+    );
+  if (
+    ["expense_records", "fuel_records", "maintenance_records"].includes(
+      store,
+    ) &&
+    Object.keys(fields).some((k) =>
+      [
+        "date",
+        "amount",
+        "total",
+        "total_amount",
+        "cost",
+        "liters",
+        "unit_price",
+        "kdv_rate",
+        "vehicle_id",
+        "personnel_id",
+        "customer_id",
+        "site_id",
+      ].includes(k),
+    ) &&
+    (await listActive("payables")).some(
+      (b) =>
+        b.status !== "İptal" &&
+        b.source_store === store &&
+        b.source_id === rec.id,
+    )
+  )
+    throw Error(
+      "Alış belgesine bağlı maliyet değiştirilemez; borç kaydını inceleyin",
     );
   fields = await validateFields(store, { ...current, ...fields });
   const upd = {
@@ -757,6 +868,15 @@ async function validateFields(store, fields) {
   )
     throw Error("Cari tutarı veya düzeltme nedeni geçersiz");
   if (store === "work_records") {
+    if (f.time_start || f.time_end) {
+      if (f.unit !== "Saat")
+        throw Error("Saat puantajı yalnız Saat biriminde kullanılabilir");
+      const hours = workHours(f.time_start, f.time_end, f.break_minutes || 0);
+      if (Math.abs(hours - Number(f.quantity)) > 0.0001)
+        throw Error(
+          "Puantaj ile saat miktarı aynı olmalı; Saat Miktarını Hesapla kullanın",
+        );
+    }
     if (
       !f.customer_id ||
       !f.vehicle_id ||
@@ -765,9 +885,27 @@ async function validateFields(store, fields) {
     )
       throw Error("Müşteri, araç, iş türü ve pozitif miktar zorunlu");
   }
+  if (
+    ["expense_records", "fuel_records", "maintenance_records"].includes(
+      store,
+    ) &&
+    f.kdv_rate != null &&
+    (!Number.isFinite(Number(f.kdv_rate)) ||
+      Number(f.kdv_rate) < 0 ||
+      Number(f.kdv_rate) > 100)
+  )
+    throw Error("KDV 0–100 aralığında olmalı");
   if (store === "maintenance_records" && !f.vehicle_id)
     throw Error("Bakım/arıza araca bağlanmalı");
   if (store === "price_book") {
+    const { PRICE_VEHICLE_GROUPS } = await import("./core.js");
+    if (
+      f.vehicle_group &&
+      (!PRICE_VEHICLE_GROUPS[f.vehicle_group] || f.vehicle_id || f.vehicle_type)
+    )
+      throw Error(
+        "Araç grubu, belirli plaka ve tür aynı fiyat kuralında birlikte seçilemez",
+      );
     if (f.site_id && !f.customer_id)
       throw Error("Şantiye fiyatında müşteri zorunlu");
     if (

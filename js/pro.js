@@ -1,3 +1,8 @@
+import {
+  workFinancials,
+  operatingResult,
+  commercialReportRows,
+} from "./enterprise-core.js";
 import * as ui from "./ui.js";
 import * as core from "./core.js";
 import {
@@ -101,6 +106,8 @@ export const FIELD_LABELS = {
   date: "Tarih",
   name: "Ad / Ünvan",
   type: "Tür",
+  vehicle_type: "Araç / makine türü",
+  vehicle_group: "Araç grubu",
   plate: "Plaka / Kod",
   brand: "Marka",
   model: "Model",
@@ -127,6 +134,7 @@ export const FIELD_LABELS = {
   unit_price: "Birim fiyat",
   price: "Fiyat",
   price_source: "Fiyat kaynağı",
+  price_scope: "Araç kapsamı",
   kdv_rate: "KDV %",
   liters: "Litre",
   total: "Tutar",
@@ -161,6 +169,13 @@ export const FIELD_LABELS = {
   grand_total: "Genel toplam",
   subtotal: "Ara toplam",
   kdv_total: "KDV",
+  net_total: "KDV Hariç Tutar",
+  tax_total: "KDV Tutarı",
+  gross_total: "KDV Dahil Tutar",
+  price_source: "Fiyat Kaynağı",
+  time_start: "Başlangıç Saati",
+  time_end: "Bitiş Saati",
+  break_minutes: "Mola (dk)",
   ...COMMERCIAL_LABELS,
 };
 const PRIVATE = new Set([
@@ -174,6 +189,9 @@ const PRIVATE = new Set([
   "salary",
   "identity_number",
   "note",
+  "dump_area",
+  "quarry",
+  "price_source",
 ]);
 const REL = {
   customer_id: "customers",
@@ -209,6 +227,7 @@ async function maps(db) {
 }
 function value(key, v, names) {
   if (REL[key]) return names[REL[key]]?.[v] || "—";
+  if (v == null) return "—";
   if (typeof v === "boolean") return v ? "Evet" : "Hayır";
   if (
     [
@@ -220,9 +239,13 @@ function value(key, v, names) {
       "grand_total",
       "subtotal",
       "kdv_total",
+      "net_total",
+      "tax_total",
+      "gross_total",
     ].includes(key)
   )
     return core.fmtTL(v) + " TL";
+  if (key === "vehicle_group") return core.PRICE_VEHICLE_GROUPS[v]?.label || v;
   return v ?? "";
 }
 export function recordSpec(store, r, names, audience = "internal") {
@@ -254,6 +277,8 @@ export function recordSpec(store, r, names, audience = "internal") {
       ["KDV", "%" + r.price_snapshot.kdv_rate],
       ["İş tutarı", core.fmtTL(r.price_snapshot.amount) + " TL"],
     );
+  if (r.price_snapshot?.price_scope)
+    pairs.push(["Fiyat araç kapsamı", r.price_snapshot.price_scope]);
   if (store === "documents")
     pairs.push(
       ["Belge sahibi", OWNER_LABELS[r.owner_type] || "Eski kayıt"],
@@ -267,6 +292,10 @@ export function recordSpec(store, r, names, audience = "internal") {
       ["Geçerlilik", expiryState(r)],
     );
   return {
+    store,
+    ...(store === "cash_records" && audience === "customer" ? { template: "receipt", signatures: ["Tahsil Eden", "Ödeme Yapan"] } : {}),
+    ...(store === "maintenance_records" && /arıza/i.test(r.maint_type || "") ? { template: "fault" } : {}),
+    ...(store === "documents" ? { template: r.owner_type === "vehicle" ? "vehicle_document" : r.owner_type === "personnel" ? "personnel_document" : "document" } : {}),
     title: LABELS[store] || "Belge",
     number:
       r.doc_no ||
@@ -795,6 +824,8 @@ async function master(ctx) {
             "fuel_type",
             "assignee_id",
             "contractor_id",
+            "km",
+            "machine_hours",
           ]
         : store === "personnel"
           ? ["name", "role", "phone", "employment_date", "vehicle_id"]
@@ -828,19 +859,41 @@ async function master(ctx) {
                 r[k] || "",
                 { req: k === "customer_id" },
               )
-            : k === "ownership"
+            : store === "vehicles" && k === "type"
               ? fSelect(
-                  "Mülkiyet",
+                  "Araç / makine türü",
                   k,
-                  core.VEHICLE_OWNERSHIP,
-                  r[k] || "Özmal",
+                  [
+                    ...new Set(
+                      [
+                        "Araç/Makine",
+                        "Kamyon",
+                        "Tır",
+                        "Kamyonet",
+                        "Ekskavatör",
+                        "JCB",
+                        "İş Makinesi",
+                        "Vinç",
+                        r[k],
+                      ].filter(Boolean),
+                    ),
+                  ],
+                  r[k] || "Araç/Makine",
                   { empty: false },
                 )
-              : k.endsWith("_date")
-                ? fDate(FIELD_LABELS[k], k, r[k] || "", false)
-                : fText(FIELD_LABELS[k] || k, k, r[k] || "", {
-                    req: k === "name",
-                  }),
+              : k === "ownership"
+                ? fSelect(
+                    "Mülkiyet",
+                    k,
+                    core.VEHICLE_OWNERSHIP,
+                    r[k] || "Özmal",
+                    { empty: false },
+                  )
+                : k.endsWith("_date")
+                  ? fDate(FIELD_LABELS[k], k, r[k] || "", false)
+                  : fText(FIELD_LABELS[k] || k, k, r[k] || "", {
+                      req: k === "name",
+                    }),
         )
         .join("")}${fSelect(
         "Durum",
@@ -975,6 +1028,11 @@ async function card(ctx) {
       (x) => x[key] === id || (s === "documents" && x.owner_id === id),
     );
     el.innerHTML = `<div class="section-title">${LABELS[s]} (${rows.length})</div><button class="btn sm" data-go="#/raporlar?store=${s}&${key}=${id}">Filtreli Rapor / PDF</button><div data-related></div>`;
+    if (s === "price_book" && ["customers", "sites"].includes(store))
+      el.insertAdjacentHTML(
+        "afterbegin",
+        `<button class="btn primary" data-go="#/fiyat/new?customer_id=${store === "customers" ? id : r.customer_id}${store === "sites" ? "&site_id=" + id : ""}">+ Fiyat Tanımla</button>`,
+      );
     pagedRender(qs("[data-related]", el), rows, (x) =>
       li({
         href: "#/" + ROUTE[s] + "/" + x.id,
@@ -991,7 +1049,12 @@ async function card(ctx) {
         t2:
           esc(x.date || x.valid_from || "") +
           (s === "price_book"
-            ? " · " + core.fmtTL(x.price) + " TL / " + esc(x.unit || "")
+            ? " · " +
+              esc(core.priceVehicleScope(x, names.vehicles)) +
+              " · " +
+              core.fmtTL(x.price) +
+              " TL / " +
+              esc(x.unit || "")
             : s === "documents"
               ? " · " + expiryState(x)
               : ""),
@@ -1017,10 +1080,28 @@ export async function reports(ctx) {
   const { root, db, query } = ctx,
     names = await maps(db);
   if (query.store === "management") return managementReport(ctx, names);
+  const reportLabels = {
+    ...LABELS,
+    dump_work: "Döküm İşleri",
+    quarry_work: "Ocak İşleri",
+  };
+  const requested =
+    query.store === "dump_sites"
+      ? "dump_work"
+      : query.store === "quarries"
+        ? "quarry_work"
+        : query.store;
   const store =
-    query.store && LABELS[query.store] ? query.store : "work_records";
+    requested && reportLabels[requested] ? requested : "work_records";
   const reportGroups = {
-    OPERASYON: ["work_records", "slips", "dump_sites", "quarries"],
+    OPERASYON: [
+      "work_records",
+      "slips",
+      "dump_work",
+      "quarry_work",
+      "dump_sites",
+      "quarries",
+    ],
     FİLO: ["vehicles", "maintenance_records"],
     PERSONEL: ["personnel", "personnel_events"],
     MÜŞTERİ: ["customers", "sites"],
@@ -1042,12 +1123,12 @@ export async function reports(ctx) {
     `<div class="reportcategories">${Object.entries(reportGroups)
       .map(
         ([label, stores]) =>
-          `<details><summary>${label}</summary>${stores.map((s) => `<button class="chip" data-go="#/raporlar?store=${s}">${LABELS[s] || "Yönetici Raporu"}</button>`).join("")}</details>`,
+          `<details><summary>${label}</summary>${stores.map((s) => `<button class="chip" data-go="#/raporlar?store=${s}">${reportLabels[s] || "Yönetici Raporu"}</button>`).join("")}</details>`,
       )
       .join("")}</div><form data-filters>${fSelect(
       "Rapor",
       "store",
-      Object.entries(LABELS).map(([v, t]) => ({ v, t })),
+      Object.entries(reportLabels).map(([v, t]) => ({ v, t })),
       store,
       { empty: false },
     )}<div class="formgrid2">${fDate("Başlangıç", "from", query.from || "", false)}${fDate("Bitiş", "to", query.to || "", false)}</div>${[
@@ -1078,7 +1159,25 @@ export async function reports(ctx) {
       query.contractor_id || "",
     )}
 ${fSelect("Tank hareketi", "move_type", ["GİRİŞ", "ÇIKIŞ"], query.move_type || "")}
-${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", core.WORK_UNITS, query.unit || "")}${fSelect("Mülkiyet", "ownership", core.VEHICLE_OWNERSHIP, query.ownership || "")}${fText("Döküm sahası", "dump_area", query.dump_area || "")}${fText("Malzeme ocağı", "quarry", query.quarry || "")}${fSelect("Belge durumu", "document_status", ["Geçerli", "30 Gün İçinde", "7 Gün İçinde", "Süresi Geçmiş"], query.document_status || "")}${fSelect(
+${fSelect(
+  "Araç grubu",
+  "vehicle_group",
+  Object.entries(core.PRICE_VEHICLE_GROUPS).map(([v, g]) => ({
+    v,
+    t: g.label,
+  })),
+  query.vehicle_group || "",
+)}${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", core.WORK_UNITS, query.unit || "")}${fSelect("Mülkiyet", "ownership", core.VEHICLE_OWNERSHIP, query.ownership || "")}${fSelect(
+      "Döküm sahası",
+      "dump_site_id",
+      Object.entries(names.dump_sites).map(([v, t]) => ({ v, t })),
+      query.dump_site_id || "",
+    )}${fText("Döküm adı (eski kayıt)", "dump_area", query.dump_area || "")}${fSelect(
+      "Malzeme ocağı",
+      "quarry_id",
+      Object.entries(names.quarries).map(([v, t]) => ({ v, t })),
+      query.quarry_id || "",
+    )}${fText("Ocak adı (eski kayıt)", "quarry", query.quarry || "")}${fSelect("Belge durumu", "document_status", ["Geçerli", "30 Gün İçinde", "7 Gün İçinde", "Süresi Geçmiş"], query.document_status || "")}${fSelect(
       "Gruplama",
       "group",
       [
@@ -1089,6 +1188,8 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
         { v: "vehicle_id", t: "Araç" },
         { v: "personnel_id", t: "Personel" },
         { v: "work_type", t: "İş türü" },
+        { v: "dump_area", t: "Döküm sahası" },
+        { v: "quarry", t: "Malzeme ocağı" },
       ],
       query.group || "",
       { empty: false },
@@ -1112,9 +1213,24 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
       toast("Tarih aralığı geçersiz", "err");
       return;
     }
-    const records = await db.listActive(f.store);
+    const sourceStore = ["dump_work", "quarry_work"].includes(f.store)
+      ? "work_records"
+      : f.store;
+    const records = (await db.listActive(sourceStore)).filter((r) =>
+      f.store === "dump_work"
+        ? r.dump_site_id || r.dump_area
+        : f.store === "quarry_work"
+          ? r.quarry_id || r.quarry
+          : true,
+    );
     const withOwnership = records.map((r) => ({
       ...r,
+      ...(sourceStore === "work_records" ? workFinancials(r) : {}),
+      dump_area: names.dump_sites[r.dump_site_id] || r.dump_area,
+      quarry: names.quarries[r.quarry_id] || r.quarry,
+      ...(f.store === "price_book"
+        ? { price_scope: core.priceVehicleScope(r, names.vehicles) }
+        : {}),
       personnel_id:
         r.personnel_id || (f.store === "vehicles" ? r.assignee_id : null),
       ownership: r.ownership || (r.vehicle_id ? null : undefined),
@@ -1123,7 +1239,11 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
       byId = Object.fromEntries(vehicles.map((v) => [v.id, v]));
     for (const r of withOwnership)
       if (r.vehicle_id) r.ownership = byId[r.vehicle_id]?.ownership;
-    const rows = filterRecords(withOwnership, f);
+    let rows = filterRecords(withOwnership, f);
+    const lineReport =
+      f.detail === "DETAYLI" &&
+      ["quotes", "contracts", "hakedis"].includes(sourceStore);
+    if (lineReport) rows = commercialReportRows(rows, sourceStore);
     const units = {};
     let amount = 0,
       liters = 0;
@@ -1131,7 +1251,12 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
       if (r.unit)
         units[r.unit] = (units[r.unit] || 0) + Number(r.quantity || 0);
       amount += core.toKurus(
-        r.grand_total ?? r.amount ?? r.total ?? r.price_snapshot?.amount ?? 0,
+        r.gross_total ??
+          r.grand_total ??
+          r.amount ??
+          r.total ??
+          r.price_snapshot?.amount ??
+          0,
       );
       liters += Number(r.liters) || 0;
     }
@@ -1140,7 +1265,7 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
       .join(
         " · ",
       )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}`;
-    if (f.detail === "ÖZET" || f.group) {
+    if (f.detail === "ÖZET") {
       const groups = groupRecords(rows, f.group || "date");
       table = {
         headers: ["Grup", "Kayıt", "Miktarlar", "Litre", "Tutar"],
@@ -1155,7 +1280,27 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
         ]),
       };
     } else {
-      const keys = reportKeys(f.store, f.audience);
+      const keys = lineReport
+        ? [
+            sourceStore === "quotes"
+              ? "quote_no"
+              : sourceStore === "contracts"
+                ? "contract_no"
+                : "hakedis_no",
+            "date",
+            "customer_id",
+            "site_id",
+            "work_type",
+            "quantity",
+            "unit",
+            "unit_price",
+            "kdv_rate",
+            "net_total",
+            "tax_total",
+            "gross_total",
+            "status",
+          ]
+        : reportKeys(sourceStore, f.audience);
       table = {
         headers: keys.map(
           (k) =>
@@ -1170,26 +1315,45 @@ ${fText("Malzeme", "material", query.material || "")}${fSelect("Birim", "unit", 
             }[k] ||
             k,
         ),
-        rows: rows.map((r) =>
-          keys.map((k) =>
-            k === "owner_name"
-              ? names[OWNER_STORES[r.owner_type]]?.[r.owner_id] ||
-                names.vehicles?.[r.vehicle_id] ||
-                names.personnel?.[r.personnel_id] ||
-                "Eski kayıt"
-              : k === "document_status"
-                ? expiryState(r)
-                : value(k, r[k], names),
+        rows: [...rows]
+          .sort((a, b) =>
+            f.group
+              ? String(a[f.group] || "").localeCompare(
+                  String(b[f.group] || ""),
+                  "tr",
+                )
+              : 0,
+          )
+          .map((r) =>
+            keys.map((k) =>
+              k === "owner_name"
+                ? names[OWNER_STORES[r.owner_type]]?.[r.owner_id] ||
+                  names.vehicles?.[r.vehicle_id] ||
+                  names.personnel?.[r.personnel_id] ||
+                  "Eski kayıt"
+                : k === "document_status"
+                  ? expiryState(r)
+                  : value(k, r[k], names),
+            ),
           ),
-        ),
       };
     }
     spec = {
-      title: LABELS[f.store] + " Raporu",
+      store: f.store,
+      title: reportLabels[f.store] + " Raporu",
       audience: f.audience,
       orientation: table.headers.length > 6 ? "landscape" : "portrait",
       filename: "SAHAPRO_" + f.store + "_Rapor.pdf",
-      sections: [{ text: summary }, { ...table }],
+      sections: [
+        { title: "Rapor Kapsamı", layout: "identity", pairs: [
+          ["Başlangıç", f.from ? core.trDate(f.from) : "Tüm tarihler"],
+          ["Bitiş", f.to ? core.trDate(f.to) : "Tüm tarihler"],
+          ["Görünüm", f.detail === "ÖZET" ? "Özet" : "Ayrıntılı"],
+          ...Object.entries({customer_id:"Müşteri",site_id:"Şantiye",vehicle_id:"Araç",personnel_id:"Personel",dump_site_id:"Döküm Sahası",quarry_id:"Ocak"}).filter(([key])=>f[key]).map(([key,label])=>[label,value(key,f[key],names)]),
+          ...Object.entries({work_type:"İş Türü",material:"Malzeme",unit:"Birim",ownership:"Mülkiyet",document_status:"Belge Durumu"}).filter(([key])=>f[key]).map(([key,label])=>[label,f[key]]),
+        ]},
+        { title: "Rapor Özeti", text: summary }, { ...table },
+      ],
     };
     const el = qs("[data-results]", root);
     el.innerHTML =
@@ -1252,6 +1416,15 @@ function reportKeys(store, audience = "internal") {
       "dump_area",
       "quarry",
       "customer_note",
+      "unit_price",
+      "kdv_rate",
+      "net_total",
+      "tax_total",
+      "gross_total",
+      "price_source",
+      "time_start",
+      "time_end",
+      "break_minutes",
     ],
     fuel_records: [
       "date",
@@ -1279,7 +1452,7 @@ function reportKeys(store, audience = "internal") {
     price_book: [
       "customer_id",
       "site_id",
-      "vehicle_id",
+      "price_scope",
       "work_type",
       "material",
       "unit",
@@ -1293,6 +1466,9 @@ function reportKeys(store, audience = "internal") {
       "status",
       "subtotal",
       "kdv_total",
+      "net_total",
+      "tax_total",
+      "gross_total",
       "grand_total",
     ],
     quotes: ["quote_no", "date", "customer_id", "type", "title", "status"],
@@ -1365,6 +1541,7 @@ export async function augment(ctx) {
   if (
     !store ||
     qs("[data-pro-pdf]", root) ||
+    qs("[data-slip-share]", root) ||
     parts.includes("new") ||
     parts.includes("edit") ||
     parts.includes("imza") ||
@@ -1402,7 +1579,7 @@ export async function augment(ctx) {
     if (store === "work_records") {
       root.insertAdjacentHTML(
         "beforeend",
-        `<div class="card">${kv("Fiyat kaynağı", r.price_snapshot?.price_source || "Fiyat yok")}${r.price_snapshot ? kv("Birim fiyat", core.fmtTL(r.price_snapshot.unit_price) + " TL") : ""}${r.price_snapshot?.locked ? '<div class="notice">Finansal snapshot kilitli</div>' : '<button class="btn" data-apply-price>Fiyat Uygula</button>'}</div>`,
+        `<div class="card">${kv("Fiyat kaynağı", r.price_snapshot?.price_source || "Fiyat yok")}${r.price_snapshot?.price_scope ? kv("Araç kapsamı", r.price_snapshot.price_scope) : ""}${r.price_snapshot ? kv("Birim fiyat", core.fmtTL(r.price_snapshot.unit_price) + " TL") : ""}${r.price_snapshot?.locked ? '<div class="notice">Finansal snapshot kilitli</div>' : '<button class="btn" data-apply-price>Fiyat Uygula</button>'}</div>`,
       );
       qs("[data-apply-price]", root)?.addEventListener("click", async () => {
         try {
@@ -1556,19 +1733,14 @@ async function simpleDetail(ctx) {
 async function managementReport(ctx, names) {
   const { root, db } = ctx,
     data = await db.dumpAll(),
-    p = core.profitability(data),
-    units = {};
-  for (const w of data.work_records.filter(core.isActive))
-    units[w.unit] = (units[w.unit] || 0) + Number(w.quantity || 0);
+    p = operatingResult(data);
   const table = {
     headers: ["Gösterge", "Değer"],
     rows: [
-      ["Kesinleşmiş hakediş (KDV dahil)", core.fmtTL(p.gelir) + " TL"],
-      ["Yakıt", core.fmtTL(p.yakit) + " TL"],
-      ["Gider", core.fmtTL(p.gider) + " TL"],
-      ["Bakım", core.fmtTL(p.bakim) + " TL"],
-      ["Tahmini operasyon sonucu", core.fmtTL(p.sonuc) + " TL"],
-      ...Object.entries(units).map(([u, v]) => [u, core.fmtNum(v)]),
+      ["Kesinleşmiş Gelir (KDV Hariç)", core.fmtTL(p.revenue) + " TL"],
+      ["KDV Ayrımı Bilinen Maliyet", core.fmtTL(p.known_cost) + " TL"],
+      ["KDV Ayrımı Olmayan Brüt Maliyet", core.fmtTL(p.unknown_cost) + " TL"],
+      ["Geçici Operasyon Sonucu", core.fmtTL(p.provisional_result) + " TL"],
     ],
   };
   const spec = {
@@ -1576,17 +1748,17 @@ async function managementReport(ctx, names) {
     audience: "internal",
     sections: [
       {
-        text: "Tahmini operasyon sonucudur. Resmî muhasebe kârı değildir; KDV ve henüz işlenmemiş maliyetler sonucu etkiler.",
+        text: "Muhasebe net kârı değildir. KDV ayrımı bilinmeyen maliyetler brüt düşülür. Eksik veya dağıtılmamış maliyetler sonucu etkiler. Dönem/müşteri/şantiye/araç bazında incelemek için Maliyet Analizi ekranını kullanın.",
       },
       table,
     ],
   };
   root.innerHTML =
-    appbar("Yönetici Raporu", "İç yönetim görünümü") +
+    appbar("Yönetici Raporu", "Kaynaklı operasyon sonucu") +
     exportBar() +
     '<div class="card">' +
     table.rows.map((p) => kv(...p)).join("") +
-    "</div>";
+    '</div><button class="btn primary block" data-go="#/maliyet">Dönem / Müşteri / Şantiye Maliyet Analizi</button>';
   bindExports(
     root,
     () => spec,
@@ -1632,6 +1804,7 @@ async function formSemantics(ctx) {
 }
 
 export function reportFilterKeys(store) {
+  if (["dump_work", "quarry_work"].includes(store)) store = "work_records";
   const date = ["from", "to"];
   return (
     {
@@ -1647,6 +1820,8 @@ export function reportFilterKeys(store) {
         "unit",
         "ownership",
         "dump_area",
+        "dump_site_id",
+        "quarry_id",
         "quarry",
       ],
       slips: [
@@ -1675,6 +1850,7 @@ export function reportFilterKeys(store) {
         "document_status",
       ],
       price_book: [
+        "vehicle_group",
         "customer_id",
         "site_id",
         "vehicle_id",
