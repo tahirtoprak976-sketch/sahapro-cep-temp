@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261009-3";
+const CACHE = "sahapro-solo-v3-20261011-history-2";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./",
@@ -9,6 +9,10 @@ const ASSETS = [
   "./js/db.js",
   "./js/ui.js",
   "./js/parser.js",
+  "./js/history-core.js",
+  "./js/history-db.js",
+  "./js/history-ui.js",
+  "./data/history-template.json",
   "./js/pdf.js",
   "./js/ocr.js",
   "./js/m-dash.js",
@@ -20,8 +24,11 @@ const ASSETS = [
   "./js/business.js",
   "./js/pro.js",
   "./js/document-engine.js",
+  "./js/pdf-templates.js",
   "./js/backup.js",
+  "./js/enterprise.js", "./js/enterprise-core.js", "./js/enterprise-db.js",
   "./vendor/DejaVuSans.ttf",
+  "./vendor/DejaVuSans-Bold.ttf",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
