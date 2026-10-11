@@ -1,3 +1,4 @@
+import { workHours } from "./enterprise-core.js";
 // SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
 import {
   qs,
@@ -96,7 +97,7 @@ async function workList(ctx) {
       right: '<button class="iconbtn" data-go="#/whatsapp">💬</button>',
     }) +
     `
-    <div style="height:10px"></div>
+    <div class="history-tools"><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div style="height:10px"></div>
     ${segBar(
       [
         { v: "all", t: "Tümü" },
@@ -212,6 +213,7 @@ async function workForm(ctx, editId) {
         ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
         ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
       </div>
+      <section data-work-time hidden><h3>Saat Puantajı (opsiyonel)</h3><div class="formgrid2">${fText("Başlangıç", "time_start", v.time_start || "", { type: "time" })}${fText("Bitiş", "time_end", v.time_end || "", { type: "time" })}</div>${fNum("Mola (dk)", "break_minutes", v.break_minutes ?? 0)}<button type="button" class="btn" data-time-calculate>Saat Miktarını Hesapla</button></section>
       ${fText("Malzeme", "material", v.material || "", { ph: "mıcır, kum…" })}
       <div class="formgrid2">
         ${fSelect("Döküm Sahası", "dump_site_id", [...dumpSites.map((r) => ({ v: r.id, t: r.name })), { v: "__new__", t: "+ Yeni Döküm Sahası" }], v.dump_site_id || "")}
@@ -238,6 +240,27 @@ async function workForm(ctx, editId) {
   const form = qs("[data-form]", root);
   let draftTimer,
     saving = false;
+  const timeSection = qs("[data-work-time]", form);
+  const syncTime = () => {
+    const active = qs("[name=unit]", form).value === "Saat";
+    timeSection.hidden = !active;
+    for (const input of qsa("input,button", timeSection))
+      input.disabled = !active;
+  };
+  form.addEventListener("change", syncTime);
+  syncTime();
+  qs("[data-time-calculate]", form).onclick = () => {
+    try {
+      qs("[name=quantity]", form).value = workHours(
+        qs("[name=time_start]", form).value,
+        qs("[name=time_end]", form).value,
+        qs("[name=break_minutes]", form).value,
+      );
+      form.dispatchEvent(new Event("input"));
+    } catch (e) {
+      toast(e.message, "err");
+    }
+  };
   const batchSection = qs("[data-transport-batch]", form);
   const batchActive = () =>
     !!batchSection &&
@@ -445,6 +468,12 @@ async function workForm(ctx, editId) {
       const fields = {
         date: val.date || todayStr(),
         time: val.time || null,
+        time_start: val.unit === "Saat" ? val.time_start || null : null,
+        time_end: val.unit === "Saat" ? val.time_end || null : null,
+        break_minutes:
+          val.unit === "Saat" && val.time_start
+            ? Number(val.break_minutes || 0)
+            : null,
         customer_id: val.customer_id || null,
         site_id: val.site_id || null,
         vehicle_id: val.vehicle_id || null,
@@ -712,48 +741,21 @@ async function slips(ctx) {
   return slipList(ctx);
 }
 
+const slipIcon = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M7 3h8l4 4v14H5V3h2Z M14 3v5h5 M8 12h8 M8 16h6"/></svg>';
+const slipSerial = (n) => `FS-${String(n || 0).padStart(6, "0")}`;
 async function slipList(ctx) {
   const { root, db, names, query } = ctx;
   const f = query.f || "all";
-  let rows = (await db.getAll("slips"))
-    .filter(isActive)
-    .sort((a, b) => (b.slip_no || 0) - (a.slip_no || 0));
-  if (f !== "all") rows = rows.filter((r) => r.status === f);
-  root.innerHTML =
-    appbar("Dijital İş Fişleri", `${rows.length} fiş`, {
-      right: '<button class="iconbtn" data-go="#/belgeler">🗂</button>',
-    }) +
-    `
-    <div style="height:10px"></div>
-    ${segBar(
-      [
-        { v: "all", t: "Tümü" },
-        { v: "Taslak", t: "Taslak" },
-        { v: "İmzalandı", t: "İmzalandı" },
-        { v: "Revize", t: "Revize" },
-      ],
-      f,
-      (v) => `#/fisler?f=${v}`,
-    )}
-    <div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/fisler/new">+ Yeni Fiş</button></div>`;
-  const listEl = qs("[data-list]", root);
-  if (!rows.length)
-    listEl.innerHTML = emptyState(
-      "🧾",
-      "Henüz dijital fiş yok",
-      '<button class="btn primary" data-go="#/fisler/new">+ Fiş Oluştur</button>',
-    );
-  else
-    pagedRender(listEl, rows, (s) =>
-      li({
-        ic: "🧾",
-        href: "#/fisler/" + s.id,
-        t1: `#${String(s.slip_no || 0).padStart(6, "0")} · ${esc(names.customers[s.customer_id] || "—")}`,
-        t2: `${trDate(s.date)} · ${esc(names.vehicles[s.vehicle_id] || "—")} · ${fmtNum(s.quantity)} ${esc(s.unit || "")}`,
-        badgeHtml: statusBadge(s.status || "Taslak"),
-      }),
-    );
+  const all = (await db.getAll("slips")).filter(isActive).sort((a,b)=>(b.slip_no||0)-(a.slip_no||0));
+  const rows = f === "all" ? all : all.filter(r=>r.status===f);
+  root.innerHTML = appbar("Dijital İş Fişleri", "Hizmet, teslim ve imza takibi") + `
+    <div class="slip-overview"><div><span>Toplam fiş</span><strong>${all.length}</strong></div><div><span>İmza bekleyen</span><strong>${all.filter(r=>r.status==='Taslak').length}</strong></div><div><span>İmzalı</span><strong>${all.filter(r=>r.status==='İmzalandı').length}</strong></div></div>
+    ${segBar([{v:"all",t:"Tümü"},{v:"Taslak",t:"Taslak"},{v:"İmzalandı",t:"İmzalı"},{v:"Revize",t:"Revize"},{v:"İptal",t:"İptal"}],f,v=>`#/fisler?f=${v}`)}
+    <div class="slip-list" data-list></div>
+    <div class="actionbar"><button class="btn primary" data-go="#/fisler/new">Yeni Fiş Oluştur</button></div>`;
+  const el = qs("[data-list]",root);
+  if (!rows.length) el.innerHTML = '<div class="slip-empty">'+slipIcon+'<h2>Bu görünümde fiş bulunmuyor</h2><p>İş kaydından veya Yeni Fiş Oluştur ile başlayabilirsiniz.</p></div>';
+  else pagedRender(el,rows,s=>`<a class="slip-list-card" href="#/fisler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${slipSerial(s.slip_no)}</span>${statusBadge(s.status||"Taslak")}</div><h2>${esc(names.customers[s.customer_id]||"—")}</h2><p>${esc(names.sites[s.site_id]||"Şantiye belirtilmedi")}</p><div class="slip-card-bottom"><span>${trDate(s.date)}<small>${esc(s.work_text||"İş fişi")}</small></span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit||"")}</small></strong></div></a>`);
 }
 
 async function slipForm(ctx, editId) {
@@ -824,13 +826,14 @@ async function slipForm(ctx, editId) {
 
   root.innerHTML =
     appbar(
-      editId ? "Fiş Düzenle" : "+ Dijital Fiş",
+      editId ? "Fiş Düzenle" : "Yeni Dijital İş Fişi",
       editId
         ? "Seri #" + String(rec.slip_no).padStart(6, "0")
         : "Seri no otomatik verilir",
     ) +
     `
-    <form data-form novalidate>
+    <form class="slip-form" data-form novalidate>
+      <section class="slip-panel"><h2><span>01</span> Müşteri ve İş Yeri</h2><p class="slip-hint">Fişin teslim edileceği müşteri ve şantiye.</p>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
         ${fSelect(
@@ -847,6 +850,7 @@ async function slipForm(ctx, editId) {
           v.site_id,
         )}
       </div>
+      </section><section class="slip-panel"><h2><span>02</span> Araç ve Gerçekleşen Hizmet</h2>
       <div class="formgrid2">
         ${fSelect(
           "Araç / Makine",
@@ -867,9 +871,10 @@ async function slipForm(ctx, editId) {
         ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
         ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
       </div>
-      ${fArea("Açıklama", "description", v.description || "")}
+      </section><section class="slip-panel"><h2><span>03</span> Teslim Bilgileri</h2><p class="slip-hint">Bu açıklama müşteri PDF’sinde görünür. İç not yazmayın.</p>
+      ${fArea("Müşteriye Açıklama", "description", v.description || "")}
       ${fText("Teslim Alan (ad soyad)", "receiver_name", v.receiver_name || "")}
-    </form>
+      </section></form>
     <div class="actionbar"><button class="btn primary" data-save>${editId ? "Kaydet" : "Kaydet ve İmzaya Geç"}</button></div>`;
 
   const sourceBatch = (v.work_record_ids || []).length > 1;
@@ -1000,15 +1005,16 @@ async function slipSign(ctx, id) {
     return;
   }
   root.innerHTML =
-    appbar("Parmak İmzası", "Fiş #" + String(s.slip_no).padStart(6, "0")) +
+    appbar("Teslim ve İmza", slipSerial(s.slip_no)) +
     `
-    <div class="notice info"><span>ℹ</span><span>İmzalayan ekrana parmağıyla imza atar. İmzadan sonra fiş değiştirilemez; düzeltme için revizyon oluşturulur.</span></div>
+    <section class="slip-panel"><h2>Teslim Özeti</h2>${kv("Yapılan İş", s.work_text || "—")}${kv("Miktar", fmtNum(s.quantity)+" "+(s.unit||""))}${kv("Teslim Alan", s.receiver_name || "Belirtilmedi")}</section>
+    <section class="slip-panel"><h2>Teslim Alan İmzası</h2><p class="slip-hint">Aşağıdaki alana parmağınızla imza atın. İmzalı fiş korunur; düzeltme için ayrı revizyon açılır.</p>
     <div class="sigframe"><canvas class="sigpad" data-pad></canvas></div>
     <div class="row" style="margin-top:10px;gap:8px">
       <button class="btn ghost grow" data-clear>Temizle</button>
-      <button class="btn ghost grow" data-skip>İmzasız Kaydet</button>
-      <button class="btn ok grow" data-sign>İmzala ✓</button>
-    </div>`;
+      <button class="btn ghost grow" data-skip>Taslak Olarak Bırak</button>
+      <button class="btn primary grow" data-sign>İmzayı Onayla</button>
+    </div></section>`;
   const pad = qs("[data-pad]", root);
   const rect = () => pad.getBoundingClientRect();
   pad.width = 640;
@@ -1063,6 +1069,10 @@ async function slipSign(ctx, id) {
       toast("Önce imza atın", "err");
       return;
     }
+    const button = qs("[data-sign]", root);
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
     const blob = await new Promise((r) => pad.toBlob(r, "image/png"));
     await db.signSlip(id, new File([blob], "imza.png", { type: "image/png" }));
     // Revizyon zinciri: bu fiş bir revizyon ise orijinali "Revize" işaretle
@@ -1078,6 +1088,8 @@ async function slipSign(ctx, id) {
     }
     toast("Fiş imzalandı ve kilitlendi", "ok");
     go("#/fisler/" + id);
+    } catch(e) { toast(e.message || "İmza kaydedilemedi", "err"); }
+    finally { button.disabled = false; }
   });
 }
 
@@ -1095,35 +1107,39 @@ async function slipDetail(ctx, id) {
   );
 
   root.innerHTML =
-    appbar("Fiş #" + String(s.slip_no).padStart(6, "0"), trDate(s.date), {
+    appbar("Dijital İş Fişi", slipSerial(s.slip_no) + " · " + trDate(s.date), {
       right: statusBadge(s.status || "Taslak"),
     }) +
     `
-    <div style="height:10px"></div>
-    <div class="card">
+    <div class="slip-document-banner"><span>GERÇEKLEŞEN HİZMET</span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit || "")}</small></strong><p>${esc(s.work_text || "—")}</p></div>
+    <section class="slip-panel"><h2>Müşteri ve İş Yeri</h2>
       ${kv("Müşteri", names.customers[s.customer_id] || "—")}
       ${kv("Şantiye", names.sites[s.site_id] || "—")}
-      ${kv("Araç / Plaka", (names.vehicles[s.vehicle_id] || "—") + (s.plate ? " / " + s.plate : ""))}
+      </section><section class="slip-panel"><h2>Hizmet Bilgileri</h2>
+      ${kv("Araç / Plaka", (names.vehicles[s.vehicle_id] || s.plate || "—") + (s.plate && s.plate !== names.vehicles[s.vehicle_id] ? " / " + s.plate : ""))}
       ${kv("Personel", names.personnel[s.personnel_id] || "—")}
       ${kv("Yapılan İş", s.work_text || "—")}
       ${kv("Miktar", fmtNum(s.quantity) + " " + (s.unit || ""))}
       ${s.description ? kv("Açıklama", s.description) : ""}
+      </section><section class="slip-panel"><h2>Teslim ve Belge Durumu</h2>
       ${kv("Teslim Alan", s.receiver_name || "—")}
       ${s.signed_at ? kv("İmza Zamanı", new Date(s.signed_at).toLocaleString("tr-TR")) : ""}
       ${s.revision_no > 1 ? kv("Revizyon", "v" + s.revision_no) : ""}
-    </div>
+    <p class="slip-hint">${s.status === "İmzalandı" ? "İmzalı kayıt kilitlidir. Düzeltmeler yeni revizyon olarak saklanır." : s.status === "Revize" ? "Bu kayıt korunmuştur; güncel revizyonu kontrol edin." : s.status === "İptal" ? "Bu fiş iptal edilmiştir." : "Taslak fiş: teslim alan imzası henüz alınmadı."}</p></section>
     ${sig ? `<div class="section-title">İmza</div><div class="sigframe"><img data-sig alt="İmza"></div>` : ""}
     ${revisions.length ? `<div class="section-title">Revizyonlar</div>` + revisions.map((r) => li({ ic: "🧾", href: "#/fisler/" + r.id, t1: `#${String(r.slip_no).padStart(6, "0")} (v${r.revision_no})`, badgeHtml: statusBadge(r.status) })).join("") : ""}
-    <div class="actionbar">
+    <div class="actionbar slip-actions">
       ${s.status === "Taslak" ? `<button class="btn ok" data-go="#/fisler/${id}/imza">İmzala</button><button class="btn" data-go="#/fisler/${id}/edit">Düzenle</button>` : ""}
       ${s.status === "İmzalandı" ? `<button class="btn" data-revize>Revizyon</button>` : ""}
-      <button class="btn primary" data-pdf>PDF</button>
+      <button class="btn primary" data-pdf>PDF</button><button class="btn" data-slip-share>Paylaş</button><button class="btn" data-slip-print>Yazdır</button>
       ${s.status !== "İmzalandı" ? '<button class="btn danger" data-del>İptal</button>' : ""}
     </div>`;
 
   if (sig) {
     const url = URL.createObjectURL(sig.blob);
-    qs("[data-sig]", root).src = url;
+    const img = qs("[data-sig]", root);
+    img.onload = () => URL.revokeObjectURL(url);
+    img.src = url;
   }
   const rv = qs("[data-revize]", root);
   if (rv)
@@ -1157,10 +1173,15 @@ async function slipDetail(ctx, id) {
       toast("Revizyon taslağı #" + String(no).padStart(6, "0"), "ok");
       go("#/fisler/" + created.id);
     });
-  qs("[data-pdf]", root).addEventListener("click", async () => {
-    const pdf = await import("./pdf.js");
-    await pdf.slipPdf(s, names, sig ? sig.blob : null, ctx);
-  });
+  for (const [selector, mode] of [["[data-pdf]","download"],["[data-slip-share]","share"],["[data-slip-print]","print"]]) {
+    qs(selector,root).addEventListener("click",async()=>{
+      try {
+        const {slipSpec} = await import("./pdf.js");
+        const {exportDocument} = await import("./document-engine.js");
+        await exportDocument(slipSpec(s,names,sig?.blob || null),mode);
+      } catch(e) { toast(e.message || "Belge oluşturulamadı", "err"); }
+    });
+  }
   const del = qs("[data-del]", root);
   if (del)
     del.addEventListener("click", async () => {
@@ -1194,7 +1215,7 @@ async function whatsapp(ctx) {
     appbar("WhatsApp Ayrıştırıcı", "Mesajı yapıştır → taslak → sen onayla") +
     `
     <div class="notice info"><span>ℹ</span><span>Taslaklar otomatik kaydedilmez; her birini tek tek onaylarsın. Belirsizler "KONTROL GEREKLİ" işaretlenir. Ham mesaj saklanır.</span></div>
-    <div class="field"><label>Mesaj metni</label><textarea data-raw style="min-height:130px" placeholder="U55 sevgi sokak ahmet bey 1 yevmiye&#10;34UL9492 leda 3 sefer hafriyat"></textarea></div>
+    <div class="slip-panel"><p>Eski mesajları tarih ve fiyat kontrolüyle aktarmak için:</p><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div class="field"><label>Mesaj metni</label><textarea data-raw style="min-height:130px" placeholder="U55 sevgi sokak ahmet bey 1 yevmiye&#10;34UL9492 leda 3 sefer hafriyat"></textarea></div>
     <div class="row" style="gap:8px;margin-bottom:12px">
       <button class="btn primary grow" data-parse>Ayrıştır</button>
       ${voiceSupported() ? '<button class="btn" data-voice>🎙 Sesli</button>' : ""}

@@ -97,7 +97,8 @@ export function toast(msg, kind = "") {
   const d = document.createElement("div");
   d.className = "toast " + (kind === "err" ? "err" : kind === "ok" ? "ok" : "");
   d.textContent = msg;
-  root.appendChild(d);
+  d.setAttribute("role", kind === "err" ? "alert" : "status");
+  root.replaceChildren(d);
   setTimeout(() => {
     d.style.opacity = "0";
     d.style.transition = "opacity .3s";

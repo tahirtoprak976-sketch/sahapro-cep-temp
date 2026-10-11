@@ -17,42 +17,28 @@ export function slipSpec(s, names, sigBlob) {
   if ((s.status === "İmzalandı" || s.signed_at) && !sigBlob)
     throw Error("İmzalı fişin imzası bulunamadı; PDF engellendi");
   return {
+    template: "slip",
     title: "Dijital İş Fişi",
-    number: s.slip_no,
+    number: Number.isFinite(Number(s.slip_no)) ? "FS-" + String(s.slip_no).padStart(6,"0") : s.slip_no,
     audience: "customer",
     filename: `SAHAPRO_Fis_${s.slip_no}.pdf`,
+    signatures: sigBlob ? null : ["Hizmeti Veren", "Teslim Alan"],
     sections: [
-      {
-        pairs: [
-          ["Tarih", trDate(s.date)],
-          ["Durum", s.status],
-          ["Müşteri", name(names, "customers", s.customer_id)],
-          ["Şantiye", name(names, "sites", s.site_id)],
-          ["Araç", name(names, "vehicles", s.vehicle_id)],
-          ["Plaka", s.plate],
-          ["Yapılan iş", s.work_text],
-          ["Miktar", fmtNum(s.quantity) + " " + s.unit],
-          ["Açıklama", s.description],
-          ["Teslim alan", s.receiver_name],
-        ],
-      },
-      ...(s.customer_items?.length
-        ? [
-            {
-              headers: ["Şantiye", "İş", "Miktar", "Birim", "Birim fiyat"],
-              rows: customerWorkLines(s.customer_items).map((i) => [
-                name(names, "sites", i.site_id),
-                i.work_type,
-                fmtNum(i.quantity),
-                i.unit,
-                i.unit_price == null ? "—" : tl(i.unit_price),
-              ]),
-            },
-          ]
-        : []),
-      ...(sigBlob
-        ? [{ title: "Teslim Alan İmzası", image: sigBlob, text: s.signed_at }]
-        : [{ text: "TASLAK — imza bekleniyor" }]),
+      {title:"Belge ve Teslim Bilgileri",pairs:[
+        ["Tarih",trDate(s.date)],["Durum",s.status || "Taslak"],
+        ["Müşteri",name(names,"customers",s.customer_id)],["Şantiye",name(names,"sites",s.site_id)],
+        ["Araç / Makine",name(names,"vehicles",s.vehicle_id)],["Plaka",s.plate || "—"],
+        ["Revizyon",String(s.revision_no || 1)],["Teslim alan",s.receiver_name || "Belirtilmedi"],
+      ]},
+      {title:"Gerçekleşen Hizmet",pairs:[["Yapılan iş",s.work_text],["Miktar",fmtNum(s.quantity)+" "+(s.unit || "")]]},
+      ...(s.customer_items?.length ? [{
+        title:"Hizmet Dökümü",headers:["Şantiye","İş","Miktar","Birim","Birim fiyat"],
+        rows:customerWorkLines(s.customer_items).map(i=>[name(names,"sites",i.site_id),i.work_type,fmtNum(i.quantity),i.unit,i.unit_price==null?"—":tl(i.unit_price)])
+      }] : []),
+      ...(s.description ? [{title:"Müşteriye Açıklama",text:s.description}] : []),
+      ...(sigBlob ? [{title:"Teslim Alan İmzası",image:sigBlob,text:
+        (s.receiver_name || "Teslim alan belirtilmedi") + (s.signed_at ? " · " + new Date(s.signed_at).toLocaleString("tr-TR",{timeZone:"Europe/Istanbul"}) : "")
+      }] : [{title:"Belge Durumu",text:s.status==="İptal" ? "İPTAL — Bu fiş iptal edilmiştir." : "TASLAK — Teslim alan imzası henüz alınmamıştır."}]),
     ],
   };
 }
@@ -84,22 +70,30 @@ export const COMMERCIAL_LABELS = {
   extra_terms: "Ek maddeler",
 };
 export function commercialSpec(t, names, tot, contract = false) {
+  const identity = new Set(["title", "valid_until", "contact", "phone", "email", "start_date", "end_date"]);
+  const terms = Object.entries(COMMERCIAL_LABELS).filter(([k]) => !identity.has(k) && k !== "scope");
+  const method = {UNIT_PRICE:"Birim Fiyatlı",QUANTITY_BASED:"Miktara Dayalı",LUMP_SUM:"Götürü Bedel",ALTERNATIVE:"Alternatifli"}[t.type || t.pricing_method] || t.type || t.pricing_method;
   return {
+    template: contract ? "contract" : "quote",
     title: contract ? t.template || "Hizmet Sözleşmesi" : "Teklif",
     number: contract ? t.contract_no : t.quote_no,
     audience: "customer",
     filename: `SAHAPRO_${contract ? "Sozlesme" : "Teklif"}_${contract ? t.contract_no : t.quote_no}.pdf`,
     sections: [
       {
+        title: contract ? "Taraflar ve Sözleşme Bilgileri" : "Teklif ve Muhatap Bilgileri",
+        layout: "identity",
         pairs: [
           ["Tarih", trDate(t.date)],
           ["Müşteri", name(names, "customers", t.customer_id)],
           ["Şantiye", name(names, "sites", t.site_id)],
-          ["Fiyatlandırma", t.type || t.pricing_method],
+          ["Fiyatlandırma", method],
           ["Durum", t.status],
-          ...Object.entries(COMMERCIAL_LABELS).map(([k, l]) => [l, t[k]]),
+          ...Object.entries(COMMERCIAL_LABELS).filter(([k]) => identity.has(k)).map(([k, l]) => [l, ["valid_until", "start_date", "end_date"].includes(k) && t[k] ? trDate(t[k]) : t[k]]),
         ],
       },
+      ...(t.scope ? [{ title: "İşin Kapsamı", text: t.scope }] : []),
+      ...(t.type === "LUMP_SUM" ? [{layout:"notice",text:"Götürü bedel, Bedel Özeti bölümündeki anlaşılmış tutardır. Hizmet satırları kapsamı açıklar; satır fiyatları ayrıca toplanmaz."}] : []),
       {
         title: "Fiyat Kalemleri",
         headers: ["Kalem", "Birim", "Miktar", "Birim Fiyat", "Tutar"],
@@ -112,6 +106,8 @@ export function commercialSpec(t, names, tot, contract = false) {
         ]),
       },
       {
+        title: "Bedel Özeti",
+        layout: "totals",
         pairs: tot.show_total
           ? [
               ["Ara toplam", tl(tot.subtotal)],
@@ -125,6 +121,11 @@ export function commercialSpec(t, names, tot, contract = false) {
             ? "Alternatif kalemler toplanmaz."
             : "Birim fiyatlar toplanmaz. Gerçekleşen miktarlar üzerinden hakediş yapılır.",
       },
+      ...(terms.some(([k]) => t[k]) ? [{
+        title: contract ? "Sözleşme Koşulları" : "Ticari Koşullar",
+        layout: "clauses",
+        pairs: terms.map(([k, l]) => [l, t[k]]),
+      }] : []),
     ],
     signatures: contract ? ["İşveren", "Yüklenici"] : null,
   };
@@ -145,6 +146,7 @@ export function hakedisSpec(h, names) {
     tl(i.total),
   ];
   return {
+    template: "progress",
     title: "Hakediş",
     number: h.hakedis_no,
     audience: "customer",
@@ -177,6 +179,7 @@ export function hakedisSpec(h, names) {
             "Fiyat",
             "KDV Dahil Tutar",
           ],
+          widths: [13, 33, 18, 9, 9, 21, 22],
           rows: customerWorkLines(h.items || [])
             .filter((i) =>
               group === "Sefer" ? i.unit === "Sefer" : i.unit !== "Sefer",
@@ -184,6 +187,8 @@ export function hakedisSpec(h, names) {
             .map(row),
         })),
       {
+        title: "Hakediş Bedel Özeti",
+        layout: "totals",
         pairs: [
           ["Ara toplam", tl(h.subtotal)],
           ["KDV", tl(h.kdv_total)],
@@ -191,6 +196,8 @@ export function hakedisSpec(h, names) {
         ],
       },
     ],
+    signatures: ["İşveren Kontrolü", "Yüklenici"],
+    signatureLayout: "besideTotals",
   };
 }
 export async function hakedisPdf(h, names) {
@@ -199,6 +206,7 @@ export async function hakedisPdf(h, names) {
 export async function dailyReportPdf(date, data, names) {
   const sum = daySummary(date, data);
   return exportDocument({
+    template: "daily",
     title: "Günlük Operasyon Raporu",
     number: date,
     audience: "internal",

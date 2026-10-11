@@ -1,3 +1,4 @@
+import { customerBankReceipt } from "./enterprise-db.js";
 import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
 import {
@@ -38,6 +39,8 @@ import {
   calcQuoteTotals,
   calcHakedisTotals,
   resolvePrice,
+  PRICE_VEHICLE_GROUPS,
+  priceVehicleScope,
   cariBalance,
   QUOTE_TYPES,
   PAYMENT_METHODS,
@@ -459,7 +462,7 @@ async function priceBook(ctx) {
           ic: "🏷",
           href: `#/fiyat/${p.id}/edit`,
           t1: esc(p.work_type || names.vehicles[p.vehicle_id] || "Genel"),
-          t2: `${p.customer_id ? esc(names.customers[p.customer_id] || "") + " · " : ""}${p.site_id ? esc(names.sites[p.site_id] || "") + " · " : ""}${p.valid_from ? trDate(p.valid_from) + "→" + (p.valid_to ? trDate(p.valid_to) : "∞") : "sürekli"} · KDV %${p.kdv_rate ?? 20}${p.kdv_included ? " dahil" : " +KDV"}`,
+          t2: `${esc(priceVehicleScope(p, names.vehicles))} · ${p.customer_id ? esc(names.customers[p.customer_id] || "") + " · " : ""}${p.site_id ? esc(names.sites[p.site_id] || "") + " · " : ""}${p.valid_from ? trDate(p.valid_from) + "→" + (p.valid_to ? trDate(p.valid_to) : "∞") : "sürekli"} · KDV %${p.kdv_rate ?? 20}${p.kdv_included ? " dahil" : " +KDV"}`,
           end:
             p.formula === "CRANE_FIRST_HOUR"
               ? '<span class="badge accent">vinç formülü</span>'
@@ -470,7 +473,7 @@ async function priceBook(ctx) {
 }
 
 async function priceForm(ctx, editId) {
-  const { root, db } = ctx;
+  const { root, db, query = {} } = ctx;
   const [customers, sites, vehicles] = await Promise.all([
     db.listActive("customers"),
     db.listActive("sites"),
@@ -482,7 +485,14 @@ async function priceForm(ctx, editId) {
     kdv_rate: 20,
     kdv_included: false,
     active: true,
+    customer_id: query.customer_id || null,
+    site_id: query.site_id || null,
   };
+  const scope = v.vehicle_id
+    ? "VEHICLE"
+    : v.vehicle_type
+      ? "TYPE"
+      : v.vehicle_group || "ALL";
   root.innerHTML =
     appbar(
       editId ? "Fiyat Düzenle" : "+ Fiyat",
@@ -491,7 +501,23 @@ async function priceForm(ctx, editId) {
     `
     <form data-form novalidate>
       ${fSelect(
-        "Araç/Makine",
+        "Fiyat uygulanacak araçlar",
+        "vehicle_scope",
+        [
+          { v: "ALL", t: "Tüm araç / makineler" },
+          ...Object.entries(PRICE_VEHICLE_GROUPS).map(([v, g]) => ({
+            v,
+            t: g.label,
+          })),
+          { v: "VEHICLE", t: "Belirli araç / plaka" },
+          { v: "TYPE", t: "Belirli araç / makine türü" },
+        ],
+        scope,
+        { empty: false },
+      )}
+      <div class="notice" data-group-help hidden>Bu fiyat, kartında Tür alanı Kamyon veya Tır/Çekici olarak tanımlı araçlara uygulanır. Plaka seçmeniz gerekmez; gruba sonradan eklenen araçlar da aynı fiyatı kullanır. Türü belirtilmemiş araçlar otomatik gruba alınmaz.</div>
+      ${fSelect(
+        "Belirli Araç / Plaka",
         "vehicle_id",
         vehicles.map((x) => ({ v: x.id, t: x.name })),
         v.vehicle_id,
@@ -557,21 +583,54 @@ async function priceForm(ctx, editId) {
       <button class="btn primary" data-save>Kaydet</button>
       ${editId ? '<button class="btn danger" data-del>Sil</button>' : ""}
     </div>`;
+  const updateScope = () => {
+    const selected = qs("[name=vehicle_scope]", root).value;
+    for (const [field, applicable] of [
+      ["vehicle_id", selected === "VEHICLE"],
+      ["vehicle_type", selected === "TYPE"],
+    ]) {
+      const input = qs("[name=" + field + "]", root);
+      input.closest(".field").hidden = !applicable;
+      input.disabled = !applicable;
+    }
+    const help = qs("[data-group-help]", root);
+    help.hidden = !PRICE_VEHICLE_GROUPS[selected];
+    if (!help.hidden)
+      help.textContent = `${PRICE_VEHICLE_GROUPS[selected].label}: araç kartındaki Tür bilgisiyle eşleşir. Plaka seçmeniz gerekmez; yeni uygun araçlar da aynı fiyatı kullanır. Türü belirtilmemiş araçlar otomatik gruba alınmaz.`;
+  };
+  qs("[name=vehicle_scope]", root).addEventListener("change", updateScope);
+  updateScope();
   qs("select[name=formula]", root).addEventListener("change", (e) => {
     qs("[data-crane]", root).style.display =
       e.target.value === "CRANE_FIRST_HOUR" ? "block" : "none";
   });
   qs("[data-save]", root).addEventListener("click", async () => {
     const val = collectForm(qs("[data-form]", root));
-    if (val.formula !== "CRANE_FIRST_HOUR" && !Number(val.price)) {
+    if (
+      val.formula !== "CRANE_FIRST_HOUR" &&
+      (val.price === "" ||
+        !Number.isFinite(Number(val.price)) ||
+        Number(val.price) < 0)
+    ) {
       toast("Fiyat girin", "err");
       return;
     }
+    if (
+      (val.vehicle_scope === "VEHICLE" && !val.vehicle_id) ||
+      (val.vehicle_scope === "TYPE" && !val.vehicle_type?.trim())
+    ) {
+      toast("Seçilen kapsam için araç veya tür seçin", "err");
+      return;
+    }
     const fields = {
-      vehicle_id: val.vehicle_id || null,
+      vehicle_id: val.vehicle_scope === "VEHICLE" ? val.vehicle_id : null,
+      vehicle_group: PRICE_VEHICLE_GROUPS[val.vehicle_scope]
+        ? val.vehicle_scope
+        : null,
       work_type: val.work_type || null,
       unit: val.unit,
-      vehicle_type: val.vehicle_type || null,
+      vehicle_type:
+        val.vehicle_scope === "TYPE" ? val.vehicle_type.trim() : null,
       material: val.material || null,
       distance_min: val.distance_min !== "" ? Number(val.distance_min) : null,
       distance_max: val.distance_max !== "" ? Number(val.distance_max) : null,
@@ -589,11 +648,15 @@ async function priceForm(ctx, editId) {
       next_hour_price: val.next_hour_price ? Number(val.next_hour_price) : null,
       active: true,
     };
-    if (editId)
-      await db.saveExisting("price_book", rec, fields, "Fiyat güncellendi");
-    else await db.saveNew("price_book", fields, "Fiyat eklendi");
-    toast("Fiyat kaydedildi", "ok");
-    go("#/fiyat");
+    try {
+      if (editId)
+        await db.saveExisting("price_book", rec, fields, "Fiyat güncellendi");
+      else await db.saveNew("price_book", fields, "Fiyat eklendi");
+      toast("Fiyat kaydedildi", "ok");
+      go("#/fiyat");
+    } catch (e) {
+      toast(e.message, "err");
+    }
   });
   const del = qs("[data-del]", root);
   if (del)
@@ -647,13 +710,15 @@ async function hakedis(ctx) {
 
 async function hakedisNew(ctx) {
   const { root, db, names } = ctx;
-  const [customers, sites, works, pricebook, allHak] = await Promise.all([
-    db.listActive("customers"),
-    db.listActive("sites"),
-    db.getAll("work_records"),
-    db.listActive("price_book"),
-    db.getAll("hakedis"),
-  ]);
+  const [customers, sites, works, pricebook, allHak, vehicles] =
+    await Promise.all([
+      db.listActive("customers"),
+      db.listActive("sites"),
+      db.getAll("work_records"),
+      db.listActive("price_book"),
+      db.getAll("hakedis"),
+      db.listActive("vehicles"),
+    ]);
   const today = todayStr();
   const inActiveHak = new Set();
   for (const h of allHak.filter((h) => isActive(h) && h.status !== "İptal"))
@@ -745,7 +810,9 @@ async function hakedisNew(ctx) {
                 unit: w.unit,
                 date: w.date,
                 material: w.material,
-                vehicle_type: w.vehicle_type,
+                vehicle_type:
+                  vehicles.find((v) => v.id === w.vehicle_id)?.type ||
+                  w.vehicle_type,
                 distance_km: w.distance_km,
               });
           const isCrane = price && price.formula === "CRANE_FIRST_HOUR";
@@ -783,7 +850,9 @@ async function hakedisNew(ctx) {
               unit: w.unit,
               date: w.date,
               material: w.material,
-              vehicle_type: w.vehicle_type,
+              vehicle_type:
+                vehicles.find((v) => v.id === w.vehicle_id)?.type ||
+                w.vehicle_type,
               distance_km: w.distance_km,
             });
         const manual = qs(`[data-price="${w.id}"]`, rowsEl);
@@ -1082,9 +1151,10 @@ async function cash(ctx) {
 
 async function cashForm(ctx) {
   const { root, db } = ctx;
-  const [customers, personnel] = await Promise.all([
+  const [customers, personnel, banks] = await Promise.all([
     db.listActive("customers"),
     db.listActive("personnel"),
+    db.listActive("bank_accounts"),
   ]);
   root.innerHTML =
     appbar(
@@ -1111,34 +1181,79 @@ async function cashForm(ctx) {
         )}
       </div>
       ${fSelect("Ödeme Şekli", "payment_method", PAYMENT_METHODS, "Nakit", { empty: false })}
+      ${fSelect(
+        "Banka Hesabı",
+        "bank_account_id",
+        banks.map((b) => ({ v: b.id, t: b.name })),
+      )}
       ${fArea("Açıklama", "description", "")}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const syncBank = () => {
+    const on =
+      qs("[name=cash_type]", root).value === "Müşteriden Para Alındı" &&
+      qs("[name=payment_method]", root).value === "Havale";
+    const bank = qs("[name=bank_account_id]", root),
+      person = qs("[name=personnel_id]", root);
+    bank.closest(".field").hidden = !on;
+    bank.disabled = !on;
+    person.closest(".field").hidden = on;
+    person.disabled = on;
+    if (on) person.value = "";
+  };
+  qs("[name=payment_method]", root).addEventListener("change", syncBank);
+  qs("[name=cash_type]", root).addEventListener("change", syncBank);
+  syncBank();
+  const requestId = ctx.core.uuid();
+  let cashSaving = false;
   qs("[data-save]", root).addEventListener("click", async () => {
-    const val = collectForm(qs("[data-form]", root));
-    if (!(Number(val.amount) > 0)) {
-      toast("Pozitif tutar girin", "err");
-      return;
+    if (cashSaving) return;
+    cashSaving = true;
+    qs("[data-save]", root).disabled = true;
+    try {
+      const val = collectForm(qs("[data-form]", root));
+      if (!(Number(val.amount) > 0)) {
+        throw Error("Pozitif tutar girin");
+      }
+      const fields = {
+        request_id: requestId,
+        date: val.date,
+        cash_type: val.cash_type,
+        amount: Number(val.amount),
+        personnel_id: val.personnel_id || null,
+        customer_id: val.customer_id || null,
+        payment_method: val.payment_method,
+        description: val.description || "",
+        cash_status:
+          val.personnel_id &&
+          ["Müşteriden Para Alındı", "Personelde Para"].includes(val.cash_type)
+            ? "PERSONELDE"
+            : val.cash_type === "Kasaya Teslim Bildirildi"
+              ? "TESLIM_BILDIRILDI"
+              : "KASAYA_TESLIM_EDILDI",
+      };
+      const created =
+        val.cash_type === "Müşteriden Para Alındı" &&
+        val.payment_method === "Havale"
+          ? await customerBankReceipt(
+              {
+                date: val.date,
+                customer_id: val.customer_id,
+                bank_account_id: val.bank_account_id,
+                amount: val.amount,
+                note: val.description,
+              },
+              requestId,
+            )
+          : await db.saveNew("cash_records", fields, "Kasa kaydı");
+      toast("Kaydedildi", "ok");
+      go("#/finans/kasa");
+    } catch (e) {
+      toast(e.message, "err");
+    } finally {
+      cashSaving = false;
+      qs("[data-save]", root) && (qs("[data-save]", root).disabled = false);
     }
-    const fields = {
-      date: val.date,
-      cash_type: val.cash_type,
-      amount: Number(val.amount),
-      personnel_id: val.personnel_id || null,
-      customer_id: val.customer_id || null,
-      payment_method: val.payment_method,
-      description: val.description || "",
-      cash_status:
-        val.personnel_id &&
-        ["Müşteriden Para Alındı", "Personelde Para"].includes(val.cash_type)
-          ? "PERSONELDE"
-          : val.cash_type === "Kasaya Teslim Bildirildi"
-            ? "TESLIM_BILDIRILDI"
-            : "KASAYA_TESLIM_EDILDI",
-    };
-    const created = await db.saveNew("cash_records", fields, "Kasa kaydı");
-    toast("Kaydedildi", "ok");
-    go("#/finans/kasa");
   });
 }
 
@@ -1197,9 +1312,10 @@ async function expenses(ctx) {
 
 async function expenseForm(ctx) {
   const { root, db } = ctx;
-  const [personnel, vehicles] = await Promise.all([
+  const [personnel, vehicles, categories] = await Promise.all([
     db.listActive("personnel"),
     db.listActive("vehicles"),
+    db.listActive("expense_categories"),
   ]);
   root.innerHTML =
     appbar("+ Gider", "Fiş fotoğrafı eklenebilir") +
@@ -1207,9 +1323,10 @@ async function expenseForm(ctx) {
     <form data-form novalidate>
       ${fDate("Tarih", "date", todayStr())}
       <div class="formgrid2">
-        ${fSelect("Kategori", "category", EXPENSE_CATEGORIES, "Yakıt", { empty: false })}
+        ${fSelect("Kategori", "category", [...new Set([...EXPENSE_CATEGORIES, ...categories.map((c) => c.name)])], "Yakıt", { empty: false })}
         ${fNum("Tutar (₺)", "amount", "", { req: true, step: "any" })}
       </div>
+      ${fNum("KDV % (biliniyorsa; tutar KDV dahil)", "kdv_rate", "", { step: "any" })}
       <div class="formgrid2">
         ${fSelect(
           "Personel",
@@ -1248,6 +1365,10 @@ async function expenseForm(ctx) {
     const fields = {
       date: val.date,
       category: val.category,
+      kdv_rate:
+        val.kdv_rate !== "" && val.kdv_rate != null
+          ? Number(val.kdv_rate)
+          : null,
       amount: Number(val.amount),
       personnel_id: val.personnel_id || null,
       vehicle_id: val.vehicle_id || null,
