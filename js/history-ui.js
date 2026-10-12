@@ -52,7 +52,16 @@ export async function screen(ctx) {
   const field = (label, value, name, type = "text") =>
     `<label class="field">${esc(label)}<input data-h-field="${name}" type="${type}" value="${esc(value ?? "")}" ${type === "number" ? 'step="any" min="0"' : ""}></label>`;
   function ref(store, label, fieldName, c) {
-    const all = (data[store] || []).filter((r) => isActive(r));
+    const matches = (data.customers || []).filter(
+      (x) => isActive(x) && canonical(x.name) === canonical(c.row.customer),
+    );
+    const customerId =
+      c.refs.customer_id || (matches.length === 1 ? matches[0].id : null);
+    const all = (data[store] || []).filter(
+      (r) =>
+        isActive(r) &&
+        (store !== "sites" || (customerId && r.customer_id === customerId)),
+    );
     return `<label class="field">${esc(label)}${select([{ v: "", t: "Dosyadaki adı eşleştir" }, ...all.map((r) => ({ v: r.id, t: r.name + (r.active === false ? " (Pasif)" : "") }))], c.refs[fieldName], `data-h-ref="${fieldName}"`)}</label>`;
   }
   function previewRow(index) {
@@ -180,6 +189,20 @@ export async function screen(ctx) {
       if (el.hasAttribute("data-h-tank")) c.tank_confirmed = el.checked;
       if (el.hasAttribute("data-h-unpriced")) c.unpriced_confirmed = el.checked;
       if (el.dataset.hRef) c.refs[el.dataset.hRef] = el.value;
+      if (el.dataset.hRef === "customer_id") {
+        const customer = (data.customers || []).find((x) => x.id === el.value);
+        if (customer) {
+          c.row.customer = customer.name;
+          card.querySelector('[data-h-field="customer"]').value = customer.name;
+        }
+      }
+      if (el.dataset.hRef === "site_id" && el.value) {
+        const site = (data.sites || []).find((x) => x.id === el.value);
+        if (site) {
+          c.row.site = site.name;
+          card.querySelector('[data-h-field="site"]').value = site.name;
+        }
+      }
       if (el.dataset.hField) {
         const k = el.dataset.hField;
         if (k === "work_type") {
@@ -218,6 +241,22 @@ export async function screen(ctx) {
           c.refs[refKeys[k]] = "";
           card.querySelector(`[data-h-ref="${refKeys[k]}"]`).value = "";
         }
+      }
+      if (
+        el.dataset.hRef === "customer_id" ||
+        el.dataset.hField === "customer"
+      ) {
+        c.row.site = "";
+        c.refs.site_id = "";
+        card.querySelector('[data-h-field="site"]').value = "";
+        card
+          .querySelector('[data-h-ref="site_id"]')
+          .closest("label").outerHTML = ref(
+          "sites",
+          "Mevcut şantiye kartı",
+          "site_id",
+          c,
+        );
       }
     }
     if (card || e.target.hasAttribute("data-history-new"))
@@ -366,6 +405,7 @@ export async function screen(ctx) {
           ["customer_id", "customers"],
           ["site_id", "sites"],
           ["personnel_id", "personnel"],
+          ["dump_site_id", "dump_sites"],
         ])
           if (
             source[key] &&

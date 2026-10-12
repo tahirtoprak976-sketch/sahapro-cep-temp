@@ -107,8 +107,8 @@ export async function listActive(store) {
   return (await getAll(store)).filter(isActive);
 }
 export async function softDelete(store, id, reason) {
-  if (['customers','sites','vehicles','personnel'].includes(store)) {
-    const key={customers:'customer_id',sites:'site_id',vehicles:'vehicle_id',personnel:'personnel_id'}[store];
+  if (['customers','sites','vehicles','personnel','dump_sites'].includes(store)) {
+    const key={customers:'customer_id',sites:'site_id',vehicles:'vehicle_id',personnel:'personnel_id',dump_sites:'dump_site_id'}[store];
     if ((await getAll('inbox_messages')).some(m=>isActive(m)&&(m.review_rows||[]).some(r=>r[key]===id))) throw Error('Kontrol edilmiş mesaj taslağına bağlı kart silinemez; pasife alın');
   }
 

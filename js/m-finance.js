@@ -63,6 +63,10 @@ export async function screen(ctx) {
   return hub(ctx);
 }
 
+function financeCard(value,label,color,route) {
+  return `<a class="stat finance-stat ${esc(color)}" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="v">${esc(value)}</span><span class="l">${esc(label)}</span></a>`;
+}
+
 // ============ FİNANS HUB ============
 async function hub(ctx) {
   const { root, db } = ctx;
@@ -105,9 +109,9 @@ async function hub(ctx) {
     appbar("Finans", "Bu ay") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-      ${stat(fmtTL(monthH), "Hakediş ₺", "accent")}
-      ${stat(fmtTL(monthT), "Tahsilat ₺", "ok")}
-      ${stat(fmtTL(monthG), "Gider ₺", "warn")}
+      ${financeCard(fmtTL(monthH), "Hakediş ₺", "accent", "#/hakedis")}
+      ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
+      ${financeCard(fmtTL(monthG), "Gider ₺", "warn", "#/gider")}
     </div>
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
