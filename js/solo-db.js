@@ -1,3 +1,4 @@
+import { messageLocked } from "./message-smart-db.js";
 import * as db from "./db.js";
 import {
   ENTITY_STORES,
@@ -219,8 +220,14 @@ export async function importMessages(blocks) {
 export async function refreshMessage(id, f) {
   return run((d, t) => {
     const r = rules.reference(d, "inbox_messages", id);
-    if (r.status === "Reddedildi")
-      throw Error("Reddedilen mesaj değiştirilemez");
+    if (
+      messageLocked(r, d) ||
+      r.review_rows?.length ||
+      r.source_messages?.length
+    )
+      throw Error(
+        "Kontrol edilmiş veya aktarılmış mesajın kaynak metni değiştirilemez; satır düzeltmesini kullanın",
+      );
     if (f.date) rules.validPast(f.date);
     const updated = {
       ...r,
@@ -237,7 +244,8 @@ export async function rejectMessage(id, reason) {
   return run((d, t) => {
     const r = rules.reference(d, "inbox_messages", id);
     rules.required(reason, "Red gerekçesi");
-    if (r.status === "Aktarıldı") throw Error("Aktarılmış mesaj reddedilemez");
+    if (messageLocked(r, d))
+      throw Error("Aktarılmış veya birleştirilmiş kaynak reddedilemez");
     t.put("inbox_messages", {
       ...r,
       status: "Reddedildi",
@@ -488,8 +496,7 @@ export async function renewService(id, f, key = uuid()) {
       .filter((r) => r.vehicle_id === p.vehicle_id && r.date <= baseDate)
       .sort((a, b) => a.date.localeCompare(b.date));
     const k = readings.filter((r) => r.kind === "km").at(-1)?.value;
-    const h =
-      readings.filter((r) => r.kind === "hours").at(-1)?.value;
+    const h = readings.filter((r) => r.kind === "hours").at(-1)?.value;
     if ((km && (k == null || k === "")) || (hours && (h == null || h === "")))
       throw Error("Bakım tamamlanma sayaç okuması gerekli");
     const date = new Date(baseDate + "T12:00:00Z");
