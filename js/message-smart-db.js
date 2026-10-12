@@ -39,8 +39,7 @@ function revision(m, expected) {
   )
     throw Error("Taslak başka ekranda değişti; yeniden açın");
 }
-export async function saveMessageRows(id, rows, expected) {
-  return run((d, t) => {
+function saveReviewInTransaction(d,t,id,rows,expected) {
     const m = reference(d, "inbox_messages", id);
     editable(m, d);
     revision(m, expected);
@@ -80,6 +79,30 @@ export async function saveMessageRows(id, rows, expected) {
     ];
     t.put("inbox_messages", updated);
     return updated;
+}
+export async function saveMessageRows(id, rows, expected) {
+  return run((d,t)=>saveReviewInTransaction(d,t,id,rows,expected));
+}
+// Customer and current unsaved draft are committed together; no financial write.
+export async function createMessageCustomer(id, sourceRow, rows, fields, expected) {
+  return run((d,t)=>{
+    const m=reference(d,"inbox_messages",id);editable(m,d);revision(m,expected);
+    if(typeof fields.name!=="string")throw Error("Müşteri adı gerekli");
+    const name=fields.name.trim().replace(/\s+/g," ");
+    if(!name||name.length>200)throw Error("Müşteri adı 1–200 karakter olmalı");
+    const contact=String(fields.contact||"").trim(),phone=String(fields.phone||"").trim();
+    if(contact.length>100||phone.length>40)throw Error("Yetkili veya telefon bilgisi çok uzun");
+    const key=normKey(name).replace(/\s+/g," ").trim();
+    const found=live(d,"customers").filter(c=>normKey(c.name).replace(/\s+/g," ").trim()===key);
+    if(found.length>1)throw Error("Bu isimde birden fazla müşteri var; listeden doğru kartı seçin");
+    if(found[0]?.active===false)throw Error("Bu müşteri pasif; Müşteriler bölümünden durumunu kontrol edin");
+    const selected=rows.find(r=>r.source_row===sourceRow);
+    if(!selected||selected.kind!=="work")throw Error("Müşteri yalnız iş satırına eklenebilir");
+    const customer=found[0]||newRecord({name,contact,phone,active:true});
+    if(!found.length){t.add("customers",customer);d.customers.push(customer);}
+    const changed=rows.map(row=>row.source_row===sourceRow?{...row,customer_id:customer.id,site_id:null,duplicate_checked:false,field_sources:{...row.field_sources,customer_id:"Kullanıcı yeni/mevcut müşteri kartını seçti",site_id:"Müşteri değişince şantiye temizlendi"}}:{...row});
+    const message=saveReviewInTransaction(d,t,id,changed,expected);
+    return {customer,message,created:!found.length};
   });
 }
 export async function mergeMessages(ids, confirmed = false) {
