@@ -1,0 +1,1546 @@
+import * as core from "./core.js";
+import * as rules from "./solo-core.js";
+import * as actions from "./solo-db.js";
+import * as ui from "./ui.js";
+import {
+  costLedger,
+  bankBalance,
+  serviceState,
+  planRows,
+  payrollBalance,
+} from "./enterprise-core.js";
+import { exportDocument, buildDocument } from "./document-engine.js";
+import qrcode from "../vendor/qrcode.js";
+import { voiceSupported, startVoice } from "./parser.js";
+import { recordSpec } from "./pro.js";
+import { slipSpec, hakedisSpec, commercialSpec } from "./pdf.js";
+const {
+  qs,
+  qsa,
+  esc,
+  appbar,
+  fText,
+  fNum,
+  fDate,
+  fSelect,
+  fArea,
+  collectForm,
+  kv,
+  pagedRender,
+  toast,
+  go,
+  downloadBlob,
+  confirmDialog,
+} = ui;
+const MODULES = {
+  sayac: ["meter_readings", "Sayaç Okumaları"],
+  vardiya: ["shift_assignments", "Görev / Çalışma Planı"],
+  zimmet: ["custody_records", "Zimmet Teslim / İade"],
+  duruslar: ["downtime_records", "Arıza ve Duruş Süreleri"],
+  parcalar: ["maintenance_parts", "Bakım Parça / İşçilik"],
+  dagitim: ["cost_allocations", "Ortak Maliyet Dağıtımı"],
+  "banka-aktarim": ["bank_import_rows", "Banka Dosyası / Mutabakat"],
+  mesajlar: ["inbox_messages", "Mesaj Gelen Kutusu"],
+  sayim: ["stock_counts", "Tank Fiziksel Sayımı"],
+};
+const extra = [
+  "arsiv",
+  "qr",
+  "sonuc",
+  "asistan",
+  "musteri-paketi",
+  "bakim-yenile",
+  "teklif-sonuc",
+];
+const money = (v) => (v == null ? "Belirtilmedi" : core.fmtTL(v) + " TL");
+const button = (label, href) =>
+  `<button class="btn" data-go="${esc(href)}">${esc(label)}</button>`;
+const options = (d, s) =>
+  rules
+    .live(d, s)
+    .map((r) => ({
+      v: r.id,
+      t:
+        r.name ||
+        r.doc_no ||
+        r.title ||
+        r.description ||
+        r.maint_type ||
+        r.date,
+    }));
+const table = (headers, rows) => ({ headers, rows });
+const spec = (title, sections) => ({
+  title,
+  audience: "internal",
+  orientation: sections.some((s) => s.headers?.length > 6)
+    ? "landscape"
+    : "portrait",
+  sections,
+  filename: "SAHAPRO_" + title.replace(/[^\p{L}\d]/gu, "_") + ".pdf",
+});
+const toolbar = () =>
+  '<div class="exportbar"><button class="btn" data-s-pdf>PDF</button><button class="btn" data-s-share>Paylaş</button><button class="btn" data-s-print>Yazdır</button><button class="btn" data-s-csv>CSV</button></div>';
+function bindExport(root, getSpec, getTable) {
+  for (const [mode, key] of [
+    ["download", "pdf"],
+    ["share", "share"],
+    ["print", "print"],
+  ])
+    qs("[data-s-" + key + "]", root)?.addEventListener("click", () =>
+      safe(() => exportDocument(getSpec(), mode)),
+    );
+  qs("[data-s-csv]", root)?.addEventListener("click", () =>
+    safe(() => {
+      const t = getTable();
+      downloadBlob(
+        new Blob(["\ufeff" + core.toCSV(t.headers, t.rows)], {
+          type: "text/csv;charset=utf-8",
+        }),
+        "SAHAPRO_Rapor.csv",
+      );
+    }),
+  );
+}
+async function safe(fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    toast(e.message || String(e), "err");
+  }
+}
+function saveBind(root, fn) {
+  const key = core.uuid();
+  qs("[data-s-save]", root).onclick = async () => {
+    const b = qs("[data-s-save]", root);
+    b.disabled = true;
+    try {
+      const r = await fn(collectForm(qs("form", root)), key);
+      if (r === false) return;
+      toast("Kayıt kalıcı olarak kaydedildi", "ok");
+      return r;
+    } catch (e) {
+      toast(e.message, "err");
+    } finally {
+      b.disabled = false;
+    }
+  };
+}
+function contextFields(d, q = {}) {
+  return (
+    fSelect(
+      "Müşteri (opsiyonel)",
+      "customer_id",
+      options(d, "customers"),
+      q.customer_id || "",
+    ) +
+    fSelect(
+      "Şantiye (opsiyonel)",
+      "site_id",
+      options(d, "sites"),
+      q.site_id || "",
+    )
+  );
+}
+function contextBind(root, d) {
+  const c = qs("[name=customer_id]", root),
+    s = qs("[name=site_id]", root);
+  if (!c || !s) return;
+  const sync = () => {
+    const prior = s.value;
+    s.innerHTML =
+      '<option value="">— seç —</option>' +
+      rules
+        .live(d, "sites")
+        .filter((r) => r.customer_id === c.value)
+        .map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`)
+        .join("");
+    s.value = prior;
+  };
+  c.onchange = sync;
+  sync();
+}
+export async function screen(ctx) {
+  const route = ctx.parts[0];
+  if (!MODULES[route] && !extra.includes(route)) return false;
+  const d = await ctx.db.dumpAll();
+  if (route === "arsiv") {
+    await archive(ctx, d);
+    return true;
+  }
+  if (route === "qr") {
+    await qrScreen(ctx, d);
+    return true;
+  }
+  if (route === "teklif-sonuc") {
+    await quoteResult(ctx, d);
+    return true;
+  }
+  if (route === "sonuc") {
+    await resultScreen(ctx, d);
+    return true;
+  }
+  if (route === "asistan") {
+    await assistant(ctx, d);
+    return true;
+  }
+  if (route === "musteri-paketi") {
+    await customerPack(ctx, d);
+    return true;
+  }
+  if (route === "bakim-yenile") {
+    await renewal(ctx, d);
+    return true;
+  }
+  const [store, title] = MODULES[route];
+  if (ctx.parts[1] === "new") await form(ctx, d, store, title);
+  else if (ctx.parts[1]) await detail(ctx, d, store, title, ctx.parts[1]);
+  else await list(ctx, d, store, title);
+  return true;
+}
+function rowsTable(store, rows, d) {
+  const defs = {
+    meter_readings: [
+      ["Tarih", "Araç", "Sayaç", "Okuma", "Not"],
+      (r) => [
+        r.date,
+        rules.label(d, "vehicles", r.vehicle_id),
+        r.kind === "km" ? "Km" : "Makine Saati",
+        r.value,
+        r.note,
+      ],
+    ],
+    shift_assignments: [
+      [
+        "Tarih",
+        "Personel",
+        "Araç",
+        "Görev",
+        "Başlangıç",
+        "Bitiş",
+        "Saat",
+        "Durum",
+      ],
+      (r) => [
+        r.date,
+        rules.label(d, "personnel", r.personnel_id),
+        rules.label(d, "vehicles", r.vehicle_id),
+        r.task,
+        r.start,
+        r.end,
+        r.hours,
+        r.status,
+      ],
+    ],
+    custody_records: [
+      ["Teslim", "Personel", "Varlık", "Durum", "İade"],
+      (r) => [
+        r.date,
+        rules.label(d, "personnel", r.personnel_id),
+        r.asset_name ||
+          rules.label(d, rules.CUSTODY_OWNERS[r.owner_type], r.owner_id),
+        r.status,
+        r.returned_date,
+      ],
+    ],
+    downtime_records: [
+      ["Araç", "Başlangıç", "Bitiş", "Neden", "Duruş Saat", "Durum"],
+      (r) => [
+        rules.label(d, "vehicles", r.vehicle_id),
+        r.started_at,
+        r.ended_at,
+        r.reason,
+        rules.downtimeHours(r),
+        r.status,
+      ],
+    ],
+    maintenance_parts: [
+      ["Araç", "Tür", "Açıklama", "Miktar", "Birim fiyat", "Tutar"],
+      (r) => [
+        rules.label(d, "vehicles", r.vehicle_id),
+        r.kind,
+        r.description,
+        r.quantity,
+        money(r.unit_price),
+        money(r.total),
+      ],
+    ],
+    cost_allocations: [
+      ["Tarih", "Kategori", "Kaynak tutar", "Hedef sayısı", "Durum"],
+      (r) => [
+        r.date,
+        r.source_snapshot.category,
+        money(r.source_snapshot.gross),
+        r.targets.length,
+        r.status,
+      ],
+    ],
+    bank_import_rows: [
+      ["Tarih", "Hesap", "Yön", "Tutar", "Açıklama", "Referans", "Durum"],
+      (r) => [
+        r.date,
+        rules.label(d, "bank_accounts", r.bank_account_id),
+        r.direction === "IN" ? "Giriş" : "Çıkış",
+        money(r.amount),
+        r.description,
+        r.reference,
+        r.status,
+      ],
+    ],
+    inbox_messages: [
+      ["Tarih", "Gönderen", "Mesaj", "Durum"],
+      (r) => [
+        r.date || "Tarih bekliyor",
+        r.sender || "Belirtilmedi",
+        r.text,
+        r.status,
+      ],
+    ],
+    stock_counts: [
+      ["Tarih", "Teorik L", "Fiziksel L", "Fark L", "Gerekçe"],
+      (r) => [
+        r.date,
+        r.theoretical_liters,
+        r.physical_liters,
+        r.difference,
+        r.reason,
+      ],
+    ],
+  };
+  const [h, fn] = defs[store];
+  return table(h, rows.map(fn));
+}
+async function list(ctx, d, store, title) {
+  const { root, query, parts } = ctx;
+  let rows = rules
+    .live(d, store)
+    .filter(
+      (r) =>
+        (!query.from || r.date >= query.from) &&
+        (!query.to || r.date <= query.to) &&
+        [
+          "vehicle_id",
+          "personnel_id",
+          "customer_id",
+          "site_id",
+          "bank_account_id",
+        ].every((k) => !query[k] || r[k] === query[k]) &&
+        (!query.q ||
+          core.normKey(JSON.stringify(r)).includes(core.normKey(query.q))),
+    )
+    .reverse();
+  root.innerHTML =
+    appbar(title, rows.length + " kayıt") +
+    `<div class="solo-intro">${store === "bank_import_rows" ? "Dosyadan gelen satırlar onaylanmadan hesap/cari bakiyesini değiştirmez." : store === "inbox_messages" ? "Mesajlar taslaktır. İş ve yakıt kayıtları ayrı kontrol ekranından onaylanır." : store === "maintenance_parts" ? "Bu kalemler bakım maliyetinin dökümüdür; toplam maliyete ikinci kez eklenmez." : "Kayıtlar bu cihazda saklanır; değişiklikler izlenir."}</div><form data-filter><div class="formgrid2">${fDate("Başlangıç", "from", query.from || "", false)}${fDate("Bitiş", "to", query.to || "", false)}</div>${fText("Ara", "q", query.q || "")}<button class="btn" type="submit">Filtrele</button></form>${button(store === "inbox_messages" ? "Mesaj / Dosya Ekle" : store === "bank_import_rows" ? "CSV Dosyası Seç" : "Yeni Kayıt", "#/" + parts[0] + "/new")}${toolbar()}<div data-s-list></div>`;
+  qs("[data-filter]", root).onsubmit = (e) => {
+    e.preventDefault();
+    go(
+      "#/" +
+        parts[0] +
+        "?" +
+        new URLSearchParams({ ...query, ...collectForm(e.target) }),
+    );
+  };
+  const t = rowsTable(store, rows, d);
+  pagedRender(
+    qs("[data-s-list]", root),
+    rows,
+    (r, i) =>
+      `<section class="card">${t.headers.map((h, j) => kv(h, esc(t.rows[rows.indexOf(r)][j] ?? ""))).join("")}${button("Detay", "#/" + parts[0] + "/" + r.id)}</section>`,
+  );
+  bindExport(
+    root,
+    () => spec(title, [t]),
+    () => t,
+  );
+}
+async function form(ctx, d, store, title) {
+  const { root, query: q, parts } = ctx;
+  const date = core.todayStr();
+  if (store === "inbox_messages") return messageForm(ctx, d);
+  if (store === "bank_import_rows") return bankForm(ctx, d);
+  let fields = "",
+    save;
+  switch (store) {
+    case "meter_readings":
+      fields =
+        fDate("Okuma tarihi", "date", date) +
+        fSelect(
+          "Araç / Makine",
+          "vehicle_id",
+          options(d, "vehicles"),
+          q.vehicle_id || "",
+        ) +
+        fSelect(
+          "Sayaç",
+          "kind",
+          [
+            { v: "km", t: "Kilometre" },
+            { v: "hours", t: "Makine saati" },
+          ],
+          "km",
+          { empty: false },
+        ) +
+        fNum("Sayaç değeri", "value", "", { req: true, step: "any" }) +
+        fArea("Not", "note");
+      save = actions.saveMeter;
+      break;
+    case "shift_assignments":
+      fields =
+        fDate("Görev tarihi", "date", date) +
+        fSelect(
+          "Personel",
+          "personnel_id",
+          options(d, "personnel"),
+          q.personnel_id || "",
+        ) +
+        fSelect(
+          "Araç (opsiyonel)",
+          "vehicle_id",
+          options(d, "vehicles"),
+          q.vehicle_id || "",
+        ) +
+        contextFields(d, q) +
+        fText("Görev", "task", "", { req: true }) +
+        `<div class="formgrid2">${fText("Başlangıç", "start", "08:00", { type: "time" })}${fText("Bitiş", "end", "17:00", { type: "time" })}</div>` +
+        fNum("Mola dakika", "break_minutes", 60) +
+        fArea("Not", "note");
+      save = actions.saveShift;
+      break;
+    case "custody_records":
+      fields =
+        fDate("Teslim tarihi", "date", date) +
+        fSelect(
+          "Personel",
+          "personnel_id",
+          options(d, "personnel"),
+          q.personnel_id || "",
+        ) +
+        fSelect(
+          "Varlık türü",
+          "owner_type",
+          [
+            { v: "vehicle", t: "Araç / Makine" },
+            { v: "document", t: "Fiziksel Belge" },
+            { v: "equipment", t: "Ekipman" },
+          ],
+          q.owner_type || "vehicle",
+          { empty: false },
+        ) +
+        "<div data-custody-owner></div>" +
+        fArea("Teslim notu", "note");
+      save = actions.saveCustody;
+      break;
+    case "downtime_records":
+      fields =
+        fSelect(
+          "Araç / Makine",
+          "vehicle_id",
+          options(d, "vehicles"),
+          q.vehicle_id || "",
+        ) +
+        fSelect(
+          "İlgili arıza/bakım (opsiyonel)",
+          "maintenance_id",
+          options(d, "maintenance_records"),
+          q.maintenance_id || "",
+        ) +
+        fText(
+          "Duruş başlangıcı",
+          "started_at",
+          new Date(Date.now() - new Date().getTimezoneOffset() * 60000)
+            .toISOString()
+            .slice(0, 16),
+          { type: "datetime-local" },
+        ) +
+        fArea("Duruş nedeni", "reason");
+      save = (f, k) =>
+        actions.saveDowntime(
+          { ...f, started_at: new Date(f.started_at).toISOString() },
+          k,
+        );
+      break;
+    case "maintenance_parts":
+      fields =
+        fSelect(
+          "Bakım / Arıza",
+          "maintenance_id",
+          options(d, "maintenance_records"),
+          q.maintenance_id || "",
+        ) +
+        fSelect("Kalem türü", "kind", ["Parça", "İşçilik"], "Parça", {
+          empty: false,
+        }) +
+        fText("Parça/işçilik açıklaması", "description", "", { req: true }) +
+        fNum("Miktar", "quantity", 1, { step: "any" }) +
+        fNum("Birim fiyat TL", "unit_price", "", { step: "any" }) +
+        fArea("Not", "note");
+      save = actions.savePart;
+      break;
+    case "stock_counts":
+      fields =
+        '<p class="notice warn">Gerçek ölçüm yapın. Fark, tek bir gerekçeli tank hareketi oluşturur; eski yakıt yeniden düşülmez.</p>' +
+        fDate("Sayım tarihi", "date", date) +
+        fNum("Ölçülen fiziksel litre", "physical_liters", "", { step: "any" }) +
+        fArea("Stok farkı gerekçesi", "reason");
+      save = actions.countStock;
+      break;
+    case "cost_allocations":
+      return allocationForm(ctx, d);
+  }
+  root.innerHTML =
+    appbar(title, "Yeni kayıt") +
+    `<form data-s-form>${fields}<button class="btn primary block" type="button" data-s-save>Kontrol Et ve Kaydet</button></form>`;
+  contextBind(root, d);
+  if (store === "custody_records") {
+    const sync = () => {
+      const type = qs("[name=owner_type]", root).value;
+      qs("[data-custody-owner]", root).innerHTML =
+        type === "equipment"
+          ? fText("Ekipman adı / kodu", "asset_name", "", { req: true })
+          : fSelect(
+              "Varlık",
+              "owner_id",
+              options(d, rules.CUSTODY_OWNERS[type]),
+              q.owner_id || "",
+            );
+    };
+    qs("[name=owner_type]", root).onchange = sync;
+    sync();
+  }
+  saveBind(root, async (f, k) => {
+    const r = await save(f, k);
+    go("#/" + parts[0] + "/" + r.id);
+    return r;
+  });
+}
+async function detail(ctx, d, store, title, id) {
+  const { root, parts } = ctx;
+  const r = rules.reference(d, store, id);
+  if (store === "inbox_messages") return messageDetail(ctx, d, r);
+  if (store === "bank_import_rows") return bankDetail(ctx, d, r);
+  const t = rowsTable(store, [r], d);
+  root.innerHTML =
+    appbar(title, "Kayıt detayı") +
+    toolbar() +
+    '<section class="card">' +
+    t.headers.map((h, i) => kv(h, esc(t.rows[0][i] ?? ""))).join("") +
+    "</section><div data-s-actions></div>";
+  let sections = [t];
+  const a = qs("[data-s-actions]", root);
+  if (store === "shift_assignments" && r.status === "Planlı") {
+    a.innerHTML =
+      fArea("İptal gerekçesi", "reason") +
+      '<button class="btn" data-complete>Tamamlandı</button><button class="btn danger" data-cancel>İptal</button>';
+    qs("[data-complete]", root).onclick = () =>
+      safe(async () => {
+        await actions.shiftStatus(id, "Tamamlandı", "");
+        ctx.reload();
+      });
+    qs("[data-cancel]", root).onclick = () =>
+      safe(async () => {
+        await actions.shiftStatus(id, "İptal", qs("[name=reason]", root).value);
+        ctx.reload();
+      });
+  }
+  if (store === "custody_records" && r.status === "Teslim Edildi") {
+    a.innerHTML =
+      fDate("İade tarihi", "date", core.todayStr()) +
+      fArea("İade kontrol notu", "note") +
+      '<button class="btn primary" data-return>İade Al</button>';
+    qs("[data-return]", root).onclick = () =>
+      safe(async () => {
+        await actions.returnCustody(
+          id,
+          qs("[name=date]", root).value,
+          qs("[name=note]", root).value,
+        );
+        ctx.reload();
+      });
+  }
+  if (store === "downtime_records" && !r.ended_at) {
+    a.innerHTML =
+      fText("Duruş bitişi", "ended_at", "", { type: "datetime-local" }) +
+      fArea("Kapanış notu", "note") +
+      '<button class="btn primary" data-close>Duruşu Kapat</button>';
+    qs("[data-close]", root).onclick = () =>
+      safe(async () => {
+        await actions.closeDowntime(
+          id,
+          new Date(qs("[name=ended_at]", root).value).toISOString(),
+          qs("[name=note]", root).value,
+        );
+        ctx.reload();
+      });
+  }
+  if (store === "cost_allocations") {
+    const rows = r.targets.map((t) => [
+      rules.label(d, "customers", t.customer_id),
+      rules.label(d, "sites", t.site_id),
+      rules.label(d, "vehicles", t.vehicle_id),
+      t.weight,
+      money(t.net),
+      money(t.gross),
+    ]);
+    const target = table(
+      ["Müşteri", "Şantiye", "Araç", "Ağırlık", "Net", "KDV dahil"],
+      rows,
+    );
+    sections.push(target);
+    a.innerHTML =
+      '<section class="card">' +
+      rows.map((row) => row.map(esc).join(" · ")).join("<hr>") +
+      "</section>";
+    if (r.status === "Aktif") {
+      a.insertAdjacentHTML(
+        "beforeend",
+        fArea("İptal gerekçesi", "reason") +
+          '<button class="btn danger" data-cancel>Dağıtımı İptal Et</button>',
+      );
+      qs("[data-cancel]", root).onclick = () =>
+        safe(async () => {
+          await actions.cancelAllocation(id, qs("[name=reason]", root).value);
+          ctx.reload();
+        });
+    }
+  }
+  bindExport(
+    root,
+    () => spec(title, sections),
+    () => t,
+  );
+}
+async function messageForm(ctx, d) {
+  const { root } = ctx;
+  root.innerHTML =
+    appbar("Mesaj Gelen Kutusu", "WhatsApp dışa aktarımı veya metin") +
+    `<section class="solo-intro">Gönderen otomatik şoför kabul edilmez. Mesajlar taslak olarak saklanır; kayıt için tarih ve alanlar ayrıca onaylanır.</section><form>${fNum("Mesajlarda yıl yoksa gerçek yıl", "year", new Date().getFullYear())}<label class="field">WhatsApp .txt dosyası<input type="file" accept=".txt,text/plain" data-message-file></label>${fArea("Mesajlar", "raw")}<div class="row">${voiceSupported() ? '<button type="button" class="btn" data-voice>Sesle Yazdır</button>' : ""}<button type="button" class="btn primary" data-s-save>Mesajları Taslak Olarak Al</button></div></form>`;
+  qs("[data-message-file]", root).onchange = () =>
+    safe(async () => {
+      const f = qs("[data-message-file]", root).files[0];
+      if (!f) return;
+      if (f.size > 2e6) throw Error("Dosya en fazla 2 MB");
+      qs("[name=raw]", root).value = await f.text();
+    });
+  qs("[data-voice]", root)?.addEventListener("click", () =>
+    startVoice(
+      (t) => {
+        qs("[name=raw]", root).value += "\n" + t;
+      },
+      () => {},
+    ),
+  );
+  saveBind(root, async (f) => {
+    const blocks = rules.messages(f.raw, f.year);
+    if (
+      !(await confirmDialog(
+        "Mesajlar taslak olarak alınsın mı?",
+        blocks.length + " mesaj; iş ve finans kayıtları henüz oluşmaz.",
+        "Taslakları Al",
+      ))
+    )
+      return false;
+    const r = await actions.importMessages(blocks);
+    toast(r.added + " yeni mesaj; " + r.duplicates + " tekrar atlandı", "ok");
+    go("#/mesajlar");
+  });
+}
+async function messageDetail(ctx, d, r) {
+  const { root } = ctx;
+  const pkg = rules.historyFromMessage(r, d);
+  root.innerHTML =
+    appbar("Mesaj Taslağı", r.status) +
+    toolbar() +
+    `<section class="card">${kv("Gönderen", esc(r.sender || "Belirtilmedi"))}<details><summary>Orijinal mesaj</summary><pre class="wrap">${esc(r.raw)}</pre></details></section><form>${fDate("Mesajın gerçek tarihi", "date", r.date || "", false)}${fArea("İşlenecek metin", "text", r.text)}<button type="button" class="btn" data-s-save>Düzelt ve Yeniden Ayrıştır</button></form><section class="card"><h2>Önerilen satırlar</h2>${pkg.rows.map((x) => `<p>${esc(x.date || "Tarih bekliyor")} · ${esc(x.vehicle || "Araç bekliyor")} · ${esc(x.customer || "Müşteri bekliyor")} · ${esc(x.kind === "fuel" ? x.liters + " L" : (x.quantity ?? "?") + " " + (x.unit || "?"))}</p>`).join("")}<p class="notice">Fiyat uydurulmaz. Son kontrol ekranında fiyatı/KDV’yi belirtin veya fiyat bekliyor seçin. Yakıt ayrı onaylanır.</p>${r.status === "Reddedildi" ? "" : `<label class="history-check"><input type="checkbox" data-unpaid> Bu işlerin ödenmediğini ve hakedişe alınmadığını doğruladım.</label><button class="btn primary" data-transfer disabled>Kontrollü İş Aktarımına Geç</button>`}<button class="btn" data-sync>Aktarım Durumunu Kontrol Et</button></section>${fArea("Red gerekçesi", "reason")}<button class="btn danger" data-reject>Mesajı Reddet</button>`;
+  saveBind(root, async (f) => {
+    await actions.refreshMessage(r.id, f);
+    ctx.reload();
+  });
+  qs("[data-unpaid]", root)?.addEventListener(
+    "change",
+    (e) => (qs("[data-transfer]", root).disabled = !e.target.checked),
+  );
+  qs("[data-transfer]", root)?.addEventListener("click", () =>
+    safe(async () => {
+      if (!qs("[data-unpaid]", root).checked)
+        throw Error("Hesap durumu onayı gerekli");
+      sessionStorage.setItem("solo_history_package", JSON.stringify(pkg));
+      sessionStorage.setItem("solo_history_message", r.id);
+      go("#/gecmis");
+    }),
+  );
+  qs("[data-sync]", root).onclick = () =>
+    safe(async () => {
+      await actions.syncMessageStatus(r.id);
+      ctx.reload();
+    });
+  qs("[data-reject]", root).onclick = () =>
+    safe(async () => {
+      await actions.rejectMessage(r.id, qs("[name=reason]", root).value);
+      ctx.reload();
+    });
+  const t = rowsTable("inbox_messages", [r], d);
+  bindExport(
+    root,
+    () => spec("Mesaj Kontrol Raporu", [t]),
+    () => t,
+  );
+}
+async function bankForm(ctx, d) {
+  const { root } = ctx;
+  let csv = null,
+    preview = [];
+  root.innerHTML =
+    appbar("Banka CSV Aktarımı", "Dosya → kolonlar → kontrol → taslak") +
+    `<section class="solo-intro">İmzalı tutar: giriş pozitif, çıkış negatif. Örnek: 6.000,00 / -1.200,00. Aktarım yalnız gelen kutusuna kaydeder; cari ve banka bakiyesi eşleştirmeden sonra değişir.</section><button class="btn" data-bank-sample>CSV Örneği İndir</button><form>${fSelect("Banka hesabı", "bank_account_id", options(d, "bank_accounts"), "")}<label class="field">Banka CSV dosyası<input type="file" accept=".csv,text/csv" data-bank-file></label><div data-columns></div><button type="button" class="btn" data-preview>Önizle</button><div data-preview-result></div><label class="history-check"><input type="checkbox" data-confirm> Hesabı, tarihleri, yönleri ve tutarları kontrol ettim.</label><button type="button" class="btn primary" data-s-save disabled>Satırları Gelen Kutusuna Al</button></form>`;
+  qs("[data-bank-sample]", root).onclick = () =>
+    downloadBlob(
+      new Blob(["\ufeffTarih;Tutar;Açıklama;Referans\n"], { type: "text/csv" }),
+      "SAHAPRO_Banka_Sablonu.csv",
+    );
+  const mapping = () =>
+    Object.fromEntries(
+      ["date", "amount", "description", "reference"].map((k) => [
+        k,
+        qs("[name=" + k + "]", root)?.value ?? "",
+      ]),
+    );
+  const invalidate = () => {
+    qs("[data-confirm]", root).checked = false;
+    qs("[data-s-save]", root).disabled = true;
+    preview = [];
+    qs("[data-preview-result]", root).innerHTML = "";
+  };
+  qs("[data-bank-file]", root).onchange = () =>
+    safe(async () => {
+      invalidate();
+      csv = null;
+      const f = qs("[data-bank-file]", root).files[0];
+      if (!f) return;
+      if (f.size > 2e6) throw Error("CSV en fazla 2 MB");
+      csv = rules.parseCSV(await f.text());
+      qs("[data-columns]", root).innerHTML = [
+        "date",
+        "amount",
+        "description",
+        "reference",
+      ]
+        .map((k, i) =>
+          fSelect(
+            [
+              "Tarih kolonu",
+              "İmzalı tutar kolonu",
+              "Açıklama kolonu",
+              "Referans (opsiyonel)",
+            ][i],
+            k,
+            csv.headers.map((t, v) => ({ v, t })),
+            i < csv.headers.length ? i : "",
+          ),
+        )
+        .join("");
+      for (const el of qsa("[data-columns] select", root))
+        el.onchange = invalidate;
+    });
+  qs("[name=bank_account_id]", root).onchange = invalidate;
+  qs("[data-preview]", root).onclick = () =>
+    safe(() => {
+      if (!csv) throw Error("CSV seçin");
+      preview = rules.bankPreview(
+        csv,
+        mapping(),
+        qs("[name=bank_account_id]", root).value,
+        d.bank_import_rows,
+      );
+      qs("[data-preview-result]", root).innerHTML =
+        '<div class="notice">' +
+        preview.length +
+        " satır; " +
+        preview.filter((r) => r.duplicate).length +
+        " tekrar; " +
+        preview.filter((r) => r.errors.length).length +
+        " hata.</div><div data-bank-preview-list></div>";
+      pagedRender(
+        qs("[data-bank-preview-list]", root),
+        preview,
+        (r) =>
+          '<div class="card">' +
+          esc(
+            [
+              r.date,
+              r.direction,
+              money(r.amount),
+              r.description,
+              ...r.errors,
+              r.duplicate ? "TEKRAR" : "",
+            ].join(" · "),
+          ) +
+          "</div>",
+        20,
+      );
+    });
+  qs("[data-confirm]", root).onchange = (e) => {
+    qs("[data-s-save]", root).disabled =
+      !e.target.checked ||
+      !preview.length ||
+      preview.some((r) => r.errors.length);
+  };
+  saveBind(root, async () => {
+    if (!qs("[data-confirm]", root).checked || !preview.length)
+      throw Error("Önizleme ve onay gerekli");
+    const r = await actions.importBank(
+      csv,
+      mapping(),
+      qs("[name=bank_account_id]", root).value,
+    );
+    toast(r.added + " satır alındı; " + r.duplicates + " tekrar atlandı", "ok");
+    go("#/banka-aktarim");
+  });
+}
+async function bankDetail(ctx, d, r) {
+  const { root } = ctx;
+  const t = rowsTable("bank_import_rows", [r], d);
+  const existing = rules
+    .live(d, "bank_movements")
+    .filter(
+      (m) =>
+        m.bank_account_id === r.bank_account_id &&
+        m.date === r.date &&
+        m.direction === r.direction &&
+        core.toKurus(m.amount) === core.toKurus(r.amount),
+    );
+  root.innerHTML =
+    appbar("Banka Mutabakatı", r.status) +
+    toolbar() +
+    '<section class="card">' +
+    t.headers.map((h, i) => kv(h, esc(t.rows[0][i] ?? ""))).join("") +
+    "</section>" +
+    (r.status === "Eşleşmedi"
+      ? `<section class="card"><h2>Eşleştirme önerileri</h2>${
+          rules
+            .bankSuggestions(r, d)
+            .map((s) => "<p>" + esc(s.name) + "</p>")
+            .join("") || "<p>Kesin öneri yok; kullanıcı seçimi gerekli.</p>"
+        }</section><form>${fSelect(
+          "Var olan eşit hareket (yenisini oluşturmaz)",
+          "existing_id",
+          existing.map((m) => ({
+            v: m.id,
+            t: m.note || m.reference || m.date,
+          })),
+          "",
+        )}${fSelect("Yeni işlem türü", "mode", [...(r.direction === "IN" ? [{ v: "customer", t: "Müşteri tahsilatı" }] : [{ v: "payable", t: "Alış borcu ödemesi" }]), { v: "bank_only", t: "Yalnız banka hareketi" }], r.direction === "IN" ? "customer" : "payable", { empty: false })}<div data-bank-owner></div>${fArea("Gerekçe / açıklama", "reason")}<label class="history-check"><input type="checkbox" data-reconcile-confirm> Bu satır için ikinci tahsilat/ödeme oluşmadığını kontrol ettim.</label><button type="button" class="btn primary" data-s-save>Onayla ve Eşleştir</button></form>`
+      : "");
+  if (r.status === "Eşleşmedi") {
+    const sync = () => {
+      const type = qs("[name=mode]", root).value;
+      qs("[data-bank-owner]", root).innerHTML =
+        type === "customer"
+          ? fSelect("Müşteri", "customer_id", options(d, "customers"), "")
+          : type === "payable"
+            ? fSelect(
+                "Ödenecek alış belgesi",
+                "payable_id",
+                rules
+                  .live(d, "payables")
+                  .filter((b) => b.status !== "İptal")
+                  .map((b) => ({
+                    v: b.id,
+                    t:
+                      (b.document_no || "Alış") +
+                      " · " +
+                      money(billBalanceSafe(b, d)),
+                  })),
+                "",
+              )
+            : "";
+    };
+    qs("[name=mode]", root).onchange = sync;
+    sync();
+    saveBind(root, async (f) => {
+      if (!qs("[data-reconcile-confirm]", root).checked)
+        throw Error("Mutabakat onayı gerekli");
+      if (
+        !(await confirmDialog(
+          "Banka satırı işlensin mi?",
+          money(r.amount) + " · " + r.description,
+          "Eşleştir",
+        ))
+      )
+        return false;
+      await actions.reconcileBank(r.id, f);
+      ctx.reload();
+    });
+  }
+  bindExport(
+    root,
+    () => spec("Banka Mutabakatı", [t]),
+    () => t,
+  );
+}
+function billBalanceSafe(b, d) {
+  return (
+    Number(b.gross_total) -
+    rules
+      .live(d, "supplier_payments")
+      .filter((p) => p.payable_id === b.id)
+      .reduce((n, p) => n + Number(p.amount), 0)
+  );
+}
+async function allocationForm(ctx, d) {
+  const { root, query: q } = ctx;
+  const sources = costLedger(d).filter((r) => !r.work_record_id),
+    targets = [];
+  root.innerHTML =
+    appbar("Maliyet Dağıtımı", "Kaynak tutarı korunur") +
+    `<form>${fSelect(
+      "Kaynak maliyet",
+      "source",
+      sources.map((r) => ({
+        v: r.source_store + "|" + r.source_id,
+        t: r.date + " · " + r.category + " · " + money(r.gross),
+      })),
+      q.source_store && q.source_id ? q.source_store + "|" + q.source_id : "",
+    )}<div data-targets></div><button type="button" class="btn" data-add-target>Hedef Satır Ekle</button><p class="notice">Ağırlıklar oran oluşturur. Eşit dağıtım için her satıra 1 girin. Son kuruşlar deterministik dağıtılır; maliyet iki kez sayılmaz.</p><button type="button" class="btn primary" data-s-save>Dağıtımı Kaydet</button></form>`;
+  let n = 0;
+  const add = () => {
+    const el = document.createElement("section");
+    el.className = "card";
+    el.dataset.target = n++;
+    el.innerHTML =
+      contextFields(d) +
+      fSelect("Araç (opsiyonel)", "vehicle_id", options(d, "vehicles"), "") +
+      fNum("Ağırlık", "weight", 1, { step: "any" }) +
+      '<button type="button" class="btn danger" data-remove>Satırı Kaldır</button>';
+    qs("[data-targets]", root).append(el);
+    contextBind(el, d);
+    qs("[data-remove]", el).onclick = () => el.remove();
+  };
+  qs("[data-add-target]", root).onclick = add;
+  add();
+  saveBind(root, async (f, k) => {
+    const [source_store, source_id] = f.source.split("|");
+    const source = sources.find(
+      (r) => r.source_store === source_store && r.source_id === source_id,
+    );
+    const r = await actions.saveAllocation(
+      {
+        source_store,
+        source_id,
+        date: source?.date,
+        targets: qsa("[data-target]", root).map((el) => collectForm(el)),
+      },
+      k,
+    );
+    go("#/dagitim/" + r.id);
+  });
+}
+async function archive(ctx, d) {
+  const { root, query: q } = ctx;
+  const id = q.document_id;
+  if (id) {
+    const r = rules.reference(d, "documents", id);
+    root.innerHTML =
+      appbar("Fiziksel Arşiv", r.category + " · " + (r.doc_no || "")) +
+      `<form>${fText("Klasör", "archive_folder", r.archive_folder || "")}${fText("Raf", "archive_shelf", r.archive_shelf || "")}${fText("Dosya No", "archive_file_no", r.archive_file_no || "")}${fText("Koçan", "archive_kocan", r.archive_kocan || "")}${fArea("Kayıt/taşıma gerekçesi", "note")}<button type="button" class="btn primary" data-s-save>Arşiv Konumunu Kaydet</button></form>${button("QR Etiketi", "#/qr?document_id=" + id)}${button("Belge Detayı", "#/belgeler/" + id)}<section class="card"><h2>Konum Geçmişi</h2>${(r.archive_events || []).map((e) => "<p>" + esc([e.at, e.archive_shelf, e.archive_folder, e.note].join(" · ")) + "</p>").join("")}</section>`;
+    saveBind(root, async (f) => {
+      await actions.saveArchive(id, f);
+      ctx.reload();
+    });
+    return;
+  }
+  const rows = rules
+    .live(d, "documents")
+    .filter(
+      (r) =>
+        !q.q ||
+        core
+          .normKey(
+            [
+              r.doc_no,
+              r.category,
+              r.archive_folder,
+              r.archive_shelf,
+              r.archive_file_no,
+            ].join(" "),
+          )
+          .includes(core.normKey(q.q)),
+    );
+  root.innerHTML =
+    appbar("Fiziksel Arşiv", "Belge kendi sahibinde kalır") +
+    `<form>${fText("Belge / raf / klasör ara", "q", q.q || "")}<button class="btn">Ara</button></form>${button("QR Tara / Aç", "#/qr")}${toolbar()}<div data-s-list></div>`;
+  qs("form", root).onsubmit = (e) => {
+    e.preventDefault();
+    go("#/arsiv?q=" + encodeURIComponent(qs("[name=q]", root).value));
+  };
+  const t = table(
+    ["Tür", "Belge No", "Raf", "Klasör", "Dosya No"],
+    rows.map((r) => [
+      r.category,
+      r.doc_no,
+      r.archive_shelf,
+      r.archive_folder,
+      r.archive_file_no,
+    ]),
+  );
+  pagedRender(
+    qs("[data-s-list]", root),
+    rows,
+    (r) =>
+      '<section class="card"><strong>' +
+      esc(r.category + " · " + (r.doc_no || "")) +
+      "</strong><p>" +
+      esc(
+        [r.archive_shelf, r.archive_folder, r.archive_file_no]
+          .filter(Boolean)
+          .join(" / ") || "Konum girilmemiş",
+      ) +
+      "</p>" +
+      button("Arşiv / QR", "#/arsiv?document_id=" + r.id) +
+      "</section>",
+  );
+  bindExport(
+    root,
+    () => spec("Fiziksel Arşiv Raporu", [t]),
+    () => t,
+  );
+}
+export function qrPayload(id) {
+  if (!/^[\w-]{1,100}$/.test(id)) throw Error("Belge kimliği geçersiz");
+  return "SAHAPRO:document:" + id;
+}
+export function readQr(text) {
+  const m = String(text)
+    .trim()
+    .match(/^SAHAPRO:document:([\w-]{1,100})$/);
+  if (!m) throw Error("SAHAPRO belge QR etiketi gerekli");
+  return m[1];
+}
+async function qrScreen(ctx, d) {
+  const { root, query: q } = ctx;
+  if (q.document_id) {
+    const r = rules.reference(d, "documents", q.document_id),
+      qr = qrcode(0, "M");
+    qr.addData(qrPayload(r.id));
+    qr.make();
+    const url = qr.createDataURL(5, 4);
+    root.innerHTML =
+      appbar("Belge QR Etiketi", r.doc_no || r.category) +
+      `<section class="card solo-qr"><img src="${url}" alt="Belge QR etiketi"><h2>${esc(r.category)}</h2><p>${esc(r.doc_no || "")}</p><p>${esc([r.archive_shelf, r.archive_folder, r.archive_file_no].filter(Boolean).join(" / "))}</p><p class="muted small">Bu etiket belgeyi kayıtların bulunduğu cihazda açar. Kişisel belge içeriği QR içinde değildir.</p></section>${toolbar()}${button("Belgeyi Aç", "#/belgeler/" + r.id)}`;
+    const blob = await (await fetch(url)).blob();
+    const t = table(
+      ["Tür", "No", "Raf", "Klasör"],
+      [[r.category, r.doc_no, r.archive_shelf, r.archive_folder]],
+    );
+    bindExport(
+      root,
+      () => spec("Belge Arşiv Etiketi", [{ image: blob }, t]),
+      () => t,
+    );
+    return;
+  }
+  root.innerHTML =
+    appbar("QR ile Belge Aç", "Bu cihazdaki kaydı bulur") +
+    `<form>${fText("QR kodundan okunan metin", "payload", "")}<button class="btn primary" type="button" data-open-qr>Belgeyi Aç</button><label class="field">QR fotoğrafı<input type="file" accept="image/*" capture="environment" data-qr-file></label><p class="notice">Kamera/fotoğraf okuma tarayıcı desteğine bağlıdır. Destek yoksa telefonun QR okuyucusundan metni buraya yapıştırın.</p></form>`;
+  const open = (text) => {
+    const id = readQr(text);
+    if (!rules.live(d, "documents").some((r) => r.id === id))
+      throw Error(
+        "Bu cihazda belge bulunamadı. Belge yedeğinin bulunduğu cihazdan açın.",
+      );
+    go("#/belgeler/" + id);
+  };
+  qs("[data-open-qr]", root).onclick = () =>
+    safe(() => open(qs("[name=payload]", root).value));
+  qs("[data-qr-file]", root).onchange = () =>
+    safe(async () => {
+      if (!globalThis.BarcodeDetector)
+        throw Error("Tarayıcı QR okumayı desteklemiyor; QR metnini yapıştırın");
+      const f = qs("[data-qr-file]", root).files[0];
+      if (!f) return;
+      const img = await createImageBitmap(f);
+      try {
+        const codes = await new BarcodeDetector({
+          formats: ["qr_code"],
+        }).detect(img);
+        if (!codes.length) throw Error("QR okunamadı");
+        open(codes[0].rawValue);
+      } finally {
+        img.close();
+      }
+    });
+}
+async function resultScreen(ctx, d) {
+  const { root, query: q } = ctx;
+  const filters = {
+    from: q.from || "",
+    to: q.to || "",
+    customer_id: q.customer_id || "",
+    site_id: q.site_id || "",
+    vehicle_id: q.vehicle_id || "",
+  };
+  const result = rules.resultReport(d, filters);
+  const t = table(
+    [
+      "Tarih",
+      "Kategori",
+      "Müşteri",
+      "Şantiye",
+      "Araç",
+      "Net",
+      "KDV bilinmiyor",
+      "KDV dahil",
+    ],
+    result.costs.map((r) => [
+      r.date,
+      r.category,
+      rules.label(d, "customers", r.customer_id),
+      rules.label(d, "sites", r.site_id),
+      rules.label(d, "vehicles", r.vehicle_id),
+      money(r.net),
+      r.known_tax ? "Hayır" : "Evet",
+      money(r.gross),
+    ]),
+  );
+  const summary = {
+    pairs: [
+      ["Kesinleşmiş hakediş geliri (KDV hariç)", money(result.revenue)],
+      [
+        "Hakedişe alınmamış fiyatlı işler (gelire eklenmedi)",
+        money(result.unbilled_value),
+      ],
+      ["Bilinen net maliyet", money(result.known_cost)],
+      ["KDV ayrımı bilinmeyen maliyet (brüt)", money(result.unknown_cost)],
+      ["Geçici faaliyet sonucu", money(result.provisional_result)],
+      ["Fiyatı olmayan iş", result.unpriced.length],
+      ["Doğrudan maliyet bulunmayan iş", result.costless.length],
+      ["Dağıtılmamış gider", result.unallocated.length],
+    ],
+  };
+  root.innerHTML =
+    appbar("Sonuç / Maliyet Analizi", "Kaynaklarla açıklanabilir hesap") +
+    `<form><div class="formgrid2">${fDate("Başlangıç", "from", filters.from, false)}${fDate("Bitiş", "to", filters.to, false)}</div>${contextFields(d, filters)}${fSelect("Araç", "vehicle_id", options(d, "vehicles"), filters.vehicle_id)}<button class="btn">Hesapla</button></form><section class="card">${summary.pairs.map((p) => kv(...p)).join("")}</section><p class="notice warn">Bu sonuç kesin muhasebe kârı değildir. Eksik maliyetler, amortisman ve vergi ayrıca değerlendirilmelidir. Fiyatlı açık işler ve tahsilat gelirle karıştırılmaz.</p>${button("Ortak Gider Dağıt", "#/dagitim/new")}${toolbar()}<div data-s-list></div><details class="card"><summary>Fiyatı olmayan işler (${result.unpriced.length})</summary>${result.unpriced
+      .slice(0, 100)
+      .map((w) =>
+        button(
+          w.date + " · " + rules.label(d, "customers", w.customer_id),
+          "#/isler/" + w.id,
+        ),
+      )
+      .join("")}</details>`;
+  contextBind(root, d);
+  qs("form", root).onsubmit = (e) => {
+    e.preventDefault();
+    go("#/sonuc?" + new URLSearchParams(collectForm(e.target)));
+  };
+  pagedRender(
+    qs("[data-s-list]", root),
+    result.costs,
+    (r, i) =>
+      '<section class="card">' +
+      t.headers
+        .map((h, j) => kv(h, esc(t.rows[result.costs.indexOf(r)][j] ?? "")))
+        .join("") +
+      button("Kaynak Kaydı", sourceRoute(r.source_store, r.source_id)) +
+      "</section>",
+  );
+  bindExport(
+    root,
+    () =>
+      spec("Faaliyet Sonuç Raporu", [
+        summary,
+        {
+          text: "Geçici sonuç. Eksik maliyet ve KDV ayrımı kontrol edilmelidir.",
+        },
+        t,
+      ]),
+    () => t,
+  );
+}
+export function sourceRoute(store, id) {
+  const routes = {
+    work_records: "isler",
+    fuel_records: "yakit",
+    maintenance_records: "bakim",
+    expense_records: "gider",
+    payroll_entries: "ucretler",
+    payables: "alislar",
+    cari_movements: "cari",
+    bank_movements: "bankalar",
+    documents: "belgeler",
+    slips: "fisler",
+    hakedis: "hakedis",
+  };
+  return "#/" + (routes[store] || "daha") + (id ? "/" + id : "");
+}
+async function assistant(ctx, d) {
+  const { root } = ctx;
+  root.innerHTML =
+    appbar(
+      "Yerel Sorgu Asistanı",
+      "İşletme kayıtlarına dayalı · AI bağlantısı yok",
+    ) +
+    `<form>${fArea("Sorunuz", "question")}<div class="formgrid2">${fDate("Başlangıç (opsiyonel)", "from", "", false)}${fDate("Bitiş (opsiyonel)", "to", "", false)}</div><button class="btn primary" type="submit">Kayıtlarda Ara</button></form><p class="muted">Örnek: “Tuna İnşaat cari bakiyesi”, “34UL9492 yakıt”, “Tuna İnşaat sefer toplamı”. Tarih aralığı seçmezseniz tüm kayıtlar kullanılır.</p><div data-answer></div>`;
+  qs("form", root).onsubmit = (e) => {
+    e.preventDefault();
+    safe(() => {
+      const f = collectForm(e.target),
+        data = Object.fromEntries(
+          Object.entries(d).map(([s, rows]) => [
+            s,
+            rows.filter(
+              (r) =>
+                (!f.from || !r.date || r.date >= f.from) &&
+                (!f.to || !r.date || r.date <= f.to),
+            ),
+          ]),
+        );
+      const result = rules.localAnswer(f.question, data);
+      if (
+        (f.from || f.to) &&
+        /cari|borç|borc|alacak/.test(core.normKey(f.question))
+      )
+        result.answer =
+          "Seçili dönem hareketlerinin neti (açılış bakiyesi dahil değildir): " +
+          result.answer;
+      qs("[data-answer]", root).innerHTML =
+        '<section class="card"><p>' +
+        esc(result.answer) +
+        "</p></section>" +
+        toolbar() +
+        "<div data-sources></div>";
+      pagedRender(
+        qs("[data-sources]", root),
+        result.sources,
+        (r) =>
+          '<div class="card">' +
+          esc(r.date || "") +
+          " " +
+          button(
+            "Kaynak Kaydı",
+            r.store === "cari_movements"
+              ? "#/cari/" + r.customer_id
+              : sourceRoute(r.store, r.id),
+          ) +
+          "</div>",
+      );
+      const t = table(
+        ["Kayıt türü", "Tarih"],
+        result.sources.map((r) => [
+          r.store === "cari_movements"
+            ? "Cari"
+            : r.store === "fuel_records"
+              ? "Yakıt"
+              : "İş",
+          r.date,
+        ]),
+      );
+      bindExport(
+        root,
+        () => spec("Sorgu Sonucu", [{ text: result.answer }, t]),
+        () => t,
+      );
+    });
+  };
+}
+async function renewal(ctx, d) {
+  const { root, query: q } = ctx;
+  const p = rules.reference(d, "service_plans", q.plan_id);
+  root.innerHTML =
+    appbar("Sonraki Bakım Planı", p.title) +
+    `<form>${fDate("Bakım tamamlanma tarihi", "completed_date", core.todayStr())}${fNum("Gün aralığı (opsiyonel)", "interval_days", "")}${fNum("Km aralığı (opsiyonel)", "interval_km", "")}${fNum("Makine saati aralığı (opsiyonel)", "interval_hours", "", { step: "any" })}<button type="button" class="btn primary" data-s-save>Sonraki Planı Oluştur</button></form>`;
+  saveBind(root, async (f, k) => {
+    const r = await actions.renewService(p.id, f, k);
+    go("#/bakimplani/" + r.id);
+  });
+}
+async function customerPack(ctx, d) {
+  const { root, query: q } = ctx;
+  root.innerHTML =
+    appbar("Müşteri Belge Paketi", "Müşteriye açık bilgiler") +
+    `<form>${fSelect("Müşteri", "customer_id", options(d, "customers"), q.customer_id || "")}<div class="formgrid2">${fDate("Başlangıç", "from", "", false)}${fDate("Bitiş", "to", "", false)}</div><label class="history-check"><input type="checkbox" name="works" checked> İş özeti</label><label class="history-check"><input type="checkbox" name="slips" checked> İmzalı fişler</label><label class="history-check"><input type="checkbox" name="hakedis" checked> Kesinleşmiş hakedişler</label><label class="history-check"><input type="checkbox" name="cari" checked> Cari hareketleri</label><button class="btn primary" type="submit">Müşteri PDF Paketini Hazırla</button></form><p class="notice">İç not, maliyet, kâr, teknik kimlik ve personel özel bilgileri müşteri paketine alınmaz. Orijinal ekler ayrıca kullanıcı tarafından paylaşılır.</p>`;
+  qs("form", root).onsubmit = (e) => {
+    e.preventDefault();
+    safe(async () => {
+      const f = collectForm(e.target),
+        customer = rules.reference(d, "customers", f.customer_id);
+      const match = (r) =>
+        r.customer_id === customer.id &&
+        (!f.from || (r.date || r.created_date || r.date_from) >= f.from) &&
+        (!f.to || (r.date || r.created_date || r.date_from) <= f.to);
+      const sections = [
+        {
+          pairs: [
+            ["Müşteri", customer.name],
+            [
+              "Dönem",
+              (f.from || "Tüm tarihler") + " / " + (f.to || "Tüm tarihler"),
+            ],
+          ],
+        },
+      ];
+      const names = Object.fromEntries(
+        Object.entries(d).map(([s, rows]) => [
+          s,
+          Object.fromEntries(rows.map((r) => [r.id, r.name || ""])),
+        ]),
+      );
+      if (qs("[name=works]", root).checked)
+        sections.push(
+          table(
+            ["Tarih", "Şantiye", "İş", "Miktar", "Birim"],
+            rules
+              .live(d, "work_records")
+              .filter(match)
+              .map((w) => [
+                w.date,
+                rules.label(d, "sites", w.site_id),
+                w.work_type,
+                w.quantity,
+                w.unit,
+              ]),
+          ),
+        );
+      if (qs("[name=slips]", root).checked)
+        for (const s of rules
+          .live(d, "slips")
+          .filter((s) => match(s) && s.status === "İmzalandı")) {
+          const a = (await ctx.db.attachmentsFor("slip_signature", s.id))[0];
+          sections.push(
+            { text: "Dijital Fiş " + s.slip_no },
+            ...slipSpec(s, names, a?.blob).sections,
+          );
+        }
+      if (qs("[name=hakedis]", root).checked)
+        for (const h of rules
+          .live(d, "hakedis")
+          .filter((h) => match(h) && h.status === "Kesinleşti"))
+          sections.push(
+            { text: "Hakediş " + h.hakedis_no },
+            ...hakedisSpec(h, names).sections,
+          );
+      if (qs("[name=cari]", root).checked)
+        sections.push(
+          table(
+            ["Tarih", "İşlem", "Tutar"],
+            rules
+              .live(d, "cari_movements")
+              .filter(match)
+              .map((r) => [r.date, r.type, money(r.amount)]),
+          ),
+        );
+      await exportDocument(
+        { ...spec("Müşteri Belge Paketi", sections), audience: "customer" },
+        "download",
+      );
+    });
+  };
+}
+export async function augment(ctx) {
+  const { root, parts, db } = ctx,
+    route = parts[0],
+    id = parts[1];
+  if (["new", "edit"].some((p) => parts.includes(p))) return;
+  let links = "";
+  if (!route || route === "daha" || route === "yonetici") {
+    links =
+      Object.entries(MODULES)
+        .map(([r, [, t]]) => button(t, "#/" + r))
+        .join("") +
+      button("Fiziksel Arşiv / QR", "#/arsiv") +
+      button("Sonuç / Maliyet", "#/sonuc") +
+      button("Yerel Asistan", "#/asistan") +
+      button("Müşteri PDF Paketi", "#/musteri-paketi");
+  }
+  if (route === "filo" && id)
+    links =
+      button("Sayaç Oku", "#/sayac/new?vehicle_id=" + id) +
+      button("Sayaç Geçmişi", "#/sayac?vehicle_id=" + id) +
+      button("Duruş Başlat", "#/duruslar/new?vehicle_id=" + id) +
+      button("Duruş Geçmişi", "#/duruslar?vehicle_id=" + id);
+  if (route === "personel" && id)
+    links =
+      button("Görev Planı", "#/vardiya?personnel_id=" + id) +
+      button("Zimmetler", "#/zimmet?personnel_id=" + id) +
+      button("Zimmet Ekle", "#/zimmet/new?personnel_id=" + id);
+  if (route === "belgeler" && id)
+    links =
+      button("Arşiv Konumu", "#/arsiv?document_id=" + id) +
+      button("QR Etiketi", "#/qr?document_id=" + id) +
+      button(
+        "Fiziksel Belge Teslimi",
+        "#/zimmet/new?owner_type=document&owner_id=" + id,
+      );
+  if (route === "teklif" && id)
+    links = button(
+      "Gerçekleşen İş Karşılaştırması",
+      "#/teklif-sonuc?quote_id=" + id,
+    );
+  if (route === "musteriler" && id)
+    links =
+      button("Müşteri PDF Paketi", "#/musteri-paketi?customer_id=" + id) +
+      button("Sonuç Analizi", "#/sonuc?customer_id=" + id);
+  if (route === "depo")
+    links =
+      button("Fiziksel Sayım", "#/sayim/new") +
+      button("Sayım Geçmişi", "#/sayim");
+  if (route === "bakim" && id)
+    links =
+      button("Parça/İşçilik Ekle", "#/parcalar/new?maintenance_id=" + id) +
+      button("Duruş Başlat", "#/duruslar/new?maintenance_id=" + id);
+  if (route === "whatsapp")
+    links = button("Kontrollü Mesaj Gelen Kutusu", "#/mesajlar");
+  if (route === "bankalar")
+    links = button("CSV / Mutabakat", "#/banka-aktarim");
+  if (route === "bakimplani" && id) {
+    const p = await db.get("service_plans", id);
+    if (p?.status === "Tamamlandı" && !p.next_plan_id)
+      links = button("Sonraki Bakım Planı", "#/bakim-yenile?plan_id=" + id);
+  }
+  if (route === "bakim" && id) {
+    const data = await db.dumpAll(),
+      m = data.maintenance_records.find((r) => r.id === id),
+      parts = rules
+        .live(data, "maintenance_parts")
+        .filter((r) => r.maintenance_id === id),
+      total = parts.reduce((n, r) => n + r.total, 0);
+    if (parts.length)
+      root.insertAdjacentHTML(
+        "beforeend",
+        '<section class="card"><h2>Parça / İşçilik Dökümü</h2>' +
+          parts
+            .map(
+              (p) =>
+                "<p>" +
+                esc(p.kind + " · " + p.description + " · " + money(p.total)) +
+                "</p>",
+            )
+            .join("") +
+          kv("Kalem toplamı", money(total)) +
+          kv("Bakım ana maliyeti", money(m?.cost)) +
+          '<p class="notice">Kalemler ayrıca maliyet yazılmaz. Ana maliyetle fark varsa ana bakım kaydını kontrol edin.</p></section>',
+      );
+  }
+  if (route === "yakit") {
+    const data = await db.dumpAll();
+    if (id) {
+      const fuel = data.fuel_records.find((r) => r.id === id);
+      if (fuel) {
+        const rows = rules.fuelEfficiency(data, fuel.vehicle_id);
+        root.insertAdjacentHTML(
+          "beforeend",
+          '<section class="card"><h2>Ölçümlü Yakıt Karşılaştırması</h2><p class="muted">Yalnız peş peşe tam dolum ve artan sayaç ölçümleri hesaplanır. Verilen litre tek başına motor tüketimi değildir.</p>' +
+            rows
+              .slice(-5)
+              .map(
+                (r) =>
+                  "<p>" + esc(r.date + " · " + r.rate + " " + r.unit) + "</p>",
+              )
+              .join("") +
+            "</section>",
+        );
+      }
+    }
+  }
+  if (!route || route === "yonetici" || route === "gunsonu") {
+    const data = await db.dumpAll(),
+      alerts = rules.operationalAlerts(data);
+    if (alerts.length)
+      root.insertAdjacentHTML(
+        "beforeend",
+        '<section class="card"><h2>İşletme Kontrol Kuyruğu</h2><div data-s-alerts></div></section>',
+      );
+    const el = qs("[data-s-alerts]", root);
+    if (el)
+      pagedRender(
+        el,
+        alerts,
+        (r) =>
+          '<div class="notice ' +
+          r.level +
+          '"><div>' +
+          esc(r.title) +
+          "<p>" +
+          esc(r.detail) +
+          "</p>" +
+          button("Kaydı Aç", r.route) +
+          "</div></div>",
+        10,
+      );
+  }
+  if (links)
+    root.insertAdjacentHTML(
+      "beforeend",
+      '<section class="card solo-module-links"><h2>İşletme İşlemleri</h2><div class="enterprise-links">' +
+        links +
+        "</div></section>",
+    );
+}
+
+async function quoteResult(ctx, d) {
+  const { root, query: q } = ctx,
+    quote = rules.reference(d, "quotes", q.quote_id);
+  const works = rules
+    .live(d, "work_records")
+    .filter(
+      (w) =>
+        w.customer_id === quote.customer_id &&
+        (!quote.site_id || w.site_id === quote.site_id) &&
+        (!q.from || w.date >= q.from) &&
+        (!q.to || w.date <= q.to),
+    );
+  const rows = rules.quoteActualRows(quote, works),
+    t = table(
+      [
+        "Teklif kalemi",
+        "Birim",
+        "Gerçek miktar",
+        "Teklif birim fiyat",
+        "Referans bedel",
+        "İş snapshot net",
+        "Fiyatsız iş",
+      ],
+      rows.map((r) => [
+        r.label,
+        r.unit,
+        r.quantity,
+        money(r.quoted_price),
+        money(r.reference_amount),
+        money(r.actual_net),
+        r.unpriced,
+      ]),
+    );
+  root.innerHTML =
+    appbar("Teklif / Gerçekleşen İş", "Teklif #" + quote.quote_no) +
+    `<form><div class="formgrid2">${fDate("Başlangıç", "from", q.from || "", false)}${fDate("Bitiş", "to", q.to || "", false)}</div><button class="btn">Karşılaştır</button></form><p class="notice">Yalnız iş türü adı ve birimi tam eşleşen satırlar karşılaştırılır. Eşleşmeyen işler kapsam kontrolü gerektirir. Birim fiyatlar birbirine eklenmez; götürü/alternatif satırlar için varsayımsal toplam yapılmaz. İş bedeli tahsilat değildir.</p>${toolbar()}<div data-quote-lines></div>${button("Müşteri Maliyet Analizi", "#/sonuc?customer_id=" + quote.customer_id)}`;
+  qs("form", root).onsubmit = (e) => {
+    e.preventDefault();
+    go(
+      "#/teklif-sonuc?" +
+        new URLSearchParams({ quote_id: quote.id, ...collectForm(e.target) }),
+    );
+  };
+  pagedRender(
+    qs("[data-quote-lines]", root),
+    rows,
+    (r) =>
+      '<section class="card">' +
+      t.headers
+        .map((h, i) => kv(h, esc(t.rows[rows.indexOf(r)][i] ?? "")))
+        .join("") +
+      "</section>",
+  );
+  bindExport(
+    root,
+    () =>
+      spec("Teklif Gerçekleşen İş Karşılaştırması", [
+        {
+          pairs: [
+            ["Müşteri", rules.label(d, "customers", quote.customer_id)],
+            ["Teklif No", quote.quote_no],
+          ],
+        },
+        t,
+      ]),
+    () => t,
+  );
+}

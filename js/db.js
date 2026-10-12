@@ -18,7 +18,7 @@ import {
 } from "./core.js";
 
 const DB_NAME = "sahapro_cep_db"; // v1 ile AYNI isim — veri bu DB'de
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 let _db = null;
 
 // Test harness için: ?db=<isim> ile ayrı DB açılabilir (migration simülasyonu)
@@ -109,10 +109,14 @@ export async function listActive(store) {
 export async function softDelete(store, id, reason) {
   const rec = await get(store, id);
   if (!rec) return null;
-  if (ENTERPRISE_STORES.includes(store))
+  if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error(
       "İşletme defteri kaydı silinemez; ilgili işlem ekranını kullanın",
     );
+  const extensionRefs = {vehicles:[['custody_records','owner_id'],['meter_readings','vehicle_id'],['shift_assignments','vehicle_id'],['downtime_records','vehicle_id'],['maintenance_parts','vehicle_id']],customers:[['shift_assignments','customer_id']],sites:[['shift_assignments','site_id']],personnel:[['shift_assignments','personnel_id'],['custody_records','personnel_id']],documents:[['custody_records','owner_id']],maintenance_records:[['maintenance_parts','maintenance_id'],['downtime_records','maintenance_id']],bank_accounts:[['bank_import_rows','bank_account_id']],bank_movements:[['bank_import_rows','bank_movement_id']]};
+  for(const [target,key] of extensionRefs[store]||[])if((await getAll(target)).some(r=>isActive(r)&&r[key]===id))throw Error('İşletme geçmişine bağlı kayıt silinemez; pasife alın');
+  if(['vehicles','sites','customers'].includes(store)&&(await getAll('cost_allocations')).some(r=>(r.targets||[]).some(t=>t[{vehicles:'vehicle_id',sites:'site_id',customers:'customer_id'}[store]]===id)))throw Error('Maliyet geçmişine bağlı kart silinemez; pasife alın');
+  if((await getAll('cost_allocations')).some(r=>isActive(r)&&r.status==='Aktif'&&r.source_store===store&&r.source_id===id))throw Error('Dağıtılmış maliyet kaynağı silinemez');
   const linked = (await getAll("payables")).some(
     (b) =>
       isActive(b) &&
@@ -468,7 +472,7 @@ export async function dumpAll() {
 
 // ---- kayıt yardımcıları ----
 export async function saveNew(store, fields, auditReason) {
-  if (ENTERPRISE_STORES.includes(store))
+  if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından oluşturulmalı");
   fields = await validateFields(store, fields);
   if (store === "fuel_records") return saveFuelEvent(fields, auditReason);
@@ -631,9 +635,11 @@ export async function saveWorkSlip(fields, workIds) {
 }
 
 export async function saveExisting(store, rec, fields, auditReason) {
-  if (ENTERPRISE_STORES.includes(store))
+  if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   const current = await get(store, rec.id);
+  if(store==='fuel_tank_movements'&&current?.count_id)throw Error("Sayım hareketi tek başına değiştirilemez; yeni fiziksel sayım yapın");
+  if((await getAll('cost_allocations')).some(r=>isActive(r)&&r.status==='Aktif'&&r.source_store===store&&r.source_id===rec.id)&&Object.keys(fields).some(k=>['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k)))throw Error('Maliyeti değiştirmeden önce dağıtımı iptal edin');
   if (
     current?.bank_movement_id &&
     Object.keys(fields).some((k) =>

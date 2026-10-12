@@ -139,6 +139,7 @@ export async function savePayable(f, key = uuid()) {
       ...owners,
       "payables",
       "purchase_orders",
+      "cost_allocations",
       "work_records",
       "expense_records",
       "fuel_records",
@@ -191,6 +192,7 @@ export async function savePayable(f, key = uuid()) {
           ].includes(f.source_store)
         )
           throw Error("Maliyet kaynağı geçersiz");
+        if(active(d.cost_allocations).some(r=>r.status==='Aktif'&&r.source_store===f.source_store&&r.source_id===f.source_id))throw Error("Borçlandırmadan önce kaynak maliyet dağıtımını iptal edin");
         const s = owner(d, f.source_store, f.source_id);
         if (
           active(d.payables).some(
@@ -259,7 +261,8 @@ export async function savePayable(f, key = uuid()) {
   );
 }
 export async function cancelPayable(id, reason) {
-  return transaction(["payables", "supplier_payments"], (d, t) => {
+  return transaction(["payables", "supplier_payments", "cost_allocations"], (d, t) => {
+    if(active(d.cost_allocations).some(r=>r.status==='Aktif'&&r.source_store==='payables'&&r.source_id===id))throw Error("Borç iptalinden önce dağıtımı iptal edin");
     const b = owner(d, "payables", id);
     if (!reason?.trim()) throw Error("İptal nedeni zorunlu");
     if (active(d.supplier_payments).some((p) => p.payable_id === id))

@@ -134,6 +134,14 @@ async function dashboard(ctx) {
       <button class="iconbtn" data-go="#/ayarlar" aria-label="Ayarlar">⚙</button>
     </div>
 
+    <section class="command-hero" aria-label="Operasyon merkezi">
+      <div class="hero-eyebrow">MURATOĞLU HAFRİYAT · OPERASYON MERKEZİ</div>
+      <h2>Sahadaki iş,<br><span>yönetimde netlik.</span></h2>
+      <p>İşleri kaydedin, fişleri hazırlayın, günün kontrolünü tamamlayın.</p>
+      <div class="hero-actions"><button class="btn primary" data-go="#/isler/new">Yeni İş Kaydı</button><button class="btn" data-go="#/gunsonu">Gün Sonu Kontrol</button></div>
+      <div class="hero-foot">${trDate(today)} · Veriler bu cihazda saklanır</div>
+    </section>
+
     ${lastBackup && Date.now() - new Date(lastBackup).getTime() < 24 * 3600 * 1000 ? "" : notice("warn", "Son yedeğiniz 1 günden eski. Gün sonunda yedekleyin.")}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
@@ -680,11 +688,11 @@ async function more(ctx) {
     appbar("Daha Fazla", "Tüm modüller") +
     `
     <div style="height:10px"></div>
-    <div class="quickgrid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="quickgrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.3")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.5")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
