@@ -1,3 +1,4 @@
+import { analyzeMessage } from "./message-engine.js";
 import * as core from "./core.js";
 import * as rules from "./solo-core.js";
 import * as smart from "./message-smart-core.js";
@@ -118,7 +119,27 @@ function rowEditor(r, index, d, locked) {
           typeof r.kdv_included === "boolean" ? String(r.kdv_included) : "",
         )}<div data-row-price></div></details>`
       : `<div class="formgrid2">${input("Litre", "fuel_liters", r.fuel_liters, "number")}${fSelect("Yakıt kaynağı", "fuel_source", ["Depo Tankı", "İstasyon"], value("fuel_source"))}</div>`
-  }${fSelect("Operatör / şoför (opsiyonel)", "personnel_id", option(d, "personnel"), value("personnel_id"))}${fArea("İş açıklaması", "description", r.description || "")}</fieldset><div data-row-similar></div><details><summary>Kaynak ve alan kanıtları</summary><p class="wrap">${esc(r.description)}</p><ul>${Object.entries(
+  }${r.dump_site_id || r.transport_group_key ? fSelect("Döküm sahası", "dump_site_id", option(d, "dump_sites"), value("dump_site_id")) : ""}${r.duration ? `<p class="notice">Saat aralığından öneri: brüt ${r.duration.gross_minutes / 60} saat · mola ${r.duration.break_minutes / 60} saat · net ${r.duration.net_minutes / 60} saat. Gerçek net süreyi doğrulayın.</p>` : ""}${r.inference_confirmed === false ? `<label class="history-check"><input type="checkbox" data-inference-confirm ${locked ? "disabled" : ""}> Sefer / net çalışma süresi önerisini doğruladım.</label>` : ""}${fSelect("Operatör / şoför (opsiyonel)", "personnel_id", option(d, "personnel"), value("personnel_id"))}${fArea("İş açıklaması", "description", r.description || "")}</fieldset><div class="row">${Object.entries(
+    r.candidates || {},
+  )
+    .flatMap(([field, cs]) =>
+      cs
+        .filter((c) => ["spelling_candidate", "role_candidate"].includes(c.via))
+        .map(
+          (c) =>
+            `<button type="button" class="btn" data-engine-candidate="${index}|${esc(field)}|${esc(c.id)}" ${locked ? "disabled" : ""}>${esc(c.name)} olabilir mi?</button>`,
+        ),
+    )
+    .join(
+      "",
+    )}</div><details><summary>Alanların analiz edilen metindeki ifadeleri</summary>${Object.entries(
+    r.evidence || {},
+  )
+    .filter(([, e]) => e?.text)
+    .map(([field, e]) => `<p class="wrap">${esc(e.text)}</p>`)
+    .join(
+      "",
+    )}</details><div data-row-similar></div><details><summary>Kaynak ve alan kanıtları</summary><p class="wrap">${esc(r.description)}</p><ul>${Object.entries(
     r.field_sources || {},
   )
     .map(
@@ -134,6 +155,7 @@ export async function messageWorkbench(ctx, d, m, tools) {
     locked = actions.messageLocked(m, d),
     rows = smart.assistedRows(m, d),
     revision = JSON.stringify(m.review_rows || null);
+  const analysis = analyzeMessage(m, d);
   let dirty = false;
   // Several matching cards must be chosen explicitly, not silently inherited.
   if (!m.reviewed_at && !locked)
@@ -152,7 +174,7 @@ export async function messageWorkbench(ctx, d, m, tools) {
   root.innerHTML =
     appbar("Akıllı Mesaj Kontrolü", m.status) +
     tools.toolbar() +
-    `<section class="solo-intro">${m.status === "Aktarıldı" ? "Seçili kaynak satırları aktarıldı. Kaynağı ve bağlı iş/yakıt kayıtlarını inceleyebilirsin." : m.status === "Kısmen Aktarıldı" ? "Bazı satırlar aktarıldı. Son kontrol ekranına yalnız henüz aktarılmamış satırlar gönderilir." : "Mesajı incele → eksikleri tamamla → taslağı kaydet → son aktarım kontrolünü yap. Taslak kaydı iş, yakıt veya ödeme oluşturmaz."}</section><section class="card"><h2>Kaynak mesajlar (${sources.length})</h2>${sources.map((s) => `<details><summary>${esc(s.sender || "Gönderen belirtilmedi")} · ${esc(s.date || "Tarih yok")} ${esc(s.time || "")}</summary><pre class="wrap">${esc(s.raw || s.text)}</pre></details>`).join("")}${m.source_messages?.length && !locked ? '<button class="btn" data-merge-undo>Mesajları Yeniden Ayır</button>' : ""}${!locked && !m.review_rows && !m.source_messages ? `<details><summary>Kaynak metnin çalışma kopyasını düzelt</summary><form data-raw-form>${fDate("Mesajın gerçek tarihi", "date", m.date || "", false)}${fArea("İşlenecek metin", "text", m.text)}<button type="button" class="btn" data-raw-save>Yeniden Ayrıştır</button></form></details>` : ""}</section>${suggestions.length ? `<section class="card"><h2>Bağlantılı olabilir</h2><p>Aynı gönderenin 30 dakika içindeki kısa devam mesajları. Yalnız seçip onayladıkların birleştirilir.</p>${suggestions.map((x) => `<label class="history-check"><input type="checkbox" data-merge-id="${esc(x.id)}"> ${esc(x.time || "")} · ${esc(x.text)}</label>`).join("")}<button class="btn" data-merge-review>Seçilenlerle Birleştir</button></section>` : ""}<section class="card"><h2>Eksik bilgi sırası</h2><div data-question-summary></div><div class="row">${b("Onaylı Eşleştirme Hafızası", "#/mesaj-hafizasi")}</div></section>${!locked && rows.length > 1 ? `<details class="card"><summary>Seçili satırlara ortak bilgi uygula</summary><form data-bulk-form>${fSelect("Ortak araç", "vehicle_id", option(d, "vehicles"), "")}${fSelect("Ortak müşteri", "customer_id", option(d, "customers"), "")}${fDate("Ortak tarih", "date", "", false)}<p class="notice">Yalnız aktarıma dahil satırlar değişir. Müşteri değişince şantiye temizlenir.</p><button type="button" class="btn" data-bulk-apply>Seçili Satırlara Uygula</button></form></details>` : ""}<div data-review-list></div>${locked ? '<p class="notice">Kaynak kilitli. İş düzeltmesi ilgili kayıt/revizyon ekranından yapılır.</p>' : `<div class="message-actionbar"><button class="btn primary" data-s-save>Kontrol Taslağını Kaydet</button><p data-dirty-note aria-live="polite"></p></div>`}<section class="card">${["Reddedildi", "Aktarıldı"].includes(m.status) ? (m.linked_records || []).map((x) => b("Bağlı Kaydı Aç", "#/" + (x.store === "fuel_records" ? "yakit" : "isler") + "/" + x.id)).join("") : `<label class="history-check"><input type="checkbox" data-unpaid> Seçtiğim işlerin ödenmediğini ve hakedişe alınmadığını doğruladım.</label><button class="btn primary" data-transfer disabled>Kontrollü İş Aktarımına Geç</button>`}<button class="btn" data-sync>Aktarım Durumunu Kontrol Et</button>${!locked ? fArea("Red gerekçesi", "reason") + '<button class="btn danger" data-reject>Mesajı Reddet</button>' : ""}</section>`;
+    `<section class="solo-intro">${m.status === "Aktarıldı" ? "Seçili kaynak satırları aktarıldı. Kaynağı ve bağlı iş/yakıt kayıtlarını inceleyebilirsin." : m.status === "Kısmen Aktarıldı" ? "Bazı satırlar aktarıldı. Son kontrol ekranına yalnız henüz aktarılmamış satırlar gönderilir." : "Mesajı incele → eksikleri tamamla → taslağı kaydet → son aktarım kontrolünü yap. Taslak kaydı iş, yakıt veya ödeme oluşturmaz."}</section><section class="card"><h2>Ayrıştırma kontrolü</h2>${analysis.notices.map((n) => `<p class="message-issues">${esc(n.text)}</p><details><summary>Kaynak ifade</summary><p class="wrap">${esc(analysis.raw.slice(n.span.start, n.span.end))}</p></details>`).join("")}${analysis.targetCandidates?.length ? `<h3>İlgili olabilecek işler</h3><p>Bu kayıtlar otomatik değiştirilmez. Doğru kaydı açıp normal düzeltme/revizyon akışını kullanın.</p>${analysis.targetCandidates.map((w) => `<p>${esc(w.date)} · ${esc(w.customer)} · ${esc(w.vehicle)} · ${esc(String(w.quantity))} ${esc(w.unit || "")}${w.locked ? " · Kilitli kayıt" : ""}</p>${b("İşi İncele", "#/isler/" + w.id)}`).join("")}` : ""}${!analysis.notices.length ? "<p>Ayrıştırma sırasında ek bir çelişki işaretlenmedi. Alanları ve son aktarım kontrolünü doğrulayın.</p>" : ""}${analysis.distribution ? `<p>Döküm toplamı: ${analysis.distribution.listed} / ${analysis.distribution.total} sefer</p>` : ""}</section><section class="card"><h2>Kaynak mesajlar (${sources.length})</h2>${sources.map((s) => `<details><summary>${esc(s.sender || "Gönderen belirtilmedi")} · ${esc(s.date || "Tarih yok")} ${esc(s.time || "")}</summary><pre class="wrap">${esc(s.raw || s.text)}</pre></details>`).join("")}${m.review_rows?.length && !locked ? '<button class="btn" data-engine-reanalyze>Yeni Motorla Yeniden İncele</button>' : ""}${m.source_messages?.length && !locked ? '<button class="btn" data-merge-undo>Mesajları Yeniden Ayır</button>' : ""}${!locked && !m.review_rows && !m.source_messages ? `<details><summary>Kaynak metnin çalışma kopyasını düzelt</summary><form data-raw-form>${fDate("Mesajın gerçek tarihi", "date", m.date || "", false)}${fArea("İşlenecek metin", "text", m.text)}<button type="button" class="btn" data-raw-save>Yeniden Ayrıştır</button></form></details>` : ""}</section>${suggestions.length ? `<section class="card"><h2>Bağlantılı olabilir</h2><p>Aynı gönderenin 30 dakika içindeki kısa devam mesajları. Yalnız seçip onayladıkların birleştirilir.</p>${suggestions.map((x) => `<label class="history-check"><input type="checkbox" data-merge-id="${esc(x.id)}"> ${esc(x.time || "")} · ${esc(x.text)}</label>`).join("")}<button class="btn" data-merge-review>Seçilenlerle Birleştir</button></section>` : ""}<section class="card"><h2>Eksik bilgi sırası</h2><div data-question-summary></div><div class="row">${b("Onaylı Eşleştirme Hafızası", "#/mesaj-hafizasi")}</div></section>${!locked && rows.length > 1 ? `<details class="card"><summary>Seçili satırlara ortak bilgi uygula</summary><form data-bulk-form>${fSelect("Ortak araç", "vehicle_id", option(d, "vehicles"), "")}${fSelect("Ortak müşteri", "customer_id", option(d, "customers"), "")}${fDate("Ortak tarih", "date", "", false)}<p class="notice">Yalnız aktarıma dahil satırlar değişir. Müşteri değişince şantiye temizlenir.</p><button type="button" class="btn" data-bulk-apply>Seçili Satırlara Uygula</button></form></details>` : ""}<div data-review-list></div>${locked ? '<p class="notice">Kaynak kilitli. İş düzeltmesi ilgili kayıt/revizyon ekranından yapılır.</p>' : `<div class="message-actionbar"><button class="btn primary" data-s-save ${!rows.length || analysis.blocking ? "disabled" : ""}>Kontrol Taslağını Kaydet</button><p data-dirty-note aria-live="polite"></p></div>`}<section class="card">${["Reddedildi", "Aktarıldı"].includes(m.status) ? (m.linked_records || []).map((x) => b("Bağlı Kaydı Aç", "#/" + (x.store === "fuel_records" ? "yakit" : "isler") + "/" + x.id)).join("") : `<label class="history-check"><input type="checkbox" data-unpaid> Seçtiğim işlerin ödenmediğini ve hakedişe alınmadığını doğruladım.</label><button class="btn primary" data-transfer disabled>Kontrollü İş Aktarımına Geç</button>`}<button class="btn" data-sync>Aktarım Durumunu Kontrol Et</button>${!locked ? fArea("Red gerekçesi", "reason") + '<button class="btn danger" data-reject>Mesajı Reddet</button>' : ""}</section>`;
   const markDirty = () => {
     dirty = true;
     qs("[data-dirty-note]", root).textContent =
@@ -173,7 +195,9 @@ export async function messageWorkbench(ctx, d, m, tools) {
           .slice(0, 8)
           .map((t) => `<li>${esc(t)}</li>`)
           .join("")}</ol>`
-      : "<p>Seçili satırlardaki temel alanlar tamam. Son aktarım kontrolü ve hesap durumu onayı hâlâ gerekli.</p>";
+      : !included.length
+        ? "<p>Bu mesajdan aktarılabilir iş/yakıt satırı çıkarılmadı. Kaynak ifadesini inceleyin; gerekirse çalışma metnini düzeltip yeniden ayrıştırın.</p>"
+        : "<p>Seçili satırlardaki temel alanlar tamam. Son aktarım kontrolü ve hesap durumu onayı hâlâ gerekli.</p>";
     for (const el of qsa("[data-review-row]", root)) {
       const index = Number(el.dataset.reviewRow),
         r = rows[index],
@@ -206,6 +230,21 @@ export async function messageWorkbench(ctx, d, m, tools) {
     if (e.target.closest("[data-more]")) setTimeout(update, 0);
   });
   root.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-engine-candidate]");
+    if (!button || locked) return;
+    const [index, field, id] = button.dataset.engineCandidate.split("|");
+    const row = rows[Number(index)];
+    const option = row.candidates?.[field]?.find((x) => x.id === id);
+    if (!option) return;
+    row[field] = id;
+    row.field_sources[field] = "Kullanıcı yazım adayı seçti: " + option.name;
+    row.duplicate_checked = false;
+    const box = qs('[data-review-row="' + index + '"]', root);
+    qs('[name="' + field + '"]', box).value = id;
+    markDirty();
+    update();
+  });
+  root.addEventListener("click", (event) => {
     const button = event.target.closest("[data-question-jump]");
     if (!button) return;
     const [index, field] = button.dataset.questionJump.split(":");
@@ -225,7 +264,9 @@ export async function messageWorkbench(ctx, d, m, tools) {
     const box = el.closest("[data-review-row]");
     if (!box || locked) return;
     const r = rows[Number(box.dataset.reviewRow)];
-    if (el.matches("[data-row-include]")) r.include = el.checked;
+    if (el.matches("[data-inference-confirm]"))
+      r.inference_confirmed = el.checked;
+    else if (el.matches("[data-row-include]")) r.include = el.checked;
     else if (el.matches("[data-duplicate-check]"))
       r.duplicate_checked = el.checked;
     else if (el.name) {
@@ -328,22 +369,52 @@ export async function messageWorkbench(ctx, d, m, tools) {
       update();
     }),
   );
-  root.addEventListener("click",event=>{
-    const button=event.target.closest("[data-new-message-customer]");if(!button||locked)return;
-    const row=rows[Number(button.closest("[data-review-row]").dataset.reviewRow)];
-    const dialog=ui.sheet(`<h2>Yeni Müşteri Ekle</h2><form data-new-customer-form>${fText("Müşteri / firma adı","name","",{ph:"Örnek: Muharrem Arnavutköy"})}${fText("Yetkili (opsiyonel)","contact","")}${fText("Telefon (opsiyonel)","phone","",{type:"tel"})}</form><p class="notice">Müşteri kartı ve ekrandaki kontrol taslağı birlikte kaydedilir. İş veya ödeme oluşmaz. Aynı adlı tek bir müşteri varsa mevcut kart seçilir.</p><p data-new-customer-error class="message-issues" role="alert" hidden></p><div class="row"><button class="btn" data-customer-cancel>Vazgeç</button><button class="btn primary" data-customer-save>Kaydet ve Seç</button></div>`,{modal:true});
-    const error=qs("[data-new-customer-error]",dialog),save=qs("[data-customer-save]",dialog),cancel=qs("[data-customer-cancel]",dialog);
-    cancel.onclick=()=>ui.sheetClose();
-    qs("[data-new-customer-form]",dialog).onsubmit=e=>{e.preventDefault();save.click();};
-    save.onclick=async()=>{
-      if(save.disabled)return;save.disabled=true;cancel.disabled=true;error.hidden=true;
-      try{
-        const result=await actions.createMessageCustomer(m.id,row.source_row,rows,ui.collectForm(qs("form",dialog)),revision);
-        ui.sheetClose();toast(result.created?"Müşteri ve kontrol taslağı kaydedildi":"Mevcut müşteri seçildi; kontrol taslağı kaydedildi","ok");
-        ctx.reload();
-      }catch(e){error.textContent=e.message||String(e);error.hidden=false;save.disabled=false;cancel.disabled=false;}
+  root.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-new-message-customer]");
+    if (!button || locked) return;
+    const row =
+      rows[Number(button.closest("[data-review-row]").dataset.reviewRow)];
+    const dialog = ui.sheet(
+      `<h2>Yeni Müşteri Ekle</h2><form data-new-customer-form>${fText("Müşteri / firma adı", "name", "", { ph: "Örnek: Muharrem Arnavutköy" })}${fText("Yetkili (opsiyonel)", "contact", "")}${fText("Telefon (opsiyonel)", "phone", "", { type: "tel" })}</form><p class="notice">Müşteri kartı ve ekrandaki kontrol taslağı birlikte kaydedilir. İş veya ödeme oluşmaz. Aynı adlı tek bir müşteri varsa mevcut kart seçilir.</p><p data-new-customer-error class="message-issues" role="alert" hidden></p><div class="row"><button class="btn" data-customer-cancel>Vazgeç</button><button class="btn primary" data-customer-save>Kaydet ve Seç</button></div>`,
+      { modal: true },
+    );
+    const error = qs("[data-new-customer-error]", dialog),
+      save = qs("[data-customer-save]", dialog),
+      cancel = qs("[data-customer-cancel]", dialog);
+    cancel.onclick = () => ui.sheetClose();
+    qs("[data-new-customer-form]", dialog).onsubmit = (e) => {
+      e.preventDefault();
+      save.click();
     };
-    qs('[name=name]',dialog).focus();
+    save.onclick = async () => {
+      if (save.disabled) return;
+      save.disabled = true;
+      cancel.disabled = true;
+      error.hidden = true;
+      try {
+        const result = await actions.createMessageCustomer(
+          m.id,
+          row.source_row,
+          rows,
+          ui.collectForm(qs("form", dialog)),
+          revision,
+        );
+        ui.sheetClose();
+        toast(
+          result.created
+            ? "Müşteri ve kontrol taslağı kaydedildi"
+            : "Mevcut müşteri seçildi; kontrol taslağı kaydedildi",
+          "ok",
+        );
+        ctx.reload();
+      } catch (e) {
+        error.textContent = e.message || String(e);
+        error.hidden = false;
+        save.disabled = false;
+        cancel.disabled = false;
+      }
+    };
+    qs("[name=name]", dialog).focus();
   });
   qs("[data-s-save]", root)?.addEventListener("click", () =>
     safe(async () => {
@@ -353,7 +424,8 @@ export async function messageWorkbench(ctx, d, m, tools) {
     }),
   );
   qs("[data-unpaid]", root)?.addEventListener("change", (e) => {
-    qs("[data-transfer]", root).disabled = !e.target.checked || dirty;
+    qs("[data-transfer]", root).disabled =
+      !e.target.checked || dirty || !rows.length || analysis.blocking;
   });
   qs("[data-transfer]", root)?.addEventListener("click", () =>
     safe(async () => {
@@ -377,6 +449,20 @@ export async function messageWorkbench(ctx, d, m, tools) {
       sessionStorage.setItem("solo_history_package", JSON.stringify(pkg));
       sessionStorage.setItem("solo_history_message", m.id);
       go("#/gecmis");
+    }),
+  );
+  qs("[data-engine-reanalyze]", root)?.addEventListener("click", () =>
+    safe(async () => {
+      if (
+        !(await confirmDialog(
+          "Yeni motorla yeniden incele",
+          "Kaydedilmiş alan seçimleri yeniden önerilecek. İş kaydı oluşmaz; ham mesajlar ve mevcut müşteri kartları korunur. Önce kurtarma yedeği alınır.",
+          "Yeniden İncele",
+        ))
+      )
+        return;
+      await actions.reanalyzeMessage(m.id, true);
+      ctx.reload();
     }),
   );
   qs("[data-sync]", root).onclick = () =>

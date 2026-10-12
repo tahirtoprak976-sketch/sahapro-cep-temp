@@ -1,3 +1,4 @@
+import { analyzeMessage } from "./message-engine.js";
 import * as db from "./db.js";
 import { ENTITY_STORES, newRecord, nowISO, normKey } from "./core.js";
 import { transaction } from "./enterprise-db.js";
@@ -39,70 +40,103 @@ function revision(m, expected) {
   )
     throw Error("Taslak başka ekranda değişti; yeniden açın");
 }
-function saveReviewInTransaction(d,t,id,rows,expected) {
+function saveReviewInTransaction(d, t, id, rows, expected) {
+  const m = reference(d, "inbox_messages", id);
+  editable(m, d);
+  revision(m, expected);
+  const old = assistedRows(m, d);
+  if (
+    rows.length !== old.length ||
+    rows.some(
+      (r, i) => r.source_row !== old[i].source_row || r.kind !== old[i].kind,
+    )
+  )
+    throw Error("Kaynak satır numarası, sırası veya türü değiştirilemez");
+  const cleaned = validateReviewRows(rows, d);
+  const at = nowISO();
+  for (const row of cleaned)
+    for (const key of ["vehicle_id", "customer_id", "site_id", "personnel_id"])
+      if (
+        row[key] &&
+        !String(row.field_sources[key] || "").startsWith("Kullanıcı")
+      )
+        row.field_sources[key] = "Kullanıcı kontrol taslağında onayladı";
+  const updated = {
+    ...m,
+    review_rows: cleaned,
+    review_version: 1,
+    reviewed_at: at,
+    updated_at: at,
+  };
+  // Bound provenance history: immutable audit_log holds prior record versions.
+  updated.review_events = [
+    ...(m.review_events || []).slice(-19),
+    { at, action: "Alanlar kullanıcı tarafından doğrulandı" },
+  ];
+  t.put("inbox_messages", updated);
+  return updated;
+}
+export async function saveMessageRows(id, rows, expected) {
+  return run((d, t) => saveReviewInTransaction(d, t, id, rows, expected));
+}
+// Customer and current unsaved draft are committed together; no financial write.
+export async function createMessageCustomer(
+  id,
+  sourceRow,
+  rows,
+  fields,
+  expected,
+) {
+  return run((d, t) => {
     const m = reference(d, "inbox_messages", id);
     editable(m, d);
     revision(m, expected);
-    const old = assistedRows(m, d);
-    if (
-      rows.length !== old.length ||
-      rows.some(
-        (r, i) => r.source_row !== old[i].source_row || r.kind !== old[i].kind,
-      )
-    )
-      throw Error("Kaynak satır numarası, sırası veya türü değiştirilemez");
-    const cleaned = validateReviewRows(rows, d);
-    const at = nowISO();
-    for (const row of cleaned)
-      for (const key of [
-        "vehicle_id",
-        "customer_id",
-        "site_id",
-        "personnel_id",
-      ])
-        if (
-          row[key] &&
-          !String(row.field_sources[key] || "").startsWith("Kullanıcı")
-        )
-          row.field_sources[key] = "Kullanıcı kontrol taslağında onayladı";
-    const updated = {
-      ...m,
-      review_rows: cleaned,
-      review_version: 1,
-      reviewed_at: at,
-      updated_at: at,
-    };
-    // Bound provenance history: immutable audit_log holds prior record versions.
-    updated.review_events = [
-      ...(m.review_events || []).slice(-19),
-      { at, action: "Alanlar kullanıcı tarafından doğrulandı" },
-    ];
-    t.put("inbox_messages", updated);
-    return updated;
-}
-export async function saveMessageRows(id, rows, expected) {
-  return run((d,t)=>saveReviewInTransaction(d,t,id,rows,expected));
-}
-// Customer and current unsaved draft are committed together; no financial write.
-export async function createMessageCustomer(id, sourceRow, rows, fields, expected) {
-  return run((d,t)=>{
-    const m=reference(d,"inbox_messages",id);editable(m,d);revision(m,expected);
-    if(typeof fields.name!=="string")throw Error("Müşteri adı gerekli");
-    const name=fields.name.trim().replace(/\s+/g," ");
-    if(!name||name.length>200)throw Error("Müşteri adı 1–200 karakter olmalı");
-    const contact=String(fields.contact||"").trim(),phone=String(fields.phone||"").trim();
-    if(contact.length>100||phone.length>40)throw Error("Yetkili veya telefon bilgisi çok uzun");
-    const key=normKey(name).replace(/\s+/g," ").trim();
-    const found=live(d,"customers").filter(c=>normKey(c.name).replace(/\s+/g," ").trim()===key);
-    if(found.length>1)throw Error("Bu isimde birden fazla müşteri var; listeden doğru kartı seçin");
-    if(found[0]?.active===false)throw Error("Bu müşteri pasif; Müşteriler bölümünden durumunu kontrol edin");
-    const selected=rows.find(r=>r.source_row===sourceRow);
-    if(!selected||selected.kind!=="work")throw Error("Müşteri yalnız iş satırına eklenebilir");
-    const customer=found[0]||newRecord({name,contact,phone,active:true});
-    if(!found.length){t.add("customers",customer);d.customers.push(customer);}
-    const changed=rows.map(row=>row.source_row===sourceRow?{...row,customer_id:customer.id,site_id:null,duplicate_checked:false,field_sources:{...row.field_sources,customer_id:"Kullanıcı yeni/mevcut müşteri kartını seçti",site_id:"Müşteri değişince şantiye temizlendi"}}:{...row});
-    const message=saveReviewInTransaction(d,t,id,changed,expected);
-    return {customer,message,created:!found.length};
+    if (typeof fields.name !== "string") throw Error("Müşteri adı gerekli");
+    const name = fields.name.trim().replace(/\s+/g, " ");
+    if (!name || name.length > 200)
+      throw Error("Müşteri adı 1–200 karakter olmalı");
+    const contact = String(fields.contact || "").trim(),
+      phone = String(fields.phone || "").trim();
+    if (contact.length > 100 || phone.length > 40)
+      throw Error("Yetkili veya telefon bilgisi çok uzun");
+    const key = normKey(name).replace(/\s+/g, " ").trim();
+    const found = live(d, "customers").filter(
+      (c) => normKey(c.name).replace(/\s+/g, " ").trim() === key,
+    );
+    if (found.length > 1)
+      throw Error(
+        "Bu isimde birden fazla müşteri var; listeden doğru kartı seçin",
+      );
+    if (found[0]?.active === false)
+      throw Error(
+        "Bu müşteri pasif; Müşteriler bölümünden durumunu kontrol edin",
+      );
+    const selected = rows.find((r) => r.source_row === sourceRow);
+    if (!selected || selected.kind !== "work")
+      throw Error("Müşteri yalnız iş satırına eklenebilir");
+    const customer =
+      found[0] || newRecord({ name, contact, phone, active: true });
+    if (!found.length) {
+      t.add("customers", customer);
+      d.customers.push(customer);
+    }
+    const changed = rows.map((row) =>
+      row.source_row === sourceRow
+        ? {
+            ...row,
+            customer_id: customer.id,
+            site_id: null,
+            duplicate_checked: false,
+            field_sources: {
+              ...row.field_sources,
+              customer_id: "Kullanıcı yeni/mevcut müşteri kartını seçti",
+              site_id: "Müşteri değişince şantiye temizlendi",
+            },
+          }
+        : { ...row },
+    );
+    const message = saveReviewInTransaction(d, t, id, changed, expected);
+    return { customer, message, created: !found.length };
   });
 }
 export async function mergeMessages(ids, confirmed = false) {
@@ -221,6 +255,9 @@ export async function prepareMessageTransfer(id) {
   // Always read latest committed rows; session/UI state is not authoritative.
   return run((d) => {
     const m = reference(d, "inbox_messages", id);
+    const analysis = analyzeMessage(m, d);
+    if (analysis.blocking)
+      throw Error(analysis.notices.find((n) => n.blocking).text);
     if (m.status === "Reddedildi" || m.merge_parent_id)
       throw Error("Bu kaynak aktarılamaz");
     validateSmartData(d);
@@ -235,6 +272,27 @@ export async function prepareMessageTransfer(id) {
         !already.has("inbox-" + m.id + "-" + r.source_row),
     );
     if (!rows.length) throw Error("Aktarılacak en az bir satır seçin");
+    if (rows.some((r) => r.inference_confirmed === false))
+      throw Error("Sefer / çalışma süresi önerisini açıkça doğrulayın");
+    if (
+      rows.some(
+        (r) =>
+          (r.notes || []).some((n) => n.includes("tarihler çelişiyor")) &&
+          !String(r.field_sources?.date || "").startsWith("Kullanıcı"),
+      )
+    )
+      throw Error("Gerçek iş tarihini doğrulayın");
+    if (analysis.distribution) {
+      const all = assistedRows(m, d);
+      if (
+        all.some((r) => r.include === false) ||
+        all.reduce((n, r) => n + Number(r.quantity || 0), 0) !==
+          analysis.distribution.total
+      )
+        throw Error(
+          "Döküm satırları birlikte ve toplam seferle uyumlu aktarılmalı",
+        );
+    }
     if (
       rows.some((r) =>
         rowQuestions(r, d).some((q) => q.text.startsWith("Birden fazla")),
@@ -248,5 +306,22 @@ export async function prepareMessageTransfer(id) {
     if (rows.some((r) => similarRecords(r, d).length && !r.duplicate_checked))
       throw Error("Benzer kayıt kontrolü gerekli");
     return historyFromMessage({ ...m, review_rows: rows }, d);
+  });
+}
+export async function reanalyzeMessage(id, confirmed) {
+  if (confirmed !== true) throw Error("Yeniden ayrıştırma için onay gerekli");
+  await backupBeforeSoloOperation(db, "before-message-reanalysis");
+  return run((d, t) => {
+    const m = reference(d, "inbox_messages", id);
+    editable(m, d);
+    const updated = {
+      ...m,
+      review_rows: null,
+      reviewed_at: null,
+      engine_version: "sahapro-parse/2",
+      updated_at: nowISO(),
+    };
+    t.put("inbox_messages", updated);
+    return updated;
   });
 }

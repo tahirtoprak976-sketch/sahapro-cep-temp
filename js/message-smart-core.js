@@ -1,3 +1,4 @@
+import { analyzeMessage, ENGINE_VERSION } from "./message-engine.js";
 // Local message assistance. Suggestions never create financial records.
 import { normKey, WORK_TYPES, WORK_UNITS, resolvePrice } from "./core.js";
 import { draftMessage, live, label, validPast } from "./solo-core.js";
@@ -25,6 +26,10 @@ export const ROW_FIELDS = [
   "description",
   "include",
   "duplicate_checked",
+  "dump_site_id",
+  "inference_confirmed",
+  "transport_group_key",
+  "transport_total",
 ];
 const hasNumber = (v) => v !== null && v !== undefined && v !== "";
 const compact = (v) => normKey(v || "").replace(/[^a-z0-9çğıöşü]/g, "");
@@ -84,6 +89,12 @@ export function assistedRows(m, d) {
       notes: [...(r.notes || [])],
       field_sources: { ...(r.field_sources || {}) },
     }));
+  const posted =
+    m.id &&
+    [...(d.work_records || []), ...(d.fuel_records || [])].some((w) =>
+      w.history_source?.row_id?.startsWith("inbox-" + m.id + "-"),
+    );
+  if (!posted) return analyzeMessage(m, d).rows;
   return draftMessage({ ...m, text: composeFragments(m.text) }, d).map(
     (r, i) => {
       let price = r.kind === "work" ? explicitPrice(r.description) : null;
@@ -137,6 +148,13 @@ export function assistedRows(m, d) {
 export function rowQuestions(r, d) {
   const q = [];
   const add = (field, text) => q.push({ field, text });
+  if (r.inference_confirmed === false)
+    add("quantity", "Sefer veya çalışma süresi önerisini doğrulayın.");
+  if (
+    (r.notes || []).some((n) => n.includes("tarihler çelişiyor")) &&
+    !String(r.field_sources?.date || "").startsWith("Kullanıcı")
+  )
+    add("date", "Metindeki tarihler çelişiyor; gerçek tarihi seçin.");
   for (const [field, store, type] of [
     ["vehicle_id", "vehicles", "vehicle"],
     ["customer_id", "customers", "customer"],
@@ -388,6 +406,15 @@ export function validateReviewRows(rows, d) {
       throw Error("Tekil kaynak satırı veya tür geçersiz");
     indexes.add(r.source_row);
     if (r.date) validPast(r.date);
+    if (
+      r.transport_group_key &&
+      (r.unit !== "Sefer" ||
+        typeof r.transport_group_key !== "string" ||
+        !r.transport_group_key.startsWith("inbox-") ||
+        !Number.isInteger(r.transport_total) ||
+        r.transport_total <= 0)
+    )
+      throw Error("Döküm grubu/total geçersiz");
     const cleaned = Object.fromEntries(
       ROW_FIELDS.filter((k) => Object.hasOwn(r, k)).map((k) => [k, r[k]]),
     );
@@ -396,6 +423,7 @@ export function validateReviewRows(rows, d) {
       ["customer_id", "customers"],
       ["site_id", "sites"],
       ["personnel_id", "personnel"],
+      ["dump_site_id", "dump_sites"],
     ])
       if (cleaned[k] && !live(d, store).some((x) => x.id === cleaned[k]))
         throw Error("Seçilen kart bulunamadı: " + k);
@@ -438,6 +466,12 @@ export function validateReviewRows(rows, d) {
     return {
       ...cleaned,
       source_row: r.source_row,
+      evidence: r.evidence && typeof r.evidence === "object" ? r.evidence : {},
+      candidates:
+        r.candidates && typeof r.candidates === "object" ? r.candidates : {},
+      engine_version: r.engine_version || null,
+      duration: r.duration || null,
+      inference_confirmed: r.inference_confirmed !== false,
       include: r.include !== false,
       duplicate_checked: r.duplicate_checked === true,
       field_sources: Object.fromEntries(
