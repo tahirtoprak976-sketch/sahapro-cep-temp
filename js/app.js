@@ -1,3 +1,4 @@
+import * as solo from "./solo-ui.js";
 import * as enterprise from "./enterprise.js";
 import * as pro from "./pro.js";
 // SAHAPRO SOLO — uygulama iskeleti: boot, router, alt navigasyon, PIN, SW güncelleme
@@ -111,7 +112,9 @@ function parseHash() {
 
 export async function renderCurrent() {
   const { parts, query } = parseHash();
-  const root = qs("#screen");
+  const previousRoot = qs("#screen");
+  const root = previousRoot.cloneNode(false);
+  previousRoot.replaceWith(root);
   const mod = MODULES[parts[0] || ""] || dashScreen;
   const names = await buildNames();
   const ctx = {
@@ -132,19 +135,47 @@ export async function renderCurrent() {
   root.innerHTML =
     '<div style="padding:40px 0"><div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div></div>';
   try {
-    const enterpriseHandled = await enterprise.screen(ctx);
+    const soloHandled = await solo.screen(ctx);
+    const enterpriseHandled = soloHandled || await enterprise.screen(ctx);
     const handled = enterpriseHandled || (await pro.screen(ctx));
     if (!handled) await mod(ctx);
+    if (!root.isConnected) return;
     if (!handled) await pro.augment(ctx);
     if (!enterpriseHandled) await enterprise.augment(ctx);
+    await solo.augment(ctx);
     professionalIcons(root);
   } catch (e) {
     console.error(e);
     root.innerHTML = `<div class="notice danger" style="margin-top:20px"><span>⛔</span><span>Ekran yüklenirken hata: ${esc(e.message || e)}</span></div><button class="btn block" data-go="#/">Ana Sayfaya Dön</button>`;
   }
+  if (!root.isConnected) return;
+  renderBrandShell(parts[0] || "");
   renderNav(parts[0] || "");
   professionalIcons(qs("#bottomnav"));
   window.scrollTo(0, 0);
+}
+
+const OFFICE_NAV = [
+  ["", "Genel Bakış"], ["isler", "İş Hareketleri"], ["fisler", "Dijital Fişler"],
+  ["musteriler", "Müşteriler"], ["santiyeler", "Şantiyeler"], ["filo", "Filo ve Bakım"],
+  ["personel", "Personel"], ["yakit", "Yakıt"], ["depo", "Depo Tankı"],
+  ["teklif", "Teklifler"], ["sozlesmeler", "Sözleşmeler"], ["hakedis", "Hakedişler"],
+  ["cari", "Cari Hesaplar"], ["kasa", "Kasa"], ["belgeler", "Belge Merkezi"],
+  ["raporlar", "Rapor Merkezi"], ["gunsonu", "Gün Sonu"], ["gecmis", "Geçmiş İş Aktarımı"],
+  ["sayac", "Sayaç Okumaları"], ["vardiya", "Görev Planı"], ["zimmet", "Zimmetler"],
+  ["mesajlar", "Mesaj Gelen Kutusu"], ["arsiv", "Arşiv / QR"], ["sonuc", "Sonuç Analizi"],
+  ["banka-aktarim", "Banka Mutabakatı"], ["asistan", "Yerel Asistan"],
+  ["ayarlar", "Ayarlar"],
+];
+function renderBrandShell(first) {
+  let shell = document.getElementById("brand-shell");
+  if (!shell) {
+    shell = document.createElement("aside");
+    shell.id = "brand-shell";
+    shell.className = "brand-shell";
+    document.body.prepend(shell);
+  }
+  shell.innerHTML = `<a class="brand-logo" href="#/" aria-label="SAHAPRO SOLO ana sayfa"><span class="brand-symbol">${iconSvgFor("#/filo")}</span><span>SAHA<b>PRO</b><small>SOLO · MURATOĞLU HAFRİYAT</small></span></a><nav class="office-nav" aria-label="Modüller">${OFFICE_NAV.map(([route,label]) => `<button data-go="#/${route}" class="${route === first ? "on" : ""}" ${route === first ? 'aria-current="page"' : ""}>${iconSvgFor("#/"+route)}<span>${label}</span></button>`).join("")}</nav><div class="brand-local">Cihazda kayıt · Tek kullanıcı<br><span>Yedeklerinizi dışarıda saklayın.</span></div>`;
 }
 
 function renderNav(first) {
@@ -153,7 +184,7 @@ function renderNav(first) {
   const cur = SECTION[first] || "daha";
   nav.innerHTML = NAV.map(
     (n) =>
-      `<button class="${n.sec === cur ? "on" : ""}" data-go="${n.hash}"><span class="ic">${n.ic}</span>${n.t}</button>`,
+      `<button aria-label="${n.t}" ${n.sec === cur ? 'aria-current="page"' : ""} class="${n.sec === cur ? "on" : ""}" data-go="${n.hash}"><span class="ic">${n.ic}</span>${n.t}</button>`,
   ).join("");
 }
 
@@ -285,6 +316,8 @@ document.addEventListener("click", (ev) => {
 })();
 
 const ICON_PATHS = {
+  settings: "M4 6h16M4 12h16M4 18h16M8 3v6M16 9v6M9 15v6",
+  search: "M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14M15 15l6 6",
   home: "M3 11 12 3l9 8M5 9v12h14V9M9 21v-7h6v7",
   work: "M5 4h14v16H5zM8 8h8M8 12h5M8 16h7",
   document: "M5 3h10l4 4v14H5zM15 3v5h4M8 12h8M8 16h6",
@@ -299,7 +332,9 @@ const ICON_PATHS = {
 function iconSvgFor(href = "") {
   const route = href.split("/")[1]?.split("?")[0] || "";
   const key =
-    route === ""
+    route === "ayarlar"
+      ? "settings"
+      : route === "ara" ? "search" : route === ""
       ? "home"
       : route === "daha"
         ? "more"
@@ -340,6 +375,8 @@ function professionalIcons(root) {
         );
     }
   }
+  for (const el of root.querySelectorAll(".iconbtn[data-go]"))
+    if (!el.querySelector("svg")) el.innerHTML = iconSvgFor(el.dataset.go);
   for (const el of root.querySelectorAll(".ic"))
     if (!el.querySelector("svg"))
       el.innerHTML = iconSvgFor(el.closest("[data-go]")?.dataset.go || "");

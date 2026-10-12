@@ -139,6 +139,7 @@ async function fuelForm(ctx) {
         ${fNum("KM (ops.)", "km", "")}
         ${fNum("Makine Saati (ops.)", "machine_hours", "", { step: "any" })}
       </div>
+      <label class="history-check"><input type="checkbox" name="full_tank"> Bu dolumda depo tamamen doldu (ölçümlü tüketim karşılaştırması için)</label>
       ${fArea("Açıklama", "description", "")}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
@@ -171,6 +172,7 @@ async function fuelForm(ctx) {
         vehicle_id: val.vehicle_id,
         personnel_id: val.personnel_id || null,
         liters: Number(val.liters),
+        full_tank: !!qs("[name=full_tank]",root)?.checked,
         unit_price: val.unit_price ? Number(val.unit_price) : null,
         total: val.total ? Number(val.total) : null,
         fuel_source: val.fuel_source,

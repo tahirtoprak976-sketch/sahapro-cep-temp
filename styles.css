@@ -1006,3 +1006,43 @@ body {
 .slip-panel .kv .k{flex:0 0 92px}.slip-panel .kv .v{min-width:0}.slip-actions{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;background:#eef2f6;border:1px solid #dce3eb;border-radius:14px}.slip-actions .btn{min-height:48px}
 
 .history-check{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.6;margin:14px 0;min-height:44px}.history-check input{flex:0 0 22px;width:22px;height:22px;margin:2px 0}.history-state{padding:10px 12px;border-radius:8px;background:#e9f5ee;color:#215f3f;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.history-state.bad{background:#fff1df;color:#834a10}.history-source{white-space:pre-wrap;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.history-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.history-row .field{min-width:0}.history-row h2{margin-bottom:0}.history-row details{padding:12px 0}.history-row summary{cursor:pointer;min-height:44px}.history-row .field input,.history-row .field select{width:100%}
+
+/* v3.4 — SAHAPRO corporate identity: navy structure, orange actions, clear records. */
+:root{--bg:#eef2f5;--bg2:#f7f9fb;--surface:#fff;--surface2:#edf2f6;--border:#d5dfe8;--text:#142c42;--muted:#53687b;--accent:#9a4b00;--accent2:#803c00;--radius:16px;--shadow:0 5px 22px rgba(9,29,48,.06);--brand-navy:#091d30;--brand-orange:#ffac22}
+body{background:var(--bg);font-size:16px}
+.brand-shell{background:var(--brand-navy);color:#fff;padding:14px 18px;border-bottom:3px solid var(--brand-orange)}
+.brand-logo{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-size:26px;font-weight:900;letter-spacing:-.9px;line-height:1.05;width:fit-content}
+.brand-logo b{color:var(--brand-orange)}
+.brand-logo small{display:block;color:#bdcbd8;font-size:9px;font-weight:600;letter-spacing:1.3px;margin-top:7px}
+.brand-symbol{width:42px;height:42px;display:grid;place-items:center;background:var(--brand-orange);color:var(--brand-navy);border-radius:11px}
+.brand-symbol svg{width:27px;height:27px}.office-nav,.brand-local{display:none}
+.appbar{background:#eef2f5f5;backdrop-filter:blur(12px);border-bottom:1px solid #d5dfe8;margin-bottom:16px;min-height:76px}
+.appbar .title h1{font-size:19px;letter-spacing:-.35px}.appbar .title .sub{font-size:12px;color:#53687b}
+.iconbtn,.appbar .back{width:48px;flex:none;background:#fff;border-radius:12px}
+.command-hero{position:relative;overflow:hidden;background:linear-gradient(120deg,#091d30,#183b54);color:white;padding:24px 20px;border-radius:18px;margin:0 0 18px;border:1px solid #25475f;box-shadow:0 8px 24px #091d301c}
+.command-hero:after{content:"";position:absolute;right:-52px;top:-55px;width:130px;height:250px;border:24px solid #ffac2220;transform:rotate(27deg);pointer-events:none}
+.hero-eyebrow{font-size:10px;letter-spacing:1.3px;color:#ffca70;font-weight:700;position:relative;z-index:1}
+.command-hero h2{font-size:30px;line-height:1.15;letter-spacing:-.8px;margin:16px 0 12px}.command-hero h2 span{color:var(--brand-orange)}
+.command-hero p{font-size:13px;line-height:1.7;color:#d0dce6;max-width:440px;margin:0 0 18px}
+.hero-actions{display:flex;flex-wrap:wrap;gap:8px;position:relative;z-index:1}.hero-actions .btn{background:#ffffff0d;color:#fff;border-color:#7890a4}.hero-actions .btn.primary{background:var(--brand-orange);color:#091d30;border-color:var(--brand-orange)}
+.hero-foot{font-size:11px;color:#b6c8d8;border-top:1px solid #ffffff26;padding-top:14px;margin-top:18px}
+.btn.primary{background:var(--brand-orange);color:#091d30;border-color:#df8f0d;font-weight:750;box-shadow:0 2px 4px #091d3008}.btn.primary:active{background:#ef9712}
+.btn{border-radius:11px}.btn:focus-visible,.iconbtn:focus-visible,.bottomnav button:focus-visible,.office-nav button:focus-visible,a:focus-visible{outline:3px solid #1763a6;outline-offset:3px}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid #9a4b00;outline-offset:1px}
+.statgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.stat{padding:16px 10px;text-align:left;border-top:3px solid #e4a23f;box-shadow:var(--shadow)}.stat .v{font-size:23px;overflow-wrap:anywhere;letter-spacing:-.6px}.stat .l{font-size:11px;margin-top:5px;letter-spacing:.6px}
+.quickgrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.quickgrid button{aspect-ratio:auto;min-height:88px;border-radius:14px;box-shadow:var(--shadow);font-size:13px;gap:9px}.quickgrid .ic{color:#9a4b00}
+.section-title{color:#203b52;font-weight:800;border-left:3px solid #e49110;padding-left:10px;letter-spacing:.2px}
+.card,.li,.slip-list-card,.slip-panel{border-color:var(--border)}.li-ic{background:#fff2dc;color:#935000}.slip-document-banner{background:linear-gradient(120deg,#091d30,#183b54);border-left:5px solid var(--brand-orange)}
+.bottomnav{background:#091d30f7;border-top:2px solid #d39227;color:#bdcbd8;max-width:520px}.bottomnav button{color:#c3d1de;min-height:62px;font-size:10px}.bottomnav button.on{color:var(--brand-orange);background:#ffffff09}.bottomnav button .ic svg{width:22px;height:22px}
+.badge.accent{background:#fff2dc;border-color:#e6c07b;color:#874500}.chart .bar{fill:#cf7b00}
+@media(min-width:600px){.statgrid{grid-template-columns:repeat(4,minmax(0,1fr))}.quickgrid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(min-width:1100px){.brand-shell{position:fixed;left:0;top:0;bottom:0;width:252px;z-index:60;display:flex;flex-direction:column;border-bottom:0;border-right:1px solid #244058;padding:24px 16px}.brand-logo{margin:0 0 26px;font-size:27px}.office-nav{display:flex;flex-direction:column;gap:3px;overflow:auto;flex:1}.office-nav button{display:flex;align-items:center;gap:12px;text-align:left;flex:none;width:100%;min-height:44px;background:transparent;border:0;border-radius:8px;padding:10px;color:#c5d4e1;font-size:13px;cursor:pointer}.office-nav svg{width:19px;height:19px;flex:none}.office-nav button:hover{background:#ffffff0a}.office-nav button.on{background:var(--brand-orange);color:#091d30;font-weight:750}.brand-local{display:block;color:#d2dfeb;font-size:11px;line-height:1.8;padding:16px 6px 0;border-top:1px solid #ffffff21;margin-top:12px}.brand-local span{color:#a3b8ca}body{padding-left:252px}.screen{max-width:1180px;padding:0 30px 50px}.appbar{margin:0 -30px 22px;padding-left:30px;padding-right:30px}.bottomnav{display:none}.command-hero{padding:32px}.command-hero h2{font-size:38px}.screen>form{max-width:850px}.statgrid{gap:14px}.stat{padding:20px}.stat .v{font-size:28px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media print{.brand-shell,.bottomnav,.command-hero{display:none!important}body{padding-left:0;background:white}.screen{max-width:none;padding:0}.appbar{position:static;background:white}}
+.quickgrid button{min-width:0;overflow-wrap:anywhere;white-space:normal;padding:10px 5px}
+.formgrid2{grid-template-columns:repeat(2,minmax(0,1fr))}.formgrid2>.field{min-width:0}.field input,.field textarea,.field select{max-width:100%}
+.quickgrid button{aspect-ratio:auto!important}
+.iconbtn svg{width:22px;height:22px}
+
+/* SOLO business extensions */
+.solo-intro{background:#142e49;color:#e2edf5;border-left:4px solid #ffac22;border-radius:12px;padding:16px;margin:12px 0;font-size:13px;line-height:1.7}.solo-module-links h2{font-size:16px}.solo-qr{text-align:center}.solo-qr img{width:220px;max-width:100%;image-rendering:pixelated}.screen form>.btn.block{margin:18px 0}.enterprise-links{align-items:stretch}.enterprise-links .btn{overflow-wrap:anywhere;max-width:100%}

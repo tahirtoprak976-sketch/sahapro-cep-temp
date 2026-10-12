@@ -549,6 +549,10 @@ export function validateEnterpriseData(data) {
         toKurus(peers[0].amount) !== toKurus(peers[1].amount)
       )
         throw Error("Yedekte kopuk banka transferi");
+    } else if (m.source_store === "bank_import_rows") {
+      require("bank_import_rows",m.source_id);
+      const row=data.bank_import_rows.find(r=>r.id===m.source_id);
+      if(row.bank_movement_id!==m.id||row.bank_account_id!==m.bank_account_id||row.direction!==m.direction||row.date!==m.date||toKurus(row.amount)!==toKurus(m.amount))throw Error("Yedekte kopuk banka dosyası olayı");
     } else {
       if (
         !["supplier_payments", "cash_records", "payroll_entries"].includes(

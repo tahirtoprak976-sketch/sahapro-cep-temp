@@ -118,8 +118,13 @@ export async function screen(ctx) {
       const result=await commitHistory(pkg,selectedChoices,selectedOptions);
       data=await loadHistoryData();validate(true);
       qs('[data-history-result]',root).innerHTML=`<div class="notice">Aktarım tamamlandı: ${result.works} iş, ${result.fuels} yakıt ve ${result.cards} yeni kart. ${choices.length-plan.selected} seçilmemiş satır kaydedilmedi.</div><button class="btn" data-go="#/isler">İş Kayıtlarını Aç</button><button class="btn" data-go="#/yakit">Yakıt Kayıtlarını Aç</button>`;
+      const messageId=sessionStorage.getItem('solo_history_message');
+      if(messageId){await (await import('./solo-db.js')).syncMessageStatus(messageId);sessionStorage.removeItem('solo_history_message');}
       toast('Seçili kayıtlar kalıcı olarak kaydedildi.','ok');
     }catch(e){toast(e.message,'err');qs('[data-history-result]',root).textContent='Aktarım yapılmadı: '+e.message;}
     finally{busy=false;validate();}
   });
+  const staged=sessionStorage.getItem('solo_history_package');
+  if(staged){sessionStorage.removeItem('solo_history_package');await openFile(staged,'Mesaj gelen kutusundan taslak');}
+
 }

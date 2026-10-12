@@ -1,3 +1,4 @@
+import {validateSoloData,SOLO_STORES} from "./solo-core.js";
 import {
   ENTERPRISE_STORES,
   validateEnterpriseData,
@@ -92,7 +93,7 @@ export async function restoreBackup(db, obj, replace = false) {
           const existing = get.result;
           if (
             existing &&
-            (ENTERPRISE_STORES.includes(s) ||
+            (ENTERPRISE_STORES.includes(s) || SOLO_STORES.includes(s) ||
               (s === "contracts" && existing.status === "İmzalandı") ||
               (s === "hakedis" && existing.status === "Kesinleşti") ||
               (s === "slips" && existing.status === "İmzalandı"))
@@ -150,6 +151,9 @@ export async function restoreBackup(db, obj, replace = false) {
     t.onabort = t.onerror = () =>
       reject(error || t.error || Error("Geri yükleme iptal edildi"));
   });
+}
+export async function backupBeforeSoloOperation(db, prefix = "before-solo-operation") {
+  await saveRecovery(db, await fullBackup(db), prefix);
 }
 export async function backupBeforeHistoryImport(db) {
   const snapshot = await fullBackup(db);
@@ -229,6 +233,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
       Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),
     ),
   );
+  validateSoloData(Object.fromEntries(Object.entries(merged).map(([s,m])=>[s,[...m.values()]])));
   const attachments = new Set();
   for (const a of obj.attachments || []) {
     if (attachments.has(a.id)) throw Error("Yedekte mükerrer ek");
