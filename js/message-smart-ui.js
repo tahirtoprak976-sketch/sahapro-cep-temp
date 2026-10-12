@@ -99,7 +99,7 @@ function rowEditor(r, index, d, locked) {
   const value = (k) => r[k] ?? "";
   return `<article class="message-review-card" data-review-row="${index}"><div class="row"><h3>${index + 1}. ${r.kind === "fuel" ? "Yakıt" : "İş"} satırı</h3><label class="history-check"><input type="checkbox" data-row-include ${r.include !== false ? "checked" : ""} ${locked ? "disabled" : ""}> Aktarıma dahil</label></div><div data-row-questions></div><fieldset ${locked ? "disabled" : ""}><div class="formgrid2">${input("Gerçek iş tarihi", "date", r.date, "date")}${fSelect("Araç / makine", "vehicle_id", option(d, "vehicles"), value("vehicle_id"))}</div>${
     r.kind === "work"
-      ? `<div class="formgrid2">${fSelect("Müşteri", "customer_id", option(d, "customers"), value("customer_id"))}${fSelect(
+      ? `<div class="formgrid2"><div>${fSelect("Müşteri", "customer_id", option(d, "customers"), value("customer_id"))}${locked ? "" : '<button class="btn" type="button" data-new-message-customer>+ Yeni Müşteri Ekle</button>'}</div>${fSelect(
           "Şantiye",
           "site_id",
           option(d, "sites").filter(
@@ -328,6 +328,23 @@ export async function messageWorkbench(ctx, d, m, tools) {
       update();
     }),
   );
+  root.addEventListener("click",event=>{
+    const button=event.target.closest("[data-new-message-customer]");if(!button||locked)return;
+    const row=rows[Number(button.closest("[data-review-row]").dataset.reviewRow)];
+    const dialog=ui.sheet(`<h2>Yeni Müşteri Ekle</h2><form data-new-customer-form>${fText("Müşteri / firma adı","name","",{ph:"Örnek: Muharrem Arnavutköy"})}${fText("Yetkili (opsiyonel)","contact","")}${fText("Telefon (opsiyonel)","phone","",{type:"tel"})}</form><p class="notice">Müşteri kartı ve ekrandaki kontrol taslağı birlikte kaydedilir. İş veya ödeme oluşmaz. Aynı adlı tek bir müşteri varsa mevcut kart seçilir.</p><p data-new-customer-error class="message-issues" role="alert" hidden></p><div class="row"><button class="btn" data-customer-cancel>Vazgeç</button><button class="btn primary" data-customer-save>Kaydet ve Seç</button></div>`,{modal:true});
+    const error=qs("[data-new-customer-error]",dialog),save=qs("[data-customer-save]",dialog),cancel=qs("[data-customer-cancel]",dialog);
+    cancel.onclick=()=>ui.sheetClose();
+    qs("[data-new-customer-form]",dialog).onsubmit=e=>{e.preventDefault();save.click();};
+    save.onclick=async()=>{
+      if(save.disabled)return;save.disabled=true;cancel.disabled=true;error.hidden=true;
+      try{
+        const result=await actions.createMessageCustomer(m.id,row.source_row,rows,ui.collectForm(qs("form",dialog)),revision);
+        ui.sheetClose();toast(result.created?"Müşteri ve kontrol taslağı kaydedildi":"Mevcut müşteri seçildi; kontrol taslağı kaydedildi","ok");
+        ctx.reload();
+      }catch(e){error.textContent=e.message||String(e);error.hidden=false;save.disabled=false;cancel.disabled=false;}
+    };
+    qs('[name=name]',dialog).focus();
+  });
   qs("[data-s-save]", root)?.addEventListener("click", () =>
     safe(async () => {
       await actions.saveMessageRows(m.id, rows, revision);
