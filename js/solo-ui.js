@@ -1,3 +1,8 @@
+import {
+  messageWorkbench,
+  memoryScreen,
+  messageQueueTools,
+} from "./message-smart-ui.js";
 import * as core from "./core.js";
 import * as rules from "./solo-core.js";
 import * as actions from "./solo-db.js";
@@ -51,23 +56,16 @@ const extra = [
   "musteri-paketi",
   "bakim-yenile",
   "teklif-sonuc",
+  "mesaj-hafizasi",
 ];
 const money = (v) => (v == null ? "Belirtilmedi" : core.fmtTL(v) + " TL");
 const button = (label, href) =>
   `<button class="btn" data-go="${esc(href)}">${esc(label)}</button>`;
 const options = (d, s) =>
-  rules
-    .live(d, s)
-    .map((r) => ({
-      v: r.id,
-      t:
-        r.name ||
-        r.doc_no ||
-        r.title ||
-        r.description ||
-        r.maint_type ||
-        r.date,
-    }));
+  rules.live(d, s).map((r) => ({
+    v: r.id,
+    t: r.name || r.doc_no || r.title || r.description || r.maint_type || r.date,
+  }));
 const table = (headers, rows) => ({ headers, rows });
 const spec = (title, sections) => ({
   title,
@@ -163,6 +161,10 @@ export async function screen(ctx) {
   const route = ctx.parts[0];
   if (!MODULES[route] && !extra.includes(route)) return false;
   const d = await ctx.db.dumpAll();
+  if (route === "mesaj-hafizasi") {
+    await memoryScreen(ctx, d);
+    return true;
+  }
   if (route === "arsiv") {
     await archive(ctx, d);
     return true;
@@ -345,8 +347,9 @@ async function list(ctx, d, store, title) {
     qs("[data-s-list]", root),
     rows,
     (r, i) =>
-      `<section class="card">${t.headers.map((h, j) => kv(h, esc(t.rows[rows.indexOf(r)][j] ?? ""))).join("")}${button("Detay", "#/" + parts[0] + "/" + r.id)}</section>`,
+      `<section class="card">${t.headers.map((h, j) => kv(h, esc(t.rows[rows.indexOf(r)][j] ?? ""))).join("")}${store === "inbox_messages" && r.status === "Taslak" && !r.merge_parent_id && !r.review_rows?.length && !r.source_messages?.length ? `<label class="history-check"><input type="checkbox" data-queue-select="${esc(r.id)}"> Birleştirme için seç</label>` : ""}${button("Detay", "#/" + parts[0] + "/" + r.id)}</section>`,
   );
+  if (store === "inbox_messages") messageQueueTools(ctx, d, rows);
   bindExport(
     root,
     () => spec(title, [t]),
@@ -609,27 +612,130 @@ async function detail(ctx, d, store, title, id) {
     () => t,
   );
 }
+function messageCards(m, d) {
+  const rows = rules.messageReview(m, d);
+  return (
+    rows
+      .map(
+        (r, i) =>
+          `<article class="message-review-card"><div class="row"><h3>${i + 1}. ${r.kind === "fuel" ? "Yakıt satırı" : "İş satırı"}</h3><span class="message-status ${r.issues.length ? "pending" : "matched"}">${esc(r.review_status)}</span></div><dl class="message-fields">${[
+            ["Tarih", r.date || "Belirtilmedi"],
+            ["Araç", rules.label(d, "vehicles", r.vehicle_id)],
+            [
+              "Müşteri",
+              r.kind === "fuel"
+                ? "Yakıt için zorunlu değil"
+                : rules.label(d, "customers", r.customer_id),
+            ],
+            ["Şantiye", rules.label(d, "sites", r.site_id)],
+            ["Personel", rules.label(d, "personnel", r.personnel_id)],
+            [
+              "Yapılan iş",
+              r.kind === "fuel" ? "Yakıt alımı" : r.work_type || "Belirtilmedi",
+            ],
+            [
+              "Miktar",
+              r.kind === "fuel"
+                ? r.fuel_liters + " L"
+                : (r.quantity ?? "?") + " " + (r.unit || "?"),
+            ],
+          ]
+            .map(
+              ([k, v]) =>
+                `<div><dt>${esc(k)}</dt><dd>${esc(String(v))}</dd></div>`,
+            )
+            .join(
+              "",
+            )}</dl><details><summary>Kaynak metin ve eşleşmeler</summary><p class="wrap">${esc(r.description)}</p>${Object.values(
+            r.candidates,
+          )
+            .filter((x) => x.length > 1)
+            .map(
+              (x) => `<p>Adaylar: ${x.map((a) => esc(a.name)).join(" · ")}</p>`,
+            )
+            .join(
+              "",
+            )}<p>Gönderen operatör olarak atanmaz. Eşleşmeler bu cihazdaki kartlar ve tanımlı takma adlardan gelir.</p></details>${r.issues.length ? `<ul class="message-issues">${r.issues.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}<p class="notice">${r.kind === "fuel" ? "Yakıt kaynağını son kontrol ekranında doğrulayın." : "Fiyat, KDV ve hesap durumu son kontrol ekranında doğrulanır."}</p></article>`,
+      )
+      .join("") || '<p class="notice">Ayrıştırılacak satır bulunamadı.</p>'
+  );
+}
 async function messageForm(ctx, d) {
   const { root } = ctx;
   root.innerHTML =
     appbar("Mesaj Gelen Kutusu", "WhatsApp dışa aktarımı veya metin") +
-    `<section class="solo-intro">Gönderen otomatik şoför kabul edilmez. Mesajlar taslak olarak saklanır; kayıt için tarih ve alanlar ayrıca onaylanır.</section><form>${fNum("Mesajlarda yıl yoksa gerçek yıl", "year", new Date().getFullYear())}<label class="field">WhatsApp .txt dosyası<input type="file" accept=".txt,text/plain" data-message-file></label>${fArea("Mesajlar", "raw")}<div class="row">${voiceSupported() ? '<button type="button" class="btn" data-voice>Sesle Yazdır</button>' : ""}<button type="button" class="btn primary" data-s-save>Mesajları Taslak Olarak Al</button></div></form>`;
+    `<section class="solo-intro">Gönderen otomatik şoför kabul edilmez. Mesajlar taslak olarak saklanır; kayıt için tarih ve alanlar ayrıca onaylanır.</section><form>${fNum("Mesajlarda yıl yoksa gerçek yıl", "year", new Date().getFullYear())}<label class="field">WhatsApp .txt dosyası<input type="file" accept=".txt,text/plain" data-message-file></label>${fArea("Mesajlar", "raw")}<p class="notice">1 · Mesajı ekle &nbsp; 2 · Ayrıştırmayı incele &nbsp; 3 · Taslağı kaydet. İş kaydı sonraki kontrol ekranında oluşur.</p><button type="button" class="btn" data-message-preview>Ayrıştır ve Önizle</button><div data-message-preview-result aria-live="polite"></div><div class="row">${voiceSupported() ? '<button type="button" class="btn" data-voice>Sesle Yazdır</button>' : ""}<button type="button" class="btn primary" data-s-save disabled>Mesajları Taslak Olarak Al</button></div></form>`;
+  let reviewed = null;
+  const fingerprint = () =>
+    JSON.stringify([
+      qs("[name=raw]", root).value,
+      qs("[name=year]", root).value,
+    ]);
+  const invalidate = () => {
+    reviewed = null;
+    qs("[data-s-save]", root).disabled = true;
+    qs("[data-message-preview-result]", root).innerHTML = "";
+  };
+  qs("form", root).addEventListener("input", invalidate);
+  qs("[data-message-preview]", root).onclick = () =>
+    safe(async () => {
+      const blocks = rules.messages(
+        qs("[name=raw]", root).value,
+        qs("[name=year]", root).value,
+      );
+      const existing = new Set(
+          rules.live(d, "inbox_messages").map((x) => x.source_key),
+        ),
+        seen = new Set(existing);
+      const preview = blocks.map((m) => {
+        const duplicate = seen.has(m.source_key);
+        seen.add(m.source_key);
+        return { ...m, duplicate };
+      });
+      const counts = preview.reduce(
+        (a, m) => {
+          if (m.duplicate) a.repeat++;
+          else
+            for (const r of rules.messageReview(m, d)) {
+              a[r.kind]++;
+              if (r.issues.length) a.check++;
+            }
+          return a;
+        },
+        { work: 0, fuel: 0, check: 0, repeat: 0 },
+      );
+      qs("[data-message-preview-result]", root).innerHTML =
+        `<section class="card"><h2>Ayrıştırma özeti</h2><p>${blocks.length} mesaj · ${counts.work} iş · ${counts.fuel} yakıt · ${counts.check} kontrol bekleyen satır · ${counts.repeat} tekrar</p><p class="notice">Henüz hiçbir kayıt oluşturulmadı. Eksikler taslakta tutulur; son kontrol ekranında tamamlanır.</p><div data-message-pages></div></section>`;
+      pagedRender(
+        qs("[data-message-pages]", root),
+        preview,
+        (m) =>
+          `<section class="message-block"><h3>${esc(m.sender || "Gönderen belirtilmedi")} · ${esc(m.date || "Tarih belirtilmedi")}</h3>${m.duplicate ? '<p class="notice">Bu mesaj tekrar; aktarımda atlanır.</p>' : messageCards(m, d)}</section>`,
+        10,
+      );
+      reviewed = fingerprint();
+      qs("[data-s-save]", root).disabled = false;
+    });
   qs("[data-message-file]", root).onchange = () =>
     safe(async () => {
       const f = qs("[data-message-file]", root).files[0];
       if (!f) return;
       if (f.size > 2e6) throw Error("Dosya en fazla 2 MB");
       qs("[name=raw]", root).value = await f.text();
+      invalidate();
     });
   qs("[data-voice]", root)?.addEventListener("click", () =>
     startVoice(
       (t) => {
         qs("[name=raw]", root).value += "\n" + t;
+        invalidate();
       },
       () => {},
     ),
   );
   saveBind(root, async (f) => {
+    if (reviewed !== fingerprint())
+      throw Error("Mesaj değişti; yeniden ayrıştırıp önizleyin");
     const blocks = rules.messages(f.raw, f.year);
     if (
       !(await confirmDialog(
@@ -645,45 +751,7 @@ async function messageForm(ctx, d) {
   });
 }
 async function messageDetail(ctx, d, r) {
-  const { root } = ctx;
-  const pkg = rules.historyFromMessage(r, d);
-  root.innerHTML =
-    appbar("Mesaj Taslağı", r.status) +
-    toolbar() +
-    `<section class="card">${kv("Gönderen", esc(r.sender || "Belirtilmedi"))}<details><summary>Orijinal mesaj</summary><pre class="wrap">${esc(r.raw)}</pre></details></section><form>${fDate("Mesajın gerçek tarihi", "date", r.date || "", false)}${fArea("İşlenecek metin", "text", r.text)}<button type="button" class="btn" data-s-save>Düzelt ve Yeniden Ayrıştır</button></form><section class="card"><h2>Önerilen satırlar</h2>${pkg.rows.map((x) => `<p>${esc(x.date || "Tarih bekliyor")} · ${esc(x.vehicle || "Araç bekliyor")} · ${esc(x.customer || "Müşteri bekliyor")} · ${esc(x.kind === "fuel" ? x.liters + " L" : (x.quantity ?? "?") + " " + (x.unit || "?"))}</p>`).join("")}<p class="notice">Fiyat uydurulmaz. Son kontrol ekranında fiyatı/KDV’yi belirtin veya fiyat bekliyor seçin. Yakıt ayrı onaylanır.</p>${r.status === "Reddedildi" ? "" : `<label class="history-check"><input type="checkbox" data-unpaid> Bu işlerin ödenmediğini ve hakedişe alınmadığını doğruladım.</label><button class="btn primary" data-transfer disabled>Kontrollü İş Aktarımına Geç</button>`}<button class="btn" data-sync>Aktarım Durumunu Kontrol Et</button></section>${fArea("Red gerekçesi", "reason")}<button class="btn danger" data-reject>Mesajı Reddet</button>`;
-  saveBind(root, async (f) => {
-    await actions.refreshMessage(r.id, f);
-    ctx.reload();
-  });
-  qs("[data-unpaid]", root)?.addEventListener(
-    "change",
-    (e) => (qs("[data-transfer]", root).disabled = !e.target.checked),
-  );
-  qs("[data-transfer]", root)?.addEventListener("click", () =>
-    safe(async () => {
-      if (!qs("[data-unpaid]", root).checked)
-        throw Error("Hesap durumu onayı gerekli");
-      sessionStorage.setItem("solo_history_package", JSON.stringify(pkg));
-      sessionStorage.setItem("solo_history_message", r.id);
-      go("#/gecmis");
-    }),
-  );
-  qs("[data-sync]", root).onclick = () =>
-    safe(async () => {
-      await actions.syncMessageStatus(r.id);
-      ctx.reload();
-    });
-  qs("[data-reject]", root).onclick = () =>
-    safe(async () => {
-      await actions.rejectMessage(r.id, qs("[name=reason]", root).value);
-      ctx.reload();
-    });
-  const t = rowsTable("inbox_messages", [r], d);
-  bindExport(
-    root,
-    () => spec("Mesaj Kontrol Raporu", [t]),
-    () => t,
-  );
+  return messageWorkbench(ctx, d, r, { toolbar, bindExport });
 }
 async function bankForm(ctx, d) {
   const { root } = ctx;

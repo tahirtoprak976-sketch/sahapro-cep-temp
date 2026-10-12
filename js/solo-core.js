@@ -427,7 +427,7 @@ export function bankPreview(csv, mapping, account_id, existing = []) {
   for (const k of keys)
     if (mapping[k] == null || mapping[k] === "")
       throw Error("Kolon eşleştirin: " + k);
-  const seen = new Set(existing.map(r => r.source_key));
+  const seen = new Set(existing.map((r) => r.source_key));
   return csv.rows.map((cells, i) => {
     let errors = [];
     let date, amount, direction;
@@ -527,6 +527,8 @@ export function messages(raw, year) {
   }));
 }
 export function draftMessage(m, d) {
+  if (Array.isArray(m.review_rows))
+    return m.review_rows.map((r) => ({ ...r, notes: [...(r.notes || [])] }));
   const ctx = {
     vehicles: live(d, "vehicles"),
     customers: live(d, "customers"),
@@ -586,30 +588,106 @@ export function draftMessage(m, d) {
     };
   });
 }
+// Evidence-led review: no invented confidence percentages or automatic approval.
+export function messageReview(m, d) {
+  return draftMessage(m, d).map((r) => {
+    const issues = r.notes.filter((x) => x.includes("Araç adedi"));
+    try {
+      validPast(r.date);
+    } catch {
+      issues.push("Gerçek iş tarihi doğrulanmalı");
+    }
+    if (!r.vehicle_id) issues.push("Araç seçimi gerekli");
+    if (r.kind === "work") {
+      if (!r.customer_id) issues.push("Müşteri seçimi gerekli");
+      if (!r.work_type) issues.push("İş türü gerekli");
+      if (!r.unit || !(r.quantity > 0)) issues.push("Miktar ve birim gerekli");
+      if (r.unit === "Sefer" && !Number.isInteger(r.quantity))
+        issues.push("Sefer tam sayı olmalı");
+    } else {
+      issues.push(
+        "Yakıt kaynağı ve tankın tarihli bakiyesi ayrıca doğrulanmalı",
+      );
+    }
+    if (r.site_id) {
+      const site = live(d, "sites").find((x) => x.id === r.site_id);
+      if (site?.customer_id && site.customer_id !== r.customer_id)
+        issues.push("Müşteri ve şantiye uyuşmuyor");
+    }
+    const candidates = {};
+    for (const [field, store, type] of [
+      ["vehicle_id", "vehicles", "vehicle"],
+      ["customer_id", "customers", "customer"],
+      ["site_id", "sites", "site"],
+      ["personnel_id", "personnel", "personnel"],
+    ]) {
+      const text = normKey(r.description),
+        pool = live(d, store);
+      const ids = new Set(
+        pool
+          .filter(
+            (x) =>
+              normKey(x.name).length >= 3 && text.includes(normKey(x.name)),
+          )
+          .map((x) => x.id),
+      );
+      for (const a of live(d, "aliases"))
+        if (
+          a.active !== false &&
+          a.target_type === type &&
+          normKey(a.alias).length >= 2 &&
+          text.includes(normKey(a.alias)) &&
+          pool.some((x) => x.id === a.target_id)
+        )
+          ids.add(a.target_id);
+      candidates[field] = [...ids].map((id) => ({
+        id,
+        name: label(d, store, id),
+      }));
+      if (ids.size > 1)
+        issues.push(
+          {
+            vehicle_id: "Araç",
+            customer_id: "Müşteri",
+            site_id: "Şantiye",
+            personnel_id: "Personel",
+          }[field] + ": birden fazla eşleşme; seçim doğrulanmalı",
+        );
+    }
+    return {
+      ...r,
+      issues: [...new Set(issues)],
+      candidates,
+      review_status: issues.length ? "Kontrol gerekli" : "Alanlar eşleşti",
+    };
+  });
+}
 export function historyFromMessage(m, d) {
-  const rows = draftMessage(m, d).map((r, i) => ({
-    row_id: "inbox-" + m.id + "-" + i,
-    kind: r.kind,
-    date: r.date,
-    customer:
-      label(d, "customers", r.customer_id) === "—"
-        ? ""
-        : label(d, "customers", r.customer_id),
-    site: r.site_id ? label(d, "sites", r.site_id) : "",
-    vehicle: r.vehicle_id ? label(d, "vehicles", r.vehicle_id) : "",
-    personnel: r.personnel_id ? label(d, "personnel", r.personnel_id) : "",
-    work_type: r.work_type,
-    quantity: r.quantity,
-    unit: r.unit,
-    liters: r.fuel_liters,
-    fuel_source: "Depo Tankı",
-    unit_price: null,
-    kdv_rate: null,
-    kdv_included: false,
-    raw_message: m.raw,
-    description: r.description,
-    settlement_status: "unbilled_unpaid",
-  }));
+  const rows = draftMessage(m, d)
+    .filter((r) => r.include !== false)
+    .map((r, i) => ({
+      row_id: "inbox-" + m.id + "-" + (r.source_row ?? i),
+      kind: r.kind,
+      date: r.date,
+      customer:
+        label(d, "customers", r.customer_id) === "—"
+          ? ""
+          : label(d, "customers", r.customer_id),
+      site: r.site_id ? label(d, "sites", r.site_id) : "",
+      vehicle: r.vehicle_id ? label(d, "vehicles", r.vehicle_id) : "",
+      personnel: r.personnel_id ? label(d, "personnel", r.personnel_id) : "",
+      work_type: r.work_type,
+      quantity: r.quantity,
+      unit: r.unit,
+      liters: r.fuel_liters,
+      fuel_source: r.fuel_source || (m.review_rows ? "" : "Depo Tankı"),
+      unit_price: r.unit_price ?? null,
+      kdv_rate: r.kdv_rate ?? null,
+      kdv_included: r.kdv_included ?? null,
+      raw_message: m.source_messages?.map((x) => x.raw).join("\n") || m.raw,
+      description: r.description,
+      settlement_status: "unbilled_unpaid",
+    }));
   return {
     format: "SAHAPRO_HISTORY_V1",
     title: "Mesajdan kontrollü aktarım",
@@ -830,7 +908,7 @@ export function operationalAlerts(d, asOf = todayStr()) {
   const add = (level, title, route, detail) =>
     rows.push({ level, title, route, detail });
   for (const a of live(d, "inbox_messages").filter(
-    (r) => !["Aktarıldı", "Reddedildi"].includes(r.status),
+    (r) => !["Aktarıldı", "Reddedildi", "Birleştirildi"].includes(r.status),
   ))
     add(
       "warn",

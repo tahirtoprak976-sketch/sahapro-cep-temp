@@ -107,6 +107,11 @@ export async function listActive(store) {
   return (await getAll(store)).filter(isActive);
 }
 export async function softDelete(store, id, reason) {
+  if (['customers','sites','vehicles','personnel'].includes(store)) {
+    const key={customers:'customer_id',sites:'site_id',vehicles:'vehicle_id',personnel:'personnel_id'}[store];
+    if ((await getAll('inbox_messages')).some(m=>isActive(m)&&(m.review_rows||[]).some(r=>r[key]===id))) throw Error('Kontrol edilmiş mesaj taslağına bağlı kart silinemez; pasife alın');
+  }
+
   const rec = await get(store, id);
   if (!rec) return null;
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))

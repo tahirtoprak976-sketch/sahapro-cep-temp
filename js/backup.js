@@ -1,4 +1,5 @@
-import {validateSoloData,SOLO_STORES} from "./solo-core.js";
+import { validateSmartData } from "./message-smart-core.js";
+import { validateSoloData, SOLO_STORES } from "./solo-core.js";
 import {
   ENTERPRISE_STORES,
   validateEnterpriseData,
@@ -93,7 +94,8 @@ export async function restoreBackup(db, obj, replace = false) {
           const existing = get.result;
           if (
             existing &&
-            (ENTERPRISE_STORES.includes(s) || SOLO_STORES.includes(s) ||
+            (ENTERPRISE_STORES.includes(s) ||
+              SOLO_STORES.includes(s) ||
               (s === "contracts" && existing.status === "İmzalandı") ||
               (s === "hakedis" && existing.status === "Kesinleşti") ||
               (s === "slips" && existing.status === "İmzalandı"))
@@ -152,7 +154,10 @@ export async function restoreBackup(db, obj, replace = false) {
       reject(error || t.error || Error("Geri yükleme iptal edildi"));
   });
 }
-export async function backupBeforeSoloOperation(db, prefix = "before-solo-operation") {
+export async function backupBeforeSoloOperation(
+  db,
+  prefix = "before-solo-operation",
+) {
   await saveRecovery(db, await fullBackup(db), prefix);
 }
 export async function backupBeforeHistoryImport(db) {
@@ -168,16 +173,20 @@ async function saveRecovery(db, obj, prefix = "before-restore") {
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
-  try { await new Promise((res, rej) => {
-    const t = connection.transaction("snapshots", "readwrite");
-    t.objectStore("snapshots").put({
-      id: prefix + "-" + Date.now(),
-      full: obj,
+  try {
+    await new Promise((res, rej) => {
+      const t = connection.transaction("snapshots", "readwrite");
+      t.objectStore("snapshots").put({
+        id: prefix + "-" + Date.now(),
+        full: obj,
+      });
+      t.oncomplete = res;
+      t.onabort = t.onerror = () =>
+        rej(t.error || Error("Kurtarma yedeği kaydedilemedi"));
     });
-    t.oncomplete = res;
-    t.onabort = t.onerror = () => rej(t.error || Error("Kurtarma yedeği kaydedilemedi"));
-  });
-  } finally { connection.close(); }
+  } finally {
+    connection.close();
+  }
 }
 
 export function validateRestoreLinks(local, obj, preview, replace = false) {
@@ -233,7 +242,16 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
       Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),
     ),
   );
-  validateSoloData(Object.fromEntries(Object.entries(merged).map(([s,m])=>[s,[...m.values()]])));
+  validateSoloData(
+    Object.fromEntries(
+      Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),
+    ),
+  );
+  validateSmartData(
+    Object.fromEntries(
+      Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),
+    ),
+  );
   const attachments = new Set();
   for (const a of obj.attachments || []) {
     if (attachments.has(a.id)) throw Error("Yedekte mükerrer ek");

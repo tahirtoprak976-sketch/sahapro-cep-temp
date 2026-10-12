@@ -236,6 +236,11 @@ function parseJob(text, ctx) {
     /(\d+(?:[.,]\d+)?)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet)(?![a-zçğıöşü])/i,
   );
   if (qm) quantity = Number(qm[1].replace(",", "."));
+  // Vehicle-count wording denotes trips only for transport jobs, never machine hours.
+  if (!unit && work_type?.endsWith("Nakliye")) {
+    const trips = low.match(/(\d+)\s*(?:kamyonet|kamyon|tır|tir)(?=\s|$)/i);
+    if (trips) { unit = "Sefer"; quantity = Number(trips[1]); notes.push("Araç adedi sefer olarak yorumlandı; doğrulayın"); kontrol = true; }
+  }
   if (!unit) {
     kontrol = true;
     notes.push("Birim yok");

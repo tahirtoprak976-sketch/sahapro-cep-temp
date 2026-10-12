@@ -247,6 +247,16 @@ export function pagedRender(container, items, renderItem, pageSize = 30) {
       );
   }
   container.innerHTML = "";
+  if (container._pagedMoreHandler)
+    container.removeEventListener("click", container._pagedMoreHandler);
+  container._pagedMoreHandler = (event) => {
+    const button = event.target.closest("[data-more]");
+    if (button && container.contains(button)) {
+      event.preventDefault();
+      more();
+    }
+  };
+  container.addEventListener("click", container._pagedMoreHandler);
   more();
 }
 
