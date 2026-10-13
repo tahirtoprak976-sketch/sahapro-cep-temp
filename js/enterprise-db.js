@@ -246,6 +246,7 @@ export async function savePayable(f, key = uuid()) {
         status: "Onaylandı",
         cost_category: f.cost_category || "Diğer",
         bill_kind: f.bill_kind || "Alış",
+        kdv_unknown: f.kdv_unknown === true,
         description: f.description || "",
         customer_id: f.customer_id || null,
         site_id: f.site_id || null,
@@ -947,6 +948,105 @@ export async function updateMaster(store, id, f) {
       const updated = { ...r, ...fields, updated_at: nowISO() };
       t.put(store, updated);
       return updated;
+    },
+  );
+}
+
+// Esnaf hesabı: tek ödeme, o ustanın açık borçlarına EN ESKİDEN başlayarak dağıtılır.
+// Tek işlemdir: tutar toplam borcu aşarsa hiçbir şey yazılmaz.
+export async function paySupplierAccount(f, key = uuid()) {
+  return transaction(
+    [
+      "suppliers",
+      "payables",
+      "supplier_payments",
+      "bank_accounts",
+      "bank_movements",
+      "cash_records",
+    ],
+    (d, t) => {
+      const done = active(d.supplier_payments).filter((p) => p.batch_key === key);
+      if (done.length) return done;
+      party(d, "supplier", f.supplier_id);
+      validDate(f.date);
+      const amount = money(f.amount);
+      if (!["Nakit", "Banka"].includes(f.method))
+        throw Error("Ödeme yöntemi geçersiz");
+      if (f.method === "Banka" && !f.bank_account_id)
+        throw Error("Banka hesabı zorunlu");
+      const bills = active(d.payables)
+        .filter(
+          (b) =>
+            b.party_type === "supplier" &&
+            b.party_id === f.supplier_id &&
+            b.status !== "İptal" &&
+            b.date <= f.date,
+        )
+        .sort((a, b) =>
+          a.date === b.date
+            ? String(a.created_at).localeCompare(String(b.created_at))
+            : a.date.localeCompare(b.date),
+        );
+      let left = toKurus(amount);
+      const created = [];
+      for (const b of bills) {
+        if (left <= 0) break;
+        const rem = toKurus(
+          billBalance(b, [...d.supplier_payments, ...created]).remaining,
+        );
+        if (rem <= 0) continue;
+        const part = Math.min(rem, left),
+          partAmount = fromKurus(part),
+          r = newRecord({
+            date: f.date,
+            payable_id: b.id,
+            party_type: "supplier",
+            party_id: f.supplier_id,
+            amount: partAmount,
+            method: f.method,
+            bank_account_id: f.method === "Banka" ? f.bank_account_id : null,
+            note: f.note || "",
+            request_id: key + ":" + b.id,
+            batch_key: key,
+          });
+        const bm = bankMove(
+          d,
+          t,
+          r.bank_account_id,
+          partAmount,
+          "OUT",
+          r.date,
+          "supplier_payments",
+          r.id,
+          r.note,
+        );
+        r.bank_movement_id = bm?.id || null;
+        if (f.method === "Nakit") {
+          const cash = newRecord({
+            date: r.date,
+            cash_type: "Tedarikçiye Ödeme",
+            cash_status: "KASADA",
+            amount: partAmount,
+            payment_method: "Nakit",
+            supplier_payment_id: r.id,
+            description: r.note,
+          });
+          r.cash_record_id = cash.id;
+          t.add("cash_records", cash);
+        }
+        t.add("supplier_payments", r);
+        created.push(r);
+        left -= part;
+      }
+      if (left > 0)
+        throw Error(
+          "Ödeme, bu ustanın ödenebilir borcunu aşıyor. Ödenebilir: " +
+            fromKurus(toKurus(amount) - left).toLocaleString("tr-TR", {
+              minimumFractionDigits: 2,
+            }) +
+            " ₺",
+        );
+      return created;
     },
   );
 }

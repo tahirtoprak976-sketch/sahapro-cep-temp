@@ -1,6 +1,7 @@
 import { customerBankReceipt } from "./enterprise-db.js";
 import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
+import { createCreditBill, findDuplicates } from "./esnaf.js";
 import {
   qs,
   qsa,
@@ -104,6 +105,7 @@ async function hub(ctx) {
     ["#/cari", "🏦", "Cari", "müşteri bakiyeleri"],
     ["#/kasa", "💰", "Kasa", "tahsilat akışı"],
     ["#/gider", "💸", "Gider", "fişli takip"],
+    ["#/esnaf", "🔧", "Esnaf Hesabı", "usta borçları"],
     ["#/fiyat", "🏷", "Fiyat Listesi", "fiyatlar + vinç tarifesi"],
   ];
   root.innerHTML =
@@ -1351,14 +1353,16 @@ async function expenseDetail(db, e, names) {
 
 async function expenseForm(ctx) {
   const { root, db } = ctx;
-  const [personnel, vehicles, categories] = await Promise.all([
+  const [personnel, vehicles, categories, suppliers] = await Promise.all([
     db.listActive("personnel"),
     db.listActive("vehicles"),
     db.listActive("expense_categories"),
+    db.listActive("suppliers"),
   ]);
   root.innerHTML =
     appbar("+ Gider", "Fiş fotoğrafı eklenebilir") +
     `
+    <div class="notice info" style="margin-top:10px"><span>ℹ</span><span>Veresiye (açık hesap) çalıştığınız ustaysa aşağıdan ustayı seçin; borç <a href="#/esnaf">Esnaf Hesabı</a>'na yazılır. Aynı iş iki yerden girilirse sistem engeller.</span></div>
     <form data-form novalidate>
       ${fDate("Tarih", "date", todayStr())}
       <div class="formgrid2">
@@ -1385,6 +1389,7 @@ async function expenseForm(ctx) {
         ${fSelect("Fiş Var mı?", "receipt", ["Evet", "Hayır"], "Evet", { empty: false })}
       </div>
       <div class="field" data-reimb style="display:none">${fSelect("Personele Ödeme", "reimbursement_status", REIMBURSEMENT_STATUS, "Bekliyor", { empty: false })}</div>
+      ${fSelect("Veresiye usta / esnaf (ops.)", "supplier_id", suppliers.map((s) => ({ v: s.id, t: s.name })), "", { emptyText: "— peşin / veresiye değil —" })}
       ${fText("Firma", "company", "")}
       ${fArea("Açıklama", "description", "")}
       <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*"></div>
@@ -1400,6 +1405,41 @@ async function expenseForm(ctx) {
     if (!(Number(val.amount) > 0)) {
       toast("Pozitif tutar girin", "err");
       return;
+    }
+    if (val.supplier_id) {
+      // Veresiye: gider yeniden yazılmaz, usta hesabına borç olarak (tek kayıt) girilir.
+      const d = await db.dumpAll();
+      const s = d.suppliers.find((x) => x.id === val.supplier_id);
+      try {
+        const res = await createCreditBill(ctx, d, s, {
+          date: val.date,
+          amount: val.amount,
+          description: val.description || val.category,
+          category: val.category,
+          vehicle_id: val.vehicle_id || null,
+          kdv_rate: val.kdv_rate,
+          file: qs("input[name=photo]", root).files[0],
+        });
+        if (!res) return;
+        toast("Veresiye olarak " + s.name + " hesabına yazıldı", "ok");
+        go("#/esnaf/" + s.id);
+      } catch (e) {
+        toast(e.message || String(e), "err");
+      }
+      return;
+    }
+    {
+      const d = await db.dumpAll();
+      const dup = findDuplicates(d, { date: val.date, amount: val.amount }).bills;
+      if (dup.length) {
+        const who = d.suppliers.find((x) => x.id === dup[0].party_id)?.name || "usta";
+        const ok = await confirmDialog(
+          "Bu iş Esnaf Hesabı'nda kayıtlı",
+          `${who} · ${trDate(dup[0].date)} · ${fmtTL(dup[0].gross_total)} ₺ · ${dup[0].items?.[0]?.description || dup[0].description || ""}. Aynı iş ise gider olarak tekrar girmeyin.`,
+          "Farklı bir iş, kaydet",
+        );
+        if (!ok) return;
+      }
     }
     const fields = {
       date: val.date,

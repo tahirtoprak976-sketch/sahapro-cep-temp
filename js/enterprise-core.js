@@ -325,10 +325,10 @@ export function costLedger(data, f = {}) {
         site_id: w.site_id || b.site_id,
         vehicle_id: w.vehicle_id || b.vehicle_id,
         personnel_id: w.personnel_id || b.personnel_id,
-        net: item.net,
-        tax: item.tax,
+        net: b.kdv_unknown ? null : item.net,
+        tax: b.kdv_unknown ? null : item.tax,
         gross: item.gross,
-        known_tax: true,
+        known_tax: !b.kdv_unknown,
         party_type: b.party_type,
         party_id: b.party_id,
       });
