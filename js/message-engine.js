@@ -38,6 +38,7 @@ const units = {
   saat: "Saat",
   yevmiye: "Yevmiye",
   yovmiye: "Yevmiye",
+  yovmiye: "Yevmiye",
   ton: "Ton",
   m3: "m³",
   "m³": "m³",
@@ -53,6 +54,12 @@ const clean = (s) =>
 const code = (s) => s.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
 function quantityWord(s) {
   s = clean(s);
+  if (s === "yarım" || s === "yarim") return 0.5;
+  const half = s.match(/^(\d+|\p{L}+)\s+buçuk$/u);
+  if (half) {
+    const b = quantityWord(half[1]);
+    return b === null ? null : b + 0.5;
+  }
   if (Object.hasOwn(numbers, s)) return numbers[s];
   if (/^\d+(?:si|sı|su|sü|i|ı|u|ü)?$/.test(s))
     return Number(s.match(/^\d+/)[0]);
@@ -177,7 +184,7 @@ export function intentOf(text) {
     return "new_work";
   // Malzeme / makine sözcükleri (kelime sınırlı: "kumanda" iş sayılmaz)
   if (
-    /(?<![\p{L}\p{N}])(?:kum|mıcır|micir|gravak|tesviye|yıkım|yikim|kırım|kirim|lowbed|lowbet)(?:lar|ler|da|de|dan|den|ı|i|u|ü|a|e)?(?![\p{L}\p{N}])/u.test(
+    /(?<![\p{L}\p{N}])(?:yevmiye|yovmiye|kum|mıcır|micir|gravak|tesviye|yıkım|yikim|kırım|kirim|lowbed|lowbet)(?:lar|ler|da|de|dan|den|ı|i|u|ü|a|e)?(?![\p{L}\p{N}])/u.test(
       t,
     )
   )
@@ -266,7 +273,7 @@ function dates(text, header) {
 function nearQuantities(text, offset = 0) {
   const out = [],
     re =
-      /(?<![\p{L}\p{N}])(\d+(?:[.,]\d+)?|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l|kamyonet|kamyon|tır|tir)(?![\p{L}])/giu;
+      /(?<![\p{L}\p{N}])((?:\d+|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s+buçuk|yarım|\d+(?:[.,]\d+)?|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l|kamyonet|kamyon|tır|tir)(?![\p{L}])/giu;
   let m;
   while ((m = re.exec(text))) {
     const before = clean(text.slice(Math.max(0, m.index - 25), m.index));
