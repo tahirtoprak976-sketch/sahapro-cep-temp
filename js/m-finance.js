@@ -16,6 +16,7 @@ import {
   segBar,
   searchBar,
   sheet,
+  sheetClose,
   toast,
   confirmDialog,
   promptDialog,
@@ -1289,6 +1290,7 @@ async function expenses(ctx) {
   else
     pagedRender(listEl, rows, (e) =>
       li({
+        id: e.id,
         ic: "💸",
         t1: `${esc(e.category || "Gider")} · ${fmtTL(e.amount)} ₺`,
         t2: `${trDate(e.date)} · ${esc(names.personnel[e.personnel_id] || "—")} · ${esc(e.payment_method || "")}${attMap[e.id] ? " · 📷" + attMap[e.id] : ""}${e.description ? " · " + esc(e.description) : ""}`,
@@ -1311,7 +1313,40 @@ async function expenses(ctx) {
   listEl.addEventListener("click", async (e) => {
     const card = e.target.closest(".li");
     if (!card) return;
+    const rec = rows.find((r) => r.id === card.dataset.rid);
+    if (rec) await expenseDetail(db, rec, names);
   });
+}
+
+// Gider detayı + fiş fotoğrafları (dosyalar yalnızca bu cihazdaki veritabanında durur)
+async function expenseDetail(db, e, names) {
+  const atts = await db.attachmentsFor("expense", e.id);
+  const sh = sheet(`
+    <h3>${esc(e.category || "Gider")} · ${fmtTL(e.amount)} ₺</h3>
+    ${kv("Tarih", trDate(e.date))}
+    ${kv("Ödeme", e.payment_method || "—")}
+    ${kv("Personel", names.personnel[e.personnel_id] || "—")}
+    ${e.description ? kv("Açıklama", e.description) : ""}
+    <div data-photos style="margin-top:10px">${atts.length ? "" : '<span class="muted small">Bu giderde fiş fotoğrafı yok</span>'}</div>
+    <button class="btn block" style="margin-top:12px" data-close>Kapat</button>`);
+  const box = qs("[data-photos]", sh);
+  for (const a of atts) {
+    if ((a.type || "").startsWith("image/")) {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(a.blob);
+      img.alt = a.name || "Fiş";
+      img.style.cssText =
+        "width:100%;max-height:60vh;object-fit:contain;border-radius:10px;border:1px solid var(--border);margin-bottom:8px";
+      box.appendChild(img);
+    }
+    const b = document.createElement("button");
+    b.className = "btn sm";
+    b.style.marginRight = "6px";
+    b.textContent = "⬇ " + (a.name || "dosya");
+    b.addEventListener("click", () => downloadBlob(a.blob, a.name || "fis"));
+    box.appendChild(b);
+  }
+  qs("[data-close]", sh).addEventListener("click", () => sheetClose());
 }
 
 async function expenseForm(ctx) {
