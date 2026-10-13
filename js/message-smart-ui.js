@@ -124,7 +124,7 @@ function rowEditor(r, index, d, locked) {
   )
     .flatMap(([field, cs]) =>
       cs
-        .filter((c) => ["spelling_candidate", "role_candidate"].includes(c.via))
+        .filter((c) => ["spelling_candidate", "role_candidate", "ascii_fold", "context_candidate"].includes(c.via))
         .map(
           (c) =>
             `<button type="button" class="btn" data-engine-candidate="${index}|${esc(field)}|${esc(c.id)}" ${locked ? "disabled" : ""}>${esc(c.name)} olabilir mi?</button>`,

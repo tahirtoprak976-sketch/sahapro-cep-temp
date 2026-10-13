@@ -228,6 +228,13 @@ export function rowQuestions(r, d) {
       if (typeof r.kdv_included !== "boolean")
         add("kdv_included", "Fiyat KDV dahil mi, hariç mi?");
     }
+    if (r.customer_id && !r.site_id) {
+      const own = live(d, "sites").filter(
+        (x) => x.customer_id === r.customer_id && x.active !== false,
+      );
+      if (own.length > 1)
+        add("site_id", "Bu müşterinin birden fazla aktif şantiyesi var; hangisi?");
+    }
     const site = live(d, "sites").find((x) => x.id === r.site_id);
     if (r.site_id && (!site || site.customer_id !== r.customer_id))
       add("site_id", "Şantiye seçilen müşteriye ait mi?");

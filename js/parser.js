@@ -66,7 +66,24 @@ export function matchByName(text, rows) {
   return best;
 }
 
-// ---- WhatsApp satır ayrıştırma ----
+// ---- Türkçe / ASCII yazım katlama (uzunluk korunur; ofsetler bozulmaz) ----
+const FOLD_MAP = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" };
+export function foldTr(s) {
+  return String(s ?? "")
+    .toLocaleLowerCase("tr-TR")
+    .replace(/[’‘]/g, "'")
+    .replace(/[çğıöşüâîû]/g, (c) => FOLD_MAP[c]);
+}
+// Kelime sınırı + yalnızca bilinen Türkçe ek listesi ("kumanda" kum sayılmaz, "kumda" sayılır)
+const SUFFIX =
+  "(?:lar|ler|ları|leri|nın|nin|nun|nün|dan|den|tan|ten|da|de|ta|te|ya|ye|yı|yi|yu|yü|la|le|ın|in|un|ün|sı|si|su|sü|ı|i|u|ü|a|e)?";
+export function hasWord(text, key) {
+  const k = String(key).trim().split(/\s+/).map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("\\s+");
+  return new RegExp("(?<![\\p{L}\\p{N}])" + k + SUFFIX + "(?![\\p{L}\\p{N}])", "iu").test(
+    String(text).toLocaleLowerCase("tr-TR"),
+  );
+}
+
 const TYPE_PATTERNS = [
   ["Hafriyat Nakliye", ["hafriyat"]],
   ["Moloz Nakliye", ["moloz"]],
@@ -86,6 +103,30 @@ const TYPE_PATTERNS = [
   ["Lowbed Nakliye", ["lowbed", "lowbet"]],
   ["Makine Çalışması", ["makine", "makina"]],
 ];
+const MACHINE_TYPES = [
+  ["Mini Kato Çalışması", ["mini kato"]],
+  ["JCB Çalışması", ["jcb"]],
+  ["Manitou Çalışması", ["manitou"]],
+  ["Vinç Çalışması", ["vinç", "vinc"]],
+];
+const MATERIAL_NAKLIYE = ["Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"];
+// İlk eşleşen anahtar kelime (kelime sınırlı)
+export function detectWorkType(text) {
+  for (const [t, keys] of TYPE_PATTERNS) if (keys.some((k) => hasWord(text, k))) return t;
+  return null;
+}
+// Makine + saatlik iş = makine çalışması; malzeme adı tek başına nakliye değildir.
+export function refineWorkType(text, type, unit) {
+  if (!type) return { type, note: null };
+  const machine = MACHINE_TYPES.find(([, keys]) => keys.some((k) => hasWord(text, k)));
+  if (machine && unit && unit !== "Sefer" && !String(type).startsWith(machine[0].split(" ")[0])) {
+    if (type.endsWith("Nakliye") || type === "Yükleme" || type === "Makine Çalışması")
+      return { type: machine[0], note: "İş türü makine saatine göre " + machine[0] + " önerildi; doğrulayın" };
+  }
+  if (MATERIAL_NAKLIYE.includes(type) && unit && !["Sefer", "Ton", "m³"].includes(unit))
+    return { type: null, note: "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin" };
+  return { type, note: null };
+}
 const UNIT_PATTERNS = [
   ["Sefer", ["sefer"]],
   ["Saat", ["saat", "sa"]],
@@ -213,13 +254,7 @@ function parseJob(text, ctx) {
   }
 
   // İş türü / birim / miktar
-  let work_type = null;
-  for (const [t, keys] of TYPE_PATTERNS) {
-    if (keys.some((k) => low.includes(k))) {
-      work_type = t;
-      break;
-    }
-  }
+  let work_type = detectWorkType(low);
   let unit = null;
   for (const [u, keys] of UNIT_PATTERNS) {
     if (
@@ -230,6 +265,11 @@ function parseJob(text, ctx) {
       unit = u;
       break;
     }
+  }
+  {
+    const rf = refineWorkType(low, work_type, unit);
+    if (rf.note) { notes.push(rf.note); kontrol = true; }
+    work_type = rf.type;
   }
   let quantity = null;
   const qm = low.match(

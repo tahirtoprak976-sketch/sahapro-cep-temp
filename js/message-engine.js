@@ -1,8 +1,17 @@
 // Evidence-led local parser. Raw UTF-16 offsets, explicit uncertainty, no writes.
 import { normKey, todayStr } from "./core.js";
-import { parseWhatsApp, buildAliasIndex } from "./parser.js";
+import {
+  parseWhatsApp,
+  buildAliasIndex,
+  foldTr,
+  detectWorkType,
+  refineWorkType,
+} from "./parser.js";
 const live = (d, s) => (d[s] || []).filter((x) => !x.deleted_at);
-export const ENGINE_VERSION = "sahapro-parse/2";
+export const ENGINE_VERSION = "sahapro-parse/3";
+// Bu kaynaklarla gelen eşleşme forma otomatik yazılmaz; kullanıcı seçer.
+const NO_FILL = new Set(["spelling_candidate", "ascii_fold", "context_candidate"]);
+const fillable = (c) => !NO_FILL.has(c.via);
 const numbers = {
   bir: 1,
   biri: 1,
@@ -147,7 +156,7 @@ export function intentOf(text) {
   if (/yanlış|yanlis|düzelt|duzelt|\bdeğil\b|\bdegil\b/.test(t))
     return "correction";
   if (
-    /(?:sefer|tur)\s+daha|üstüne\s+ekle|ustune\s+ekle|dünkü\s+iş|dunku\s+is/.test(
+    /(?:sefer|tur|saat|ton|adet)\s+daha|üstüne\s+ekle|ustune\s+ekle|dünkü\s+iş|dunku\s+is/.test(
       t,
     )
   )
@@ -162,6 +171,13 @@ export function intentOf(text) {
     return "fuel";
   if (
     /çöp|cop|moloz|hafriyat|kazı|kazi|dolgu|taşı|tasi|çalış|calis|yükle|yukle|indir|kaldır|kaldir|manitou|kato|jcb|vinç|vinc/.test(
+      t,
+    )
+  )
+    return "new_work";
+  // Malzeme / makine sözcükleri (kelime sınırlı: "kumanda" iş sayılmaz)
+  if (
+    /(?<![\p{L}\p{N}])(?:kum|mıcır|micir|gravak|tesviye|yıkım|yikim|kırım|kirim|lowbed|lowbet)(?:lar|ler|da|de|dan|den|ı|i|u|ü|a|e)?(?![\p{L}\p{N}])/u.test(
       t,
     )
   )
@@ -255,6 +271,14 @@ function nearQuantities(text, offset = 0) {
   while ((m = re.exec(text))) {
     const before = clean(text.slice(Math.max(0, m.index - 25), m.index));
     if (/(?:fiyat|ücret|ucret|kdv)\s*[:=]?\s*$/.test(before)) continue;
+    // Plakanın sayı kuyruğu ("34 ABC 123 sefer") miktar değildir.
+    if (
+      /^\d{2,4}$/.test(m[1]) &&
+      /(?<![\p{L}\p{N}])\d{2}\s*(?!ton\b|tır\b|tir\b|sa\b|lt\b|adet\b)[a-zçğıöşü]{1,3}\s*$/iu.test(
+        text.slice(0, m.index),
+      )
+    )
+      continue;
     const v = quantityWord(m[1]);
     if (v !== null)
       out.push({
@@ -312,9 +336,11 @@ function editDistance(a, b) {
   }
   return prior[b.length];
 }
-function phraseMatch(text, phrase) {
+function phraseMatch(text, phrase, fold = false) {
   if (!String(phrase).trim()) return null;
-  const pattern = clean(phrase)
+  const prep = fold ? foldTr : clean;
+  if (fold && foldTr(text).length !== String(text).length) return null;
+  const pattern = prep(phrase)
     .trim()
     .split(/\s+/)
     .map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
@@ -323,7 +349,7 @@ function phraseMatch(text, phrase) {
     "(?<![\\p{L}\\p{N}])" + pattern + "(?![\\p{L}\\p{N}])",
     "u",
   );
-  return re.exec(clean(text));
+  return re.exec(prep(text));
 }
 export function cardCandidates(text, store, d, tokens = tokenize(text)) {
   const cards = live(d, store),
@@ -385,6 +411,33 @@ export function cardCandidates(text, store, d, tokens = tokenize(text)) {
           );
       }
   }
+  // Türkçe/ASCII yazım farkı (Gumus Yapi = Gümüş Yapı): görünür aday, otomatik doldurma yok.
+  for (const alias of live(d, "aliases").filter(
+    (a) => a.active !== false && a.target_type === type && a.alias,
+  )) {
+    const match = phraseMatch(text, alias.alias, true);
+    if (match && String(alias.alias).length >= 4) {
+      const r = cards.find((c) => c.id === alias.target_id);
+      if (r)
+        add(r, "ascii_fold", evidence(text, match.index, match.index + match[0].length, "ascii_fold"));
+    }
+  }
+  for (const r of cards) {
+    const match = phraseMatch(text, r.name || "", true);
+    if (match && String(r.name || "").length >= 4)
+      add(r, "ascii_fold", evidence(text, match.index, match.index + match[0].length, "ascii_fold"));
+  }
+  if (out.length) return out.slice(0, 5);
+  // Araç adının ilk sözcüğü ("Manitou" → "Manitou MTX1840"): yalnızca tek kartta geçiyorsa.
+  if (store === "vehicles")
+    for (const t of tokens.filter((t) => t.type === "word")) {
+      const w = clean(t.raw);
+      if (w.length < 4) continue;
+      const hit = cards.filter((r) => clean(r.name || "").split(/\s+/)[0] === w);
+      if (hit.length === 1)
+        add(hit[0], "first_word", evidence(text, t.span.start, t.span.end, "first_word"));
+    }
+  if (out.length) return out.slice(0, 5);
   if (out.length) return out.slice(0, 5);
   // Numeric identifiers are never fuzzy matched. Word suggestions require an explicit choice.
   for (const t of tokens.filter(
@@ -436,7 +489,7 @@ function dumpDistribution(raw, headerQty, d) {
     parts.push({
       quantity: q,
       dump_site_id:
-        candidates.length === 1 && candidates[0].via !== "spelling_candidate"
+        candidates.length === 1 && fillable(candidates[0])
           ? candidates[0].id
           : null,
       candidates,
@@ -507,10 +560,10 @@ function targetCandidates(message, d, notices, cards) {
     reference = dates(message.text, message.date),
     old = message.text.match(/(\d+)\s*(?:değil|degil)\s*(\d+)/i),
     vehicles = cards.vehicles
-      .filter((c) => c.via !== "spelling_candidate")
+      .filter(fillable)
       .map((c) => c.id),
     customers = cards.customers
-      .filter((c) => c.via !== "spelling_candidate")
+      .filter(fillable)
       .map((c) => c.id);
   return live(d, "work_records")
     .filter(
@@ -617,11 +670,19 @@ export function analyzeMessage(message, d) {
       ["personnel_id", "personnel"],
     ]) {
       candidates[field] = cardCandidates(text, store, d);
-      if (!candidates[field].length) candidates[field] = globalCards[store];
+      if (!candidates[field].length) {
+        // Başlıktaki ortak bilgi satırlara geçer; başka satırın içinde geçen kart geçmez.
+        const qs = nearQuantities(raw).filter((q) => q.unit !== "L"),
+          first = qs[0];
+        candidates[field] = globalCards[store].map((c) =>
+          qs.length > 1 && first && c.evidence && c.evidence.span.start >= first.span.start
+            ? { ...c, via: "context_candidate" }
+            : c,
+        );
+      }
       // More than one explicit entity in a message is not inherited blindly across rows.
       legacy[field] =
-        candidates[field].length === 1 &&
-        candidates[field][0].via !== "spelling_candidate"
+        candidates[field].length === 1 && fillable(candidates[field][0])
           ? candidates[field][0].id
           : null;
     }
@@ -632,7 +693,7 @@ export function analyzeMessage(message, d) {
           : nearQuantities(raw).length === 1
             ? cardCandidates(raw, "dump_sites", d)
             : [];
-      if (one.length === 1 && one[0].via !== "spelling_candidate")
+      if (one.length === 1 && fillable(one[0]))
         legacy.dump_site_id = one[0].id;
     }
     if (legacy.personnel_id) {
@@ -669,6 +730,22 @@ export function analyzeMessage(message, d) {
     if (legacy.site_id && !legacy.customer_id)
       legacy.customer_id =
         ctx.sites.find((s) => s.id === legacy.site_id)?.customer_id || null;
+    let multiSite = false;
+    if (legacy.customer_id && !legacy.site_id) {
+      const own = ctx.sites.filter(
+        (s) => s.customer_id === legacy.customer_id && s.active !== false,
+      );
+      if (own.length > 1) {
+        multiSite = true;
+        if (!candidates.site_id.length)
+          candidates.site_id = own.slice(0, 5).map((s) => ({
+            id: s.id,
+            name: s.name,
+            via: "context_candidate",
+            evidence: null,
+          }));
+      }
+    }
     const price = priceInfo(text, start, raw),
       p = price && (!price.unit || price.unit === qty?.unit) ? price : null;
     if (
@@ -710,6 +787,22 @@ export function analyzeMessage(message, d) {
     };
     if (qty?.vehicleCount)
       row.notes.push("Araç adedi sefer olarak önerildi; onay gerekli");
+    if (multiSite)
+      row.notes.push("Müşterinin birden fazla şantiyesi var; mesajda şantiye yok, seçin");
+    if (row.kind === "work") {
+      const rf = refineWorkType(text, detectWorkType(text), row.unit);
+      row.work_type = rf.type;
+      if (rf.note) row.notes.push(rf.note);
+    }
+    for (const [field, label] of [
+      ["customer_id", "Müşteri"],
+      ["site_id", "Şantiye"],
+      ["vehicle_id", "Araç"],
+    ]) {
+      const c = candidates[field].find((x) => x.via === "ascii_fold");
+      if (c && !row[field])
+        row.notes.push(label + " yazım farkıyla eşleşti (" + c.name + "); doğruysa adayı seçin");
+    }
     if (
       date.conflict ||
       (wholeDate.conflict && !date.explicit && !date.relative)
@@ -850,9 +943,20 @@ export function analyzeMessage(message, d) {
         continue;
       }
       for (let i = 0; i < quantities.length; i++) {
-        const q = quantities[i],
-          start = i === 0 ? segment.start : q.span.start,
-          end = quantities[i + 1]?.span.start ?? segment.end;
+        const q = quantities[i];
+        // "A 4 sefer hafriyat, B 3 sefer moloz": etiketler virgül/ve ile sonraki işe ait.
+        const cut = (a, b) => {
+          const gap = raw.slice(a.span.end, b.span.start),
+            m = [...gap.matchAll(/,|\sve\s|\s\+\s/gi)].at(-1);
+          return m ? a.span.end + m.index + m[0].length : null;
+        };
+        const start =
+            i === 0
+              ? segment.start
+              : (cut(quantities[i - 1], q) ?? q.span.start),
+          end = quantities[i + 1]
+            ? (cut(q, quantities[i + 1]) ?? quantities[i + 1].span.start)
+            : segment.end;
         const text = raw.slice(start, end),
           last = works.at(-1);
         if (
