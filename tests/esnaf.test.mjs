@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-let ledgerOf, statementText;
-try { ({ ledgerOf, statementText } = await import('../js/esnaf.js')); }
+let ledgerOf, statementText, findDuplicates, creditItem;
+try { ({ ledgerOf, statementText, findDuplicates, creditItem } = await import('../js/esnaf.js')); }
 catch (e) { console.log('SKIP (tarayıcı gerektirir):', e.message); process.exit(0); }
 const d = { payables: [
   { id: 'b1', party_type: 'supplier', party_id: 'S', date: '2026-10-10', gross_total: 500, status: 'Onaylandı', created_at: '1', items: [{ description: '2 lastik' }] },
@@ -17,4 +17,21 @@ assert.equal(l.entries.length, 3);                       // 2 alış + 1 gruplan
 assert.equal(l.entries.at(-1).kind, 'pay'); assert.equal(l.entries.at(-1).amount, 40000);
 assert.equal(l.entries.at(-1).balance, 130000);
 assert.match(statementText('Mesut', l, '2026-10-15'), /Kalan borç: 1\.300,00 ₺/);
-console.log('esnaf 5/5 PASS');
+
+// tekrar engeli
+const dd = { ...d, expense_records: [
+  { id: 'e1', date: '2026-10-13', amount: 1200, category: 'Lastik' },
+  { id: 'e2', date: '2026-10-13', amount: 70 },
+], payables: [...d.payables, { id: 'b5', party_type: 'supplier', party_id: 'S', date: '2026-10-13', gross_total: 70, status: 'Onaylandı', source_store: 'expense_records', source_id: 'e2', items: [] }] };
+assert.equal(findDuplicates(dd, { date: '2026-10-13', amount: 1200, supplier_id: 'S' }).bills.length, 1);   // aynı usta/gün/tutar
+assert.equal(findDuplicates(dd, { date: '2026-10-13', amount: 1200, supplier_id: 'S' }).expenses.length, 1); // aynı gün gider
+assert.equal(findDuplicates(dd, { date: '2026-10-13', amount: 70 }).expenses.length, 0);   // gider zaten borca bağlı
+assert.equal(findDuplicates(dd, { date: '2026-10-13', amount: 1200, supplier_id: 'X' }).bills.length, 0);
+assert.equal(findDuplicates(dd, { date: '2026-10-14', amount: 1200 }).bills.length, 0);   // başka gün
+assert.equal(findDuplicates(dd, { date: '2026-10-13', amount: 1200.5 }).bills.length, 0); // başka tutar
+// KDV uydurulmaz
+assert.equal(creditItem('x', 500, '').kdv_unknown, true);
+assert.equal(creditItem('x', 500, null).kdv_unknown, true);
+const k = creditItem('x', 1200, 20);
+assert.equal(k.kdv_unknown, false); assert.equal(k.items[0].kdv_rate, 20);
+console.log('esnaf 14/14 PASS');

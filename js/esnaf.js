@@ -2,7 +2,7 @@
 // Mevcut tedarikçi / alış belgesi / tedarikçi ödemesi kayıtlarının üstünde basit bir ön yüzdür;
 // yeni veri türü eklemez. Alış belgesi = borç, tedarikçi ödemesi = ödeme.
 import * as edb from "./enterprise-db.js";
-import { billBalance } from "./enterprise-core.js";
+import { billBalance, taxValues, invoiceLines, invoiceTotals } from "./enterprise-core.js";
 import { isActive, toKurus, fromKurus, uuid } from "./core.js";
 import {
   qs,
@@ -25,6 +25,7 @@ import {
   todayStr,
   shareText,
   promptDialog,
+  confirmDialog,
 } from "./ui.js";
 
 const TYPES = ["Servis", "Tedarikçi", "Petrolcü", "Diğer"];
@@ -229,6 +230,111 @@ async function detail(ctx, d, id) {
   });
 }
 
+
+// Tutar KDV dahil girilir. KDV oranı bilinmiyorsa uydurulmaz: kalem "KDV bilinmiyor" işaretlenir.
+export function creditItem(description, gross, rate) {
+  const known = rate !== "" && rate != null && Number.isFinite(Number(rate));
+  const g = toKurus(gross);
+  if (known) {
+    const r = Number(rate);
+    const base = toKurus(taxValues(gross, r, true).net);
+    for (const n of [base, base - 1, base + 1]) {
+      const items = [
+        { description, quantity: 1, unit: "Adet", unit_price: fromKurus(n), kdv_rate: r },
+      ];
+      if (toKurus(invoiceTotals(invoiceLines(items)).gross_total) === g)
+        return { items, kdv_unknown: false };
+    }
+  }
+  return {
+    items: [{ description, quantity: 1, unit: "Adet", unit_price: gross, kdv_rate: 0 }],
+    kdv_unknown: true,
+  };
+}
+
+// Aynı gün + aynı tutar: aynı iş ikinci kez girilmesin (Esnaf Hesabı ve Gider arasında).
+export function findDuplicates(d, { date, amount, supplier_id = null }) {
+  const k = toKurus(amount);
+  const live = (b) => isActive(b) && b.status !== "İptal";
+  const bills = (d.payables || []).filter(
+    (b) =>
+      live(b) &&
+      b.party_type === "supplier" &&
+      b.date === date &&
+      toKurus(b.gross_total) === k &&
+      (!supplier_id || b.party_id === supplier_id),
+  );
+  const linked = new Set(
+    (d.payables || [])
+      .filter((b) => live(b) && b.source_id)
+      .map((b) => b.source_store + ":" + b.source_id),
+  );
+  const expenses = (d.expense_records || []).filter(
+    (e) =>
+      isActive(e) &&
+      e.date === date &&
+      toKurus(e.amount) === k &&
+      !linked.has("expense_records:" + e.id),
+  );
+  return { bills, expenses };
+}
+const billLabel = (d, b) =>
+  `${(d.suppliers || []).find((x) => x.id === b.party_id)?.name || "usta"} · ${trDate(b.date)} · ${fmtTL(b.gross_total)} ₺ · ${b.items?.[0]?.description || b.description || ""}`;
+
+// Veresiye alışı tek yerden kaydeder: Esnaf ekranı ve Gider formu aynı fonksiyonu kullanır.
+// Aynı iş daha önce girilmişse reddeder; kullanıcı "farklı iş" diye açıkça onaylamadıkça yazmaz.
+// Dönüş: kayıt, ya da vazgeçildiyse null.
+export async function createCreditBill(ctx, d, s, f, opts = {}) {
+  const dup = findDuplicates(d, { date: f.date, amount: f.amount, supplier_id: s.id });
+  let expense = opts.expense || null;
+  if (!expense && dup.bills.length) {
+    const ok = await confirmDialog(
+      "Tekrar kayıt engellendi",
+      "Bu alış zaten kayıtlı: " + billLabel(d, dup.bills[0]) + ". Aynı iş ise tekrar girmeyin.",
+      "Farklı bir iş, kaydet",
+    );
+    if (!ok) return null;
+  } else if (!expense && dup.expenses.length) {
+    const e = dup.expenses[0];
+    const same = await confirmDialog(
+      "Aynı gün aynı tutarda gider var",
+      `${trDate(e.date)} · ${e.category || "Gider"} · ${fmtTL(e.amount)} ₺ ${e.description ? "· " + e.description : ""}. Bu aynı iş mi? Evet derseniz yeni gider yazılmaz, mevcut gider bu ustanın borcuna bağlanır.`,
+      "Evet, aynı iş",
+    );
+    if (same) expense = e;
+    else {
+      const ok = await confirmDialog(
+        "Farklı iş olarak kaydedilsin mi?",
+        "Mevcut gider ayrı kalır, bu alış ayrıca sayılır.",
+        "Farklı iş, kaydet",
+      );
+      if (!ok) return null;
+    }
+  }
+  const desc = (f.description || "").trim() || expense?.description || expense?.category || "";
+  if (!desc) throw Error("Ne yapıldığını yazın");
+  const kdv = creditItem(desc, expense ? expense.amount : f.amount, expense ? expense.kdv_rate : f.kdv_rate);
+  const rec = await edb.savePayable(
+    {
+      date: expense ? expense.date : f.date,
+      due_date: expense ? expense.date : f.date,
+      document_no: nextDocNo(d, s.id, expense ? expense.date : f.date),
+      party_type: "supplier",
+      party_id: s.id,
+      bill_kind: "Alış",
+      cost_category: expense?.category || f.category || "Diğer",
+      vehicle_id: expense ? expense.vehicle_id || null : f.vehicle_id || null,
+      description: desc + (kdv.kdv_unknown ? " (KDV bilinmiyor)" : ""),
+      items: kdv.items,
+      kdv_unknown: kdv.kdv_unknown,
+      ...(expense ? { source_store: "expense_records", source_id: expense.id } : {}),
+    },
+    opts.key,
+  );
+  if (f.file) await ctx.db.addAttachment("payable", rec.id, f.file);
+  return { rec, linked: !!expense };
+}
+
 function nextDocNo(d, supplierId, date) {
   const prefix = "VR-" + date.replaceAll("-", "") + "-";
   const used = new Set(
@@ -251,7 +357,8 @@ function billSheet(ctx, d, s) {
     ${fSelect("Kategori", "category", CATEGORIES, "Lastik", { empty: false })}
     ${fSelect("İlgili araç (ops.)", "vehicle_id", vehicles.map((v) => ({ v: v.id, t: v.name })), "")}
     <div class="field"><label>Fiş fotoğrafı (ops.)</label><input type="file" name="photo" accept="image/*"></div>
-    <p class="muted small">KDV ayrıştırılmaz; tutar fişteki toplamdır.</p>
+    ${fNum("KDV % (biliniyorsa; tutar KDV dahil)", "kdv_rate", "", { step: "any" })}
+    <p class="muted small">KDV boşsa bilinmiyor kabul edilir, tahmin edilmez.</p>
     <button class="btn primary block" data-ok>Kaydet</button>`);
   const key = uuid();
   qs("[data-ok]", sh).addEventListener("click", async (ev) => {
@@ -260,33 +367,20 @@ function billSheet(ctx, d, s) {
     try {
       const f = collectForm(sh);
       if (!f.description?.trim()) throw Error("Ne yapıldığını yazın");
-      const rec = await edb.savePayable(
-        {
-          date: f.date,
-          due_date: f.date,
-          document_no: nextDocNo(d, s.id, f.date),
-          party_type: "supplier",
-          party_id: s.id,
-          bill_kind: "Alış",
-          cost_category: f.category,
-          vehicle_id: f.vehicle_id || null,
-          description: f.description.trim() + " (KDV ayrıştırılmadı)",
-          items: [
-            {
-              description: f.description.trim(),
-              quantity: 1,
-              unit: "Adet",
-              unit_price: f.amount,
-              kdv_rate: 0,
-            },
-          ],
-        },
-        key,
+      if (!(Number(f.amount) > 0)) throw Error("Pozitif tutar girin");
+      const res = await createCreditBill(
+        ctx,
+        d,
+        s,
+        { ...f, file: qs("input[name=photo]", sh).files[0] },
+        { key },
       );
-      const file = qs("input[name=photo]", sh).files[0];
-      if (file) await ctx.db.addAttachment("payable", rec.id, file);
+      if (!res) {
+        btn.disabled = false;
+        return;
+      }
       sheetClose();
-      toast("Veresiye alış kaydedildi", "ok");
+      toast(res.linked ? "Mevcut gider ustanın borcuna bağlandı" : "Veresiye alış kaydedildi", "ok");
       ctx.reload();
     } catch (e) {
       btn.disabled = false;

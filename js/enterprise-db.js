@@ -246,6 +246,7 @@ export async function savePayable(f, key = uuid()) {
         status: "Onaylandı",
         cost_category: f.cost_category || "Diğer",
         bill_kind: f.bill_kind || "Alış",
+        kdv_unknown: f.kdv_unknown === true,
         description: f.description || "",
         customer_id: f.customer_id || null,
         site_id: f.site_id || null,
