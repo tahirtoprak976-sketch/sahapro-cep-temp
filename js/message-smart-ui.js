@@ -119,7 +119,7 @@ function rowEditor(r, index, d, locked) {
           typeof r.kdv_included === "boolean" ? String(r.kdv_included) : "",
         )}<div data-row-price></div></details>`
       : `<div class="formgrid2">${input("Litre", "fuel_liters", r.fuel_liters, "number")}${fSelect("Yakıt kaynağı", "fuel_source", ["Depo Tankı", "İstasyon"], value("fuel_source"))}</div>`
-  }${r.dump_site_id || r.transport_group_key ? fSelect("Döküm sahası", "dump_site_id", option(d, "dump_sites"), value("dump_site_id")) : ""}${r.duration ? `<p class="notice">Saat aralığından öneri: brüt ${r.duration.gross_minutes / 60} saat · mola ${r.duration.break_minutes / 60} saat · net ${r.duration.net_minutes / 60} saat. Gerçek net süreyi doğrulayın.</p>` : ""}${r.inference_confirmed === false ? `<label class="history-check"><input type="checkbox" data-inference-confirm ${locked ? "disabled" : ""}> Sefer / net çalışma süresi önerisini doğruladım.</label>` : ""}${fSelect("Operatör / şoför (opsiyonel)", "personnel_id", option(d, "personnel"), value("personnel_id"))}${fArea("İş açıklaması", "description", r.description || "")}</fieldset><div class="row">${Object.entries(
+  }${r.dump_site_id || r.transport_group_key ? fSelect("Döküm sahası", "dump_site_id", option(d, "dump_sites"), value("dump_site_id")) : ""}${r.duration ? `<p class="notice">Saat aralığından öneri: brüt ${r.duration.gross_minutes / 60} saat · mola ${r.duration.break_minutes / 60} saat · net ${r.duration.net_minutes / 60} saat. Gerçek net süreyi doğrulayın.</p>` : ""}${r.inference_confirmed === false ? `<label class="history-check"><input type="checkbox" data-inference-confirm ${locked ? "disabled" : ""}> Sefer / net çalışma süresi önerisini doğruladım.</label>` : ""}${fSelect("Operatör / şoför (opsiyonel)", "personnel_id", option(d, "personnel"), value("personnel_id"))}${fArea("İş açıklaması", "description", r.description || "")}</fieldset>${!locked ? `<button type="button" class="btn" data-learn-row="${index}">Bu Eşleşmeyi Hatırla</button>` : ""}<div class="row">${Object.entries(
     r.candidates || {},
   )
     .flatMap(([field, cs]) =>
@@ -415,6 +415,41 @@ export async function messageWorkbench(ctx, d, m, tools) {
       }
     };
     qs("[name=name]", dialog).focus();
+  });
+  root.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-learn-row]");
+    if (!button || locked) return;
+    const row = rows[Number(button.dataset.learnRow)];
+    const names = {customer: "Müşteri", vehicle: "Araç", site: "Şantiye", personnel: "Personel"};
+    const types = Object.keys(smart.MEMORY_TYPES).filter(type => row[type + "_id"]);
+    if (!types.length) return toast("Önce hatırlanacak kartı seçin", "err");
+    ui.sheet(`<h2>Bu Eşleşmeyi Hatırla</h2><p>Yalnız onayladığın ifade ve seçili kart saklanır. Tarih, miktar, fiyat ve diğer alanlar öğrenilmez. Açık taslağın değişmez.</p><p class="wrap">${esc(row.description || m.text)}</p><form data-learn-form>${fSelect("Hatırlanacak alan", "target_type", types.map(type => ({v:type,t:names[type]})), types[0], {empty:false})}${fText("Mesajda geçen ifade", "alias", "", {ph:"Örnek: Mahir Bey"})}<p data-learn-target></p><label class="history-check"><input type="checkbox" name="confirmed"> Bu ifadeyi gösterilen kartla sonraki mesajlarda eşleştirmeyi onaylıyorum.</label><p data-learn-error hidden role="alert"></p><button type="button" class="btn primary" data-learn-save>Onayla ve Hatırla</button></form>`);
+    const dialog = qs("[data-learn-form]");
+    dialog.onsubmit = e => { e.preventDefault(); qs("[data-learn-save]", dialog).click(); };
+    const show = () => {
+      const type = qs("[name=target_type]", dialog).value;
+      qs("[data-learn-target]", dialog).textContent = "Hatırlanacak kart: " + rules.label(d, smart.MEMORY_TYPES[type], row[type + "_id"]);
+    };
+    qs("[name=target_type]", dialog).onchange = show;
+    show();
+    qs("[data-learn-save]", dialog).onclick = async () => {
+      const save = qs("[data-learn-save]", dialog);
+      save.disabled = true;
+      try {
+        const f = ui.collectForm(dialog);
+        f.confirmed = qs("[name=confirmed]", dialog).checked;
+        f.target_id = row[f.target_type + "_id"];
+        const remembered = await actions.saveMessageMemory(f);
+        if (!d.aliases.some(a => a.id === remembered.id)) d.aliases.push(remembered);
+        ui.sheetClose();
+        toast("Eşleşme telefonda hatırlandı. Taslak seçimlerini ayrıca kaydet.", "ok");
+      } catch (error) {
+        const box = qs("[data-learn-error]", dialog);
+        box.textContent = error.message || String(error);
+        box.hidden = false;
+        save.disabled = false;
+      }
+    };
   });
   qs("[data-s-save]", root)?.addEventListener("click", () =>
     safe(async () => {
