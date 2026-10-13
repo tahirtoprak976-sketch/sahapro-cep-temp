@@ -104,6 +104,7 @@ async function hub(ctx) {
     ["#/cari", "🏦", "Cari", "müşteri bakiyeleri"],
     ["#/kasa", "💰", "Kasa", "tahsilat akışı"],
     ["#/gider", "💸", "Gider", "fişli takip"],
+    ["#/esnaf", "🔧", "Esnaf Hesabı", "usta borçları"],
     ["#/fiyat", "🏷", "Fiyat Listesi", "fiyatlar + vinç tarifesi"],
   ];
   root.innerHTML =
@@ -1359,6 +1360,7 @@ async function expenseForm(ctx) {
   root.innerHTML =
     appbar("+ Gider", "Fiş fotoğrafı eklenebilir") +
     `
+    <div class="notice info" style="margin-top:10px"><span>ℹ</span><span>Veresiye (açık hesap) çalıştığınız usta için <a href="#/esnaf">Esnaf Hesabı</a>'nı kullanın; böylece borcu takip edilir ve gider iki kez yazılmaz.</span></div>
     <form data-form novalidate>
       ${fDate("Tarih", "date", todayStr())}
       <div class="formgrid2">
