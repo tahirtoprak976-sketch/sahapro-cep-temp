@@ -533,7 +533,7 @@ async function docForm(ctx) {
       <div class="section-title">Fiziksel Arşiv (ops.)</div>
       <div class="formgrid2">${fText("Klasör", "archive_folder", "")}${fText("Raf", "archive_shelf", "")}</div>
       <div class="formgrid2">${fText("Koçan", "archive_kocan", "")}${fText("Dosya No", "archive_file_no", "")}</div>
-      <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/*"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   qs("[data-save]", root).addEventListener("click", async () => {
@@ -638,7 +638,7 @@ async function docDetail(ctx, id) {
       <button class="btn" data-addphoto>📷 Foto Ekle</button>
       <button class="btn danger" data-del>🗑 Sil</button>
     </div>
-    <input type="file" accept="image/*" capture="environment" data-photoinput hidden>`;
+    <input type="file" accept="image/*" data-photoinput hidden>`;
   const attRoot = qs("[data-atts]", root);
   for (const a of atts) {
     if ((a.type || "").startsWith("image/")) {

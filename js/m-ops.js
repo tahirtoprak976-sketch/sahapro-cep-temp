@@ -567,7 +567,7 @@ async function maintForm(ctx, editId) {
         ${fText("Servis/Firma (ops.)", "service_company", v.service_company || "")}
       </div>
       ${fText("KM / Çalışma Saati (ops.)", "km_hours", v.km_hours || "")}
-      <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/*"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   qs("[data-save]", root).addEventListener("click", async () => {
