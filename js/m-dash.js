@@ -1,4 +1,5 @@
 // SAHAPRO SOLO — Dashboard · Gün Sonu · Yönetici · Raporlar · Daha Fazla
+import { todayBoard } from "./today.js";
 import {
   qs,
   qsa,
@@ -65,9 +66,12 @@ async function loadAll(db) {
     "sites",
     "personnel",
     "price_book",
+    "suppliers",
+    "payables",
+    "supplier_payments",
   ];
   const data = {};
-  for (const s of stores) data[s] = await db.getAll(s);
+  for (const s of stores) data[s] = (await db.getAll(s)) || [];
   return data;
 }
 
@@ -79,6 +83,7 @@ async function dashboard(ctx) {
   const sum = daySummary(today, data);
   const lastBackup = await db.metaGet("last_backup_at");
   const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup });
+  const board = todayBoard(data, { today, lastBackupAt: lastBackup });
   const tank = calcTankBalance(data.fuel_tank_movements);
 
   // Son 7 gün yakıt grafiği
@@ -142,7 +147,7 @@ async function dashboard(ctx) {
       <div class="hero-foot">${trDate(today)} · Veriler bu cihazda saklanır</div>
     </section>
 
-    ${lastBackup && Date.now() - new Date(lastBackup).getTime() < 24 * 3600 * 1000 ? "" : notice("warn", "Son yedeğiniz 1 günden eski. Gün sonunda yedekleyin.")}
+    ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="muted small" style="padding:4px 2px">+${board.items.length - 6} madde daha — “uyarı” kartında</div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
     <div class="statgrid">
@@ -692,7 +697,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.6")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.7")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

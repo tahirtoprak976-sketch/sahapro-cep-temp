@@ -233,19 +233,42 @@ async function pinGate() {
 }
 
 // ---- Service Worker + güncelleme bildirimi ----
+function showUpdateBar(reg) {
+  if (document.getElementById("update-bar")) return;
+  const bar = document.createElement("div");
+  bar.id = "update-bar";
+  bar.style.cssText =
+    "position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1d4ed8;color:#fff;border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)";
+  bar.innerHTML =
+    '<span style="flex:1;font-size:14px">Yeni sürüm hazır</span><button data-upd style="background:#fff;color:#1d4ed8;border:0;border-radius:8px;padding:8px 14px;font-weight:700">Güncelle</button><button data-x style="background:transparent;color:#fff;border:0;font-size:18px" aria-label="Kapat">✕</button>';
+  document.body.appendChild(bar);
+  bar.querySelector("[data-x]").onclick = () => bar.remove();
+  bar.querySelector("[data-upd]").onclick = () => {
+    const w = reg.waiting;
+    if (w) w.postMessage({ type: "SKIP_WAITING" });
+    else location.reload();
+  };
+}
+async function requestPersist() {
+  try {
+    if (navigator.storage?.persist && !(await navigator.storage.persisted()))
+      await navigator.storage.persist();
+  } catch (e) {
+    /* desteklenmiyor */
+  }
+}
 async function registerSW() {
+  requestPersist();
   if (!("serviceWorker" in navigator)) return;
   try {
     const reg = await navigator.serviceWorker.register("./sw.js");
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg);
     reg.addEventListener("updatefound", () => {
       const sw = reg.installing;
       if (!sw) return;
       sw.addEventListener("statechange", () => {
         if (sw.state === "installed" && navigator.serviceWorker.controller) {
-          toast(
-            "Yeni sürüm hazır. Güncellemek için uygulamanın tüm sekmelerini kapatıp açın.",
-            "ok",
-          );
+          showUpdateBar(reg);
         }
       });
     });

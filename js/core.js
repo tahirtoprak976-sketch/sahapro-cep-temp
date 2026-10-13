@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.6";
+export const APP_VERSION = "SAHAPRO SOLO v3.7.7";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -668,7 +668,7 @@ export function smartAlerts(data, opts = {}) {
         ref: { type: "vehicle", id: v.id },
       });
   }
-  for (const d of act(data.documents)) {
+  for (const d of latestDocuments(act(data.documents))) {
     if (d.expiry_date && d.expiry_date <= addDays(today, 30))
       alerts.push({
         kind: d.expiry_date < today ? "alert" : "warn",
@@ -677,12 +677,15 @@ export function smartAlerts(data, opts = {}) {
         ref: { type: "document", id: d.id },
       });
   }
-  const lb = opts.lastBackupAt;
-  if (!lb || Date.now() - new Date(lb).getTime() > 24 * 3600 * 1000)
+  const bAge = backupAgeDays(opts.lastBackupAt, today);
+  if (bAge === null || bAge >= 3)
     alerts.push({
-      kind: "warn",
+      kind: bAge === null || bAge >= 7 ? "alert" : "warn",
       key: "backup_old",
-      text: "Son yedek 24 saatten eski — Ayarlar → Tüm Verileri Yedekle",
+      text:
+        bAge === null
+          ? "Hiç yedek alınmadı — Ayarlar → Tüm Verileri Yedekle"
+          : `Son yedek ${bAge} gün önce — Ayarlar → Tüm Verileri Yedekle`,
       ref: { type: "settings" },
     });
   const todayWorks = act(data.work_records).filter((w) => w.date === today);
@@ -711,6 +714,32 @@ export function smartAlerts(data, opts = {}) {
       ref: { type: "tank" },
     });
   return alerts;
+}
+// Aynı sahip + kategori için yalnızca en güncel belge (yenilenen eski belge uyarı vermesin)
+export function latestDocuments(docs) {
+  const best = new Map();
+  for (const d of docs || []) {
+    const k = `${d.owner_type || ""}|${d.vehicle_id || d.personnel_id || d.owner_id || ""}|${d.category || ""}`;
+    const cur = best.get(k);
+    if (
+      !cur ||
+      String(d.expiry_date || "9999") > String(cur.expiry_date || "9999")
+    )
+      best.set(k, d);
+  }
+  return [...best.values()];
+}
+// Son yedekten bu yana gün (yedek yoksa null)
+export function backupAgeDays(lastBackupAt, today = todayStr()) {
+  if (!lastBackupAt) return null;
+  const t = new Date(lastBackupAt).getTime();
+  if (!Number.isFinite(t)) return null;
+  const days = Math.round(
+    (new Date(today + "T12:00:00").getTime() -
+      new Date(todayStr(new Date(t)) + "T12:00:00").getTime()) /
+      86400000,
+  );
+  return Math.max(0, days);
 }
 export function addDays(dateStr, n) {
   const d = new Date(dateStr + "T12:00:00");
