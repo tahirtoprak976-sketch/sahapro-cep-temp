@@ -69,11 +69,12 @@ export function li({
   end = "",
   href = "",
   badgeHtml = "",
+  id = "",
 }) {
   const inner = `<div class="ic">${ic}</div><div class="grow"><div class="t1 ellipsis">${t1}</div>${t2 ? `<div class="t2 ellipsis">${t2}</div>` : ""}</div>${badgeHtml}${end ? `<div class="end">${end}</div>` : ""}`;
   return href
     ? `<div class="li" data-go="${esc(href)}">${inner}</div>`
-    : `<div class="li">${inner}</div>`;
+    : `<div class="li"${id ? ` data-rid="${esc(id)}"` : ""}>${inner}</div>`;
 }
 export function emptyState(ic, text, ctaHtml = "") {
   return `<div class="empty"><div class="ic">${ic}</div><div class="t">${esc(text)}</div>${ctaHtml ? `<div style="margin-top:12px">${ctaHtml}</div>` : ""}</div>`;
