@@ -377,15 +377,6 @@
   ]
  },
  {
-  "t": "Leda jcb yarım yevmiye",
-  "rows": [
-   {
-    "customer": "CL",
-    "vehicle": "J"
-   }
-  ]
- },
- {
   "t": "Gümüş Yapı 34 ABC 123 bugün 5 sefer hafriyat",
   "rows": [
    {
@@ -674,5 +665,71 @@
   "t": "Leda jcb 3 saat çalıştı, öğleden sonra 2 saat daha",
   "rows": [],
   "notice": "add_to_existing"
+ },
+ {
+  "t": "14 tonluk mahir bey şantiyesi yarım yevmiye",
+  "rows": [
+   {
+    "customer": "CMH",
+    "vehicle": "T14",
+    "qty": 0.5,
+    "unit": "Yevmiye"
+   }
+  ]
+ },
+ {
+  "t": "Leda jcb bir buçuk saat",
+  "rows": [
+   {
+    "customer": "CL",
+    "vehicle": "J",
+    "qty": 1.5,
+    "unit": "Saat"
+   }
+  ]
+ },
+ {
+  "t": "Leda jcb 2 buçuk saat",
+  "rows": [
+   {
+    "customer": "CL",
+    "vehicle": "J",
+    "qty": 2.5,
+    "unit": "Saat"
+   }
+  ]
+ },
+ {
+  "t": "Leda jcb yarım saat",
+  "rows": [
+   {
+    "customer": "CL",
+    "vehicle": "J",
+    "qty": 0.5,
+    "unit": "Saat"
+   }
+  ]
+ },
+ {
+  "t": "Leda jcb 1 yovmiye",
+  "rows": [
+   {
+    "customer": "CL",
+    "vehicle": "J",
+    "qty": 1,
+    "unit": "Yevmiye"
+   }
+  ]
+ },
+ {
+  "t": "Leda jcb yarım yevmiye",
+  "rows": [
+   {
+    "customer": "CL",
+    "vehicle": "J",
+    "qty": 0.5,
+    "unit": "Yevmiye"
+   }
+  ]
  }
 ]
