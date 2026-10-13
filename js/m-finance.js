@@ -1352,7 +1352,7 @@ async function expenseForm(ctx) {
       <div class="field" data-reimb style="display:none">${fSelect("Personele Ödeme", "reimbursement_status", REIMBURSEMENT_STATUS, "Bekliyor", { empty: false })}</div>
       ${fText("Firma", "company", "")}
       ${fArea("Açıklama", "description", "")}
-      <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   const pmSel = qs("select[name=payment_method]", root);
