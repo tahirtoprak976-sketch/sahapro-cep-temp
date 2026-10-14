@@ -105,6 +105,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
   const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length;
   const personnel = live("personnel").map((p) => [p.id, p.name]);
+  const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
   const banks = live("bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]);
   const nameOf = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || id || "—";
   out.innerHTML =
@@ -126,7 +127,12 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>İş türü</label><select name="work_type">${opt(WORK_TYPES.map((x) => [x, x]), r.work_type)}</select></div>
           <div class="field"><label>Miktar</label><input type="number" step="any" name="quantity" value="${r.quantity ?? ""}"></div>
           <div class="field"><label>Birim</label><select name="unit">${opt(ASSIST_UNITS.map((x) => [x, x]), r.unit)}</select></div>
-        </div>${issues(r)}</div>`;
+          <div class="field"><label>Operatör / şoför</label><select name="personnel">${opt(personnel, r.personnel_id, "— yok —")}</select></div>
+          <div class="field"><label>Malzeme</label><input name="material" value="${esc(r.material || "")}" placeholder="moloz, kum, mıcır…"></div>
+          <div class="field"><label>Döküm yeri</label><select name="dump_site">${opt(dumpSites, r.dump_site_id, "— yok —")}</select></div>
+          <div class="field"><label>Birim fiyat (₺, boşsa fiyat listesi)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
+        </div>
+        <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>${issues(r)}</div>`;
       })
       .join("") +
     v.expenses
@@ -140,7 +146,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Firma</label><input name="company" value="${esc(r.company)}"></div>
           <div class="field"><label>Araç</label><select name="vehicle">${opt(vehicles, r.vehicle_id, "— yok —")}</select></div>
           <div class="field"><label>Veresiye esnaf</label><select name="supplier">${opt(suppliers, r.credit ? r.supplier_id : "", "— peşin —")}</select></div>
-        </div>${issues(r)}</div>`)
+        </div>
+        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${issues(r)}</div>`)
       .join("") +
     v.fuel
       .map((r, i) => `<div class="card" data-kind="fuel" data-i="${i}">
@@ -267,19 +274,26 @@ async function save(ctx, out, v, d, { message, files }) {
           customer_id: customer,
           site_id: site,
           vehicle_id: veh.id,
-          personnel_id: null,
+          personnel_id: val(c, "personnel") || null,
           vehicle_type: veh.type || null,
           contractor_id: veh.contractor_id || null,
           work_type: val(c, "work_type"),
-          description: source,
-          material: "",
+          description: val(c, "description") || source,
+          internal_note_src: source,
+          material: val(c, "material") || "",
           quantity: Number(val(c, "quantity")),
           unit: val(c, "unit"),
-          dump_site_id: null, quarry_id: null, dump_area: "", quarry: "",
-          slip_status: null, slip_no: "", customer_note: "", internal_note: "", distance_km: null,
+          dump_site_id: val(c, "dump_site") || null, quarry_id: null,
+          dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || "", quarry: "",
+          slip_status: null, slip_no: "", customer_note: "", distance_km: null,
           source: "asistan",
         };
-        fields.price_snapshot = priceSnapshot(fields, prices, crane);
+        delete fields.internal_note_src;
+        fields.internal_note = source;
+        const up = Number(val(c, "unit_price"));
+        fields.price_snapshot = up > 0
+          ? { unit_price: up, kdv_rate: Number(await db.metaGet("kdv_default")) || 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
+          : priceSnapshot(fields, prices, crane);
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity);
         if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
         await db.saveNew("work_records", fields, "Asistan");
@@ -287,7 +301,7 @@ async function save(ctx, out, v, d, { message, files }) {
       } else if (k === "expense") {
         const r = v.expenses[Number(c.dataset.i)];
         const file = r.photo != null ? files[r.photo] : null;
-        const f = { date: val(c, "date") || todayStr(), amount: Number(val(c, "amount")), category: val(c, "category") || "Diğer", vehicle_id: val(c, "vehicle") || null, description: (val(c, "company") ? val(c, "company") + " · " : "") + (r.note || val(c, "category")), kdv_rate: null, file };
+        const f = { date: val(c, "date") || todayStr(), amount: Number(val(c, "amount")), category: val(c, "category") || "Diğer", vehicle_id: val(c, "vehicle") || null, description: val(c, "description") || (val(c, "company") ? val(c, "company") + " · " : "") + (r.note || val(c, "category")), kdv_rate: null, file };
         const supId = val(c, "supplier");
         const fresh = await db.dumpAll();
         if (supId) {
@@ -302,7 +316,7 @@ async function save(ctx, out, v, d, { message, files }) {
           const rec = await db.saveNew("expense_records", {
             date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: null, vehicle_id: f.vehicle_id,
             payment_method: "Şirket Ödedi", receipt: file ? "Evet" : "Hayır", reimbursement_status: null,
-            company: val(c, "company"), description: source,
+            company: val(c, "company"), description: val(c, "description") || source,
           }, "Asistan");
           if (file) await db.addAttachment("expense", rec.id, file);
           done.expense++;

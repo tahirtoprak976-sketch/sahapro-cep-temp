@@ -22,6 +22,7 @@ export function assistantContext(d, today = todayStr()) {
     sites: live(d, "sites").map((s) => [s.id, s.name, s.customer_id]),
     vehicles: live(d, "vehicles").map((v) => [v.id, v.name, v.plate || "", v.type || ""]),
     personnel: live(d, "personnel").map((p) => [p.id, p.name]),
+    dump_sites: live(d, "dump_sites").map((x) => [x.id, x.name]),
     suppliers: live(d, "suppliers").map((s) => [s.id, s.name]),
     aliases: live(d, "aliases").filter((a) => a.active !== false).map((a) => [a.alias, a.target_type, a.target_id]),
     bank_accounts: live(d, "bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]),
@@ -44,7 +45,7 @@ export function assistantSystem() {
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
     "Fotoğraf varsa her fotoğrafın tüm yazısını photo_texts dizisine aynen yaz (sayı biçimini koru).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
-    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"note\"}],",
+    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\"}],",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
@@ -112,7 +113,13 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   for (const w of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
     const issues = [];
     const r = { date: validDate(w.date, today) || today, customer_id: null, new_customer: null, site_id: null, new_site: null,
-      vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200) };
+      vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200),
+      description: String(w.description || w.note || "").slice(0, 300), material: String(w.material || "").slice(0, 60),
+      dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, unit_price: null };
+    if (w.unit_price != null && w.unit_price !== "") {
+      const up = amountOk(w.unit_price, [moneyInText(message)]);
+      if (up) r.unit_price = up; else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
+    }
     if (w.date && !validDate(w.date, today)) issues.push(`Tarih ${w.date} geçersiz; bugün alındı`);
     const c = byId(customers, w.customer_id);
     if (c) r.customer_id = c.id;
