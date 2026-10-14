@@ -320,7 +320,7 @@ async function workForm(ctx, editId) {
   const batchSection = qs("[data-transport-batch]", form);
   const batchActive = () =>
     !!batchSection &&
-    ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"].includes(
+    ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
       qs("[name=work_type]", form).value,
     ) &&
     qs("[name=unit]", form).value === "Sefer";
@@ -387,9 +387,13 @@ async function workForm(ctx, editId) {
       quarry = ["Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
         type,
       );
+    // Malzeme nakliyesinde döküm alanları "teslim yeri" olur (ör. Maslak gravak → Binkılıç dolgu)
+    const setLabel = (key, txt) => { const l = qs("[name=" + key + "]", form)?.closest(".field")?.querySelector("label"); if (l) l.textContent = txt; };
+    setLabel("dump_site_id", quarry ? "Teslim / Dolgu Yeri" : "Döküm Sahası");
+    setLabel("dump_area", quarry ? "Diğer Teslim Yeri (şantiye / adres)" : "Diğer Döküm (opsiyonel)");
     for (const [key, visible] of [
-      ["dump_area", dump],
-      ["dump_site_id", dump],
+      ["dump_area", dump || quarry],
+      ["dump_site_id", dump || quarry],
       ["quarry", quarry],
       ["quarry_id", quarry],
       ["material", dump || quarry],
