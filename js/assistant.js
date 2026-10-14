@@ -169,7 +169,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi" };
   const personnel = live("personnel").map((p) => [p.id, p.name]);
   const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
@@ -267,12 +267,22 @@ function render(ctx, out, v, d, { message, files, ms }) {
         </div>
         <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${issues(r)}</div>`)
       .join("") +
+    v.tankIn
+      .map((r, i) => `<div class="card" data-kind="tank" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🛢 Depoya yakıt girişi</b></label>
+        <div class="formgrid2">
+          <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
+          <div class="field"><label>Litre</label><input type="number" step="any" name="liters" value="${r.liters ?? ""}"></div>
+          <div class="field"><label>Tutar (₺, ops.)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
+        </div>${issues(r)}</div>`)
+      .join("") +
     v.fuel
       .map((r, i) => `<div class="card" data-kind="fuel" data-i="${i}">
-        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Yakıt</b></label>
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Yakıt</b> <span class="muted small">· depoda kayıtlı ${Math.round(v.tankStock)} L</span></label>
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Araç</label><select name="vehicle">${opt(vehicles, r.vehicle_id)}</select></div>
+          <div class="field"><label>Nereden</label><select name="source">${opt([["Depo Tankı", "Depo tankından"], ["Akaryakıt İstasyonu", "Akaryakıt istasyonu"]], r.source, "Depo Tankı")}</select></div>
           <div class="field"><label>Litre</label><input type="number" step="any" name="liters" value="${r.liters ?? ""}"></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
         </div>${issues(r)}</div>`)
@@ -341,7 +351,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const { db } = ctx;
   const cards = qsa(".card[data-kind]", out)
     .filter((c) => qs("[data-pick]", c).checked)
-    .sort((a, b) => (["card", "memory"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory"].includes(b.dataset.kind) ? 0 : 1));
+    .sort((a, b) => (["card", "memory", "tank"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
@@ -351,6 +361,7 @@ async function save(ctx, out, v, d, { message, files }) {
       k === "work" ? !val(c, "customer") || !val(c, "vehicle") || !val(c, "work_type") || !(Number(val(c, "quantity")) > 0) || !val(c, "unit")
       : k === "expense" ? !(Number(val(c, "amount")) > 0)
       : k === "fuel" ? !val(c, "vehicle") || !(Number(val(c, "liters")) > 0)
+      : k === "tank" ? !(Number(val(c, "liters")) > 0)
       : k === "collection" ? !val(c, "customer") || !(Number(val(c, "amount")) > 0) || (val(c, "method") === "Havale" && !val(c, "bank"))
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
       : k === "personnel" ? !val(c, "personnel")
@@ -363,9 +374,17 @@ async function save(ctx, out, v, d, { message, files }) {
       return toast(k === "doc" ? "Belge kartında eksik/uyumsuz alan var (araç belgesi araca, personel belgesi personele)" : "İşaretli kartta eksik alan var", "err");
     }
   }
+  // Depo stoku: işaretli depo girişleri + mevcut stok, depodan verilen yakıta yetmeli
+  {
+    const sum = (kind, f) => cards.filter((c) => c.dataset.kind === kind && f(c)).reduce((n, c) => n + Number(val(c, "liters")), 0);
+    const need = sum("fuel", (c) => (val(c, "source") || "Depo Tankı") === "Depo Tankı");
+    const have = v.tankStock + sum("tank", () => true);
+    if (need > have + 0.001)
+      return toast(`Depoda kayıtlı ${Math.round(have)} L var, ${need} L verilmek isteniyor. Önce depoya yakıt girişi yapın (mesaja "depoya X litre geldi" yazabilirsiniz) ya da kaynağı İstasyon seçin.`, "err");
+  }
   const btn = qs("[data-save]", out);
   btn.disabled = true;
-  const done = { ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
+  const done = { tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -429,6 +448,15 @@ async function save(ctx, out, v, d, { message, files }) {
           await edb.saveSupplier({ name, type: r.data.type, phone: val(c, "phone") });
           done.cards++;
         }
+        continue;
+      }
+      if (k === "tank") {
+        const total = Number(val(c, "total")) || null;
+        await db.saveNew("fuel_tank_movements", {
+          date: val(c, "date") || todayStr(), move_type: "GİRİŞ", liters: Number(val(c, "liters")), vehicle_id: null, personnel_id: null,
+          pump_no: "", signature_name: "", total, description: source,
+        }, "Asistan: depo girişi");
+        done.tank++;
         continue;
       }
       if (k === "ticket") {
@@ -608,17 +636,18 @@ async function save(ctx, out, v, d, { message, files }) {
       } else {
         const r = v.fuel[Number(c.dataset.i)];
         const liters = Number(val(c, "liters")), total = Number(val(c, "total")) || null;
+        const src = val(c, "source") || "Depo Tankı";
         const rec = await db.saveNew("fuel_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
           unit_price: total ? Math.round((total / liters) * 100) / 100 : null, total,
-          fuel_source: "Akaryakıt İstasyonu", receipt: r.photo != null ? "Evet" : "Hayır", pump_no: "", km: null,
+          fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: null,
           machine_hours: null, description: source, customer_billable: false,
         }, "Asistan");
         if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
         done.fuel++;
       }
     }
-    const parts = [[done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
     qs("[data-msg]", ctx.root).value = "";

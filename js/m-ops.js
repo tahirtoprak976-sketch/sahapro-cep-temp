@@ -82,9 +82,10 @@ async function fuel(ctx) {
     pagedRender(listEl, rows, (f) =>
       li({
         ic: "⛽",
+        href: "#/yakit/" + f.id,
         t1: `${esc(names.vehicles[f.vehicle_id] || "—")} · ${fmtNum(f.liters)} Lt`,
         t2: `${trDate(f.date)} · ${esc(names.personnel[f.personnel_id] || "—")} · ${esc(f.fuel_source || "")}${f.total ? " · " + fmtTL(f.total) + " ₺" : ""}${f.km ? " · " + fmtNum(f.km) + " km" : ""}${f.machine_hours ? " · " + fmtNum(f.machine_hours) + " sa" : ""}`,
-        badgeHtml: f.receipt === "Hayır" ? badge("Fişsiz", "warn") : "",
+        badgeHtml: f.receipt === "Hayır" ? badge("Fişsiz", "warn") : f.fuel_source === "Depo Tankı" ? badge("Depo", "") : "",
       }),
     );
   let st;
@@ -94,6 +95,41 @@ async function fuel(ctx) {
       () => go("#/yakit?q=" + encodeURIComponent(ev.target.value)),
       450,
     );
+  });
+}
+
+// Yakıt kaydı ekranına eklenen kart: "depodan verildi" düzeltmesi + silme (depo hareketi de geri alınır)
+export async function fuelActions(root, db, f) {
+  if (!f || !isActive(f)) return;
+  const stock = calcTankBalance((await db.getAll("fuel_tank_movements")).filter(isActive)).remaining;
+  const depo = f.fuel_source === "Depo Tankı";
+  const box = document.createElement("section");
+  box.className = "card";
+  box.innerHTML =
+    (depo ? `<div class="small">Depo tankından verildi · depoda kalan ${fmtNum(stock)} Lt</div>`
+      : `<div class="small">Bu yakıt aslında <b>depo tankından</b> verildiyse düzeltin: depo stoğundan ${fmtNum(f.liters)} Lt düşülür, "fişsiz" uyarısı kalkar.</div><div class="muted tiny" style="margin-top:4px">Depoda kayıtlı: ${fmtNum(stock)} Lt</div><button class="btn primary block" style="margin-top:8px" data-todepo>🛢 Depodan verildi olarak düzelt</button>`) +
+    `<button class="btn block" style="margin-top:8px" data-fdel>🗑 Yakıt kaydını sil</button>`;
+  root.appendChild(box);
+  qs("[data-todepo]", box)?.addEventListener("click", async () => {
+    if (Number(f.liters) > stock)
+      return toast(`Depoda kayıtlı ${fmtNum(stock)} Lt var. Önce Depo ekranından depoya yakıt girişi yapın.`, "err");
+    try {
+      await db.fuelFix(f.id, "to_tank", "Depodan verildi olarak düzeltildi");
+      toast("Düzeltildi: depodan verildi", "ok");
+      go("#/yakit");
+    } catch (e) {
+      toast(e.message || String(e), "err");
+    }
+  });
+  qs("[data-fdel]", box).addEventListener("click", async () => {
+    if (!(await confirmDialog("Yakıt kaydı silinsin mi?", `${trDate(f.date)} · ${fmtNum(f.liters)} Lt${depo ? " (depo stoğuna geri eklenir)" : ""}`, "Sil"))) return;
+    try {
+      await db.fuelFix(f.id, "delete", "Kullanıcı sildi");
+      toast("Silindi", "ok");
+      go("#/yakit");
+    } catch (e) {
+      toast(e.message || String(e), "err");
+    }
   });
 }
 
