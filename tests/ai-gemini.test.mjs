@@ -59,3 +59,14 @@ console.log('ai-gemini-fallback PASS');
   assert.equal(meta.get('gemini_model'), 'gemini-3.8-flash');
 }
 console.log('ai-gemini-autoswitch PASS');
+// şablon reddedilirse şablonsuz tekrar
+{
+  const { geminiJson } = await import('../js/ai-gemini.js');
+  const seen = [];
+  const f = async (url, init) => { const b = JSON.parse(init.body); seen.push(!!b.generationConfig.responseJsonSchema);
+    return b.generationConfig.responseJsonSchema ? { ok: false, status: 400, json: async () => ({ error: { message: 'Invalid JSON payload: unknown field responseJsonSchema' } }) }
+      : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }] }) }; };
+  assert.deepEqual(await geminiJson([{ text: 'x' }], { key: 'K', model: 'm', fetchFn: f, schema: { type: 'object' } }), { a: 1 });
+  assert.deepEqual(seen, [true, false]);
+}
+console.log('ai-gemini-schema PASS');

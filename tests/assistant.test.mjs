@@ -132,3 +132,21 @@ console.log('assistant-memory PASS');
   assert.equal(assistantContext(d, today, 'x').recent_cash.length, 0);
 }
 console.log('assistant-context PASS');
+// alıntı, reddedilen eşleşme, örnekler, ölçüm, şablon
+{
+  const m = await import('../js/assistant-core.js');
+  assert.equal(m.quoteFound('34 abc 123 3 sefer', 'Ahmet Bey 34 ABC 123 3 sefer moloz'), true);
+  assert.equal(m.quoteFound('5 sefer', 'Ahmet Bey 34 ABC 123 3 sefer'), false);
+  let v = validatePlan({ works: [{ customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer', quote: '34 ABC 123 4 sefer' }] }, { message: 'Ahmet Bey 34 ABC 123 3 sefer moloz', d, today });
+  assert.equal(v.works[0].ok, false); assert.ok(v.works[0].issues.some((x) => /alıntı/.test(x)));
+  v = validatePlan({ works: [{ customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer', quote: 'Ahmet Bey 34 ABC 123 3 sefer', mentions: { customer: 'Ahmet Bey' } }] }, { message: 'Ahmet Bey 34 ABC 123 3 sefer moloz', d, today, negatives: [{ alias: 'ahmet bey', target_type: 'customer', target_id: 'CA' }] });
+  assert.equal(v.works[0].customer_id, null); assert.equal(v.works[0].ok, false);
+  const ex = m.addExample(m.addExample([], { msg: 'Mahir bey 14 tonluk yarım yevmiye', out: 'Hisar Polat | 14 Tonluk' }), { msg: 'Leda jcb 8 saat', out: 'Leda | JCB' });
+  assert.equal(m.pickExamples(ex, 'mahir bey 14 tonluk 1 yevmiye', 1)[0].out, 'Hisar Polat | 14 Tonluk');
+  assert.equal(m.pickExamples(ex, 'tamamen alakasız', 3).length, 0);
+  const q = m.measureCorrection({ customer_id: 'A', vehicle_id: 'V', work_type: 'X', quantity: 3, unit: 'Sefer' }, { customer_id: 'B', vehicle_id: 'V', work_type: 'X', quantity: 3, unit: 'Sefer' }, false);
+  assert.equal(q.changed, 1); assert.equal(q.silent, 1);
+  assert.equal(m.addQuality(m.addQuality(null, q), q).cards, 2);
+  const sch = m.assistantSchema(); assert.ok(sch.properties.works.items.properties.quote);
+}
+console.log('assistant-accuracy PASS');

@@ -208,6 +208,11 @@ export async function screen(ctx) {
         .join("");
   });
   // ---- Gemini ayarları ----
+  db.metaGet("ai_quality").then((q) => {
+    const el = qs("[data-gusage]", root);
+    if (!q || !q.cards || !el) return;
+    el.insertAdjacentHTML("afterend", `<div class="muted small">Asistan doğruluğu (${esc(q.since)}'den beri ${q.cards} iş kartı): alanların %${Math.round((100 * q.changed) / (q.fields || 1))}'i elle düzeltildi · uyarısız (sessiz) hata %${Math.round((100 * q.silent) / (q.fields || 1))}</div>`);
+  });
   usageToday(db).then((u) => {
     const el = qs("[data-gusage]", root);
     const parts = Object.entries(u).map(([m, n]) => `${m}: ${n}`);

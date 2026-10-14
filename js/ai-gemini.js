@@ -204,12 +204,25 @@ export async function geminiReadReceipt(blob, { key, model, docType = "Gider Fi�
 }
 
 // Serbest parça listesi (metin + görseller) ile JSON yanıt
-export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 8192 } = {}) {
-  const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
+export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 8192, schema = null } = {}) {
+  const body = (withSchema) => ({
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents: [{ role: "user", parts }],
-    generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: maxTokens },
-  }, fetchFn);
+    generationConfig: {
+      temperature: 0,
+      responseMimeType: "application/json",
+      maxOutputTokens: maxTokens,
+      ...(withSchema && schema ? { responseJsonSchema: schema } : {}),
+    },
+  });
+  let data;
+  try {
+    data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, body(true), fetchFn);
+  } catch (e) {
+    // Şablonu desteklemeyen model/sürüm: şablonsuz bir kez daha dene (doğrulama zaten telefonda)
+    if (!schema || !/schema|responseJsonSchema|response_json_schema|Invalid JSON payload/i.test(e.message)) throw e;
+    data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, body(false), fetchFn);
+  }
   const raw = text(data).replace(/```(?:json)?/gi, "");
   try {
     return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));

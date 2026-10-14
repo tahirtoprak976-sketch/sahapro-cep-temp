@@ -154,7 +154,7 @@ export function receiptPrompt(docType = "Gider Fişi") {
     ' "date": "YYYY-MM-DD"|null, "total": number|null (GENEL TOPLAM / ÖDENECEK, KDV dahil),' +
     ' "subtotal": number|null, "kdv": number|null (KDV tutarı), "kdv_rate": number|null,' +
     ' "liters": number|null, "unit_price": number|null, "plate": string|null (Turkish plate like 34 ABC 123),' +
-    ' "firma": string|null (seller name), "doc_no": string|null, "fuel_type": "Motorin"|"Benzin"|"LPG"|null,' +
+    ' "firma": string|null (seller name), "tax_no": string|null (VKN 10 hane / TCKN 11 hane), "doc_no": string|null, "fuel_type": "Motorin"|"Benzin"|"LPG"|null,' +
     ' "category": one of [' + RECEIPT_CATEGORIES.join(", ") + "]|null}. " +
     "Numbers use dot as decimal separator in JSON. If a value is not clearly printed, use null. Never guess."
   );
@@ -208,6 +208,11 @@ export function validateReceipt(obj, docType = "Gider Fişi") {
     const p = String(obj.plate).toUpperCase().replace(/\s+/g, "");
     if (/^(0[1-9]|[1-7]\d|8[01])[A-Z]{1,3}\d{2,5}$/.test(p) && text.toUpperCase().replace(/\s+/g, "").includes(p)) fields.plate = p;
     else rejected.push(`Plaka ${obj.plate} doğrulanamadı`);
+  }
+  if (obj.tax_no) {
+    const t = String(obj.tax_no).replace(/\D/g, "");
+    if ((t.length === 10 || t.length === 11) && text.replace(/\D/g, "").includes(t)) fields.tax_no = t;
+    else rejected.push("Vergi no fişte doğrulanamadı");
   }
   for (const k of ["firma", "doc_no"])
     if (obj[k] && String(obj[k]).trim()) fields[k] = String(obj[k]).trim().slice(0, 80);

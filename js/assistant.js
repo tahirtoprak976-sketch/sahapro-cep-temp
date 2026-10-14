@@ -3,7 +3,7 @@
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
-import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS } from "./assistant-core.js";
+import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
   `<option value="">${esc(empty)}</option>` +
@@ -72,21 +72,25 @@ export async function screen(ctx) {
       const d = await db.dumpAll();
       const today = todayStr();
       const facts = await businessFacts(d, today);
+      const negatives = (await db.metaGet("ai_negative_aliases")) || [];
+      const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
       const parts = [
         { text: "İşletme kartları (JSON):\n" + JSON.stringify(assistantContext(d, today, message)) },
         { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
+        ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
+        ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
       ];
       for (const f of files) {
         const img = await shrink(f);
         parts.push({ inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } });
       }
-      parts.push({ text: `Fotoğraf sayısı: ${files.length}\nMesaj:\n${message || "(mesaj yok, yalnız fotoğraflar)"}` });
+      parts.push({ text: `Fotoğraf sayısı: ${files.length}\n<mesaj>\n${(message || "(mesaj yok, yalnız fotoğraflar)").replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
-      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: assistantSystem() }), {
+      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: assistantSystem(), schema: assistantSchema() }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       });
-      const v = validatePlan(plan, { message, d, today, photoCount: files.length });
+      const v = validatePlan(plan, { message, d, today, photoCount: files.length, negatives });
       Object.assign(v, validateExtras(plan, { message, d, today, photoTexts: v.photoTexts }));
       v.cards = validateCards(plan, { message, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message, d });
@@ -377,6 +381,18 @@ async function save(ctx, out, v, d, { message, files }) {
         done.work++;
         const wr = v.works[Number(c.dataset.i)];
         const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";
+        // Ölçüm + onaylı örnek + reddedilen eşleşme
+        try {
+          const m = measureCorrection(wr.ai, fields, wr.issues.length > 0);
+          await db.metaSet("ai_quality", addQuality(await db.metaGet("ai_quality"), m));
+          const out = `${nm("customers", customer) || "?"} | ${veh.name} | ${fields.work_type} | ${fields.quantity} ${fields.unit}`;
+          await db.metaSet("ai_examples", addExample(await db.metaGet("ai_examples"), { msg: message.slice(0, 300), out }));
+          if (wr.ai?.customer_id && wr.ai.customer_id !== customer && wr.mentions?.customer) {
+            const neg = (await db.metaGet("ai_negative_aliases")) || [];
+            neg.unshift({ alias: wr.mentions.customer, target_type: "customer", target_id: wr.ai.customer_id });
+            await db.metaSet("ai_negative_aliases", neg.slice(0, 200));
+          }
+        } catch (e) {}
         const custSel = val(c, "customer");
         await learn(wr.mentions?.customer, "customer", customer, nm("customers", customer) || (custSel.startsWith("new:") ? custSel.slice(4) : ""));
         // "Yeni: Mahir Bey" önerisi yerine mevcut Hisar Polat seçildiyse "Mahir Bey" → Hisar Polat öğrenilir
