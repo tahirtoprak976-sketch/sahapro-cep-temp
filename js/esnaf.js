@@ -201,7 +201,7 @@ async function detail(ctx, d, id) {
             .reverse()
             .map((e) =>
               li({
-                id: e.kind === "bill" ? e.id : "",
+                id: e.id,
                 ic: e.kind === "bill" ? "🧾" : "💵",
                 t1: esc(e.text),
                 t2: `${trDate(e.date)} · bakiye ${fmtTL(fromKurus(e.balance))} ₺`,
@@ -226,7 +226,8 @@ async function detail(ctx, d, id) {
   qs("[data-ledger]", root).addEventListener("click", async (ev) => {
     const card = ev.target.closest(".li[data-rid]");
     const e = card && l.entries.find((x) => x.id === card.dataset.rid);
-    if (e) await billDetail(ctx, e);
+    if (e && e.kind === "bill") await billDetail(ctx, e);
+    else if (e) await payDetail(ctx, e);
   });
 }
 
@@ -422,6 +423,28 @@ function paySheet(ctx, d, s, l) {
   });
 }
 
+async function payDetail(ctx, e) {
+  const sh = sheet(`<h3>Ödeme</h3>
+    ${kv("Tarih", trDate(e.date))}
+    ${kv("Tutar", fmtTL(fromKurus(e.amount)) + " ₺")}
+    ${kv("Açıklama", e.text)}
+    <p class="muted small">Yanlış girildiyse geri alın: kayıt silinmez, nedenle iptal edilir; kasa/banka kaydı da geri çekilir ve borç yeniden açılır.</p>
+    <button class="btn danger block" style="margin-top:8px" data-rev>Ödemeyi geri al</button>
+    <button class="btn block" style="margin-top:8px" data-close>Kapat</button>`);
+  qs("[data-close]", sh).addEventListener("click", () => sheetClose());
+  qs("[data-rev]", sh).addEventListener("click", async () => {
+    sheetClose(true);
+    const reason = await promptDialog("Ödemeyi geri al", "Geri alma nedeni");
+    if (!reason) return;
+    try {
+      await edb.reverseSupplierPayments(e.id, reason);
+      toast("Ödeme geri alındı", "ok");
+      ctx.reload();
+    } catch (err) {
+      toast(err.message || String(err), "err");
+    }
+  });
+}
 async function billDetail(ctx, e) {
   const atts = await ctx.db.attachmentsFor("payable", e.id);
   const sh = sheet(`<h3>${esc(e.text)}</h3>

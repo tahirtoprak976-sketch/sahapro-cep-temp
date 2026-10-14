@@ -45,4 +45,10 @@ assert.equal(backupAgeDays(new Date("2026-10-13T08:00:00").toISOString(), today)
 assert.equal(backupAgeDays(new Date("2026-10-10T08:00:00").toISOString(), today), 3);
 assert.equal(todayBoard(data, { today, lastBackupAt: new Date("2026-10-12T08:00:00").toISOString() }).items.some((i) => i.group === "Yedek"), false);
 assert.equal(todayBoard(data, { today, lastBackupAt: new Date("2026-10-09T08:00:00").toISOString() }).items.find((i) => i.group === "Yedek").kind, "warn");
+// ehliyet kaydı olmayan çalışan
+const d2 = { ...data, personnel: [...data.personnel, { id: "p2", name: "Veli" }], work_records: [{ id: "w", date: "2026-10-10", personnel_id: "p2" }, { id: "w2", date: "2026-10-11", personnel_id: "p1" }, { id: "w3", date: "2026-01-01", personnel_id: "p1" }] };
+const pl = todayBoard(d2, { today, lastBackupAt: new Date().toISOString() }).items.find((i) => i.group === "Personel");
+assert.equal(pl.text, "2 çalışanın ehliyet kaydı yok");
+const d3 = { ...d2, documents: [...d2.documents, { id: "e1", personnel_id: "p2", owner_type: "personnel", category: "Ehliyet", expiry_date: "2030-01-01" }, { id: "e2", personnel_id: "p1", owner_type: "personnel", category: "Ehliyet", expiry_date: "2030-01-01" }] };
+assert.equal(todayBoard(d3, { today, lastBackupAt: new Date().toISOString() }).items.some((i) => i.group === "Personel"), false);
 console.log("today PASS");
