@@ -114,18 +114,25 @@ export function parseTrNum(s) {
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
+export function validDate(y, mo, d) {
+  y = Number(y); mo = Number(mo); d = Number(d);
+  if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1) return false;
+  return d <= new Date(y, mo, 0).getDate();
+}
 function findDate(text) {
-  const m = String(text).match(/\b(\d{2})[./-](\d{2})[./-](\d{4})\b/);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-  const m2 = String(text).match(/\b(\d{2})[./](\d{2})[./](\d{2})\b/);
-  if (m2) return `20${m2[3]}-${m2[2]}-${m2[1]}`;
+  const t = String(text);
+  for (const m of t.matchAll(/\b(\d{2})[./-](\d{2})[./-](\d{4})\b/g))
+    if (validDate(m[3], m[2], m[1])) return `${m[3]}-${m[2]}-${m[1]}`;
+  for (const m of t.matchAll(/\b(\d{2})[./](\d{2})[./](\d{2})\b/g))
+    if (validDate("20" + m[3], m[2], m[1])) return `20${m[3]}-${m[2]}-${m[1]}`;
   return null;
 }
 function findAllDates(text) {
   const out = [];
   const re = /\b(\d{2})[./-](\d{2})[./-](\d{4})\b/g;
   let m;
-  while ((m = re.exec(String(text)))) out.push(`${m[3]}-${m[2]}-${m[1]}`);
+  while ((m = re.exec(String(text))))
+    if (validDate(m[3], m[2], m[1])) out.push(`${m[3]}-${m[2]}-${m[1]}`);
   return out;
 }
 function findPlate(text) {
@@ -164,6 +171,59 @@ function textNear(text, keys) {
   return null;
 }
 
+// Genel toplam: önce açık etiketler; "TOPLAM" satırında ARA TOPLAM / KDV satırları atlanır ve en alttaki alınır.
+// Tutar tahmin edilmez: bulunamazsa null döner ve kullanıcıdan istenir.
+export function totalAmount(text) {
+  const lines = String(text).split(/\n/);
+  const amountOf = (ln) => {
+    const nums = ln.match(/\d{1,3}(?:[.\s]?\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2}/g);
+    return nums && nums.length ? parseTrNum(nums[nums.length - 1]) : null;
+  };
+  const pick = (test) => {
+    let found = null;
+    for (const ln of lines) {
+      const u = ln.toLocaleUpperCase("tr-TR");
+      if (test(u)) {
+        const v = amountOf(ln);
+        if (v != null) found = v;
+      }
+    }
+    return found;
+  };
+  return (
+    pick((u) => /GENEL\s*TOPLAM|ÖDENECEK|ODENECEK|TOPLAM\s*TUTAR/.test(u)) ??
+    pick((u) => /TOPLAM/.test(u) && !/ARA\s*TOPLAM|KDV|VERG/.test(u)) ??
+    pick((u) => /TUTAR/.test(u) && !/KDV/.test(u))
+  );
+}
+
+// Okunan alanların kendi içinde tutarlı olup olmadığını denetler. Yalnız uyarı üretir; değer değiştirmez.
+export function checkFields(docType, f, today = new Date().toISOString().slice(0, 10)) {
+  const out = [];
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  if (f.date) {
+    if (f.date > today) out.push({ level: "warn", text: "Tarih gelecekte görünüyor — OCR hatalı okumuş olabilir." });
+    else if (f.date < new Date(new Date(today).getTime() - 400 * 86400000).toISOString().slice(0, 10))
+      out.push({ level: "warn", text: "Tarih bir yıldan eski — kontrol edin." });
+  }
+  if (f.subtotal != null && f.kdv != null && f.total != null && !near(f.subtotal + f.kdv, f.total, 0.05))
+    out.push({ level: "error", text: `Ara toplam + KDV (${(f.subtotal + f.kdv).toFixed(2)}) genel toplamla (${f.total.toFixed(2)}) tutmuyor.` });
+  if (f.subtotal != null && f.kdv != null && f.subtotal > 0) {
+    const rate = (f.kdv / f.subtotal) * 100;
+    if (![0, 1, 8, 10, 18, 20].some((r) => near(rate, r, 0.6)))
+      out.push({ level: "warn", text: `KDV oranı %${rate.toFixed(1)} çıkıyor — olağan oranlarla uyuşmuyor.` });
+  }
+  if (docType === "Akaryakıt Fişi" && f.liters != null && f.unit_price != null && f.total != null) {
+    const calc = f.liters * f.unit_price;
+    if (!near(calc, f.total, Math.max(1, f.total * 0.02)))
+      out.push({ level: "error", text: `Litre × birim fiyat (${calc.toFixed(2)}) toplamla (${f.total.toFixed(2)}) uyuşmuyor.` });
+  }
+  if (f.total != null && f.total <= 0) out.push({ level: "error", text: "Toplam tutar sıfır veya negatif." });
+  if (f.total == null && docType !== "Döküm Fişi" && !["Ruhsat", "Sigorta / Poliçe", "Muayene Belgesi"].includes(docType))
+    out.push({ level: "warn", text: "Toplam tutar okunamadı — elle girmeniz gerekir." });
+  return out;
+}
+
 // ---- Belge türüne göre alan önerileri (§4–§8) ----
 // Dönüş: { fields, missing, conf } — fields yalnız ÖNERİDİR; kullanıcı onayı olmadan kayda yazılmaz.
 export function extractFields(docType, text, ocrConf) {
@@ -177,13 +237,7 @@ export function extractFields(docType, text, ocrConf) {
   if (date) f.date = date;
   const plate = findPlate(t);
   if (plate) f.plate = plate;
-  const total = moneyNear(t, [
-    "GENEL TOPLAM",
-    "TOPLAM TUTAR",
-    "TOPLAM",
-    "TUTAR",
-    "ODENECEK",
-  ]);
+  const total = totalAmount(t);
   if (total != null) f.total = total;
 
   if (docType === "Akaryakıt Fişi") {
@@ -278,7 +332,7 @@ export function extractFields(docType, text, ocrConf) {
     if (no) f.doc_no = no;
     if (!f.plate) missing.push("plate");
   }
-  return { fields: f, missing, conf };
+  return { fields: f, missing, conf, checks: checkFields(docType, f) };
 }
 
 // Hangi belge türü hangi kayda öneri üretir

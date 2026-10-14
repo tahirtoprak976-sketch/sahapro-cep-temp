@@ -632,6 +632,7 @@ async function docDetail(ctx, id) {
               .join("")
           : ""
       }
+      ${(ocr.checks || []).map((c) => `<div class="notice ${c.level === "error" ? "danger" : "warn"}" style="margin-top:8px"><span>${c.level === "error" ? "⛔" : "⚠"}</span><span>${esc(c.text)}</span></div>`).join("")}
       ${ocr.searchable_text ? `<details style="margin-top:8px"><summary class="muted small">OCR metni (${ocr.searchable_text.length} kr)</summary><div class="tiny muted" style="white-space:pre-wrap;margin-top:6px">${esc(ocr.searchable_text.slice(0, 1500))}</div></details>` : ""}
       ${(ocr.status === "BEKLIYOR" || ocr.status === "HATA" || ocr.status === "YOK") && atts.length ? `<button class="btn block" style="margin-top:10px" data-ocr>🔍 OCR ${ocr.status === "YOK" ? "Çalıştır" : "Tekrar Dene"}</button><div data-prog></div>` : ""}
     </div>
@@ -705,6 +706,7 @@ async function docDetail(ctx, id) {
               status: "TAMAM",
               confidence: r.confidence,
               fields: ext.fields,
+              checks: ext.checks || [],
               confirmed_fields: ext.fields,
               searchable_text: r.text.slice(0, 6000),
               ran_at: new Date().toISOString(),
@@ -753,6 +755,34 @@ async function docDetail(ctx, id) {
 // OCR onaylı alanlardan kayıt — asla sessiz yazmaz; confirmDialog özeti gösterir
 async function createFromOcr(ctx, d, kind, f) {
   const { db, names } = ctx;
+  if (kind === "expense" || kind === "fuel") {
+    const { findDuplicates } = await import("./esnaf.js");
+    const all = await db.dumpAll();
+    const amt = f.total != null ? Number(f.total) : null;
+    const dup = amt != null ? findDuplicates(all, { date: f.date || d.date, amount: amt }) : { bills: [], expenses: [] };
+    const same = kind === "fuel"
+      ? (all.fuel_records || []).filter((x) => isActive(x) && x.date === (f.date || d.date) && Number(x.total) === amt)
+      : dup.expenses;
+    if (dup.bills.length || same.length) {
+      const ok = await confirmDialog(
+        "Benzer kayıt zaten var",
+        dup.bills.length
+          ? "Aynı gün ve tutarda Esnaf Hesabı'nda bir borç kaydı var. Aynı iş ise tekrar girmeyin."
+          : "Aynı gün ve tutarda bir " + (kind === "fuel" ? "yakıt" : "gider") + " kaydı var. Aynı fişse tekrar girmeyin.",
+        "Farklı bir kayıt, devam et",
+      );
+      if (!ok) return;
+    }
+  }
+  const errs = ((d.ocr && d.ocr.checks) || []).filter((c) => c.level === "error");
+  if ((kind === "expense" || kind === "fuel") && errs.length) {
+    const ok = await confirmDialog(
+      "Okunan tutarlar tutarsız",
+      errs.map((c) => c.text).join(" ") + " Alanları kontrol ettiniz mi?",
+      "Kontrol ettim, devam et",
+    );
+    if (!ok) return;
+  }
   const vehicles = await db.listActive("vehicles");
   let vehicle_id = d.vehicle_id || null;
   if (!vehicle_id && f.plate) {
@@ -1094,6 +1124,7 @@ async function scan(ctx) {
       `<div class="card" style="margin-top:12px">
       <div class="section-title" style="margin:0 0 8px">Alan Önerileri (düzenleyip onaylayın)</div>
       ${missingHtml}
+      ${(ext.checks || []).map((c) => `<div class="notice ${c.level === "error" ? "danger" : "warn"}" style="margin-top:8px"><span>${c.level === "error" ? "⛔" : "⚠"}</span><span>${esc(c.text)}</span></div>`).join("")}
       <div class="formgrid2">${keys.map((k) => `<div class="field"><label>${esc(FIELD_LABELS[k] || k)}</label><input data-ofield="${esc(k)}" value="${esc(String(ext.fields[k]))}"></div>`).join("")}</div>
       ${ocrText ? `<details style="margin-top:6px"><summary class="muted small">Ham OCR metni</summary><div class="tiny muted" style="white-space:pre-wrap;margin-top:6px">${esc(ocrText.slice(0, 1200))}</div></details>` : ""}
     </div>`;
