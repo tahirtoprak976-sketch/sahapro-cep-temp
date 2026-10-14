@@ -76,3 +76,16 @@ console.log('assistant-extras PASS');
   assert.equal(v4.works[0].unit_price, null); assert.equal(v4.works[0].dump_site_id, null);
 }
 console.log('assistant-detail PASS');
+// liste ile kart ekleme + hafıza ifadeleri
+{
+  const { validateCards } = await import('../js/assistant-core.js');
+  const msg = 'Müşteriler: Kaya İnşaat 0532 111 22 33, Gümüş Yapı. Şantiye: Kaya İnşaat Göktürk. Araç: 34 KYA 77 Kamyon. Esnaf: Rafet Usta makasçı';
+  const cs = validateCards({ cards: { customers: [{ name: 'Kaya İnşaat', phone: '0532 111 22 33' }, { name: 'Gümüş Yapı' }, { name: 'Uydurma Ltd' }], sites: [{ name: 'Göktürk', customer_name: 'Kaya İnşaat' }], vehicles: [{ name: '34 KYA 77', plate: '34 KYA 77', type: 'Kamyon' }, { name: '34 ABC 123', plate: '34ABC123' }], suppliers: [{ name: 'Rafet Usta', type: 'Servis' }] } }, { message: msg, d });
+  const by = (n) => cs.find((x) => x.name === n);
+  assert.equal(by('Kaya İnşaat').ok, true); assert.equal(by('Gümüş Yapı').ok, false); assert.ok(by('Gümüş Yapı').issues[0].includes('Zaten kayıtlı'));
+  assert.equal(by('Uydurma Ltd').ok, false); assert.equal(by('Göktürk').ok, true); assert.equal(by('Göktürk').data.customer_name, 'Kaya İnşaat');
+  assert.equal(by('34 KYA 77').ok, true); assert.equal(by('34 ABC 123').ok, false); assert.equal(by('Rafet Usta').ok, true);
+  const vm = validatePlan({ works: [{ customer_id: 'CMH', vehicle_id: 'T14', work_type: 'Makine Çalışması', quantity: 1, unit: 'Yevmiye', mentions: { customer: 'mahir bey', vehicle: '14 tonluk', site: 'uydurma yer' } }] }, { message: 'mahir bey 14 tonluk 1 yevmiye', d, today });
+  assert.deepEqual(vm.works[0].mentions, { customer: 'mahir bey', vehicle: '14 tonluk' });
+}
+console.log('assistant-cards PASS');

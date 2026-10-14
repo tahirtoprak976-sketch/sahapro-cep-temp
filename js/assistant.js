@@ -3,7 +3,7 @@
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
-import { assistantContext, assistantSystem, validatePlan, validateExtras, businessFacts, checkAnswer, ASSIST_UNITS } from "./assistant-core.js";
+import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, businessFacts, checkAnswer, ASSIST_UNITS } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
   `<option value="">${esc(empty)}</option>` +
@@ -85,6 +85,7 @@ export async function screen(ctx) {
       const plan = await geminiJson(parts, { key: g.key, model: g.model, system: assistantSystem() });
       const v = validatePlan(plan, { message, d, today, photoCount: files.length });
       Object.assign(v, validateExtras(plan, { message, d, today, photoTexts: v.photoTexts }));
+      v.cards = validateCards(plan, { message, d, photoTexts: v.photoTexts });
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
       v.answerBad = checkAnswer(v.answer, facts);
       render(ctx, out, v, d, { message, files, ms: Date.now() - t0 });
@@ -103,7 +104,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length;
+  const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi" };
   const personnel = live("personnel").map((p) => [p.id, p.name]);
   const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
   const banks = live("bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]);
@@ -112,6 +114,17 @@ function render(ctx, out, v, d, { message, files, ms }) {
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     (v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
+    (v.cards.length ? `<div class="section-title">Yeni kartlar (${v.cards.filter((c) => c.ok).length}/${v.cards.length})</div>` : "") +
+    v.cards
+      .map((r, i) => `<div class="card" data-kind="card" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>${esc(KIND_TR[r.kind])}</b></label>
+        <div class="formgrid2">
+          <div class="field"><label>Ad</label><input name="name" value="${esc(r.name)}"></div>
+          ${r.kind === "vehicles" ? `<div class="field"><label>Plaka</label><input name="plate" value="${esc(r.data.plate || "")}"></div><div class="field"><label>Tür</label><input name="type" value="${esc(r.data.type || "")}"></div>` : ""}
+          ${["customers", "personnel", "suppliers"].includes(r.kind) ? `<div class="field"><label>Telefon</label><input name="phone" value="${esc(r.data.phone || "")}"></div>` : ""}
+          ${r.kind === "sites" ? `<div class="field"><label>Müşteri</label><select name="customer">${opt([...customers, ...(r.data.customer_name ? [["new:" + r.data.customer_name, "➕ " + r.data.customer_name + " (listede yeni)"]] : [])], r.data.customer_id || (r.data.customer_name ? "new:" + r.data.customer_name : ""))}</select></div>` : ""}
+        </div>${issues(r)}</div>`)
+      .join("") +
     (v.newCustomers.length ? notice("warn", "Yeni müşteri kartı açılacak: " + v.newCustomers.join(", ")) : "") +
     v.works
       .map((r, i) => {
@@ -214,7 +227,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
 
 async function save(ctx, out, v, d, { message, files }) {
   const { db } = ctx;
-  const cards = qsa(".card[data-kind]", out).filter((c) => qs("[data-pick]", c).checked);
+  const cards = qsa(".card[data-kind]", out)
+    .filter((c) => qs("[data-pick]", c).checked)
+    .sort((a, b) => (a.dataset.kind === "card" ? 0 : 1) - (b.dataset.kind === "card" ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
@@ -227,6 +242,7 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "collection" ? !val(c, "customer") || !(Number(val(c, "amount")) > 0) || (val(c, "method") === "Havale" && !val(c, "bank"))
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
       : k === "personnel" ? !val(c, "personnel")
+      : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
     if (miss) {
       c.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -235,7 +251,22 @@ async function save(ctx, out, v, d, { message, files }) {
   }
   const btn = qs("[data-save]", out);
   btn.disabled = true;
-  const done = { work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0 };
+  const done = { work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
+  const { saveMessageMemory } = await import("./message-smart-db.js");
+  // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
+  const learn = async (alias, target_type, target_id, cardName) => {
+    if (!alias || !target_id) return;
+    const n = (x) => String(x || "").toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    if (n(alias) === n(cardName)) return;
+    try {
+      const before = (await db.getAll("aliases")).filter((a) => !a.deleted_at && a.active !== false).length;
+      await saveMessageMemory({ alias, target_type, target_id, confirmed: true });
+      const after = (await db.getAll("aliases")).filter((a) => !a.deleted_at && a.active !== false).length;
+      if (after > before) done.learned++;
+    } catch (e) {
+      /* başka karta bağlı takma ad: dokunma */
+    }
+  };
   const ensureCustomer = async (customer) => {
     if (!customer.startsWith("new:")) return customer;
     const name = customer.slice(4);
@@ -256,6 +287,31 @@ async function save(ctx, out, v, d, { message, files }) {
     const existingWorks = (d.work_records || []).filter(isActive);
     for (const c of cards) {
       const k = c.dataset.kind;
+      if (k === "card") {
+        const r = v.cards[Number(c.dataset.i)];
+        const name = val(c, "name").trim();
+        if (r.kind === "customers") {
+          const rec = await db.saveNew("customers", { name, phone: val(c, "phone"), note: r.data.note || "Asistan listesinden" }, "Asistan: kart");
+          newIds.set("c:" + name, rec.id);
+          if (r.name !== name) newIds.set("c:" + r.name, rec.id);
+          done.customer++;
+        } else if (r.kind === "sites") {
+          const customer = await ensureCustomer(val(c, "customer"));
+          await db.saveNew("sites", { name, customer_id: customer }, "Asistan: kart");
+          done.site++;
+        } else if (r.kind === "vehicles") {
+          await db.saveNew("vehicles", { name, plate: val(c, "plate"), type: val(c, "type") || "Araç/Makine", ownership: r.data.ownership, active: true }, "Asistan: kart");
+          done.cards++;
+        } else if (r.kind === "personnel") {
+          await db.saveNew("personnel", { name, phone: val(c, "phone"), role: r.data.role || "", active: true }, "Asistan: kart");
+          done.cards++;
+        } else if (r.kind === "suppliers") {
+          const edb = await import("./enterprise-db.js");
+          await edb.saveSupplier({ name, type: r.data.type, phone: val(c, "phone") });
+          done.cards++;
+        }
+        continue;
+      }
       if (k === "work") {
         const customer = await ensureCustomer(val(c, "customer"));
         let site = val(c, "site") || null;
@@ -298,6 +354,13 @@ async function save(ctx, out, v, d, { message, files }) {
         if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
         await db.saveNew("work_records", fields, "Asistan");
         done.work++;
+        const wr = v.works[Number(c.dataset.i)];
+        const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";
+        const custSel = val(c, "customer");
+        await learn(wr.mentions?.customer, "customer", customer, nm("customers", customer) || (custSel.startsWith("new:") ? custSel.slice(4) : ""));
+        if (site) await learn(wr.mentions?.site, "site", site, nm("sites", site));
+        await learn(wr.mentions?.vehicle, "vehicle", veh.id, veh.name);
+        if (fields.personnel_id) await learn(wr.mentions?.personnel, "personnel", fields.personnel_id, nm("personnel", fields.personnel_id));
       } else if (k === "expense") {
         const r = v.expenses[Number(c.dataset.i)];
         const file = r.photo != null ? files[r.photo] : null;
@@ -381,7 +444,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
     qs("[data-msg]", ctx.root).value = "";
