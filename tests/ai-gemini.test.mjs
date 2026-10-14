@@ -38,3 +38,24 @@ await assert.rejects(() => geminiChat([{ role: 'user', content: 'x' }], { key: '
 const m2 = await listModels('K', async () => ({ ok: true, status: 200, json: async () => ({ models: ['gemini-omni-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview'].map((n) => ({ name: 'models/' + n, supportedGenerationMethods: ['generateContent'] })) }) }));
 assert.deepEqual(m2.map((m) => m.id), ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-omni-flash', 'gemini-3-flash-preview']);
 console.log('ai-gemini-fallback PASS');
+// otomatik model değiştirme + sayaç
+{
+  const { withModelFallback, usageToday } = await import('../js/ai-gemini.js');
+  const meta = new Map([['gemini_key', 'K'], ['gemini_model', 'gemini-omni-flash'], ['gemini_consent', true], ['gemini_model_list', ['gemini-omni-flash', 'gemini-old-flash', 'gemini-3.8-flash']]]);
+  const db = { metaGet: async (k) => meta.get(k), metaSet: async (k, v) => meta.set(k, v) };
+  const fake = async (url) => /omni/.test(url)
+    ? { ok: false, status: 429, json: async () => ({ error: { message: 'limit: 0' } }) }
+    : /old/.test(url) ? { ok: false, status: 404, json: async () => ({ error: { message: 'models/gemini-old-flash is not found' } }) }
+    : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"ok":1}' }] } }] }) };
+  const { geminiJson } = await import('../js/ai-gemini.js');
+  let switched = null;
+  const out = await withModelFallback(db, (o) => geminiJson([{ text: 'x' }], { ...o, fetchFn: fake }), { onSwitch: (a, b) => (switched = [a, b]) });
+  assert.deepEqual(out, { ok: 1 }); assert.equal(meta.get('gemini_model'), 'gemini-3.8-flash'); assert.deepEqual(switched, ['gemini-omni-flash', 'gemini-3.8-flash']);
+  assert.equal((await usageToday(db))['gemini-3.8-flash'], 1);
+  // anahtar hatası model değiştirmez
+  meta.set('gemini_model', 'gemini-3.8-flash');
+  const badKey = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid' } }) });
+  await assert.rejects(() => withModelFallback(db, (o) => geminiJson([{ text: 'x' }], { ...o, fetchFn: badKey })), /anahtar/);
+  assert.equal(meta.get('gemini_model'), 'gemini-3.8-flash');
+}
+console.log('ai-gemini-autoswitch PASS');

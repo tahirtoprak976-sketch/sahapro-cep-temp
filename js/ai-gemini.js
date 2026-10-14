@@ -38,6 +38,17 @@ async function call(path, key, body, fetchFn = fetch) {
       e.code = "RATE";
       throw e;
     }
+    // Model kapatılmış / yeni anahtarlara verilmiyor / bu istekte desteklenmiyor → başka modele geçilebilir
+    if (res.status === 404 || ((res.status === 400 || res.status === 403) && /not found|no longer (?:available|supported)|not supported|is not available|deprecated|unsupported model/i.test(msg))) {
+      const e = new Error("Bu model artık kullanılamıyor: " + msg);
+      e.code = "MODEL_GONE";
+      throw e;
+    }
+    if (res.status === 500 || res.status === 503 || res.status === 504) {
+      const e = new Error("Gemini şu an yoğun, tekrar deneyin (" + res.status + ")");
+      e.code = "BUSY";
+      throw e;
+    }
     if (res.status === 400 || res.status === 403) throw new Error("Gemini anahtarı veya izin sorunu: " + msg);
     throw new Error("Gemini hatası: " + msg);
   }
@@ -54,9 +65,59 @@ export async function listModels(key, fetchFn) {
 }
 // Kararlı "flash" modeller önce; önizleme/deneysel/omni sona (genelde ücretsiz kotaları yok)
 function rank(id) {
-  let r = /flash-lite/.test(id) ? 0 : /flash/.test(id) ? 1 : 5;
-  if (/preview|exp|omni|thinking|latest/.test(id)) r += 10;
+  let r = /flash-lite/.test(id) ? 0 : /flash/.test(id) ? 1 : /pro/.test(id) ? 20 : 5;
+  if (/preview|exp|omni|thinking|latest|live|tts|image|audio/.test(id)) r += 10;
   return r;
+}
+
+// ---- Ücretsiz kullanım: otomatik model değiştirme + günlük sayaç ----
+// Seçili model "kota 0 / kapatıldı / yoğun / kota doldu" hatası verirse listedeki sıradaki ücretsiz
+// modele kendiliğinden geçer; çalışanı kaydeder. Faturalandırma hiçbir zaman açılmaz.
+const SWITCHABLE = new Set(["NO_FREE", "MODEL_GONE", "BUSY", "RATE"]);
+export async function withModelFallback(db, run, { fetchFn, onSwitch } = {}) {
+  const g = await geminiSettings(db);
+  if (!g.ready) throw new Error("Gemini ayarları eksik (Ayarlar → Yapay Zeka)");
+  const tried = new Set();
+  let model = g.model, lastErr = null;
+  let pool = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    tried.add(model);
+    try {
+      const out = await run({ key: g.key, model, fetchFn });
+      await countUse(db, model);
+      if (model !== g.model) {
+        await db.metaSet("gemini_model", model);
+        onSwitch?.(g.model, model);
+      }
+      return out;
+    } catch (e) {
+      lastErr = e;
+      if (!SWITCHABLE.has(e.code)) throw e;
+      if (!pool) {
+        const cached = (await db.metaGet("gemini_model_list")) || [];
+        pool = cached.length ? cached : (await listModels(g.key, fetchFn).catch(() => [])).map((m) => m.id);
+        if (!cached.length && pool.length) await db.metaSet("gemini_model_list", pool);
+      }
+      const next = pool.find((id) => !tried.has(id));
+      if (!next) break;
+      model = next;
+    }
+  }
+  throw lastErr || new Error("Çalışan ücretsiz model bulunamadı");
+}
+async function countUse(db, model) {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const u = (await db.metaGet("gemini_usage")) || {};
+    const day = u.date === today ? u : { date: today, counts: {} };
+    day.counts[model] = (day.counts[model] || 0) + 1;
+    await db.metaSet("gemini_usage", day);
+  } catch {}
+}
+export async function usageToday(db) {
+  const u = (await db.metaGet("gemini_usage")) || {};
+  const today = new Date().toISOString().slice(0, 10);
+  return u.date === today ? u.counts || {} : {};
 }
 // Anahtarla gerçekten çalışan ilk modeli bulur (her deneme tek, çok kısa istek)
 export async function findWorkingModel(key, models, fetchFn) {
@@ -90,7 +151,7 @@ export async function geminiChat(messages, { key, model, fetchFn } = {}) {
   const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
     systemInstruction: sys ? { parts: [{ text: sys }] } : undefined,
     contents,
-    generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: 400 },
+    generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: 4096 },
   }, fetchFn);
   return text(data);
 }
@@ -129,7 +190,7 @@ export async function geminiReadReceipt(blob, { key, model, docType = "Gider Fi�
         ],
       },
     ],
-    generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: 2048 },
+    generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: 8192 },
   }, fetchFn);
   const raw = text(data);
   let obj = null;
@@ -143,7 +204,7 @@ export async function geminiReadReceipt(blob, { key, model, docType = "Gider Fi�
 }
 
 // Serbest parça listesi (metin + görseller) ile JSON yanıt
-export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 4096 } = {}) {
+export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 8192 } = {}) {
   const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
     contents: [{ role: "user", parts }],

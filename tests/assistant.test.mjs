@@ -120,3 +120,15 @@ console.log('assistant-hints PASS');
   assert.equal(vp.works[0].new_customer_text, 'Mahir Bey');
 }
 console.log('assistant-memory PASS');
+// büyük listede yalnız ilgili müşteriler gönderilir
+{
+  const { assistantContext } = await import('../js/assistant-core.js');
+  const many = Array.from({ length: 60 }, (_, i) => ({ id: 'X' + i, name: 'Firma ' + i + ' Yapı' }));
+  const db2 = { ...d, customers: [...d.customers, ...many], work_records: [] };
+  const c1 = assistantContext(db2, today, 'Leda 34 ABC 123 3 sefer');
+  assert.ok(c1.customers.some(([id]) => id === 'CL')); assert.ok(c1.customers.length < 20);
+  assert.ok(assistantContext(db2, today, 'Mahir bey 1 yevmiye').customers.some(([id]) => id === 'CMH')); // takma ad ile
+  assert.equal(assistantContext(d, today, 'x').customers.length, d.customers.length); // küçük listede hepsi
+  assert.equal(assistantContext(d, today, 'x').recent_cash.length, 0);
+}
+console.log('assistant-context PASS');

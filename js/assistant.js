@@ -73,7 +73,7 @@ export async function screen(ctx) {
       const today = todayStr();
       const facts = await businessFacts(d, today);
       const parts = [
-        { text: "İşletme kartları (JSON):\n" + JSON.stringify(assistantContext(d, today)) },
+        { text: "İşletme kartları (JSON):\n" + JSON.stringify(assistantContext(d, today, message)) },
         { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
       ];
       for (const f of files) {
@@ -82,7 +82,10 @@ export async function screen(ctx) {
       }
       parts.push({ text: `Fotoğraf sayısı: ${files.length}\nMesaj:\n${message || "(mesaj yok, yalnız fotoğraflar)"}` });
       const t0 = Date.now();
-      const plan = await geminiJson(parts, { key: g.key, model: g.model, system: assistantSystem() });
+      const { withModelFallback } = await import("./ai-gemini.js");
+      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: assistantSystem() }), {
+        onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
+      });
       const v = validatePlan(plan, { message, d, today, photoCount: files.length });
       Object.assign(v, validateExtras(plan, { message, d, today, photoTexts: v.photoTexts }));
       v.cards = validateCards(plan, { message, d, photoTexts: v.photoTexts });
