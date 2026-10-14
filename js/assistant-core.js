@@ -9,6 +9,47 @@ export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
+// Geçmiş iş açıklamalarında bir müşteriyle birlikte sık geçen kişi ifadeleri ("mahir bey", "sinan abi").
+// Kartın adı farklı olsa bile (Hisar Polat ↔ "Mahir beyin inşaatı") mesajdaki ifade doğru müşteriye gider.
+const TITLES = new Set(["bey", "abi", "usta", "hanim", "kalfa", "sef", "hoca", "amca", "muhendis"]);
+export function customerHints(d) {
+  const per = new Map(), total = new Map();
+  for (const w of live(d, "work_records")) {
+    if (!w.customer_id) continue;
+    const words = norm([w.description, w.internal_note].filter(Boolean).join(" ")).split(" ");
+    const seen = new Set();
+    for (let i = 0; i + 1 < words.length; i++) {
+      const a = words[i], b = words[i + 1].replace(/(nin|nın|in|ın|e|a|ye|ya|ler|lar)$/u, "");
+      if (a.length < 3 || !TITLES.has(b) || TITLES.has(a)) continue;
+      const ph = a + " " + b;
+      if (seen.has(ph)) continue;
+      seen.add(ph);
+      const m = per.get(w.customer_id) || new Map();
+      m.set(ph, (m.get(ph) || 0) + 1);
+      per.set(w.customer_id, m);
+      total.set(ph, (total.get(ph) || 0) + 1);
+    }
+  }
+  const out = [];
+  for (const c of live(d, "customers")) {
+    const m = per.get(c.id);
+    if (!m) continue;
+    const hints = [...m.entries()]
+      .filter(([ph, n]) => n >= 2 && n / total.get(ph) >= 0.6 && !norm(c.name).includes(ph))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([ph, n]) => ph);
+    if (hints.length) out.push([c.id, hints]);
+  }
+  return out;
+}
+export function hintCustomer(name, hints) {
+  const n = norm(name).replace(/(nin|nın|in|ın|e|a|ye|ya)$/u, "");
+  if (!n) return null;
+  const hits = hints.filter(([, hs]) => hs.some((h) => h === n || (` ${n} `).includes(` ${h} `)));
+  return hits.length === 1 ? hits[0][0] : null;
+}
+
 export function assistantContext(d, today = todayStr()) {
   const recent = live(d, "work_records")
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -25,6 +66,7 @@ export function assistantContext(d, today = todayStr()) {
     dump_sites: live(d, "dump_sites").map((x) => [x.id, x.name]),
     suppliers: live(d, "suppliers").map((s) => [s.id, s.name]),
     aliases: live(d, "aliases").filter((a) => a.active !== false).map((a) => [a.alias, a.target_type, a.target_id]),
+    customer_hints: customerHints(d),
     bank_accounts: live(d, "bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]),
     recent_works: recent,
     recent_expenses: lastOf("expense_records", 15, (e) => [e.id, e.date, e.amount, e.category, e.company || ""].join("|")),
@@ -39,6 +81,7 @@ export function assistantSystem() {
     "Sana şirketin kartları (müşteri, şantiye, araç, personel, esnaf/tedarikçi), takma adlar ve son işler verilir.",
     "Kullanıcının mesajını ve varsa fiş fotoğraflarını okuyup kaydedilecek işleri, giderleri ve yakıtları çıkar.",
     "aliases listesi kullanıcının daha önce onayladığı eşleştirmelerdir (hafıza): mesajdaki ifade orada varsa o kartı seç.",
+    "customer_hints: geçmiş işlerde o müşterinin kayıtlarında sık geçen kişi adları (örn. Hisar Polat kayıtlarında 'mahir bey'). Mesajdaki kişi burada geçiyorsa YENİ MÜŞTERİ AÇMA, o müşteriyi seç.",
     "Kurallar: Kartı listeden ID ile seç. Mesajda listede olmayan bir müşteri adı geçiyorsa customer_id=null ve new_customer=mesajda yazdığı haliyle ad.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
@@ -112,6 +155,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const photoTexts = Array.isArray(plan.photo_texts) ? plan.photo_texts.map(String) : [];
   const photoNums = photoTexts.map(numbersInText);
   const newNames = new Map(); // aynı yeni müşteri tek kart
+  const hints = customerHints(d);
 
   for (const w of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
     const issues = [];
@@ -128,7 +172,13 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (c) r.customer_id = c.id;
     else if (w.new_customer) {
       const twin = similarCard(w.new_customer, customers);
+      const hinted = !twin ? hintCustomer(w.new_customer, hints) : null;
       if (twin) { r.customer_id = twin.id; issues.push(`"${w.new_customer}" mevcut müşteri "${twin.name}" ile eşleştirildi`); }
+      else if (hinted) {
+        r.customer_id = hinted;
+        r.hinted = true;
+        issues.push(`"${w.new_customer}" geçmiş işlerde "${customers.find((x) => x.id === hinted)?.name}" kayıtlarında geçiyor; o müşteri seçildi — doğruysa işaretleyin (bir kez kaydedince hafızaya alınır)`);
+      }
       else if (!inMessage(w.new_customer, message)) issues.push(`Yeni müşteri adı "${w.new_customer}" mesajda geçmiyor`);
       else {
         const key = norm(w.new_customer);
@@ -157,13 +207,13 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       }
     } else issues.push("Miktar yok");
     if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
-    r.mentions = {};
+    r.mentions = r.hinted && inMessage(w.new_customer, message) ? { customer: String(w.new_customer).trim() } : {};
     for (const k of ["customer", "site", "vehicle", "personnel"]) {
       const m = w.mentions && typeof w.mentions === "object" ? String(w.mentions[k] || "").trim() : "";
       if (m.length >= 3 && m.length <= 60 && !/^\d+$/.test(m) && inMessage(m, message)) r.mentions[k] = m;
     }
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted);
     out.works.push(r);
   }
 
@@ -276,8 +326,8 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
       amount: null, method: c.method === "Havale" ? "Havale" : "Nakit", bank_account_id: byId("bank_accounts", c.bank_account_id)?.id || null,
       personnel_id: byId("personnel", c.personnel_id)?.id || null, note: String(c.note || "").slice(0, 200) };
     if (!r.customer_id && c.new_customer) {
-      const twin = similarCard(c.new_customer, customers);
-      if (twin) r.customer_id = twin.id;
+      const twin = similarCard(c.new_customer, customers) || customers.find((x) => x.id === hintCustomer(c.new_customer, customerHints(d))) || null;
+      if (twin) { r.customer_id = twin.id; issues.push(`"${c.new_customer}" → "${twin.name}" seçildi, kontrol edin`); }
       else if (inMessage(c.new_customer, message)) r.new_customer = String(c.new_customer).trim();
     }
     const a = amountOk(c.amount, pools);
