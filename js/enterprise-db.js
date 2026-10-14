@@ -143,6 +143,7 @@ export async function savePayable(f, key = uuid()) {
       "work_records",
       "expense_records",
       "fuel_records",
+      "fuel_tank_movements",
       "maintenance_records",
     ],
     (d, t) => {
@@ -187,6 +188,7 @@ export async function savePayable(f, key = uuid()) {
           ![
             "expense_records",
             "fuel_records",
+            "fuel_tank_movements",
             "maintenance_records",
             "purchase_orders",
           ].includes(f.source_store)

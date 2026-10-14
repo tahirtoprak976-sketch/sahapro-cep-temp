@@ -1,6 +1,6 @@
 // Gün sonu özeti ve "Soru Sor" araçları — SAF katman. Rakamlar telefonda hesaplanır;
 // Gemini yalnız bu rakamlarla cümle kurar. Doğrulanamayan rakam içeren cümle atılır.
-import { isActive, cariBalance, todayStr, addDays, daySummary } from "./core.js";
+import { isActive, cariBalance, todayStr, addDays, daySummary, tankStatus } from "./core.js";
 import { ledgerOf } from "./esnaf.js";
 import { foldTr } from "./parser.js";
 import { fuelFlags } from "./fuel-rules.js";
@@ -121,6 +121,8 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, category: { type: "string" }, vehicle: { type: "string" } } } },
   { name: "collection_totals", description: "Tarih aralığında müşterilerden alınan tahsilat toplamı.",
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, customer: { type: "string" } } } },
+  { name: "tank_status", description: "Depo yakıt tankı: kalan litre, günlük ortalama çıkış, kaç gün yeter, ortalama litre fiyatı, son giriş.",
+    parameters: { type: "object", properties: {} } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
@@ -154,7 +156,8 @@ export function runAskTool(d, name, args = {}, today = todayStr()) {
     const fl = live(d, "fuel_records").filter((f) => inR(f) && (!v.id || f.vehicle_id === v.id));
     const per = {};
     for (const f of fl) { const k = nameOf(d, "vehicles", f.vehicle_id); per[k] = r2((per[k] || 0) + Number(f.liters)); }
-    return { from, to, arac: v.name || "hepsi", litre: r2(fl.reduce((n, f) => n + (Number(f.liters) || 0), 0)), TL: r2(fl.reduce((n, f) => n + (Number(f.total) || 0), 0)), kayit: fl.length, arac_bazinda_litre: per };
+    const depo = r2(fl.filter((f) => f.fuel_source === "Depo Tankı").reduce((n, f) => n + (Number(f.liters) || 0), 0));
+    return { from, to, arac: v.name || "hepsi", depodan_litre: depo, litre: r2(fl.reduce((n, f) => n + (Number(f.liters) || 0), 0)), TL: r2(fl.reduce((n, f) => n + (Number(f.total) || 0), 0)), kayit: fl.length, arac_bazinda_litre: per };
   }
   if (name === "expense_totals") {
     const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
@@ -171,6 +174,11 @@ export function runAskTool(d, name, args = {}, today = todayStr()) {
     const per = {};
     for (const x of cs) { const k = nameOf(d, "customers", x.customer_id); per[k] = r2((per[k] || 0) + Number(x.amount)); }
     return { from, to, musteri: c.name || "hepsi", TL: r2(cs.reduce((n, x) => n + (Number(x.amount) || 0), 0)), kayit: cs.length, musteri_bazinda_TL: per };
+  }
+  if (name === "tank_status") {
+    const t = tankStatus(live(d, "fuel_tank_movements"), today);
+    return { kalan_litre: r2(t.remaining), toplam_giris_litre: r2(t.in), toplam_cikis_litre: r2(t.out), gunluk_ortalama_litre: t.daily, kac_gun_yeter: t.daysLeft,
+      ortalama_litre_fiyati_TL: t.unitCost, son_giris: t.lastIn ? { tarih: t.lastIn.date, litre: r2(t.lastIn.liters), TL: t.lastIn.total ? r2(t.lastIn.total) : null } : null };
   }
   if (name === "esnaf_debt") {
     const s = resolve(d, a, "supplier", "suppliers", "supplier");

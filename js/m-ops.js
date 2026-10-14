@@ -35,6 +35,7 @@ import {
   isActive,
   matchSearch,
   calcTankBalance,
+  tankStatus,
   FUEL_SOURCES,
   MAINT_TYPES,
   MAINT_STATUS,
@@ -233,23 +234,31 @@ async function fuelForm(ctx) {
 // ============ DEPO TANKI ============
 async function tank(ctx) {
   const { root, db, names } = ctx;
-  const rows = (await db.getAll("fuel_tank_movements"))
-    .filter(isActive)
-    .sort((a, b) => (b.date < a.date ? -1 : 1));
+  const all = await db.getAll("fuel_tank_movements");
+  const rows = all.filter(isActive).sort((a, b) => (b.date < a.date ? -1 : 1));
   const bal = calcTankBalance(rows);
-  const [vehicles, personnel] = await Promise.all([
+  const st = tankStatus(rows, todayStr());
+  const [vehicles, personnel, suppliers, fuels] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
+    db.listActive("suppliers"),
+    db.getAll("fuel_records"),
   ]);
+  const uncosted = fuels.filter((f) => isActive(f) && f.fuel_source === "Depo Tankı" && !(Number(f.total) > 0)).length;
 
   root.innerHTML =
-    appbar("Depo Yakıt Tankı", "Geçici takip — finansal stok değildir") +
+    appbar("Depo Yakıt Tankı", "Giriş fiyatı girilirse depodan verilen yakıt maliyetlenir") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${stat(fmtNum(bal.in), "Giriş L", "ok")}
       ${stat(fmtNum(bal.out), "Çıkış L", "warn")}
-      ${stat(fmtNum(bal.remaining), "Kalan L", "accent")}
+      ${stat(fmtNum(bal.remaining), "Kalan L", bal.remaining < 0 ? "danger" : "accent")}
+      ${stat(st.unitCost ? fmtTL(st.unitCost) : "—", "Ort. ₺/L")}
+      ${stat(st.daily ? fmtNum(st.daily) : "—", "Günlük L (14g)")}
+      ${stat(st.daysLeft != null ? fmtNum(st.daysLeft) : "—", "Kaç gün yeter")}
     </div>
+    ${bal.remaining < 0 ? notice("warn", "Depo eksiye düşmüş: depoya giriş kaydı eksik. Gelen yakıtı GİRİŞ olarak ekleyin.") : ""}
+    ${uncosted && st.unitCost ? `<div class="card"><div class="small">${uncosted} depo yakıtı kaydının tutarı yok. Ortalama ${fmtTL(st.unitCost)} ₺/L ile maliyet yazılsın mı? (araç maliyeti ve kâr hesabı düzelir)</div><button class="btn block" style="margin-top:8px" data-fillcost>₺ Maliyetleri Yaz</button></div>` : ""}
     <div class="card">
       <div class="section-title" style="margin:0 0 8px">Yeni Hareket</div>
       <form data-form novalidate>
@@ -266,6 +275,11 @@ async function tank(ctx) {
             "",
           )}
         </div>
+        <div class="formgrid2" data-in>
+          ${fNum("Litre fiyatı ₺ (girişte)", "unit_price", "", { step: "any" })}
+          ${fNum("Toplam ₺ (girişte)", "total", "", { step: "any" })}
+        </div>
+        <div data-in>${fSelect("Veresiye petrolcü (ops.)", "supplier_id", suppliers.map((x) => ({ v: x.id, t: x.name })), "")}</div>
         <div class="formgrid2">
           ${fSelect(
             "Personel",
@@ -288,43 +302,72 @@ async function tank(ctx) {
     vehicle.closest(".field").hidden = move.value === "GİRİŞ";
     vehicle.disabled = move.value === "GİRİŞ";
     if (vehicle.disabled) vehicle.value = "";
+    for (const el of qsa("[data-in]", root)) el.hidden = move.value !== "GİRİŞ";
   };
   move.addEventListener("change", updateMove);
   updateMove();
+  // fiyat ↔ toplam birbirinden hesaplanır
+  const L = qs("[name=liters]", root), UP = qs("[name=unit_price]", root), TT = qs("[name=total]", root);
+  UP.addEventListener("input", () => { if (Number(L.value) > 0 && Number(UP.value) > 0) TT.value = Math.round(L.value * UP.value * 100) / 100; });
+  TT.addEventListener("input", () => { if (Number(L.value) > 0 && Number(TT.value) > 0) UP.value = Math.round((TT.value / L.value) * 100) / 100; });
   const listEl = qs("[data-list]", root);
   listEl.innerHTML = rows.length
     ? rows
         .map((m) =>
           li({
             ic: m.move_type === "GİRİŞ" ? "📥" : "📤",
-            t1: `${m.move_type} · ${fmtNum(m.liters)} Lt`,
-            t2: `${trDate(m.date)} · ${esc(names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
+            t1: `${m.move_type} · ${fmtNum(m.liters)} Lt${m.move_type === "GİRİŞ" && Number(m.total) > 0 ? " · " + fmtTL(m.total) + " ₺" : ""}`,
+            t2: `${trDate(m.date)} · ${esc(names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.unit_price ? " · " + fmtTL(m.unit_price) + " ₺/L" : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
           }),
         )
         .join("")
     : emptyState("🛢", "Hareket yok");
 
+  qs("[data-fillcost]", root)?.addEventListener("click", async () => {
+    const n = await db.fillTankFuelCosts();
+    toast(n + " yakıt kaydına maliyet yazıldı", "ok");
+    ctx.reload();
+  });
   qs("[data-add]", root).addEventListener("click", async () => {
     const val = collectForm(qs("[data-form]", root));
     if (!(Number(val.liters) > 0)) {
       toast("Litre girin", "err");
       return;
     }
-    await db.saveNew(
-      "fuel_tank_movements",
-      {
-        date: val.date,
-        move_type: val.move_type,
-        liters: Number(val.liters),
-        vehicle_id: val.vehicle_id || null,
-        personnel_id: val.personnel_id || null,
-        pump_no: val.pump_no || "",
-        signature_name: val.signature_name || "",
-      },
-      "Tank " + val.move_type,
-    );
-    toast("Kaydedildi", "ok");
-    ctx.reload();
+    const isIn = val.move_type === "GİRİŞ";
+    const liters = Number(val.liters);
+    let unit_price = isIn ? Number(val.unit_price) || null : null;
+    let total = isIn ? Number(val.total) || null : null;
+    if (unit_price && !total) total = Math.round(unit_price * liters * 100) / 100;
+    if (total && !unit_price) unit_price = Math.round((total / liters) * 100) / 100;
+    if (isIn && val.supplier_id && !total) return toast("Veresiye için toplam tutar girin", "err");
+    try {
+      const rec = await db.saveNew(
+        "fuel_tank_movements",
+        {
+          date: val.date,
+          move_type: val.move_type,
+          liters,
+          vehicle_id: val.vehicle_id || null,
+          personnel_id: val.personnel_id || null,
+          pump_no: val.pump_no || "",
+          signature_name: val.signature_name || "",
+          ...(isIn ? { unit_price, total, supplier_id: val.supplier_id || null } : {}),
+        },
+        "Tank " + val.move_type,
+      );
+      if (isIn && val.supplier_id) {
+        const { createCreditBill } = await import("./esnaf.js");
+        const d = await db.dumpAll();
+        await createCreditBill(ctx, d, d.suppliers.find((x) => x.id === val.supplier_id),
+          { date: val.date, amount: total, description: `Depoya yakıt ${fmtNum(liters)} L`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
+          { source: { store: "fuel_tank_movements", id: rec.id } });
+      }
+      toast("Kaydedildi", "ok");
+      ctx.reload();
+    } catch (e) {
+      toast(e.message || String(e), "err");
+    }
   });
   qs("[data-pdf]", root).addEventListener("click", async () => {
     const pdf = await import("./pdf.js");

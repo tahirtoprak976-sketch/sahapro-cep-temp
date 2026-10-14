@@ -273,7 +273,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Litre</label><input type="number" step="any" name="liters" value="${r.liters ?? ""}"></div>
-          <div class="field"><label>Tutar (₺, ops.)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
+          <div class="field"><label>Litre fiyatı (₺)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
+          <div class="field"><label>Toplam (₺, ops.)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
+          <div class="field"><label>Veresiye petrolcü</label><select name="supplier">${opt(suppliers, r.supplier_id, "— peşin / yok —")}</select></div>
         </div>${issues(r)}</div>`)
       .join("") +
     v.fuel
@@ -361,7 +363,7 @@ async function save(ctx, out, v, d, { message, files }) {
       k === "work" ? !val(c, "customer") || !val(c, "vehicle") || !val(c, "work_type") || !(Number(val(c, "quantity")) > 0) || !val(c, "unit")
       : k === "expense" ? !(Number(val(c, "amount")) > 0)
       : k === "fuel" ? !val(c, "vehicle") || !(Number(val(c, "liters")) > 0)
-      : k === "tank" ? !(Number(val(c, "liters")) > 0)
+      : k === "tank" ? !(Number(val(c, "liters")) > 0) || (val(c, "supplier") && !(Number(val(c, "total")) > 0 || Number(val(c, "unit_price")) > 0))
       : k === "collection" ? !val(c, "customer") || !(Number(val(c, "amount")) > 0) || (val(c, "method") === "Havale" && !val(c, "bank"))
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
       : k === "personnel" ? !val(c, "personnel")
@@ -451,11 +453,22 @@ async function save(ctx, out, v, d, { message, files }) {
         continue;
       }
       if (k === "tank") {
-        const total = Number(val(c, "total")) || null;
-        await db.saveNew("fuel_tank_movements", {
-          date: val(c, "date") || todayStr(), move_type: "GİRİŞ", liters: Number(val(c, "liters")), vehicle_id: null, personnel_id: null,
-          pump_no: "", signature_name: "", total, description: source,
+        const liters = Number(val(c, "liters"));
+        let total = Number(val(c, "total")) || null, unit_price = Number(val(c, "unit_price")) || null;
+        if (unit_price && !total) total = Math.round(unit_price * liters * 100) / 100;
+        if (total && !unit_price) unit_price = Math.round((total / liters) * 100) / 100;
+        const supId = val(c, "supplier") || null;
+        const mv = await db.saveNew("fuel_tank_movements", {
+          date: val(c, "date") || todayStr(), move_type: "GİRİŞ", liters, vehicle_id: null, personnel_id: null,
+          pump_no: "", signature_name: "", unit_price, total, supplier_id: supId, description: source,
         }, "Asistan: depo girişi");
+        if (supId && total) {
+          const { createCreditBill } = await import("./esnaf.js");
+          const fresh = await db.dumpAll();
+          await createCreditBill(ctx, fresh, fresh.suppliers.find((x) => x.id === supId),
+            { date: mv.date, amount: total, description: `Depoya yakıt ${liters} L`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
+            { source: { store: "fuel_tank_movements", id: mv.id } });
+        }
         done.tank++;
         continue;
       }

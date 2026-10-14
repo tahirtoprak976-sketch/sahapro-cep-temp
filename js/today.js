@@ -7,6 +7,7 @@ import {
   latestDocuments,
   backupAgeDays,
   todayStr,
+  tankStatus,
 } from "./core.js";
 import { ledgerOf } from "./esnaf.js";
 import { ticketReconcile } from "./assistant-docs.js";
@@ -147,6 +148,15 @@ export function todayBoard(data, opts = {}) {
       href: "#/isler",
       sort: 60,
     });
+  }
+
+  // 3b2) Depo tankı: eksiye düştüyse ya da birkaç gün içinde bitecekse
+  if (act(data.fuel_tank_movements).length) {
+    const t = tankStatus(data.fuel_tank_movements, today);
+    if (t.remaining < 0)
+      items.push({ kind: "alert", group: "Depo", ic: "🛢", text: `Depo eksiye düştü: ${Math.round(t.remaining)} L`, sub: "Depoya gelen yakıt girilmemiş olabilir", href: "#/depo", sort: 5 });
+    else if (t.daysLeft != null && t.daysLeft <= 3)
+      items.push({ kind: t.daysLeft <= 1 ? "alert" : "warn", group: "Depo", ic: "🛢", text: `Depoda ${Math.round(t.remaining)} L kaldı`, sub: `Günde ortalama ${t.daily} L → yaklaşık ${t.daysLeft} gün yeter`, href: "#/depo", sort: 6 });
   }
 
   // 3c) Yakıt kuralları (tutar, depo, işsiz gün, tüketim)

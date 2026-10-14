@@ -15,6 +15,7 @@ import {
   SEED_ALIASES,
   VEHICLE_OWNERSHIP,
   SCHEMA_VERSION,
+  tankUnitCost,
 } from "./core.js";
 
 const DB_NAME = "sahapro_cep_db"; // v1 ile AYNI isim — veri bu DB'de
@@ -979,6 +980,11 @@ export async function saveFuelEvent(fields, reason = "Yakıt") {
         liters: Number(fields.liters),
         event_id: event,
       });
+      // Depodan verilen yakıtın tutarı girilmediyse depo girişlerinin ortalama litre fiyatıyla maliyetlenir
+      if (tank && !(Number(result.total) > 0)) {
+        const up = tankUnitCost(request.result, result.date) ?? tankUnitCost(request.result);
+        if (up) Object.assign(result, { unit_price: up, total: Math.round(up * result.liters * 100) / 100, cost_source: "Depo ortalaması" });
+      }
       if (tank) {
         const move = newRecord({
           date: fields.date,
@@ -1036,6 +1042,10 @@ export async function fuelFix(id, mode, reason = "") {
           pump_no: f.pump_no || "", signature_name: "", event_id: ev, fuel_record_id: f.id });
         t.objectStore("fuel_tank_movements").put(move);
         result = { ...f, fuel_source: "Depo Tankı", receipt: "Depo", tank_movement_id: move.id, event_id: ev, updated_at: now };
+        if (!(Number(f.total) > 0)) {
+          const up = tankUnitCost(moves, f.date) ?? tankUnitCost(moves);
+          if (up) Object.assign(result, { unit_price: up, total: Math.round(up * Number(f.liters) * 100) / 100, cost_source: "Depo ortalaması" });
+        }
       } else if (mode === "delete") {
         const m = live.find((x) => x.id === f.tank_movement_id || x.fuel_record_id === f.id);
         if (m) t.objectStore("fuel_tank_movements").put({ ...m, deleted_at: now, updated_at: now });
@@ -1049,6 +1059,32 @@ export async function fuelFix(id, mode, reason = "") {
     mv.onsuccess = () => { moves = mv.result; run(); };
     t.oncomplete = () => resolve(result);
     t.onabort = t.onerror = () => reject(error || t.error || Error("Yakıt işlemi iptal edildi"));
+  });
+}
+// Tutarı olmayan depo yakıtlarına ortalama depo fiyatıyla maliyet yazar (tek işlem). Kaç kayıt güncellendiğini döner.
+export async function fillTankFuelCosts() {
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["fuel_records", "fuel_tank_movements", "audit_log"], "readwrite");
+    let n = 0, fuels, moves;
+    const run = () => {
+      if (!fuels || !moves) return;
+      const now = nowISO();
+      for (const f of fuels) {
+        if (!isActive(f) || f.fuel_source !== "Depo Tankı" || Number(f.total) > 0) continue;
+        const up = tankUnitCost(moves, f.date) ?? tankUnitCost(moves);
+        if (!up) continue;
+        const upd = { ...f, unit_price: up, total: Math.round(up * Number(f.liters) * 100) / 100, cost_source: "Depo ortalaması", updated_at: now };
+        t.objectStore("fuel_records").put(upd);
+        t.objectStore("audit_log").put({ id: uuid(), entity: "fuel_records", entity_id: f.id, action: "update", old: { total: f.total ?? null }, new: { total: upd.total }, reason: "Depo ortalama maliyeti", at: now });
+        n++;
+      }
+    };
+    const a = t.objectStore("fuel_records").getAll(), b = t.objectStore("fuel_tank_movements").getAll();
+    a.onsuccess = () => { fuels = a.result; run(); };
+    b.onsuccess = () => { moves = b.result; run(); };
+    t.oncomplete = () => resolve(n);
+    t.onabort = t.onerror = () => reject(t.error);
   });
 }
 export async function createHakedis(fields) {
