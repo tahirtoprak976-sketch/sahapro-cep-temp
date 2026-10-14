@@ -38,6 +38,7 @@ export function assistantSystem() {
     "Sen Muratoğlu Hafriyat (hafriyat, kamyon nakliye, iş makinesi) şirketinin kayıt asistanısın.",
     "Sana şirketin kartları (müşteri, şantiye, araç, personel, esnaf/tedarikçi), takma adlar ve son işler verilir.",
     "Kullanıcının mesajını ve varsa fiş fotoğraflarını okuyup kaydedilecek işleri, giderleri ve yakıtları çıkar.",
+    "aliases listesi kullanıcının daha önce onayladığı eşleştirmelerdir (hafıza): mesajdaki ifade orada varsa o kartı seç.",
     "Kurallar: Kartı listeden ID ile seç. Mesajda listede olmayan bir müşteri adı geçiyorsa customer_id=null ve new_customer=mesajda yazdığı haliyle ad.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
@@ -53,6 +54,8 @@ export function assistantSystem() {
     "\"personnel\":[{\"date\",\"personnel_id\",\"event_type\",\"amount\",\"hours_days\",\"note\"}] (event_type: " + PERSONNEL_EVENT_TYPES.join(", ") + "),",
     "\"edits\":[{\"store\":\"work_records\"|\"expense_records\"|\"fuel_records\"|\"cash_records\",\"id\",\"changes\":{alan:değer},\"delete\":bool,\"reason\"}] (kullanıcı mevcut bir kaydı düzeltmek/silmek isterse; id'yi recent_* listelerinden seç),",
     "\"answer\":string|null (kullanıcı soru sorduysa, YALNIZ verilen facts içindeki rakamlarla kısa Türkçe cevap; facts'te yoksa 'kayıtlarda bulamadım' de),",
+    "\"cards\":{\"customers\":[{\"name\",\"phone\",\"note\"}],\"sites\":[{\"name\",\"customer_id\",\"customer_name\"}],\"vehicles\":[{\"name\",\"plate\",\"type\",\"ownership\":\"Özmal\"|\"Taşeron\"}],\"personnel\":[{\"name\",\"phone\",\"role\"}],\"suppliers\":[{\"name\",\"type\":\"Servis\"|\"Tedarikçi\"|\"Petrolcü\"|\"Diğer\",\"phone\"}]} (kullanıcı müşteri/filo/personel/tedarikçi LİSTESİ verirse; listede zaten olanları yazma),",
+    "Her iş satırına \"mentions\":{\"customer\",\"site\",\"vehicle\",\"personnel\"} ekle: mesajda o kartı anlatan ifade, yazıldığı gibi (örn. \"mahir bey\", \"14 tonluk\").",
     "\"photo_texts\":[string],\"questions\":[string]}",
     "20 bin = 20000, 1,5 milyon = 1500000. 'havale/EFT yaptı' = Havale.",
   ].join("\n");
@@ -154,6 +157,11 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       }
     } else issues.push("Miktar yok");
     if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
+    r.mentions = {};
+    for (const k of ["customer", "site", "vehicle", "personnel"]) {
+      const m = w.mentions && typeof w.mentions === "object" ? String(w.mentions[k] || "").trim() : "";
+      if (m.length >= 3 && m.length <= 60 && !/^\d+$/.test(m) && inMessage(m, message)) r.mentions[k] = m;
+    }
     r.issues = issues;
     r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed);
     out.works.push(r);
@@ -346,6 +354,51 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     if (!remove && !Object.keys(changes).length) issues.push("Değişiklik yok");
     // Silme ve düzeltme varsayılan olarak işaretsiz gelir: kullanıcı bilerek işaretler
     out.edits.push({ store: x.store, id: rec.id, rec, changes, remove, reason: String(x.reason || "").slice(0, 200) || "Asistan düzeltmesi", issues, ok: false });
+  }
+  return out;
+}
+
+
+// ---- Liste ile kart ekleme (müşteri / şantiye / araç / personel / esnaf) ----
+const CARD_STORE = { customers: "customers", sites: "sites", vehicles: "vehicles", personnel: "personnel", suppliers: "suppliers" };
+const plateKey = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+export function validateCards(plan, { message = "", d, photoTexts = [] } = {}) {
+  const src = [message, ...photoTexts].join("\n");
+  const cards = plan && plan.cards && typeof plan.cards === "object" ? plan.cards : {};
+  const out = [];
+  const seen = new Set();
+  const newCustomerNames = [];
+  for (const kind of Object.keys(CARD_STORE)) {
+    for (const c of (Array.isArray(cards[kind]) ? cards[kind] : []).slice(0, 200)) {
+      const name = String(c?.name || "").trim().slice(0, 80);
+      if (!name) continue;
+      const key = kind + ":" + norm(name);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const issues = [];
+      const existing = live(d, CARD_STORE[kind]);
+      let twin = similarCard(name, existing);
+      if (!twin && kind === "vehicles" && c.plate) twin = existing.find((v) => plateKey(v.plate || v.name) === plateKey(c.plate)) || null;
+      if (twin) issues.push(`Zaten kayıtlı: ${twin.name}`);
+      const inText = inMessage(name, src) || (kind === "vehicles" && c.plate && plateKey(src).includes(plateKey(c.plate)));
+      if (!inText) issues.push("Ad mesajda/fotoğrafta geçmiyor");
+      const item = { kind, name, issues, ok: !twin && !!inText, data: {} };
+      if (kind === "customers") { item.data = { phone: String(c.phone || "").slice(0, 30), note: String(c.note || "").slice(0, 200) }; if (item.ok) newCustomerNames.push(name); }
+      if (kind === "vehicles") item.data = { plate: String(c.plate || "").toUpperCase().slice(0, 20), type: String(c.type || "Araç/Makine").slice(0, 40), ownership: c.ownership === "Taşeron" ? "Taşeron" : "Özmal" };
+      if (kind === "personnel") item.data = { phone: String(c.phone || "").slice(0, 30), role: String(c.role || "").slice(0, 40) };
+      if (kind === "suppliers") item.data = { type: ["Servis", "Tedarikçi", "Petrolcü", "Diğer"].includes(c.type) ? c.type : "Servis", phone: String(c.phone || "").slice(0, 30) };
+      if (kind === "sites") {
+        const cust = live(d, "customers").find((x) => x.id === c.customer_id) || (c.customer_name ? similarCard(c.customer_name, live(d, "customers")) : null);
+        item.data = { customer_id: cust?.id || null, customer_name: cust ? null : String(c.customer_name || "").trim() || null };
+        if (!cust && !item.data.customer_name) { issues.push("Hangi müşterinin şantiyesi?"); item.ok = false; }
+      }
+      out.push(item);
+    }
+  }
+  // Şantiyenin müşterisi aynı listede yeni açılıyorsa bağla
+  for (const it of out) if (it.kind === "sites" && it.data.customer_name && !newCustomerNames.some((n) => norm(n) === norm(it.data.customer_name))) {
+    it.issues.push(`Müşteri "${it.data.customer_name}" bulunamadı`);
+    it.ok = false;
   }
   return out;
 }
