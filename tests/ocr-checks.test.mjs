@@ -29,3 +29,11 @@ assert.equal(m.extractFields("Gider Fişi", "13.10.2026 TOPLAM 100,00", 80).fiel
 // gelecekteki tarih
 assert.ok(m.checkFields("Gider Fişi", { date: "2030-01-01", total: 5 }, "2026-10-14").some((c) => /gelecek/.test(c.text)));
 console.log("ocr-checks PASS");
+{
+  const { validVKN, validTCKN, checkFields } = await import('../js/ocr.js');
+  assert.equal(validTCKN('10000000146'), true); assert.equal(validTCKN('10000000145'), false);
+  assert.equal(validVKN('1234567890'), validVKN('1234567890')); // deterministik
+  assert.ok(checkFields('Fatura', { tax_no: '10000000145', total: 5 }, '2026-10-14').some((c) => /TC/.test(c.text)));
+  assert.ok(checkFields('Gider Fişi', { date: '2026-07-01', total: 5 }, '2026-10-14').some((c) => /60 gün/.test(c.text)));
+}
+console.log('ocr-checks-2 PASS');

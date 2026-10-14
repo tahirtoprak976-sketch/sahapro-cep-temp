@@ -3,7 +3,9 @@
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
-import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS } from "./assistant-core.js";
+import { documentOwner } from "./business.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY } from "./assistant-docs.js";
+import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
   `<option value="">${esc(empty)}</option>` +
@@ -11,6 +13,7 @@ const opt = (list, val, empty = "— seçin —") =>
 
 export async function screen(ctx) {
   if (ctx.parts[0] !== "akilli-asistan") return false;
+  if (ctx.parts[1] && (await (await import("./assistant-tools.js")).screen(ctx))) return true;
   const { root, db } = ctx;
   const { geminiSettings } = await import("./ai-gemini.js");
   const g = await geminiSettings(db);
@@ -18,22 +21,62 @@ export async function screen(ctx) {
     appbar("Akıllı Asistan", "Gemini · işletmenizi tanır") +
     `<div style="height:10px"></div>
     ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Önce Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
-      <div class="field"><label>Fiş / belge fotoğrafları (isteğe bağlı)</label><input type="file" accept="image/*" multiple data-photos></div>
+      <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>
+      <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div>
       <button class="btn primary block" style="margin-top:10px" data-ask ${g.ready ? "" : "disabled"}>🤖 Asistana Gönder</button>
     </div>
     <div data-out></div>`;
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
   let files = [];
-  const showThumbs = () =>
-    (qs("[data-thumbs]", root).innerHTML = files
-      .map((f, i) => `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
-      .join(""));
+  const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
+  const showThumbs = () => {
+    const box = qs("[data-thumbs]", root);
+    box.innerHTML = files
+      .map((f, i) => isAudio(f)
+        ? `<div class="card" style="margin:0;padding:6px;width:100%"><div class="small">🎤 Ses kaydı ${esc(f.name || "")} <button class="btn small" data-rm="${i}">Sil</button></div><audio controls src="${URL.createObjectURL(f)}" style="width:100%"></audio></div>`
+        : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
+      .join("");
+    for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { files.splice(Number(b.dataset.rm), 1); showThumbs(); });
+  };
   photosIn.addEventListener("change", () => {
-    files = [...photosIn.files].slice(0, 10);
+    files = [...files.filter((f) => f._rec), ...photosIn.files].slice(0, 10);
     showThumbs();
+  });
+  // Sesli not: telefonun mikrofonu ile kayıt (en çok 3 dakika)
+  let rec = null, recT = null;
+  qs("[data-rec]", root).addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    if (rec) return rec.stop();
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return toast("Bu tarayıcı ses kaydını desteklemiyor; WhatsApp sesli mesajını dosya olarak ekleyin", "err");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"].find((t) => MediaRecorder.isTypeSupported?.(t)) || "";
+      rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      const chunks = [];
+      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      rec.onstop = () => {
+        clearTimeout(recT);
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunks, { type: (rec.mimeType || type || "audio/webm").split(";")[0] });
+        rec = null;
+        b.textContent = "🎤 Sesli not kaydet";
+        if (blob.size < 500) return toast("Kayıt boş", "err");
+        const f = new File([blob], "sesli-not-" + new Date().toTimeString().slice(0, 5).replace(":", "") + "." + (blob.type.split("/")[1] || "webm"), { type: blob.type });
+        f._rec = true;
+        files = [...files, f].slice(0, 10);
+        showThumbs();
+      };
+      rec.start();
+      b.textContent = "⏹ Kaydı bitir";
+      recT = setTimeout(() => rec?.stop(), 180000);
+    } catch (e) {
+      rec = null;
+      toast("Mikrofon izni verilmedi", "err");
+    }
   });
   // WhatsApp'tan "Paylaş" ile gelen metin / fotoğraflar
   if (ctx.query?.shared && "caches" in self) {
@@ -45,7 +88,7 @@ export async function screen(ctx) {
         const r = await cache.match(`./__share/file-${i}`);
         if (!r) break;
         const b = await r.blob();
-        files.push(new File([b], decodeURIComponent(r.headers.get("x-name") || "foto.jpg"), { type: b.type || "image/jpeg" }));
+        files.push(new File([b], decodeURIComponent(r.headers.get("x-name") || "foto.jpg"), { type: b.type || r.headers.get("content-type") || "image/jpeg" }));
       }
       await caches.delete("sahapro-share");
       showThumbs();
@@ -61,38 +104,56 @@ export async function screen(ctx) {
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
     const message = qs("[data-msg]", root).value.trim();
-    if (!message && !files.length) return toast("Mesaj yazın veya fotoğraf ekleyin", "err");
+    if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
+    if (rec) return toast("Önce ses kaydını bitirin", "err");
+    const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
     if (!navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
     btn.disabled = true;
     out.innerHTML = '<div class="muted small" style="padding:10px">Gemini okuyor…</div>';
     try {
-      const { geminiJson, blobToBase64, shrink } = await import("./ai-gemini.js");
+      const { geminiJson, blobToBase64, shrink, audioToWav } = await import("./ai-gemini.js");
       const d = await db.dumpAll();
       const today = todayStr();
       const facts = await businessFacts(d, today);
+      const negatives = (await db.metaGet("ai_negative_aliases")) || [];
+      const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
       const parts = [
         { text: "İşletme kartları (JSON):\n" + JSON.stringify(assistantContext(d, today, message)) },
         { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
+        ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
+        ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
       ];
-      for (const f of files) {
+      for (const f of images) {
         const img = await shrink(f);
         parts.push({ inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } });
       }
-      parts.push({ text: `Fotoğraf sayısı: ${files.length}\nMesaj:\n${message || "(mesaj yok, yalnız fotoğraflar)"}` });
+      for (const f of audios) {
+        const a = await audioToWav(f);
+        if (a.size > 15e6) throw new Error("Ses kaydı çok uzun; 3 dakikadan kısa kaydedin");
+        parts.push({ inlineData: { mimeType: (a.type || "audio/ogg").split(";")[0], data: await blobToBase64(a) } });
+      }
+      parts.push({ text: `Fotoğraf sayısı: ${images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(message || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
-      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: assistantSystem() }), {
+      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: assistantSystem(), schema: assistantSchema() }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       });
-      const v = validatePlan(plan, { message, d, today, photoCount: files.length });
-      Object.assign(v, validateExtras(plan, { message, d, today, photoTexts: v.photoTexts }));
-      v.cards = validateCards(plan, { message, d, photoTexts: v.photoTexts });
-      v.memory = validateMemory(plan, { message, d });
+      // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
+      const heard = audios.length ? heardText(plan) : "";
+      const vmsg = [message, heard].filter(Boolean).join("\n");
+      const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
+      v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
+      v.memory = validateMemory(plan, { message: vmsg, d });
+      v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
+      v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
+      v.heard = heard;
+      v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
       v.answerBad = checkAnswer(v.answer, facts);
-      render(ctx, out, v, d, { message, files, ms: Date.now() - t0 });
+      render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
     } catch (e) {
       out.innerHTML = notice("warn", e.message || String(e));
     }
@@ -108,7 +169,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi" };
   const personnel = live("personnel").map((p) => [p.id, p.name]);
   const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
@@ -117,6 +178,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
   out.innerHTML =
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     (v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
+    (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
+    (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
     v.memory
       .map((r, i) => `<div class="card" data-kind="memory" data-i="${i}">
@@ -155,6 +218,39 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Birim fiyat (₺, boşsa fiyat listesi)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
         </div>
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>${issues(r)}</div>`;
+      })
+      .join("") +
+    v.tickets
+      .map((r, i) => {
+        const linkOpts = [...r.works.map((id) => { const w = d.work_records.find((x) => x.id === id); return [id, `Mevcut: ${nameOf("customers", w.customer_id)} · ${w.quantity} sefer`]; }), ["new", "➕ Yeni 1 sefer iş aç"]];
+        return `<div class="card" data-kind="ticket" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧾 Döküm / kantar fişi</b></label>
+        ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Döküm fişi" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
+        <div class="formgrid2">
+          <div class="field"><label>Fiş no</label><input name="ticket_no" value="${esc(r.ticket_no)}"></div>
+          <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
+          <div class="field"><label>Araç</label><select name="vehicle">${opt(vehicles, r.vehicle_id)}</select></div>
+          <div class="field"><label>Net ton</label><input type="number" step="any" name="tonnage" value="${r.tonnage ?? ""}"></div>
+          <div class="field"><label>Döküm yeri</label><select name="dump_site">${opt(dumpSites, r.dump_site_id, r.dump_site_name ? "— " + r.dump_site_name + " (listede yok) —" : "— yok —")}</select></div>
+          <div class="field"><label>Bağlanacak iş</label><select name="link">${opt(linkOpts, r.link, "— seçin —")}</select></div>
+          <div class="field"><label>Müşteri (yeni iş için)</label><select name="customer">${opt(customers, r.customer_id)}</select></div>
+          <div class="field"><label>İş türü (yeni iş için)</label><select name="work_type">${opt(WORK_TYPES.map((x) => [x, x]), WORK_TYPES.includes("Hafriyat Nakliye") ? "Hafriyat Nakliye" : WORK_TYPES[0])}</select></div>
+        </div>${issues(r)}</div>`;
+      })
+      .join("") +
+    v.docs
+      .map((r, i) => {
+        const owners = [...vehicles.map(([id, n]) => ["vehicle:" + id, "🚚 " + n]), ...personnel.map(([id, n]) => ["personnel:" + id, "👤 " + n])];
+        return `<div class="card" data-kind="doc" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>📄 Belge</b> · bitiş tarihi takibe alınır</label>
+        ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Belge" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
+        <div class="formgrid2">
+          <div class="field"><label>Belge türü</label><select name="category">${opt(ASSIST_DOC_TYPES.map((x) => [x, x]), r.category)}</select></div>
+          <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : "")}</select></div>
+          <div class="field"><label>Belge no</label><input name="doc_no" value="${esc(r.doc_no)}"></div>
+          <div class="field"><label>Düzenleme tarihi</label><input type="date" name="date" value="${esc(r.date || "")}"></div>
+          <div class="field"><label>Bitiş tarihi</label><input type="date" name="expiry_date" value="${esc(r.expiry_date || "")}"></div>
+        </div>${issues(r)}</div>`;
       })
       .join("") +
     v.expenses
@@ -258,16 +354,18 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "collection" ? !val(c, "customer") || !(Number(val(c, "amount")) > 0) || (val(c, "method") === "Havale" && !val(c, "bank"))
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
       : k === "personnel" ? !val(c, "personnel")
+      : k === "ticket" ? !val(c, "ticket_no").trim() || !val(c, "date") || !val(c, "vehicle") || !val(c, "link") || (val(c, "link") === "new" && (!val(c, "customer") || !val(c, "work_type")))
+      : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== val(c, "owner").split(":")[0] || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
     if (miss) {
       c.scrollIntoView({ behavior: "smooth", block: "center" });
-      return toast("İşaretli kartta eksik alan var", "err");
+      return toast(k === "doc" ? "Belge kartında eksik/uyumsuz alan var (araç belgesi araca, personel belgesi personele)" : "İşaretli kartta eksik alan var", "err");
     }
   }
   const btn = qs("[data-save]", out);
   btn.disabled = true;
-  const done = { work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
+  const done = { ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -333,6 +431,47 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         continue;
       }
+      if (k === "ticket") {
+        const r = v.tickets[Number(c.dataset.i)];
+        const file = files[r.photo];
+        const date = val(c, "date"), vid = val(c, "vehicle"), no = val(c, "ticket_no").trim();
+        const fresh = await db.dumpAll();
+        if ((fresh.documents || []).some((x) => isActive(x) && x.category === "Döküm Fişi" && String(x.doc_no).trim() === no)) {
+          toast(`Fiş ${no} zaten kayıtlı, atlandı`, "err");
+          continue;
+        }
+        let workId = val(c, "link");
+        const veh = vehicles.find((x) => x.id === vid);
+        if (workId === "new") {
+          const f = {
+            date, customer_id: val(c, "customer"), site_id: null, vehicle_id: vid, personnel_id: null, vehicle_type: veh.type || null,
+            contractor_id: veh.contractor_id || null, work_type: val(c, "work_type"), description: `Döküm fişi ${no}` + (val(c, "tonnage") ? ` · ${val(c, "tonnage")} ton` : ""),
+            internal_note: source, material: r.material || "", quantity: 1, unit: "Sefer",
+            dump_site_id: val(c, "dump_site") || null, quarry_id: null, dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || r.dump_site_name || "",
+            quarry: "", slip_status: null, slip_no: no, customer_note: "", distance_km: null, source: "asistan",
+          };
+          f.price_snapshot = priceSnapshot(f, prices, crane);
+          workId = (await db.saveNew("work_records", f, "Asistan: döküm fişi")).id;
+          done.work++;
+        }
+        const docFields = { category: "Döküm Fişi", owner_type: "work", owner_id: workId, date, doc_no: no, title: "Döküm fişi " + no,
+          note: [val(c, "tonnage") ? val(c, "tonnage") + " ton" : "", r.dump_site_name].filter(Boolean).join(" · "),
+          ticket_vehicle_id: vid, ticket_tonnage: Number(val(c, "tonnage")) || null, ticket_dump_site_id: val(c, "dump_site") || null };
+        await (file ? db.saveDocument(docFields, file) : db.saveNew("documents", docFields, "Asistan: döküm fişi"));
+        done.ticket++;
+        continue;
+      }
+      if (k === "doc") {
+        const r = v.docs[Number(c.dataset.i)];
+        const file = files[r.photo];
+        const category = val(c, "category");
+        const [otype, oid] = val(c, "owner").split(":");
+        const f = { category, owner_type: otype, owner_id: oid, [otype + "_id"]: oid, date: val(c, "date"), doc_no: val(c, "doc_no").trim(),
+          expiry_date: val(c, "expiry_date") || null, title: category, note: "Asistan fotoğraftan okudu" };
+        await (file ? db.saveDocument(f, file) : db.saveNew("documents", f, "Asistan: belge"));
+        done.doc++;
+        continue;
+      }
       if (k === "work") {
         const customer = await ensureCustomer(val(c, "customer"));
         let site = val(c, "site") || null;
@@ -377,6 +516,18 @@ async function save(ctx, out, v, d, { message, files }) {
         done.work++;
         const wr = v.works[Number(c.dataset.i)];
         const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";
+        // Ölçüm + onaylı örnek + reddedilen eşleşme
+        try {
+          const m = measureCorrection(wr.ai, fields, wr.issues.length > 0);
+          await db.metaSet("ai_quality", addQuality(await db.metaGet("ai_quality"), m));
+          const out = `${nm("customers", customer) || "?"} | ${veh.name} | ${fields.work_type} | ${fields.quantity} ${fields.unit}`;
+          await db.metaSet("ai_examples", addExample(await db.metaGet("ai_examples"), { msg: message.slice(0, 300), out }));
+          if (wr.ai?.customer_id && wr.ai.customer_id !== customer && wr.mentions?.customer) {
+            const neg = (await db.metaGet("ai_negative_aliases")) || [];
+            neg.unshift({ alias: wr.mentions.customer, target_type: "customer", target_id: wr.ai.customer_id });
+            await db.metaSet("ai_negative_aliases", neg.slice(0, 200));
+          }
+        } catch (e) {}
         const custSel = val(c, "customer");
         await learn(wr.mentions?.customer, "customer", customer, nm("customers", customer) || (custSel.startsWith("new:") ? custSel.slice(4) : ""));
         // "Yeni: Mahir Bey" önerisi yerine mevcut Hisar Polat seçildiyse "Mahir Bey" → Hisar Polat öğrenilir
@@ -467,7 +618,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
     qs("[data-msg]", ctx.root).value = "";

@@ -109,6 +109,7 @@ export const FIELD_LABELS = {
   vehicle_type: "Araç / makine türü",
   vehicle_group: "Araç grubu",
   plate: "Plaka / Kod",
+  tank_capacity: "Depo kapasitesi (litre)",
   brand: "Marka",
   model: "Model",
   model_year: "Model yılı",
@@ -826,6 +827,7 @@ async function master(ctx) {
             "contractor_id",
             "km",
             "machine_hours",
+            "tank_capacity",
           ]
         : store === "personnel"
           ? ["name", "role", "phone", "employment_date", "vehicle_id"]

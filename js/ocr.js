@@ -198,13 +198,37 @@ export function totalAmount(text) {
 }
 
 // Okunan alanların kendi içinde tutarlı olup olmadığını denetler. Yalnız uyarı üretir; değer değiştirmez.
+export function validVKN(v) {
+  if (!/^\d{10}$/.test(v)) return false;
+  const d = v.split("").map(Number);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    const t = (d[i] + 9 - i) % 10;
+    let p = (t * 2 ** (9 - i)) % 9;
+    if (t !== 0 && p === 0) p = 9;
+    sum += p;
+  }
+  return (10 - (sum % 10)) % 10 === d[9];
+}
+export function validTCKN(v) {
+  if (!/^[1-9]\d{10}$/.test(v)) return false;
+  const d = v.split("").map(Number);
+  const d10 = ((d[0] + d[2] + d[4] + d[6] + d[8]) * 7 - (d[1] + d[3] + d[5] + d[7])) % 10;
+  const d11 = d.slice(0, 10).reduce((a, b) => a + b, 0) % 10;
+  return ((d10 + 10) % 10) === d[9] && d11 === d[10];
+}
 export function checkFields(docType, f, today = new Date().toISOString().slice(0, 10)) {
   const out = [];
+  if (f.tax_no) {
+    const t = String(f.tax_no).replace(/\D/g, "");
+    if (t.length === 10 && !validVKN(t)) out.push({ level: "warn", text: `Vergi no ${t} geçersiz görünüyor (kontrol hanesi tutmuyor) — okuma hatası olabilir.` });
+    else if (t.length === 11 && !validTCKN(t)) out.push({ level: "warn", text: `TC kimlik no geçersiz görünüyor — okuma hatası olabilir.` });
+  }
   const near = (a, b, tol) => Math.abs(a - b) <= tol;
   if (f.date) {
     if (f.date > today) out.push({ level: "warn", text: "Tarih gelecekte görünüyor — OCR hatalı okumuş olabilir." });
-    else if (f.date < new Date(new Date(today).getTime() - 400 * 86400000).toISOString().slice(0, 10))
-      out.push({ level: "warn", text: "Tarih bir yıldan eski — kontrol edin." });
+    else if (f.date < new Date(new Date(today).getTime() - 60 * 86400000).toISOString().slice(0, 10))
+      out.push({ level: "warn", text: "Tarih 60 günden eski — doğru fiş mi, tarih doğru okunmuş mu kontrol edin." });
   }
   if (f.subtotal != null && f.kdv != null && f.total != null && !near(f.subtotal + f.kdv, f.total, 0.05))
     out.push({ level: "error", text: `Ara toplam + KDV (${(f.subtotal + f.kdv).toFixed(2)}) genel toplamla (${f.total.toFixed(2)}) tutmuyor.` });
