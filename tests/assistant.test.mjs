@@ -16,7 +16,7 @@ assert.equal(v.works[0].quantity, 0.5); assert.equal(v.works[0].ok, false);
 v = validatePlan({ works: [{ new_customer: 'Kaya İnşaat', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Kaya İnşaat 34 ABC 123 3 sefer moloz', d, today });
 assert.equal(v.works[0].new_customer, 'Kaya İnşaat'); assert.deepEqual(v.newCustomers, ['Kaya İnşaat']); assert.equal(v.works[0].ok, true);
 v = validatePlan({ works: [{ new_customer: 'Uydurma AŞ', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Kaya İnşaat 34 ABC 123 3 sefer moloz', d, today });
-assert.equal(v.works[0].new_customer, null); assert.equal(v.works[0].ok, false);
+assert.equal(v.works[0].new_customer, 'Kaya İnşaat', 'uydurma ad yerine mesajdaki ad önerilir'); assert.equal(v.works[0].ok, false);
 v = validatePlan({ works: [{ new_customer: 'Gumus Yapi', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Gumus Yapi 34 ABC 123 3 sefer', d, today });
 assert.equal(v.works[0].customer_id, 'CG'); assert.equal(v.newCustomers.length, 0);
 assert.equal(similarCard('Öztürk Grup', d.customers).id, 'CO');
@@ -125,7 +125,7 @@ console.log('assistant-memory PASS');
 // büyük listede yalnız ilgili müşteriler gönderilir
 {
   const { assistantContext } = await import('../js/assistant-core.js');
-  const many = Array.from({ length: 60 }, (_, i) => ({ id: 'X' + i, name: 'Firma ' + i + ' Yapı' }));
+  const many = Array.from({ length: 200 }, (_, i) => ({ id: 'X' + i, name: 'Firma ' + i + ' Yapı' }));
   const db2 = { ...d, customers: [...d.customers, ...many], work_records: [] };
   const c1 = assistantContext(db2, today, 'Leda 34 ABC 123 3 sefer');
   assert.ok(c1.customers.some(([id]) => id === 'CL')); assert.ok(c1.customers.length < 20);

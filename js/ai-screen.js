@@ -27,9 +27,8 @@ export async function screen(ctx) {
   const gpu = await ai.gpuStatus();
   const savedId = (await db.metaGet("ai_model_id")) || "";
   const gem = await geminiSettings(db);
-  const { DEFAULT_RULES } = await import("./assistant-rules.js");
-  const savedRules = await db.metaGet("assistant_rules");
-  const rulesText = savedRules == null ? DEFAULT_RULES : savedRules;
+  const { DEFAULT_RULES, effectiveRules } = await import("./assistant-rules.js");
+  const rulesText = effectiveRules(await db.metaGet("assistant_rules"));
   root.innerHTML =
     appbar("Yapay Zeka (deneysel)", "Telefonda çalışır · ücretsiz", { back: "#/ayarlar" }) +
     `<div style="height:10px"></div>

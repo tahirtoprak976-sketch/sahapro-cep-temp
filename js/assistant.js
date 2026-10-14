@@ -139,9 +139,8 @@ export async function screen(ctx) {
       parts.push({ text: `Fotoğraf sayısı: ${images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(message || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
-      const { DEFAULT_RULES } = await import("./assistant-rules.js");
-      const savedRules = await db.metaGet("assistant_rules");
-      const system = assistantSystem(savedRules == null ? DEFAULT_RULES : savedRules);
+      const { effectiveRules } = await import("./assistant-rules.js");
+      const system = assistantSystem(effectiveRules(await db.metaGet("assistant_rules")));
       const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema: assistantSchema() }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       });
