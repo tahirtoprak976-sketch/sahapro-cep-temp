@@ -318,7 +318,7 @@ export async function reanalyzeMessage(id, confirmed) {
       ...m,
       review_rows: null,
       reviewed_at: null,
-      engine_version: "sahapro-parse/3",
+      engine_version: "sahapro-parse/4",
       updated_at: nowISO(),
     };
     t.put("inbox_messages", updated);

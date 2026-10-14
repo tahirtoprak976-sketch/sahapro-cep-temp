@@ -8,7 +8,7 @@ import {
   refineWorkType,
 } from "./parser.js";
 const live = (d, s) => (d[s] || []).filter((x) => !x.deleted_at);
-export const ENGINE_VERSION = "sahapro-parse/3";
+export const ENGINE_VERSION = "sahapro-parse/4";
 // Bu kaynaklarla gelen eşleşme forma otomatik yazılmaz; kullanıcı seçer.
 const NO_FILL = new Set(["spelling_candidate", "ascii_fold", "context_candidate"]);
 const fillable = (c) => !NO_FILL.has(c.via);
@@ -79,10 +79,11 @@ export function tokenize(raw) {
   let at = 0;
   const patterns = [
     ["time_range", /^(\d{1,2}[.:]\d{2})\s*[–—-]\s*(\d{1,2}[.:]\d{2})/],
-    ["date", /^(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{2,4})(?!\d)/],
+    ["time_range", /^(?:[01]?\d|2[0-3])\s*[–—-]\s*(?:[01]?\d|2[0-4])(?=\s*(?:arası|arasi|arasında|arasinda)(?![\p{L}]))/u],
+    ["date", /^(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{2,4}|(?:0?[1-9]|[12]\d|3[01])\/(?:0?[1-9]|1[0-2]))(?![\d/])/],
     ["plate", /^\d{2}\s*[a-zçğıöşü]{1,3}\s*\d{2,4}(?!\w)/i],
     ["building", /^b\s*\d{2,4}(?!\w)/i],
-    ["machine_code", /^(?:[a-zA-Z]{2,6}\d{2,6}|[A-Z]{2,6}\s+\d{2,6})(?!\w)/],
+    ["machine_code", /^(?:[a-zA-Z]{2,6}\d{2,6}|[A-Z]{2,6}\s+\d{2,6})(?![\w:]|[.,]\d)/],
     ["time", /^\d{1,2}:\d{2}(?!\d)/],
     ["number", /^\d+(?:[.,]\d+)*(?:si|sı|su|sü)?/i],
     ["word", /^[\p{L}]+(?:['’][\p{L}]+)?/u],
@@ -191,8 +192,16 @@ export function intentOf(text) {
     return "new_work";
   return "unknown";
 }
-function dateValue(value) {
+function dateValue(value, header) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const short = value.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (short) {
+    const y = /^\d{4}/.test(header || "") ? header.slice(0, 4) : null;
+    if (!y) return null;
+    const dd = Number(short[1]), mm = Number(short[2]);
+    if (!(dd >= 1 && dd <= new Date(Number(y), mm, 0).getDate())) return null;
+    return `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+  }
   const m = value.match(/(\d{1,2})[./](\d{1,2})[./](\d{2,4})/);
   if (!m) return null;
   return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
@@ -207,9 +216,11 @@ function shiftDate(date, n) {
 function dates(text, header) {
   const explicit = [
     ...text.matchAll(
-      /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{2,4})\b/g,
+      /\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{2,4})\b|(?<![\d/.])(?:0?[1-9]|[12]\d|3[01])\/(?:0?[1-9]|1[0-2])(?![\d/])/g,
     ),
-  ].map((m) => dateValue(m[0]));
+  ]
+    .map((m) => dateValue(m[0], header))
+    .filter(Boolean);
   const t = clean(text);
   let relative = null;
   const months = {
@@ -255,12 +266,18 @@ function dates(text, header) {
       relative = shiftDate(header, -((at - day + 7) % 7 || 7));
     }
   }
+  const bad = [...text.matchAll(/(?<![\d/.])\d{1,2}\/\d{1,2}(?![\d/.])/g)].some(
+    (m) => !dateValue(m[0], header),
+  );
   const unresolved =
     !explicit.length &&
     !relative &&
-    /(?:geçen|gecen|bu)\s+(?:hafta|ay)|önceki\s+gün|onceki\s+gun|birkaç\s+gün/.test(
+    (/(?:geçen|gecen|bu)\s+(?:hafta|ay)|önceki\s+gün|onceki\s+gun|birkaç\s+gün/.test(
       t,
-    );
+    ) ||
+      /(?<![\p{L}\p{N}])(?:pazartesi|salı|çarşamba|perşembe|cumartesi|cuma|pazar(?!\s*yeri))(?:\s+günü)?(?![\p{L}\p{N}])/u.test(
+        t,
+      ));
   return {
     value: unresolved ? null : explicit[0] || relative || header || null,
     conflict:
@@ -268,16 +285,26 @@ function dates(text, header) {
       !!(explicit[0] && relative && explicit[0] !== relative),
     explicit: explicit.length > 0,
     relative: !!relative,
+    bad,
   };
 }
-function nearQuantities(text, offset = 0) {
+// "seferrr", "sefeer" gibi uzatmaları "sefer"e indirger
+function collapseUnit(u) {
+  return /^s+e+f+e+r+$/.test(u) ? "sefer" : u;
+}
+function nearQuantities(text, offset = 0, mola = []) {
   const out = [],
     re =
-      /(?<![\p{L}\p{N}])((?:\d+|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s+buçuk|yarım|\d+(?:[.,]\d+)?|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l|kamyonet|kamyon|tır|tir)(?![\p{L}])/giu;
+      /(?<![\p{L}\p{N}])((?:\d+|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s+buçuk|yarım|\d+(?:[.,]\d+)?|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(?:tane\s*)?(s+e+f+e+r+|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l|kamyonet|kamyon|tır|tir)(?![\p{L}])/giu;
   let m;
   while ((m = re.exec(text))) {
     const before = clean(text.slice(Math.max(0, m.index - 25), m.index));
     if (/(?:fiyat|ücret|ucret|kdv)\s*[:=]?\s*$/.test(before)) continue;
+    // "mola 1 saat": mola süresi iş miktarı değildir (aşağıda mola olarak ayrıca okunur)
+    if (/mola\s*(?:süresi|suresi)?\s*[:=-]?\s*$/.test(before)) {
+      mola.push({ value: quantityWord(m[1]), unit: units[collapseUnit(clean(m[2]))] || "Sefer", span: { start: offset + m.index, end: offset + m.index + m[0].length } });
+      continue;
+    }
     // Plakanın sayı kuyruğu ("34 ABC 123 sefer") miktar değildir.
     if (
       /^\d{2,4}$/.test(m[1]) &&
@@ -290,12 +317,79 @@ function nearQuantities(text, offset = 0) {
     if (v !== null)
       out.push({
         value: v,
-        unit: units[clean(m[2])] || "Sefer",
+        unit: units[collapseUnit(clean(m[2]))] || "Sefer",
         vehicleCount:
-          !/sefer|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l/i.test(m[2]),
+          !/^(?:s+e+f+e+r+|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l)$/i.test(m[2]),
         span: { start: offset + m.index, end: offset + m.index + m[0].length },
       });
   }
+  // Birim önde: "sefer 6", "yevmiye: 1" ("saat 8" saat dilimi olabileceğinden hariç)
+  const rev =
+    /(?<![\p{L}\p{N}])(s+e+f+e+r+|yevmiye|yovmiye|ton)\s*[:=-]?\s*(\d+(?:[.,]\d+)?)(?![\p{L}\p{N}.,:])/giu;
+  let r;
+  while ((r = rev.exec(text))) {
+    const s0 = offset + r.index,
+      e0 = offset + r.index + r[0].length;
+    if (out.some((o) => o.span.start < e0 && s0 < o.span.end)) continue;
+    const v = quantityWord(r[2]);
+    if (v !== null)
+      out.push({
+        value: v,
+        unit: units[collapseUnit(clean(r[1]))] || "Sefer",
+        vehicleCount: false,
+        span: { start: s0, end: e0 },
+      });
+  }
+  // "x3", "3x": araç/sefer adedi; birim onaylanır
+  const times = /(?<![\p{L}\p{N}])(?:x\s*(\d{1,2})|(\d{1,2})\s*x)(?![\p{L}\p{N}])/giu;
+  let x;
+  while ((x = times.exec(text))) {
+    const s0 = offset + x.index,
+      e0 = offset + x.index + x[0].length;
+    if (out.some((o) => o.span.start < e0 && s0 < o.span.end)) continue;
+    out.push({
+      value: Number(x[1] || x[2]),
+      unit: "Sefer",
+      vehicleCount: true,
+      note: "\"" + x[0].trim() + "\" sefer olarak önerildi; onay gerekli",
+      span: { start: s0, end: e0 },
+    });
+  }
+  // "5 er sefer", "4'er sefer": her biri için miktar
+  const each =
+    /(?<![\p{L}\p{N}])(\d+|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(?:['’]\s*)?(?:er|ar|şer|şar)\s+(s+e+f+e+r+|saat|ton)(?![\p{L}])/giu;
+  let e;
+  while ((e = each.exec(text))) {
+    const s0 = offset + e.index,
+      e0 = offset + e.index + e[0].length;
+    for (let i = out.length - 1; i >= 0; i--)
+      if (out[i].span.start < e0 && s0 < out[i].span.end) out.splice(i, 1);
+    const v = quantityWord(e[1]);
+    if (v !== null)
+      out.push({
+        value: v,
+        unit: units[collapseUnit(clean(e[2]))] || "Sefer",
+        vehicleCount: false,
+        each: true,
+        span: { start: s0, end: e0 },
+      });
+  }
+  // "tam gün" / "yarım gün": yevmiye olarak önerilir, onay gerekir
+  const day = /(?<![\p{L}\p{N}])(tam|yarım|yarim)\s+gün(?:lük|lük)?(?![\p{L}])/giu;
+  let dm;
+  while ((dm = day.exec(text))) {
+    const s0 = offset + dm.index,
+      e0 = offset + dm.index + dm[0].length;
+    if (out.some((o) => o.span.start < e0 && s0 < o.span.end)) continue;
+    out.push({
+      value: /^tam/i.test(dm[1]) ? 1 : 0.5,
+      unit: "Yevmiye",
+      vehicleCount: true,
+      note: `"${dm[0]}" yevmiye olarak önerildi; onay gerekli`,
+      span: { start: s0, end: e0 },
+    });
+  }
+  out.sort((a, b) => a.span.start - b.span.start);
   return out;
 }
 function priceInfo(text, offset, raw) {
@@ -475,13 +569,13 @@ function dumpDistribution(raw, headerQty, d) {
   const hasPlace = live(d, "dump_sites").some((s) =>
       clean(rest).includes(clean(s.name || "")),
     ),
-    looksLikeDistribution = /[:\n]\s*(?:\d+|biri|ikisi)\s+[\p{L}]/u.test(rest);
+    looksLikeDistribution = /(?:(?<!\d):|\n)\s*(?:\d+|biri|ikisi)\s+[\p{L}]/u.test(rest);
   if (
     !hasPlace &&
     (!looksLikeDistribution || nearQuantities(rest).some((q) => q.unit !== "L"))
   )
     return null;
-  const split = rest.search(/[:\n]/);
+  const split = rest.search(/(?<!\d):|\n/);
   if (split < 0 && !/,/.test(rest)) return null;
   const begin = headerQty.span.end + (split >= 0 ? split + 1 : 0),
     tail = raw.slice(begin),
@@ -793,7 +887,7 @@ export function analyzeMessage(message, d) {
       engine_version: ENGINE_VERSION,
     };
     if (qty?.vehicleCount)
-      row.notes.push("Araç adedi sefer olarak önerildi; onay gerekli");
+      row.notes.push(qty.note || "Araç adedi sefer olarak önerildi; onay gerekli");
     if (multiSite)
       row.notes.push("Müşterinin birden fazla şantiyesi var; mesajda şantiye yok, seçin");
     if (row.kind === "work") {
@@ -810,6 +904,8 @@ export function analyzeMessage(message, d) {
       if (c && !row[field])
         row.notes.push(label + " yazım farkıyla eşleşti (" + c.name + "); doğruysa adayı seçin");
     }
+    if (date.bad || (wholeDate.bad && !date.explicit && !date.relative))
+      row.notes.push("Mesajdaki tarih geçersiz görünüyor; gerçek tarihi seçin");
     if (
       date.conflict ||
       (wholeDate.conflict && !date.explicit && !date.relative)
@@ -848,31 +944,38 @@ export function analyzeMessage(message, d) {
       }
   } else {
     for (const segment of segments) {
-      const intent = intentOf(segment.text);
+      let intent = intentOf(segment.text);
       intents.push({
         type: intent,
         span: { start: segment.start, end: segment.end },
       });
       if (["correction", "add_to_existing", "payment_notice"].includes(intent))
         continue;
-      const quantities = nearQuantities(segment.text, segment.start).filter(
+      let quantities = nearQuantities(segment.text, segment.start).filter(
         (q) => !/^\s*mola/i.test(raw.slice(q.span.end)),
       );
+      if (quantities.some((q) => q.each))
+        quantities = quantities.filter((q) => q.each || !q.vehicleCount);
       if (!quantities.length) {
         const range = tokenize(segment.text).find(
           (t) => t.type === "time_range",
         );
         if (range) {
-          const times = range.raw.match(/\d{1,2}[.:]\d{2}/g),
+          const times = range.raw.match(/\d{1,2}(?:[.:]\d{2})?/g),
             minutes = (t) => {
-              const [h, m] = t.split(/[.:]/).map(Number);
-              return h < 24 && m < 60 ? h * 60 + m : null;
+              const [h, m = 0] = t.split(/[.:]/).map(Number);
+              return h <= 24 && m < 60 ? h * 60 + m : null;
             },
             a = minutes(times[0]),
             b = minutes(times[1]);
-          const br = nearQuantities(segment.text, segment.start).filter((q) =>
-            /^\s*mola/i.test(raw.slice(q.span.end)),
-          );
+          const molaBefore = [];
+          nearQuantities(segment.text, segment.start, molaBefore);
+          const br = [
+            ...nearQuantities(segment.text, segment.start).filter((q) =>
+              /^\s*mola/i.test(raw.slice(q.span.end)),
+            ),
+            ...molaBefore,
+          ];
           const breakMinutes = br.reduce(
             (n, q) => n + (q.unit === "Saat" ? q.value * 60 : 0),
             0,
@@ -922,6 +1025,37 @@ export function analyzeMessage(message, d) {
           last.field_sources.unit_price = "Kaynak: " + price.evidence.text;
           continue;
         }
+        // Miktarsız, araçsız, müşteri/şantiye içeren son satır ("Firma F Eyüp moloz") liste için ortak bilgidir
+        const sharedCtx =
+          intent === "new_work" &&
+          works.length > 0 &&
+          !cardCandidates(segment.text, "vehicles", d).some(fillable) &&
+          ["customers", "sites"].some((st) =>
+            cardCandidates(segment.text, st, d).some(fillable),
+          ) &&
+          works.some((w) => !w.customer_id || !w.site_id || !w.work_type);
+        if (sharedCtx) {
+          const wt = detectWorkType(segment.text);
+          for (const w of works) {
+            for (const [field, store] of [
+              ["customer_id", "customers"],
+              ["site_id", "sites"],
+            ]) {
+              if (w[field]) continue;
+              const cs = cardCandidates(segment.text, store, d).filter(fillable);
+              if (cs.length)
+                w.candidates[field] = cs.map((c) => ({ ...c, via: "context_candidate" }));
+            }
+            if (!w.work_type && wt) {
+              w.work_type = refineWorkType(segment.text, wt, w.unit).type;
+              w.inference_confirmed = false;
+            }
+            w.notes.push(
+              `Son satır "${segment.text}" ortak bilgi sayıldı; müşteri/şantiye/iş türünü onaylayın`,
+            );
+          }
+          continue;
+        }
         if (intent === "new_work") {
           works.push(makeRow(segment.text, segment.start, null));
         } else if (intent === "fuel") {
@@ -930,7 +1064,20 @@ export function analyzeMessage(message, d) {
           r.quantity = null;
           r.unit = null;
           fuels.push(r);
-        } else if (segment.text.trim())
+        } else if (
+          /patla|bozul|arıza|ariza|tamir|lastik|yağ\s*değiş|yag\s*degis|filtre|servis|akü|aku|yedek\s*parça|yedek\s*parca/.test(
+            clean(segment.text),
+          )
+        )
+          notices.push({
+            type: "expense_or_breakdown",
+            blocking: false,
+            text:
+              "Gider/arıza bildirimi: iş satırına dönüştürülmedi. Gider veya Arıza ekranından girin: " +
+              segment.text,
+            span: { start: segment.start, end: segment.end },
+          });
+        else if (segment.text.trim())
           notices.push({
             type: "unknown",
             blocking: false,
@@ -939,6 +1086,16 @@ export function analyzeMessage(message, d) {
           });
         continue;
       }
+      // Araç/müşteri/şantiye kartı + miktar içeren satır, iş sözcüğü olmasa da yeni iştir
+      // ("Öztürk Kağıthane 34 ABC 123 3 sefer"). Kartsız çıplak miktar devam mesajı olarak kalır.
+      if (
+        intent === "unknown" &&
+        quantities.some((q) => q.unit !== "L") &&
+        ["vehicles", "customers", "sites"].some((st) =>
+          cardCandidates(segment.text, st, d).some(fillable),
+        )
+      )
+        intent = "new_work";
       // Numeric/bare continuation with no preceding work is pending, never a complete new job.
       if (intent === "unknown" && !works.length && !fuels.length) {
         notices.push({
@@ -949,21 +1106,40 @@ export function analyzeMessage(message, d) {
         });
         continue;
       }
+      // Satır sınırları: virgül / "ve" / "+" ile; yoksa, önceki satırda zaten bulunan türden
+      // (plaka, şantiye, müşteri) yeni bir kart miktarın ardından geliyorsa o kart sonraki satıra aittir.
+      const bounds = [];
+      {
+        let prevStart = segment.start;
+        for (let i = 0; i < quantities.length; i++) {
+          const q = quantities[i];
+          if (i === 0) {
+            bounds.push(segment.start);
+            continue;
+          }
+          const a = quantities[i - 1],
+            gap = raw.slice(a.span.end, q.span.start),
+            m = [...gap.matchAll(/,|\sve\s|\s\+\s/gi)].at(-1);
+          let at = m ? a.span.end + m.index + m[0].length : null;
+          if (at === null) {
+            const prefix = raw.slice(prevStart, a.span.start),
+              hits = [];
+            for (const st of ["vehicles", "sites", "customers"]) {
+              if (!cardCandidates(prefix, st, d).some(fillable)) continue;
+              for (const c of cardCandidates(gap, st, d))
+                if (fillable(c) && c.evidence?.span)
+                  hits.push(c.evidence.span.start);
+            }
+            at = hits.length ? a.span.end + Math.min(...hits) : q.span.start;
+          }
+          bounds.push(at);
+          prevStart = at;
+        }
+      }
       for (let i = 0; i < quantities.length; i++) {
         const q = quantities[i];
-        // "A 4 sefer hafriyat, B 3 sefer moloz": etiketler virgül/ve ile sonraki işe ait.
-        const cut = (a, b) => {
-          const gap = raw.slice(a.span.end, b.span.start),
-            m = [...gap.matchAll(/,|\sve\s|\s\+\s/gi)].at(-1);
-          return m ? a.span.end + m.index + m[0].length : null;
-        };
-        const start =
-            i === 0
-              ? segment.start
-              : (cut(quantities[i - 1], q) ?? q.span.start),
-          end = quantities[i + 1]
-            ? (cut(q, quantities[i + 1]) ?? quantities[i + 1].span.start)
-            : segment.end;
+        const start = bounds[i],
+          end = quantities[i + 1] ? bounds[i + 1] : segment.end;
         const text = raw.slice(start, end),
           last = works.at(-1);
         if (
@@ -999,7 +1175,67 @@ export function analyzeMessage(message, d) {
           });
           continue;
         }
+        if (q.each) {
+          const cars = [
+            ...new Map(
+              cardCandidates(segment.text, "vehicles", d)
+                .filter(fillable)
+                .map((c) => [c.id, c]),
+            ).values(),
+          ];
+          if (cars.length >= 2) {
+            for (const c of cars) {
+              const rr = makeRow(segment.text, segment.start, { ...q, each: false });
+              rr.vehicle_id = c.id;
+              rr.candidates.vehicle_id = [c];
+              rr.inference_confirmed = false;
+              rr.notes.push(
+                `"${raw.slice(q.span.start, q.span.end)}" her araç için ${q.value} ${q.unit.toLowerCase()} okundu; ${cars.length} araç için ayrı satır açıldı, onaylayın`,
+              );
+              works.push(rr);
+            }
+            continue;
+          }
+          const rr = makeRow(text, start, { ...q, each: false });
+          const cnt = segment.text.match(
+            /(\d+|iki|üç|dört|beş|altı)\s*(?:kamyonet|kamyon|tır|araç)(?![\p{L}])/iu,
+          );
+          const n = cnt ? quantityWord(cnt[1]) : null;
+          rr.inference_confirmed = false;
+          if (n) {
+            rr.quantity = n * q.value;
+            rr.notes.push(
+              `${n} araç × ${q.value} = ${rr.quantity} ${q.unit.toLowerCase()} olarak hesaplandı; onaylayın`,
+            );
+          } else if (cars.length === 1) {
+            rr.notes.push(
+              `"${raw.slice(q.span.start, q.span.end)}" tek araç için ${q.value} ${q.unit.toLowerCase()} okundu; onaylayın`,
+            );
+          } else {
+            rr.quantity = null;
+            rr.unit = null;
+            rr.notes.push(
+              `"${raw.slice(q.span.start, q.span.end)}": kaç araç olduğu belli değil; toplam miktarı girin`,
+            );
+          }
+          works.push(rr);
+          continue;
+        }
         const r = makeRow(text, start, q);
+        const part = text.match(
+          /(sabah|öğleden\s+sonra|öğle|akşam|gece)\s+(\d+(?:[.,]\d+)?)\s+(?:ve\s+)?(?:sabah|öğleden\s+sonra|öğle|akşam|gece)\s+(\d+(?:[.,]\d+)?)\s*(?:sefer|saat)/iu,
+        );
+        if (part && q.unit !== "L") {
+          const a = quantityWord(part[2]),
+            b = quantityWord(part[3]);
+          if (a !== null && b !== null && b === q.value) {
+            r.quantity = a + b;
+            r.inference_confirmed = false;
+            r.notes.push(
+              `Parça parça yazılmış (${part[2]} + ${part[3]}); toplam ${a + b} olarak önerildi, onaylayın`,
+            );
+          }
+        }
         if (q.unit === "L") fuels.push(r);
         else works.push(r);
       }
