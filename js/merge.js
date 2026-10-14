@@ -24,6 +24,7 @@ export async function screen(ctx) {
     `<div style="height:10px"></div>
     ${notice("info", "Aynı firma birden çok kart olarak açıldıysa tek karta toplayın. Şantiyesi ayrı müşteri gibi açılmışsa \"şantiye olarak ekle\"yi işaretleyin. Kayıtlar silinmez; eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir.")}
     ${groups.length ? `<div class="section-title">Benzer görünenler (${groups.length})</div>` + groups.map((g, i) => `<div class="card tap" data-group="${i}"><div class="small">${g.level === "güçlü" ? "🔴" : "🟡"} ${g.customers.map((c) => `<b>${esc(c.name)}</b> <span class="muted">(${c.works} iş)</span>`).join(" · ")}</div><div class="muted tiny" style="margin-top:4px">Dokunun → aşağıda seçilsin</div></div>`).join("") : ""}
+    <button class="btn block" data-go="#/kime-kontrol">🔎 Benzer adlı ama farklı müşteriler: işleri tek tek kontrol et</button>
     <div class="section-title">Birleştirme</div>
     <div class="card">
       <div class="field"><label>Kalacak (doğru) müşteri</label><select data-target><option value="">— seçin —</option>${list.map((c) => `<option value="${esc(c.id)}">${esc(c.name)} (${c.works} iş)</option>`).join("")}</select></div>

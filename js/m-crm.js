@@ -146,6 +146,13 @@ async function customerDetail(ctx, id) {
     .filter((x) => x.cash_type === "Müşteriden Para Alındı")
     .reduce((s, x) => s + (Number(x.amount) || 0), 0);
   const bakiye = cariBalance(mine(cari));
+  const allCust = await db.listActive("customers");
+  const parent = c.parent_customer_id ? allCust.find((x) => x.id === c.parent_customer_id) : null;
+  const month = new Date().toISOString().slice(0, 7);
+  const subs = allCust.filter((x) => x.parent_customer_id === id).map((x) => {
+    const ws = works.filter((w) => isActive(w) && w.customer_id === x.id);
+    return { c: x, all: ws.length, month: ws.filter((w) => String(w.date).startsWith(month)).length };
+  });
   root.innerHTML =
     appbar(c.name, c.contact || "", { back: "#/musteriler" }) +
     `
@@ -153,7 +160,8 @@ async function customerDetail(ctx, id) {
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr)">
       ${stat(fmtTL(hakSum), "Hakediş ₺")}${stat(fmtTL(tahSum), "Tahsilat ₺")}${stat(fmtTL(bakiye), "Bakiye ₺", bakiye > 0 ? "warn" : "ok")}
     </div>
-    ${c.phone || c.note ? `<div class="card">${c.phone ? kv("Telefon", c.phone) : ""}${c.note ? kv("Not", c.note) : ""}</div>` : ""}
+    ${c.phone || c.note || parent ? `<div class="card">${parent ? `<div class="kv"><span class="k">Ana firma</span><span class="v"><a href="#/musteriler/${parent.id}">${esc(parent.name)}</a> (taşeronu)</span></div>` : ""}${c.phone ? kv("Telefon", c.phone) : ""}${c.note ? kv("Not", c.note) : ""}</div>` : ""}
+    ${subs.length ? `<div class="section-title">Taşeronları (${subs.length})</div>` + subs.map((x) => li({ ic: "🏗", href: "#/musteriler/" + x.c.id, t1: esc(x.c.name), t2: `Bu ay ${x.month} iş · toplam ${x.all} iş` })).join("") : ""}
     <div class="section-title">Şantiyeler (${mSites.length})</div>
     ${
       mSites.length
@@ -271,6 +279,9 @@ async function customerForm(ctx, editId) {
   const { root, db } = ctx;
   const rec = editId ? await db.get("customers", editId) : null;
   const v = rec || {};
+  const allC = (await db.listActive("customers")).sort((a, b) => String(a.name).localeCompare(String(b.name), "tr"));
+  // kendisi ve kendi taşeronları ana firma olamaz (döngü olmasın)
+  const parentOpts = allC.filter((c) => c.id !== editId && c.parent_customer_id !== editId).map((c) => ({ v: c.id, t: c.name }));
   root.innerHTML =
     appbar(editId ? "Müşteri Düzenle" : "+ Müşteri", "", {
       back: editId ? "#/musteriler/" + editId : "#/musteriler",
@@ -279,6 +290,7 @@ async function customerForm(ctx, editId) {
     <form data-form novalidate style="margin-top:10px">
       ${fText("Firma / Müşteri Adı", "name", v.name || "", { req: true })}
       <div class="formgrid2">${fText("Yetkili", "contact", v.contact || "")}${fText("Telefon", "phone", v.phone || "", { type: "tel" })}</div>
+      ${fSelect("Ana firma (taşeronsa — örn. Ağırtaş → Hisar Polat)", "parent_customer_id", parentOpts, v.parent_customer_id || "")}
       ${fArea("Not", "note", v.note || "")}
       ${fSelect("Durum", "active", ACTIVE_SEL, v.active === false ? "0" : "1", { empty: false })}
     </form>
@@ -295,6 +307,7 @@ async function customerForm(ctx, editId) {
       phone: val.phone || "",
       note: val.note || "",
       active: val.active !== "0",
+      parent_customer_id: val.parent_customer_id || null,
     };
     if (editId) {
       await db.saveExisting("customers", rec, fields, "Müşteri düzenlendi");
@@ -1602,6 +1615,7 @@ async function settings(ctx) {
       <div class="muted tiny" style="margin-top:8px">Tam ZIP: JSON + ekler (fotoğraflar). JSON'a fotoğraf GÖMÜLMEZ.</div>
     </div>
     <div class="section-title">Kart Düzeni</div>
+    <div class="card tap" data-go="#/kime-kontrol"><div class="row between"><span>🔎 Kime çalışıldı? (Kuyucu / Aydın gibi benzer adlı müşterilerin işleri)</span><span class="muted small">›</span></div></div>
     <div class="card tap" data-go="#/kart-birlestir"><div class="row between"><span>🔗 Müşteri kartlarını birleştir (aynı firma / şantiye ayrı açılmışsa)</span><span class="muted small">›</span></div></div>
     <div class="section-title">Yapay Zeka (deneysel)</div>
     <div class="card tap" data-go="#/yapay-zeka"><div class="row between"><span>🤖 Telefonda çalışan ücretsiz model — indir ve dene</span><span class="muted small">›</span></div></div>
