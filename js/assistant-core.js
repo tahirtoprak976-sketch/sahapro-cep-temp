@@ -1,7 +1,7 @@
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
-import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, todayStr } from "./core.js";
+import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
 
@@ -12,8 +12,10 @@ const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 export function assistantContext(d, today = todayStr()) {
   const recent = live(d, "work_records")
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
-    .slice(0, 25)
-    .map((w) => [w.date, w.customer_id, w.site_id, w.vehicle_id, w.work_type, w.quantity, w.unit].join("|"));
+    .slice(0, 30)
+    .map((w) => [w.id, w.date, w.customer_id, w.site_id, w.vehicle_id, w.work_type, w.quantity, w.unit].join("|"));
+  const lastOf = (store, n, f) =>
+    live(d, store).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, n).map(f);
   return {
     today,
     customers: live(d, "customers").map((c) => [c.id, c.name]),
@@ -22,7 +24,11 @@ export function assistantContext(d, today = todayStr()) {
     personnel: live(d, "personnel").map((p) => [p.id, p.name]),
     suppliers: live(d, "suppliers").map((s) => [s.id, s.name]),
     aliases: live(d, "aliases").filter((a) => a.active !== false).map((a) => [a.alias, a.target_type, a.target_id]),
+    bank_accounts: live(d, "bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]),
     recent_works: recent,
+    recent_expenses: lastOf("expense_records", 15, (e) => [e.id, e.date, e.amount, e.category, e.company || ""].join("|")),
+    recent_fuel: lastOf("fuel_records", 10, (f) => [f.id, f.date, f.vehicle_id, f.liters, f.total ?? ""].join("|")),
+    recent_cash: lastOf("cash_records", 10, (c) => [c.id, c.date, c.cash_type, c.customer_id || "", c.amount].join("|")),
   };
 }
 
@@ -40,7 +46,14 @@ export function assistantSystem() {
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
-    "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\"}],\"photo_texts\":[string],\"questions\":[string]}",
+    "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\"}],",
+    "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
+    "\"maintenance\":[{\"date\",\"vehicle_id\",\"maint_type\",\"status\",\"description\",\"cost\",\"service_company\",\"supplier_id\",\"credit\"}] (arıza/bakım; maint_type: " + MAINT_TYPES.join(", ") + "; status: " + MAINT_STATUS.join(", ") + "),",
+    "\"personnel\":[{\"date\",\"personnel_id\",\"event_type\",\"amount\",\"hours_days\",\"note\"}] (event_type: " + PERSONNEL_EVENT_TYPES.join(", ") + "),",
+    "\"edits\":[{\"store\":\"work_records\"|\"expense_records\"|\"fuel_records\"|\"cash_records\",\"id\",\"changes\":{alan:değer},\"delete\":bool,\"reason\"}] (kullanıcı mevcut bir kaydı düzeltmek/silmek isterse; id'yi recent_* listelerinden seç),",
+    "\"answer\":string|null (kullanıcı soru sorduysa, YALNIZ verilen facts içindeki rakamlarla kısa Türkçe cevap; facts'te yoksa 'kayıtlarda bulamadım' de),",
+    "\"photo_texts\":[string],\"questions\":[string]}",
+    "20 bin = 20000, 1,5 milyon = 1500000. 'havale/EFT yaptı' = Havale.",
   ].join("\n");
 }
 
@@ -88,7 +101,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const customers = live(d, "customers"), sites = live(d, "sites"), vehicles = live(d, "vehicles"),
     personnel = live(d, "personnel"), suppliers = live(d, "suppliers");
   const byId = (arr, id) => (id ? arr.find((x) => x.id === id) || null : null);
-  const msgNums = writtenNumbers(message), msgAll = numbersInText(message);
+  const msgNums = writtenNumbers(message), msgAll = moneyInText(message);
   // Mesajda adı geçen aracın adındaki sayı ("14 tonluk") miktar sayılmaz
   for (const v of vehicles)
     if (inMessage(v.name, message)) for (const m of String(v.name).match(/\d+/g) || []) msgNums.delete(Number(m));
@@ -174,5 +187,158 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   out.questions = (Array.isArray(plan.questions) ? plan.questions : []).map(String).slice(0, 5);
   out.newCustomers = [...newNames.values()];
   out.photoTexts = photoTexts;
+  return out;
+}
+
+
+// "20 bin", "1,5 milyon", "20.000", "20000" → tutar adayları
+export function moneyInText(text) {
+  const out = numbersInText(text);
+  for (const m of String(text || "").matchAll(/(\d+(?:[.,]\d+)?)\s*(bin|milyon)(?![\p{L}])/giu)) {
+    const n = Number(m[1].replace(",", "."));
+    if (Number.isFinite(n)) out.add(Math.round(n * (/milyon/i.test(m[2]) ? 1e6 : 1e3) * 100) / 100);
+  }
+  return out;
+}
+const amountOk = (a, pools) => {
+  const n = Number(a);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const k = Math.round(n * 100) / 100;
+  return pools.some((p) => p && p.has(k)) ? k : undefined;
+};
+
+// Sorulara cevap için yerelde HESAPLANAN gerçekler; Gemini yalnız bunları cümleye döker
+export async function businessFacts(d, today = todayStr()) {
+  const { ledgerOf } = await import("./esnaf.js");
+  const { monthlySeries, vehicleSeries } = await import("./finance-chart.js");
+  const name = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || "—";
+  const month = today.slice(0, 7);
+  const customers = live(d, "customers").map((c) => {
+    const works = live(d, "work_records").filter((w) => w.customer_id === c.id && String(w.date).startsWith(month));
+    const sum = (u) => works.filter((w) => w.unit === u).reduce((n, w) => n + (Number(w.quantity) || 0), 0);
+    return { musteri: c.name, cari_bakiye_TL: cariBalance(live(d, "cari_movements").filter((m) => m.customer_id === c.id)),
+      bu_ay_sefer: sum("Sefer"), bu_ay_saat: sum("Saat"), bu_ay_yevmiye: sum("Yevmiye"), bu_ay_is_sayisi: works.length };
+  }).filter((x) => x.cari_bakiye_TL || x.bu_ay_is_sayisi);
+  const esnaf = live(d, "suppliers").map((s) => ({ esnaf: s.name, kalan_borc_TL: ledgerOf(d, s.id).remaining / 100 })).filter((x) => x.kalan_borc_TL);
+  const vehicles = vehicleSeries(d, { today, days: 30 }).map((v) => ({ arac: v.name, son30gun_is: v.works, son30gun_yakit_litre: v.liters, son30gun_maliyet_TL: v.cost }));
+  const months = monthlySeries(d, { today, months: 6 }).map((m) => ({ ay: m.label, is_degeri_TL: m.work, tahsilat_TL: m.collected, gider_yakit_TL: m.cost, tahmini_kar_TL: m.profit, fiyatsiz_is: m.unpriced }));
+  const openMaint = live(d, "maintenance_records").filter((m) => m.status !== "Tamamlandı").map((m) => ({ arac: name("vehicles", m.vehicle_id), tur: m.maint_type, durum: m.status, aciklama: m.description }));
+  return { bugun: today, musteriler: customers, esnaf_borclari: esnaf, araclar_son30gun: vehicles, aylik: months, acik_arizalar: openMaint };
+}
+// Cevaptaki sayıların gerçeklerde olup olmadığını denetler
+export function checkAnswer(answer, facts) {
+  if (!answer) return [];
+  const known = numbersInText(JSON.stringify(facts));
+  for (const n of [...known]) known.add(Math.round(n)); // yuvarlanmış söyleyiş
+  const bad = [];
+  // Her sayı belirtecinin olası okumalarından (1.234,5 / 1,234.5 / 50.000) biri gerçeklerde olmalı
+  for (const m of String(answer).matchAll(/\d[\d.,]*/g)) {
+    const cands = [...numbersInText(m[0])];
+    if (!cands.length) continue;
+    if (cands.every((n) => n <= 31 || (n >= 2000 && n <= 2100))) continue; // gün, ay, yıl
+    if (cands.some((n) => known.has(n) || known.has(Math.round(n)))) continue;
+    bad.push(Math.max(...cands));
+  }
+  return [...new Set(bad)];
+}
+
+const EDITABLE = {
+  work_records: ["quantity", "unit", "customer_id", "site_id", "vehicle_id", "work_type", "date"],
+  expense_records: ["amount", "category", "date", "vehicle_id"],
+  fuel_records: ["liters", "total", "date", "vehicle_id"],
+  cash_records: ["amount", "date"],
+};
+export function validateExtras(plan, { message = "", d, today = todayStr(), photoTexts = [] } = {}) {
+  const out = { collections: [], maintenance: [], personnel: [], edits: [] };
+  const byId = (s, id) => (id ? live(d, s).find((x) => x.id === id) || null : null);
+  const pools = [moneyInText(message), ...photoTexts.map(numbersInText)];
+  const msgNums = writtenNumbers(message);
+  const customers = live(d, "customers");
+
+  for (const c of (Array.isArray(plan.collections) ? plan.collections : []).slice(0, 10)) {
+    const issues = [];
+    const r = { date: validDate(c.date, today) || today, customer_id: byId("customers", c.customer_id)?.id || null, new_customer: null,
+      amount: null, method: c.method === "Havale" ? "Havale" : "Nakit", bank_account_id: byId("bank_accounts", c.bank_account_id)?.id || null,
+      personnel_id: byId("personnel", c.personnel_id)?.id || null, note: String(c.note || "").slice(0, 200) };
+    if (!r.customer_id && c.new_customer) {
+      const twin = similarCard(c.new_customer, customers);
+      if (twin) r.customer_id = twin.id;
+      else if (inMessage(c.new_customer, message)) r.new_customer = String(c.new_customer).trim();
+    }
+    const a = amountOk(c.amount, pools);
+    if (a) r.amount = a; else issues.push(a === undefined ? `Tutar ${c.amount} mesajda yazmıyor` : "Tutar yok");
+    if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
+    if (r.method === "Havale" && !r.bank_account_id) issues.push("Havale için banka hesabı seçilmeli");
+    r.issues = issues;
+    r.ok = !!(r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id));
+    out.collections.push(r);
+  }
+
+  for (const m of (Array.isArray(plan.maintenance) ? plan.maintenance : []).slice(0, 10)) {
+    const issues = [];
+    const r = { date: validDate(m.date, today) || today, vehicle_id: byId("vehicles", m.vehicle_id)?.id || null,
+      maint_type: MAINT_TYPES.includes(m.maint_type) ? m.maint_type : "Arıza", status: MAINT_STATUS.includes(m.status) ? m.status : "Açık",
+      description: String(m.description || "").slice(0, 300), cost: null, service_company: String(m.service_company || "").slice(0, 80),
+      supplier_id: byId("suppliers", m.supplier_id)?.id || null, credit: !!m.credit };
+    if (m.cost != null && m.cost !== "") {
+      const a = amountOk(m.cost, pools);
+      if (a) r.cost = a; else issues.push(`Tutar ${m.cost} mesajda/fişte yazmıyor`);
+    }
+    if (!r.vehicle_id) issues.push("Araç seçilmeli");
+    if (!r.description) issues.push("Açıklama boş");
+    if (r.credit && !r.supplier_id) issues.push("Veresiye için esnaf seçilmeli");
+    if (r.credit && !r.cost) issues.push("Veresiye için tutar gerekli");
+    r.issues = issues;
+    r.ok = !!(r.vehicle_id && r.description && (!r.credit || (r.supplier_id && r.cost)) && !issues.some((x) => /yazmıyor/.test(x)));
+    out.maintenance.push(r);
+  }
+
+  for (const e of (Array.isArray(plan.personnel) ? plan.personnel : []).slice(0, 10)) {
+    const issues = [];
+    const r = { date: validDate(e.date, today) || today, personnel_id: byId("personnel", e.personnel_id)?.id || null,
+      event_type: PERSONNEL_EVENT_TYPES.includes(e.event_type) ? e.event_type : "Diğer", amount: null, hours_days: null,
+      note: String(e.note || "").slice(0, 200) };
+    if (e.amount != null && e.amount !== "") {
+      const a = amountOk(e.amount, pools);
+      if (a) r.amount = a; else issues.push(`Tutar ${e.amount} mesajda yazmıyor`);
+    }
+    if (e.hours_days != null && e.hours_days !== "") {
+      const h = Number(e.hours_days);
+      if (Number.isFinite(h) && h > 0 && msgNums.has(h)) r.hours_days = h; else issues.push(`Saat/gün ${e.hours_days} mesajda yazmıyor`);
+    }
+    if (!r.personnel_id) issues.push("Personel seçilmeli");
+    r.issues = issues;
+    r.ok = !!(r.personnel_id && !issues.length);
+    out.personnel.push(r);
+  }
+
+  for (const x of (Array.isArray(plan.edits) ? plan.edits : []).slice(0, 5)) {
+    const issues = [];
+    const allowed = EDITABLE[x.store];
+    const rec = allowed ? byId(x.store, x.id) : null;
+    if (!rec) { out.edits.push({ store: x.store, id: x.id, rec: null, changes: {}, remove: false, issues: ["Düzeltilecek kayıt bulunamadı"], ok: false }); continue; }
+    const changes = {};
+    for (const [k, v] of Object.entries(x.changes || {})) {
+      if (!allowed.includes(k)) { issues.push(`"${k}" alanı buradan değiştirilemez`); continue; }
+      if (k.endsWith("_id")) {
+        const s = { customer_id: "customers", site_id: "sites", vehicle_id: "vehicles" }[k];
+        if (byId(s, v)) changes[k] = v; else issues.push(`${k} listede yok`);
+      } else if (k === "date") {
+        if (validDate(v, today)) changes[k] = v; else issues.push("Tarih geçersiz");
+      } else if (["quantity", "liters"].includes(k)) {
+        const n = Number(v);
+        if (Number.isFinite(n) && n > 0 && msgNums.has(n)) changes[k] = n; else issues.push(`${k} ${v} mesajda yazmıyor`);
+      } else if (["amount", "total"].includes(k)) {
+        const a = amountOk(v, pools);
+        if (a) changes[k] = a; else issues.push(`Tutar ${v} mesajda yazmıyor`);
+      } else if (k === "unit") { if (ASSIST_UNITS.includes(v)) changes[k] = v; else issues.push("Birim geçersiz"); }
+      else if (k === "work_type") { if (WORK_TYPES.includes(v)) changes[k] = v; else issues.push("İş türü geçersiz"); }
+      else if (k === "category") { if (EXPENSE_CATEGORIES.includes(v)) changes[k] = v; else issues.push("Kategori geçersiz"); }
+    }
+    const remove = !!x.delete;
+    if (!remove && !Object.keys(changes).length) issues.push("Değişiklik yok");
+    // Silme ve düzeltme varsayılan olarak işaretsiz gelir: kullanıcı bilerek işaretler
+    out.edits.push({ store: x.store, id: rec.id, rec, changes, remove, reason: String(x.reason || "").slice(0, 200) || "Asistan düzeltmesi", issues, ok: false });
+  }
   return out;
 }

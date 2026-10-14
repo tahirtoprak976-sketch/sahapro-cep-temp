@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261013-asistan-1";
+const CACHE = "sahapro-solo-v3-20261013-asistan-2";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./",
@@ -71,6 +71,26 @@ self.addEventListener("activate", (event) =>
       .then(() => self.clients.claim()),
   ),
 );
+// Android "Paylaş" → SAHAPRO: WhatsApp mesajı / fotoğraf Akıllı Asistan'a düşer
+self.addEventListener("fetch", (event) => {
+  const u = new URL(event.request.url);
+  if (event.request.method !== "POST" || u.origin !== location.origin || !u.pathname.endsWith("/share-target")) return;
+  event.respondWith(
+    (async () => {
+      try {
+        const fd = await event.request.formData();
+        const cache = await caches.open("sahapro-share");
+        for (const k of await cache.keys()) await cache.delete(k);
+        const text = [fd.get("title"), fd.get("text"), fd.get("url")].filter(Boolean).join("\n");
+        await cache.put("./__share/text", new Response(text));
+        let i = 0;
+        for (const f of fd.getAll("photos").slice(0, 10))
+          if (f && f.size) await cache.put(`./__share/file-${i++}`, new Response(f, { headers: { "content-type": f.type || "image/jpeg", "x-name": encodeURIComponent(f.name || "foto.jpg") } }));
+      } catch (e) {}
+      return Response.redirect("./index.html#/akilli-asistan?shared=1", 303);
+    })(),
+  );
+});
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url),
