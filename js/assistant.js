@@ -185,7 +185,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
   const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length;
-  const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi" };
+  const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi", quarries: "Malzeme ocağı", dump_sites: "Döküm / dolgu sahası" };
+  const quarries = live("quarries").map((x) => [x.id, x.name]);
   const personnel = live("personnel").map((p) => [p.id, p.name]);
   const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
   const banks = live("bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]);
@@ -231,7 +232,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Birim</label><select name="unit">${opt(ASSIST_UNITS.map((x) => [x, x]), r.unit)}</select></div>
           <div class="field"><label>Operatör / şoför</label><select name="personnel">${opt(personnel, r.personnel_id, "— yok —")}</select></div>
           <div class="field"><label>Malzeme</label><input name="material" value="${esc(r.material || "")}" placeholder="moloz, kum, mıcır…"></div>
-          <div class="field"><label>Döküm yeri</label><select name="dump_site">${opt(dumpSites, r.dump_site_id, "— yok —")}</select></div>
+          <div class="field"><label>Malzeme ocağı</label><select name="quarry">${opt([...quarries, ...(r.new_quarry ? [["new:" + r.new_quarry, "➕ Yeni ocak: " + r.new_quarry]] : [])], r.quarry_id || (r.new_quarry ? "new:" + r.new_quarry : ""), "— yok —")}</select></div>
+          <div class="field"><label>Döküm / dolgu yeri</label><select name="dump_site">${opt([...dumpSites, ...(r.new_dump_site ? [["new:" + r.new_dump_site, "➕ Yeni döküm yeri: " + r.new_dump_site]] : [])], r.dump_site_id || (r.new_dump_site ? "new:" + r.new_dump_site : ""), "— yok —")}</select></div>
           <div class="field"><label>Birim fiyat (₺, boşsa fiyat listesi)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
           <div class="field"><label>Alındığı yer</label><input name="from_place" value="${esc(r.from_place || "")}" placeholder="ocak / saha"></div>
           <div class="field"><label>Teslim yeri</label><input name="to_place" value="${esc(r.to_place || "")}" placeholder="şantiye / dolgu"></div>
@@ -480,6 +482,9 @@ async function save(ctx, out, v, d, { message, files }) {
         } else if (r.kind === "personnel") {
           await db.saveNew("personnel", { name, phone: val(c, "phone"), role: r.data.role || "", active: true }, "Asistan: kart");
           done.cards++;
+        } else if (r.kind === "quarries" || r.kind === "dump_sites") {
+          await db.saveNew(r.kind, { name, address: r.data.address || "" }, "Asistan: kart");
+          done.cards++;
         } else if (r.kind === "suppliers") {
           const edb = await import("./enterprise-db.js");
           await edb.saveSupplier({ name, type: r.data.type, phone: val(c, "phone") });
@@ -561,6 +566,20 @@ async function save(ctx, out, v, d, { message, files }) {
           site = newIds.get(key);
         }
         const veh = vehicles.find((x) => x.id === val(c, "vehicle"));
+        // Yeni malzeme ocağı / döküm yeri kartı (aynı adla bir kez açılır)
+        const ensurePlace = async (store, raw) => {
+          if (!raw || !raw.startsWith("new:")) return raw || null;
+          const name = raw.slice(4), key = store + ":" + name;
+          if (!newIds.has(key)) {
+            const rec = await db.saveNew(store, { name, note: "Asistan ile açıldı" }, "Asistan: yeni " + (store === "quarries" ? "malzeme ocağı" : "döküm yeri"));
+            newIds.set(key, rec.id);
+            done.cards++;
+          }
+          return newIds.get(key);
+        };
+        const quarryId = await ensurePlace("quarries", val(c, "quarry"));
+        const dumpId = await ensurePlace("dump_sites", val(c, "dump_site"));
+        const placeName = async (store, id) => (id ? (await db.get(store, id))?.name || "" : "");
         const fields = {
           date: val(c, "date") || todayStr(),
           customer_id: customer,
@@ -575,8 +594,8 @@ async function save(ctx, out, v, d, { message, files }) {
           material: val(c, "material") || "",
           quantity: Number(val(c, "quantity")),
           unit: val(c, "unit"),
-          dump_site_id: val(c, "dump_site") || null, quarry_id: null,
-          dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || val(c, "to_place") || "", quarry: val(c, "from_place") || "",
+          dump_site_id: dumpId, quarry_id: quarryId,
+          dump_area: (await placeName("dump_sites", dumpId)) || val(c, "to_place") || "", quarry: (await placeName("quarries", quarryId)) || val(c, "from_place") || "",
           slip_status: null, slip_no: val(c, "slip_no") || "", customer_note: "", distance_km: null,
           source: "asistan",
         };
@@ -699,7 +718,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
     qs("[data-msg]", ctx.root).value = "";

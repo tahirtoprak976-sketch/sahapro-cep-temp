@@ -65,3 +65,18 @@ console.log("assistant-rules PASS");
   assert.equal(senderPersonnel(dd, "Bayram Tırcı", "Bayram Tırcı: x").id, "B0");
   console.log("sender-pick PASS");
 }
+// malzeme ocağı ve döküm yeri kartları
+{
+  const dd = { ...d, quarries: [{ id: "QD", name: "Danış Maden" }], dump_sites: [{ id: "DB", name: "Binkılıç Dolgu" }] };
+  const m = "[13.10.2026] Tahir Toprak: Danış madenden binkılıç dolguya 2 sefer ocak taşı, Öztaştan 1 sefer mıcır göktürk son durağa";
+  const v3 = validatePlan({ works: [
+    W({ customer_id: "DN", reporter: "Tahir Toprak", vehicle_id: "VT", quantity: 2, material: "ocak taşı", from_place: "Danış madenden", to_place: "binkılıç dolguya", to_is_dump: true }),
+    W({ customer_id: "DN", reporter: "Tahir Toprak", vehicle_id: "VT", quantity: 1, material: "mıcır", from_place: "Öztaştan", to_place: "göktürk son durağa", to_is_dump: true }),
+  ] }, { message: m, d: dd, today });
+  assert.equal(v3.works[0].quarry_id, "QD"); assert.equal(v3.works[0].dump_site_id, "DB");
+  assert.equal(v3.works[1].quarry_id, null); assert.equal(v3.works[1].new_quarry, "Öztaş"); assert.equal(v3.works[1].new_dump_site, "Göktürk son durağa");
+  // uydurma ocak ID'si kabul edilmez
+  const v4 = validatePlan({ works: [W({ reporter: "Tahir Toprak", vehicle_id: "VT", quantity: 1, quarry_id: "YOK" })] }, { message: "[13.10.2026] Tahir Toprak: 1 sefer gravak maslak", d: dd, today });
+  assert.equal(v4.works[0].quarry_id, null);
+  console.log("ocak PASS");
+}
