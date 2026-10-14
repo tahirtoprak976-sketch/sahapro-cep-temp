@@ -592,6 +592,12 @@ async function workForm(ctx, editId) {
           snapshot_at: new Date().toISOString(),
         };
       }
+      // Mazot karşılığı (müşteri kartındaki sefer başı mazot kuralı)
+      const { applyFuelPay } = await import("./assistant-rules.js");
+      const dAll = await db.dumpAll();
+      const fuelText = (r) => [r.description, r.material, r.quarry, r.dump_area, r.internal_note].filter(Boolean).join(" ");
+      Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
+      if (!fields.customer_fuel_allowance_l) fields.customer_fuel_allowance_l = null;
       const extras = batchActive() ? extraRows() : [];
       if (!editId && extras.length) {
         const { priceSnapshot } = await import("./business.js");
@@ -648,7 +654,7 @@ async function workForm(ctx, editId) {
               snapshot_at: new Date().toISOString(),
             };
           }
-          rows.push(r);
+          rows.push({ ...applyFuelPay(dAll, r, fuelText(r)) });
         }
         const sameDay = await db.listActive("work_records");
         if (
@@ -764,6 +770,7 @@ async function workDetail(ctx, id) {
       ${w.quarry ? kv("Ocak", w.quarry) : ""}
       ${w.slip_status ? kv("Fiş", w.slip_status + (w.slip_no ? " #" + w.slip_no : "")) : ""}
       ${w.tonnage ? kv("Tonaj", fmtNum(w.tonnage) + " ton") : ""}
+      ${w.customer_fuel_allowance_l ? kv("Mazot karşılığı", fmtNum(w.customer_fuel_allowance_l) + " L" + (w.price_snapshot?.price_source === "Mazot karşılığı" ? " (ücret yalnız mazot)" : "")) : ""}
       ${w.description ? kv("Açıklama", w.description) : ""}
       ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}
       ${w.internal_note ? kv("İç Not", w.internal_note) : ""}

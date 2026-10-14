@@ -80,3 +80,28 @@ console.log("assistant-rules PASS");
   assert.equal(v4.works[0].quarry_id, null);
   console.log("ocak PASS");
 }
+// mazotla ödeme: hakedişte 0 ₺, hak edilen litre; alınan mazot (araca + depoya) düşer
+{
+  const { applyFuelPay, customerFuelLedger, fuelLedgers } = await import("../js/assistant-rules.js");
+  const base = { customer_id: "KL", unit: "Sefer", quantity: 3, material: "gravak", description: "Maslak kılıçtan göktürk", price_snapshot: { amount: 9000, unit_price: 3000, price_source: "Fiyat Listesi" } };
+  let f = applyFuelPay(d, base, "");
+  assert.equal(f.customer_fuel_allowance_l, 225); assert.equal(f.price_snapshot.amount, 0); assert.equal(f.price_snapshot.price_source, "Mazot karşılığı");
+  // para + mazot müşterisi: fiyat korunur
+  const d2 = { ...d, customers: [{ ...d.customers[0], fuel_only_pay: false }] };
+  f = applyFuelPay(d2, base, ""); assert.equal(f.price_snapshot.amount, 9000); assert.equal(f.customer_fuel_allowance_l, 225);
+  // eşleşmeyen iş (toprak): değişmez
+  f = applyFuelPay(d, { ...base, material: "toprak", description: "kılıç" }, ""); assert.equal(f.customer_fuel_allowance_l, undefined); assert.equal(f.price_snapshot.amount, 9000);
+  const led = { ...d, work_records: [{ id: "w1", customer_id: "KL", unit: "Sefer", quantity: 3, customer_fuel_allowance_l: 225 }, { id: "w2", customer_id: "KL", unit: "Sefer", quantity: 1, customer_fuel_allowance_l: 75 }],
+    fuel_records: [{ id: "f1", fuel_source: "Müşteri Verdi", customer_id: "KL", liters: 150 }], fuel_tank_movements: [{ id: "m1", move_type: "GİRİŞ", customer_id: "KL", liters: 100 }] };
+  const L = customerFuelLedger(led, "KL");
+  assert.deepEqual([L.trips, L.earned, L.received, L.balance], [4, 300, 250, 50]);
+  assert.equal(fuelLedgers(led)[0].balance, 50);
+  const { todayBoard } = await import("../js/today.js");
+  assert.ok(todayBoard(led, { today, lastBackupAt: new Date().toISOString() }).items.some((i) => /50 L mazot alacağı/.test(i.text)));
+  const { runAskTool } = await import("../js/day-summary.js");
+  assert.equal(runAskTool(led, "customer_fuel", { customer: "Kılıç" }, today).musteriler[0].kalan_litre, 50);
+  // asistan: depoya müşteriden mazot
+  const v5 = validatePlan({ tank_in: [{ liters: 300, customer_id: "KL", credit: true }] }, { message: "Kılıçtan depoya 300 litre mazot aldık", d, today });
+  assert.equal(v5.tankIn[0].customer_id, "KL"); assert.equal(v5.tankIn[0].credit, false); assert.equal(v5.tankIn[0].ok, true);
+  console.log("mazot-odeme PASS");
+}

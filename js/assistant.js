@@ -6,7 +6,7 @@ import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EV
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
-import { planTotals } from "./assistant-rules.js";
+import { planTotals, applyFuelPay } from "./assistant-rules.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
@@ -239,7 +239,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Fiş no</label><input name="slip_no" value="${esc(r.slip_no || "")}"></div>
         </div>
         ${r.reporter ? `<div class="muted tiny">Bildiren: ${esc(r.reporter)}</div>` : ""}
-        ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> karşılık (alındıysa yakıt olarak ayrıca girilir; hakedişe yazılmaz)</div>` : ""}
+        ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> mazot hak edildi → müşterinin mazot hesabına eklenir (ücret yalnız mazotsa hakedişe 0 ₺ yazılır)</div>` : ""}
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
         ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
@@ -300,6 +300,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Litre fiyatı (₺)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
           <div class="field"><label>Toplam (₺, ops.)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
           <div class="field"><label>Veresiye petrolcü</label><select name="supplier">${opt(suppliers, r.supplier_id, "— peşin / yok —")}</select></div>
+          <div class="field"><label>Müşteriden (sefer karşılığı)</label><select name="tank_customer">${opt(customers, r.customer_id, "— yok —")}</select></div>
         </div>${issues(r)}</div>`)
       .join("") +
     v.fuel
@@ -499,7 +500,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const supId = val(c, "supplier") || null;
         const mv = await db.saveNew("fuel_tank_movements", {
           date: val(c, "date") || todayStr(), move_type: "GİRİŞ", liters, vehicle_id: null, personnel_id: null,
-          pump_no: "", signature_name: "", unit_price, total, supplier_id: supId, description: source,
+          pump_no: "", signature_name: "", unit_price, total, supplier_id: supId, customer_id: val(c, "tank_customer") || null, description: source,
         }, "Asistan: depo girişi");
         if (supId && total) {
           const { createCreditBill } = await import("./esnaf.js");
@@ -601,11 +602,12 @@ async function save(ctx, out, v, d, { message, files }) {
         delete fields.internal_note_src;
         const wr0 = v.works[Number(c.dataset.i)];
         fields.internal_note = (wr0.reporter ? "Bildiren: " + wr0.reporter + " · " : "") + source;
-        if (wr0.fuelAllowance && fields.unit === "Sefer") fields.customer_fuel_allowance_l = Math.round(wr0.fuelAllowance.per * fields.quantity * 10) / 10;
         const up = Number(val(c, "unit_price"));
         fields.price_snapshot = up > 0
           ? { unit_price: up, kdv_rate: Number(await db.metaGet("kdv_default")) || 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
           : priceSnapshot(fields, prices, crane);
+        // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
+        Object.assign(fields, applyFuelPay(await db.dumpAll(), fields, message));
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity);
         if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
         await db.saveNew("work_records", fields, "Asistan");

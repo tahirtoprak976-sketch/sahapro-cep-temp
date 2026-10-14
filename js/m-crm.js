@@ -292,6 +292,7 @@ async function customerForm(ctx, editId) {
       <div class="formgrid2">${fText("Yetkili", "contact", v.contact || "")}${fText("Telefon", "phone", v.phone || "", { type: "tel" })}</div>
       ${fSelect("Ana firma (taşeronsa — örn. Ağırtaş → Hisar Polat)", "parent_customer_id", parentOpts, v.parent_customer_id || "")}
       <div class="formgrid2">${fNum("Sefer başı verdiği mazot (L)", "fuel_per_trip", v.fuel_per_trip ?? "", { step: "any" })}${fText("Hangi işlerde (kelimeler, ör. gravak maslak)", "fuel_rule_match", v.fuel_rule_match || "")}</div>
+      ${fSelect("Bu işlerin ücreti", "fuel_only_pay", [{ v: "1", t: "Yalnız mazot (para alınmaz)" }, { v: "0", t: "Para + mazot ayrıca" }], v.fuel_only_pay === false ? "0" : "1", { empty: false })}
       ${fArea("Not", "note", v.note || "")}
       ${fSelect("Durum", "active", ACTIVE_SEL, v.active === false ? "0" : "1", { empty: false })}
     </form>
@@ -311,6 +312,7 @@ async function customerForm(ctx, editId) {
       parent_customer_id: val.parent_customer_id || null,
       fuel_per_trip: Number(val.fuel_per_trip) > 0 ? Number(val.fuel_per_trip) : null,
       fuel_rule_match: (val.fuel_rule_match || "").trim(),
+      fuel_only_pay: Number(val.fuel_per_trip) > 0 && val.fuel_only_pay === "1",
     };
     if (editId) {
       await db.saveExisting("customers", rec, fields, "Müşteri düzenlendi");

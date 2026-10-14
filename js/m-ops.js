@@ -136,10 +136,12 @@ export async function fuelActions(root, db, f) {
 
 async function fuelForm(ctx) {
   const { root, db } = ctx;
-  const [vehicles, personnel] = await Promise.all([
+  const [vehicles, personnel, allCust] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
+    db.listActive("customers"),
   ]);
+  const fuelCustomers = allCust.filter((c) => Number(c.fuel_per_trip) > 0);
   root.innerHTML =
     appbar("+ Yakıt", "Litre zorunlu; fiyat/tutar opsiyonel") +
     `
@@ -168,6 +170,7 @@ async function fuelForm(ctx) {
         ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}${fNum("KDV % (biliniyorsa; toplam KDV dahil)", "kdv_rate", "", { step: "any" })}
         ${fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
       </div>
+      <div data-fcust hidden>${fSelect("Mazotu veren müşteri (sefer karşılığı)", "customer_id", fuelCustomers.map((c) => ({ v: c.id, t: c.name })), fuelCustomers[0]?.id || "")}</div>
       <div class="formgrid2">
         ${fSelect("Fiş", "receipt", ["Evet", "Hayır"], "Evet", { empty: false })}
         ${fText("Pompa Sayaç No (ops.)", "pump_no", "")}
@@ -180,6 +183,10 @@ async function fuelForm(ctx) {
       ${fArea("Açıklama", "description", "")}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const srcSel = qs("[name=fuel_source]", root);
+  const syncSrc = () => (qs("[data-fcust]", root).hidden = srcSel.value !== "Müşteri Verdi");
+  srcSel.addEventListener("change", syncSrc);
+  syncSrc();
   const lt = qs("input[name=liters]", root),
     up = qs("input[name=unit_price]", root),
     tt = qs("input[name=total]", root);
@@ -202,6 +209,8 @@ async function fuelForm(ctx) {
       toast("Litre girin", "err");
       return;
     }
+    const byCust = val.fuel_source === "Müşteri Verdi";
+    if (byCust && !val.customer_id) return toast("Mazotu veren müşteriyi seçin", "err");
     await db.saveNew(
       "fuel_records",
       {
@@ -219,6 +228,7 @@ async function fuelForm(ctx) {
         machine_hours: val.machine_hours ? Number(val.machine_hours) : null,
         description: val.description || "",
         customer_billable: false,
+        ...(byCust ? { customer_id: val.customer_id, total: null, unit_price: null, receipt: "Müşteri" } : {}),
         kdv_rate:
           val.kdv_rate !== "" && val.kdv_rate != null
             ? Number(val.kdv_rate)
@@ -238,11 +248,12 @@ async function tank(ctx) {
   const rows = all.filter(isActive).sort((a, b) => (b.date < a.date ? -1 : 1));
   const bal = calcTankBalance(rows);
   const st = tankStatus(rows, todayStr());
-  const [vehicles, personnel, suppliers, fuels] = await Promise.all([
+  const [vehicles, personnel, suppliers, fuels, custs] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
     db.listActive("suppliers"),
     db.getAll("fuel_records"),
+    db.listActive("customers"),
   ]);
   const uncosted = fuels.filter((f) => isActive(f) && f.fuel_source === "Depo Tankı" && !(Number(f.total) > 0)).length;
 
@@ -280,6 +291,7 @@ async function tank(ctx) {
           ${fNum("Toplam ₺ (girişte)", "total", "", { step: "any" })}
         </div>
         <div data-in>${fSelect("Veresiye petrolcü (ops.)", "supplier_id", suppliers.map((x) => ({ v: x.id, t: x.name })), "")}</div>
+        <div data-in>${fSelect("Müşteriden (sefer karşılığı mazot, ops.)", "customer_id", custs.filter((c) => Number(c.fuel_per_trip) > 0).map((x) => ({ v: x.id, t: x.name })), "")}</div>
         <div class="formgrid2">
           ${fSelect(
             "Personel",
@@ -341,6 +353,7 @@ async function tank(ctx) {
     if (unit_price && !total) total = Math.round(unit_price * liters * 100) / 100;
     if (total && !unit_price) unit_price = Math.round((total / liters) * 100) / 100;
     if (isIn && val.supplier_id && !total) return toast("Veresiye için toplam tutar girin", "err");
+    if (isIn && val.supplier_id && val.customer_id) return toast("Petrolcü veya müşteri: yalnız birini seçin", "err");
     try {
       const rec = await db.saveNew(
         "fuel_tank_movements",
@@ -352,7 +365,7 @@ async function tank(ctx) {
           personnel_id: val.personnel_id || null,
           pump_no: val.pump_no || "",
           signature_name: val.signature_name || "",
-          ...(isIn ? { unit_price, total, supplier_id: val.supplier_id || null } : {}),
+          ...(isIn ? { unit_price, total, supplier_id: val.supplier_id || null, customer_id: val.customer_id || null } : {}),
         },
         "Tank " + val.move_type,
       );

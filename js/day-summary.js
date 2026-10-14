@@ -6,6 +6,7 @@ import { foldTr } from "./parser.js";
 import { fuelFlags } from "./fuel-rules.js";
 import { ticketReconcile } from "./assistant-docs.js";
 import { checkAnswer } from "./assistant-core.js";
+import { fuelLedgers } from "./assistant-rules.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -121,6 +122,8 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, category: { type: "string" }, vehicle: { type: "string" } } } },
   { name: "collection_totals", description: "Tarih aralığında müşterilerden alınan tahsilat toplamı.",
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, customer: { type: "string" } } } },
+  { name: "customer_fuel", description: "Ücretini mazotla ödeyen müşterilerin (ör. Kılıç Hafriyat, sefer başı 75 L) mazot hesabı: sefer, hak edilen, alınan ve kalan litre.",
+    parameters: { type: "object", properties: { customer: { type: "string" } } } },
   { name: "tank_status", description: "Depo yakıt tankı: kalan litre, günlük ortalama çıkış, kaç gün yeter, ortalama litre fiyatı, son giriş.",
     parameters: { type: "object", properties: {} } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
@@ -174,6 +177,12 @@ export function runAskTool(d, name, args = {}, today = todayStr()) {
     const per = {};
     for (const x of cs) { const k = nameOf(d, "customers", x.customer_id); per[k] = r2((per[k] || 0) + Number(x.amount)); }
     return { from, to, musteri: c.name || "hepsi", TL: r2(cs.reduce((n, x) => n + (Number(x.amount) || 0), 0)), kayit: cs.length, musteri_bazinda_TL: per };
+  }
+  if (name === "customer_fuel") {
+    const c = resolve(d, a, "customer", "customers", "customer");
+    if (c.error) return c;
+    const rows = fuelLedgers(d).filter((x) => !c.id || x.id === c.id).map((x) => ({ musteri: x.name, sefer: x.trips, hak_edilen_litre: x.earned, alinan_litre: x.received, kalan_litre: x.balance }));
+    return rows.length ? { musteriler: rows } : { error: "Mazotla ödeyen müşteri kartı yok (Müşteri kartı → Sefer başı mazot)" };
   }
   if (name === "tank_status") {
     const t = tankStatus(live(d, "fuel_tank_movements"), today);
