@@ -52,6 +52,36 @@ export function todayBoard(data, opts = {}) {
     });
   }
 
+  // 1b) Son 30 günde işte çalışan ama hiç ehliyet kaydı olmayan personel (yasal zorunluluk varsayılmaz; sadece kayıt eksikliği)
+  const since = addDays(today, -30);
+  const worked = new Set(
+    act(data.work_records)
+      .filter((w) => w.date >= since && w.date <= today && w.personnel_id)
+      .map((w) => w.personnel_id),
+  );
+  const hasLicense = new Set(
+    act(data.documents)
+      .filter((d) => d.category === "Ehliyet")
+      .map((d) => d.personnel_id || d.owner_id),
+  );
+  const noLicense = act(data.personnel).filter(
+    (p) => worked.has(p.id) && !hasLicense.has(p.id),
+  );
+  if (noLicense.length)
+    items.push({
+      kind: "warn",
+      group: "Personel",
+      ic: "🪪",
+      text: `${noLicense.length} çalışanın ehliyet kaydı yok`,
+      sub:
+        noLicense
+          .slice(0, 3)
+          .map((p) => p.name)
+          .join(", ") + (noLicense.length > 3 ? " …" : ""),
+      href: "#/belgeler/new",
+      sort: 20,
+    });
+
   // 2) Bakım tarihi gelen araçlar
   for (const v of act(data.vehicles)) {
     if (!v.next_maintenance_date || v.next_maintenance_date > addDays(today, 14))

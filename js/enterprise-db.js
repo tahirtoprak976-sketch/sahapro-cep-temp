@@ -1050,3 +1050,60 @@ export async function paySupplierAccount(f, key = uuid()) {
     },
   );
 }
+
+// Esnaf ödemesini geri al: kayıt SİLİNMEZ, nedenle iptal (soft-delete) edilir; denetim kaydı kalır.
+// Aynı işlemde bağlı kasa kaydı ve banka hareketi de geri çekilir. Bankada mutabakata bağlanmış
+// hareket varsa hiçbir şey yazılmaz. key = ödeme grubu (batch_key) veya tek ödeme id'si.
+export async function reverseSupplierPayments(key, reason) {
+  return transaction(
+    ["supplier_payments", "cash_records", "bank_movements", "bank_import_rows"],
+    (d, t) => {
+      if (!reason?.trim()) throw Error("Geri alma nedeni zorunlu");
+      const pays = active(d.supplier_payments).filter(
+        (p) => p.batch_key === key || p.id === key,
+      );
+      if (!pays.length) throw Error("Ödeme bulunamadı veya zaten geri alınmış");
+      const now = nowISO();
+      for (const p of pays) {
+        if (
+          p.bank_movement_id &&
+          (d.bank_import_rows || []).some(
+            (r) => r.bank_movement_id === p.bank_movement_id,
+          )
+        )
+          throw Error(
+            "Bu ödeme banka mutabakatına bağlı; önce mutabakatı kaldırın",
+          );
+      }
+      for (const p of pays) {
+        t.put("supplier_payments", {
+          ...p,
+          deleted_at: now,
+          reversal_reason: reason.trim(),
+          updated_at: now,
+        });
+        const cash = d.cash_records.find(
+          (c) => c.id === p.cash_record_id && isActive(c),
+        );
+        if (cash)
+          t.put("cash_records", {
+            ...cash,
+            deleted_at: now,
+            reversal_reason: reason.trim(),
+            updated_at: now,
+          });
+        const bm = (d.bank_movements || []).find(
+          (m) => m.id === p.bank_movement_id && isActive(m),
+        );
+        if (bm)
+          t.put("bank_movements", {
+            ...bm,
+            deleted_at: now,
+            reversal_reason: reason.trim(),
+            updated_at: now,
+          });
+      }
+      return pays.length;
+    },
+  );
+}
