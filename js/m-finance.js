@@ -34,7 +34,9 @@ import {
   pagedRender,
   go,
   downloadBlob,
+  shareText,
 } from "./ui.js";
+import { customerStatement, statementText, statementCsv } from "./statement.js";
 import {
   isActive,
   matchSearch,
@@ -52,6 +54,7 @@ import {
   WORK_UNITS,
   WORK_TYPES,
   nextCashStatus,
+  addDays,
 } from "./core.js";
 
 export async function screen(ctx) {
@@ -1080,7 +1083,28 @@ async function cariDetail(ctx, cid) {
     </div>
     <div class="section-title">Hareketler</div>
     ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti"><div class="small strong">${trDate(m.date)} · ${esc(m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
+    <div class="section-title">Ekstre Gönder</div>
+    <div class="card">
+      <div class="field"><label>Dönem</label><select data-stper><option value="all">Tüm hareketler</option><option value="month">Bu ay</option><option value="q">Son 3 ay</option></select></div>
+      <div class="row" style="gap:8px"><button class="btn primary grow" data-stwa>📤 WhatsApp / Paylaş</button><button class="btn grow" data-stcsv>📊 Excel (CSV)</button></div>
+      <div class="muted tiny" style="margin-top:6px">Müşteriye giden metinde iç notlar ve düzeltme nedenleri yer almaz.</div>
+    </div>
     <div class="actionbar"><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
+  const stPeriod = () => {
+    const t = todayStr(), v = qs("[data-stper]", root).value;
+    if (v === "month") return { from: t.slice(0, 7) + "-01", to: t };
+    if (v === "q") return { from: addDays(t, -90), to: t };
+    return { from: "", to: "" };
+  };
+  qs("[data-stwa]", root).addEventListener("click", async () => {
+    const per = stPeriod();
+    const st = customerStatement(movements, cid, per);
+    await shareText(statementText(c ? c.name : "Müşteri", st, { ...per, today: todayStr() }));
+  });
+  qs("[data-stcsv]", root).addEventListener("click", () => {
+    const st = customerStatement(movements, cid, stPeriod());
+    downloadBlob(new Blob([statementCsv(st)], { type: "text/csv;charset=utf-8" }), `Ekstre_${(c ? c.name : "musteri").replace(/[^\wÇĞİÖŞÜçğıöşü]+/g, "_")}_${todayStr()}.csv`);
+  });
   qs("[data-duzelt]", root).addEventListener("click", async () => {
     const amt = await promptDialog(
       "Manuel Düzeltme",
