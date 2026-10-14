@@ -75,3 +75,23 @@ console.log("customer-ambiguity PASS");
   assert.equal(v.works[0].customer_id, "AG");
   console.log("taseron-kurali PASS");
 }
+// müşteri adı yazılmamış / listede yok: öneri işaretsiz gelir
+{
+  const { nameInMessage, guessCustomer } = await import("../js/assistant-core.js");
+  const dd = { ...d, customers: [...d.customers, { id: "KI", name: "Kaya İnşaat" }, { id: "MS", name: "Muharrem Şef" }], sites: [{ id: "SA", name: "Arnavutköy Villa", customer_id: "MS" }],
+    vehicles: [{ id: "VT", name: "34FY2482", plate: "34FY2482" }], personnel: [{ id: "B", name: "Bayram" }], work_records: [{ id: "x", date: today, vehicle_id: "VT", customer_id: "HP" }] };
+  assert.equal(nameInMessage(dd, "34FY2482 Tır Süleyman Kaya 1 sefer bolluca döküm"), "Süleyman Kaya");
+  assert.equal(nameInMessage(dd, "Bayram Tırcı Ahmet Bey'e 2 sefer kum"), "Ahmet Bey");
+  assert.equal(nameInMessage(dd, "Kaya İnşaat 3 sefer"), null);
+  let v = validatePlan({ works: [{ date: today, vehicle_id: "VT", work_type: "Hafriyat Nakliye", quantity: 1, unit: "Sefer" }] }, { message: "34FY2482 Tır Süleyman Kaya 1 sefer bolluca döküm", d: dd, today });
+  assert.equal(v.works[0].new_customer, "Süleyman Kaya"); assert.equal(v.works[0].ok, false);
+  v = validatePlan({ works: [{ date: today, vehicle_id: "VT", work_type: "Mıcır Nakliye", quantity: 1, unit: "Sefer" }] }, { message: "Entodan 3no mocır 1sefer muarem sef arnavutkoy 34FY2482", d: dd, today });
+  assert.equal(v.works[0].customer_id, "MS"); assert.equal(v.works[0].ok, false);
+  // hiçbir ad yoksa aynı aracın son günlerdeki müşterisi önerilir
+  const g = guessCustomer(dd, "Şantiyeden 1sefer harfiyat boluca döküm", { vehicleId: "VT", date: today });
+  assert.equal(g.id, "HP");
+  // Gemini tahmin ettiyse (customer_guess) işaretsiz
+  v = validatePlan({ works: [{ date: today, customer_id: "MS", customer_guess: true, vehicle_id: "VT", work_type: "Mıcır Nakliye", quantity: 1, unit: "Sefer" }] }, { message: "34FY2482 1 sefer mıcır", d: dd, today });
+  assert.equal(v.works[0].customer_id, "MS"); assert.equal(v.works[0].ok, false);
+  console.log("musteri-oneri PASS");
+}

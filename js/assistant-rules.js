@@ -14,7 +14,8 @@ export const DEFAULT_RULES = `WHATSAPP ÇALIŞMA KAYDI KURALLARI (Muratoğlu Haf
 - Her iş ayrı satırdır. Aynı gün aynı araç farklı malzeme, müşteri, şantiye veya güzergâh yaptıysa birleştirme.
 - "3 sefer" gibi toplam miktar yazılmışsa tek satırda 3 sefer olarak yaz; araç, tarih, malzeme ve güzergâhı kaybetme.
 - Birden fazla kişi aynı işi bildirmiş olabilir: aynı araç + aynı tarih + aynı malzeme/güzergâh ise bir kez yaz. Araçlar farklıysa ayrı işlerdir.
-- Belirtilmeyen plaka, şoför, müşteri, malzeme, fiyat veya güzergâhı tahmin etme. Fiyat yazılmamışsa fiyat yazma.
+- Belirtilmeyen plaka, miktar, malzeme, fiyat veya güzergâhı uydurma. Fiyat yazılmamışsa fiyat yazma.
+- MÜŞTERİ: Personel çoğu zaman müşteri adını yazmaz. Adı yoksa şantiye/yer adından (sites listesi), aliases ve customer_hints'ten, aynı aracın/personelin son işlerinden (recent_works) EN OLASI müşteriyi customer_id'ye yaz ve customer_guess=true işaretle; uygulama kullanıcıya onaylatır. Yanlış yazılmış adları da eşleştir ("muarem" = "Muharrem"). Mesajda listede olmayan bir kişi/firma adı geçiyorsa (örn. "Süleyman Kaya") ve personel değilse onu new_customer olarak yaz. Hiçbir ipucu yoksa boş bırak.
 - Mesajı gönderen personelin zimmetli aracı vardır (personel listesinde 3. değer): mesajda başka araç yazmıyorsa o aracı kullan, personnel_id = gönderen.
 - Malzemenin alındığı yeri from_place, teslim edildiği şantiye/döküm/dolgu yerini to_place alanına yaz.
 
@@ -30,7 +31,19 @@ KILIÇ HAFRİYAT – MASLAK GRAVAK
 - Kılıç Hafriyat her sefer için 75 L mazot verir (müşteri kartındaki "sefer başı mazot" kuralı). Bu yalnız Kılıç'ın Maslak gravak seferleri içindir.
 - Mesajda mazotun alındığı açıkça yazıyorsa fuel satırı yaz: source="Müşteri Verdi", customer_id=Kılıç Hafriyat. Yalnız sefer bilgisi varsa yakıt satırı YAZMA.
 - Danış Maden / Danış Mıcır'dan alınan ocak taşı, mıcır vb. Kılıç'ın gravak işiyle birleştirilmez. "Binkılıç'a taş" gravak değildir.
-- İşin kime ait olduğu açık değilse müşteriyi boş bırak ve questions'a sor.`;
+- İşin kime ait olduğu hiç anlaşılmıyorsa müşteriyi boş bırak; bir ipucu varsa en olası müşteriyi customer_guess=true ile öner.`;
+
+// Eski sürümlerin varsayılan kuralları (kullanıcı değiştirmeden kaydettiyse yeni varsayılan kullanılır)
+const OLD_DEFAULT_HASHES = new Set(["ppft5k", "1b95he"]);
+export function rulesHash(s) {
+  let x = 5381;
+  for (const ch of String(s).replace(/\s+/g, " ").trim()) x = ((x * 33) ^ ch.codePointAt(0)) >>> 0;
+  return x.toString(36);
+}
+export function effectiveRules(saved) {
+  if (saved == null || OLD_DEFAULT_HASHES.has(rulesHash(saved))) return DEFAULT_RULES;
+  return saved;
+}
 
 // Mesajda araç adı/plakası/takma adı geçiyor mu?
 export function vehicleNamed(d, vehicle, text) {

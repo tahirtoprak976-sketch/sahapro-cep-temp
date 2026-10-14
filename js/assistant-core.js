@@ -131,13 +131,76 @@ function addDaysLocal(iso, n) {
   return x.toISOString().slice(0, 10);
 }
 
+// Müşteri adı yazılmamış satır için telefonun önerisi: 1) mesajda (yanlış yazılmış da olsa) şantiye adı geçiyor
+// 2) aynı araç son 3 günde tek bir müşteriye çalışmış. Bulamazsa null (uydurmaz).
+export function guessCustomer(d, text, { vehicleId = null, date = todayStr() } = {}) {
+  const T = tok(text);
+  const fuzzy = (w) => T.some((t) => sameWord(t, w) || (w.length >= 5 && t.length >= 5 && editDistance(t, w) <= 2));
+  const custs = live(d, "customers");
+  // Yanlış yazılmış müşteri adı ("muarem sef" → Muharrem Şef): adın tüm kelimeleri benzer biçimde geçiyor
+  const nameHits = custs.filter((c) => { const ct = tok(c.name).filter((w) => !GENERIC.has(w)); return ct.length && ct.every(fuzzy); });
+  if (nameHits.length === 1) return { id: nameHits[0].id, name: nameHits[0].name, site_id: null, why: "mesajdaki ad benziyor" };
+  // Şantiye adı: tüm kelimeleri ya da 6+ harfli ayırt edici bir kelimesi geçiyor
+  const siteHits = live(d, "sites").filter((s) => {
+    const st = tok(s.name).filter((w) => w.length >= 4 && !GENERIC.has(w));
+    return st.length && (st.every(fuzzy) || st.some((w) => w.length >= 6 && fuzzy(w)));
+  }).filter((s) => custs.some((c) => c.id === s.customer_id));
+  const owners = [...new Set(siteHits.map((s) => s.customer_id))];
+  if (owners.length === 1) {
+    const s = siteHits.find((x) => x.customer_id === owners[0]);
+    return { id: owners[0], name: custs.find((c) => c.id === owners[0]).name, site_id: siteHits.filter((x) => x.customer_id === owners[0]).length === 1 ? s.id : null, why: `"${s.name}" şantiyesi` };
+  }
+  if (vehicleId) {
+    const since = addDaysLocal(date, -3);
+    const recent = live(d, "work_records").filter((w) => w.vehicle_id === vehicleId && w.date >= since && w.date <= date && w.customer_id);
+    const ids = [...new Set(recent.map((w) => w.customer_id))];
+    if (ids.length === 1 && custs.some((c) => c.id === ids[0])) return { id: ids[0], name: custs.find((c) => c.id === ids[0]).name, site_id: null, why: "bu araç son günlerde bu müşteriye çalıştı" };
+  }
+  return null;
+}
+
+// Mesajda büyük harfle yazılmış 2–3 kelimelik ad (kişi/firma) — personel, araç, yer, ocak, döküm yeri ya da iş kelimesi değilse
+const NOT_NAME = new Set(["tir", "kamyon", "kamyonet", "jcb", "kepce", "ekskavator", "manitou", "vinc", "sefer", "dokum", "dolgu", "hafriyat", "harfiyat", "moloz", "kum", "micir", "gravak", "toprak", "saat", "yevmiye", "santiye", "santiyeden", "santiyeye", "ocak", "ton", "bugun", "dun", "sabah", "aksam", "ocagi", "nakliye", "isi", "is", "yarim", "gun", "ve", "ile", "tl", "lira"]);
+export function nameInMessage(d, text) {
+  // personel/araç/yer kelimeleri (ad içinde geçse de atılır: "Bayram Tırcı Ahmet Bey" → "Ahmet Bey")
+  const own = new Set([...live(d, "personnel"), ...live(d, "vehicles"), ...live(d, "quarries"), ...live(d, "dump_sites"), ...live(d, "sites")].flatMap((x) => tok(x.name)).filter((w) => w.length >= 3));
+  const isOwn = (w) => NOT_NAME.has(w) || [...own].some((x) => sameWord(x, w)) || /^tirci|^operator/.test(w);
+  const out = [];
+  for (const m of String(text || "").matchAll(/[A-ZÇĞİÖŞÜ][a-zçğıöşü]{2,}(?:[’'][a-zçğıöşü]+)?(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]{1,}(?:[’'][a-zçğıöşü]+)?)*/gu)) {
+    let cur = [];
+    const flush = () => {
+      const ok = cur.length >= 2 || (cur.length === 1 && false);
+      if (ok) out.push(cur.join(" "));
+      cur = [];
+    };
+    for (const raw of m[0].split(/\s+/)) {
+      const clean = raw.replace(/[’'][a-zçğıöşü]+$/u, "");
+      const w = norm(clean);
+      if (isOwn(w)) { flush(); continue; }
+      cur.push(clean);
+    }
+    flush();
+  }
+  // Mevcut müşteriyle birebir aynı ad zaten seçilir; burada yalnız listede OLMAYAN adlar
+  const same = (n) => live(d, "customers").some((c) => {
+    const a = tok(c.name).filter((x) => !GENERIC.has(x)), b = tok(n).filter((x) => !GENERIC.has(x));
+    return a.length && a.length === b.length && a.every((x) => b.some((y) => sameWord(x, y)));
+  });
+  const cands = [...new Set(out)].filter((n) => !same(n) && !tok(n).every((w) => TITLES.has(w)));
+  return cands.length === 1 ? cands[0] : null;
+}
+
 // Ücretsiz kota ve gizlilik için: liste büyükse yalnız mesajla ilgili + en çok kullanılan kartlar gider
-const SEND_ALL_UNDER = 15;
+const SEND_ALL_UNDER = 150; // ad listesi küçük: 150 müşteriye kadar hepsi gider (yanlış yazılmış adlar da bulunsun)
 export function relevantIds(d, message = "") {
   const msg = ` ${norm(message)} `;
+  const mw = msg.trim().split(" ").filter((w) => w.length >= 4);
   const has = (txt) => {
     const n = norm(txt);
-    return n.length >= 3 && (msg.includes(` ${n} `) || n.split(" ").some((w) => w.length >= 4 && msg.includes(` ${w} `)));
+    if (n.length < 3) return false;
+    if (msg.includes(` ${n} `) || n.split(" ").some((w) => w.length >= 4 && msg.includes(` ${w} `))) return true;
+    // yanlış yazım: "muarem" ↔ "muharrem" (5+ harfli kelimelerde 2 harf farkı)
+    return n.split(" ").some((w) => w.length >= 5 && mw.some((m) => m.length >= 5 && editDistance(m, w) <= 2));
   };
   const customers = live(d, "customers");
   const keep = new Set();
@@ -200,6 +263,7 @@ export function assistantSystem(rules = "") {
     "not_aliases listesi kullanıcının reddettiği eşleşmelerdir: o ifade için o kartı seçme.",
     "examples: bu işletmenin daha önce onaylanmış mesaj→kayıt örnekleridir; aynı yazış alışkanlıklarını izle.",
     "Kurallar: Kartı listeden ID ile seç. Mesajda listede olmayan bir müşteri adı geçiyorsa customer_id=null ve new_customer=mesajda yazdığı haliyle ad.",
+    "Mesajda geçen kişi/firma adı (örn. 'Süleyman Kaya', 'Ahmet Bey', 'Yıldız İnşaat') personel, araç, ocak veya döküm yeri değilse BÜYÜK İHTİMALLE MÜŞTERİDİR: listede varsa onu seç, yoksa new_customer olarak yaz. Müşteriyi boş bırakıp soru sormak yerine en olası müşteriyi yaz.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
     "TAŞERON: customers satırında 3. değer ana firma ID'sidir (o müşteri, ana firmanın taşeronudur). Taşeronun ADI mesajda geçmiyorsa işi ANA FİRMAYA yaz (geçmiş işlere bakarak taşeron tahmin etme); adı geçiyorsa o öder. 'X'in inşaatında/şantiyesinde Y'ye çalışıldı' → işi isteyen Y'dir: customer_id=Y (listede yoksa new_customer=Y ve new_customer_parent_id=X'in ID'si); X'in şantiyesini site_id'ye yazabilirsin. Meslek adı (kuyucu, camcı, sıvacı) tek başına geçiyorsa ve listede birden fazla benzer kart varsa tahmin etme, questions'a sor.",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
@@ -207,7 +271,7 @@ export function assistantSystem(rules = "") {
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
     "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
-    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
+    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
@@ -387,7 +451,33 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
         issues.push(`Miktar ${q} mesajda yazmıyor (tahmin) — onaylayın`);
       }
     } else issues.push("Miktar yok");
-    if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
+    // Personel müşteri adını yazmamış: Gemini'nin tahmini ya da telefonun ipucu (şantiye adı, aynı aracın son işi) önerilir, onaya bırakılır
+    if (r.customer_id && w.customer_guess && !r.hinted) {
+      r.customerGuess = true;
+      issues.push(`Müşteri mesajda yazmıyor; "${byId(customers, r.customer_id)?.name}" tahmin edildi — doğruysa işaretleyin`);
+    }
+    if (!r.customer_id && !r.new_customer) {
+      const rowT = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
+      const nm0 = nameInMessage(d, rowT);
+      const g = nm0 ? null : guessCustomer(d, rowT, { vehicleId: r.vehicle_id, date: r.date });
+      if (g) {
+        r.customer_id = g.id;
+        if (g.site_id && !r.site_id) r.site_id = g.site_id;
+        r.customerGuess = true;
+        issues.push(`Müşteri mesajda yazmıyor; ${g.why} → "${g.name}" önerildi — doğruysa işaretleyin`);
+      } else {
+        // Mesajda listede olmayan bir kişi/firma adı varsa yeni müşteri olarak öner ("Süleyman Kaya")
+        const nm = nameInMessage(d, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
+        if (nm) {
+          const key = norm(nm);
+          if (!newNames.has(key)) newNames.set(key, nm);
+          r.new_customer = newNames.get(key);
+          r.new_customer_text = nm;
+          r.customerGuess = true;
+          issues.push(`Müşteri belirtilmemiş; mesajdaki "${nm}" yeni müşteri olarak önerildi — doğruysa işaretleyin`);
+        } else issues.push("Müşteri seçilmeli");
+      }
+    }
     r.mentions = r.hinted && inMessage(w.new_customer, message) ? { customer: String(w.new_customer).trim() } : {};
     // Kullanıcı "Yeni: X" yerine mevcut bir müşteri seçerse X ifadesi o müşteriye öğrenilir
     if (w.new_customer && inMessage(w.new_customer, message)) r.new_customer_text = String(w.new_customer).trim();
@@ -435,7 +525,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess);
     r.fuelAllowance = fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     out.works.push(r);
   }
@@ -743,7 +833,7 @@ export function assistantSchema() {
     properties: {
       works: row({ date: NS, customer_id: NS, new_customer: NS, new_customer_parent_id: NS, site_id: NS, new_site: NS, vehicle_id: NS, personnel_id: NS,
         work_type: { type: ["string", "null"], enum: [...WORK_TYPES, null] }, quantity: NN, unit: { type: ["string", "null"], enum: [...ASSIST_UNITS, null] },
-        guessed: NB, reporter: NS, date_source: NS, from_place: NS, quarry_id: NS, to_place: NS, to_is_dump: NB, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, note: NS,
+        guessed: NB, customer_guess: NB, reporter: NS, date_source: NS, from_place: NS, quarry_id: NS, to_place: NS, to_is_dump: NB, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, note: NS,
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
       expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, photo: { type: ["integer", "null"] }, note: NS }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
