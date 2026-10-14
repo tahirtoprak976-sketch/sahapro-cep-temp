@@ -229,33 +229,65 @@ export async function geminiReadReceipt(blob, { key, model, docType = "Gider Fi�
   return { raw, ...validateReceipt(obj, docType) };
 }
 
-// Serbest parça listesi (metin + görseller) ile JSON yanıt
-export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 8192, schema = null } = {}) {
-  const body = (withSchema) => ({
+// Serbest parça listesi (metin + görseller) ile JSON yanıt.
+// Uzun yanıt (çok fotoğraf, uzun mesaj) yarıda kesilirse: daha geniş sınır + "kısa yaz" uyarısıyla bir kez daha denenir.
+export const SHORTER_HINT = "ÖNEMLİ: Önceki yanıt çok uzun olduğu için yarıda kesildi. Bu kez kısa yaz: photo_texts'te her fotoğraf için YALNIZ rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 500 karakter). description ve note alanlarını kısa tut.";
+function parseJsonText(raw) {
+  const t = String(raw || "").replace(/```(?:json)?/gi, "");
+  const a = t.indexOf("{"), b = t.lastIndexOf("}");
+  if (a < 0 || b <= a) return null;
+  try {
+    return JSON.parse(t.slice(a, b + 1));
+  } catch {
+    return null;
+  }
+}
+export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 16384, schema = null } = {}) {
+  const body = (withSchema, tokens, extra) => ({
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
-    contents: [{ role: "user", parts }],
+    contents: [{ role: "user", parts: extra ? [...parts, { text: extra }] : parts }],
     generationConfig: {
       temperature: 0,
       responseMimeType: "application/json",
-      maxOutputTokens: maxTokens,
+      maxOutputTokens: tokens,
       ...(withSchema && schema ? { responseJsonSchema: schema } : {}),
     },
   });
-  let data;
-  try {
-    data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, body(true), fetchFn);
-  } catch (e) {
-    // Şablonu desteklemeyen model/sürüm: şablonsuz bir kez daha dene (doğrulama zaten telefonda)
-    if (!schema || !/schema|responseJsonSchema|response_json_schema|Invalid JSON payload/i.test(e.message)) throw e;
-    data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, body(false), fetchFn);
+  const url = `/models/${encodeURIComponent(model)}:generateContent`;
+  let useSchema = true, tokens = maxTokens;
+  const send = async (extra) => {
+    for (let i = 0; i < 3; i++) {
+      try {
+        return await call(url, key, body(useSchema, tokens, extra), fetchFn);
+      } catch (e) {
+        // Şablonu desteklemeyen model/sürüm: şablonsuz (doğrulama zaten telefonda)
+        if (useSchema && schema && /schema|responseJsonSchema|response_json_schema|Invalid JSON payload/i.test(e.message)) { useSchema = false; continue; }
+        // Eski modellerde çıktı sınırı küçük (8192): sınırı düşür
+        if (tokens > 8192 && /max_?output_?tokens|maxOutputTokens|output token/i.test(e.message)) { tokens = 8192; continue; }
+        throw e;
+      }
+    }
+    throw new Error("Gemini isteği kabul etmedi");
+  };
+  const finish = (data) => data?.candidates?.[0]?.finishReason || "";
+  let data = await send(null);
+  let obj = parseJsonText(text(data));
+  if (!obj) {
+    const why = finish(data);
+    if (why === "SAFETY" || why === "RECITATION" || why === "PROHIBITED_CONTENT" || data?.promptFeedback?.blockReason)
+      throw new Error("Gemini bu içeriği işlemedi (güvenlik filtresi). Fotoğrafları ayrı ayrı gönderip tekrar deneyin.");
+    // Yarıda kesildi ya da bozuk JSON: daha geniş sınırla ve kısa yazma uyarısıyla bir kez daha
+    tokens = Math.min(Math.max(tokens * 2, 16384), 65536);
+    data = await send(SHORTER_HINT);
+    obj = parseJsonText(text(data));
+    if (!obj)
+      throw new Error(finish(data) === "MAX_TOKENS"
+        ? "Gemini'nin yanıtı çok uzun olduğu için yarıda kesildi. Mesajı ve fotoğrafları ikiye bölüp (ör. 2'şer fotoğraf) tekrar gönderin."
+        : "Gemini geçerli bir yanıt döndürmedi; mesajı kısaltıp ya da fotoğrafları ayrı gönderip tekrar deneyin.");
   }
-  const raw = text(data).replace(/```(?:json)?/gi, "");
-  try {
-    return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-  } catch {
-    throw new Error("Gemini geçerli bir yanıt döndürmedi; tekrar deneyin");
-  }
+  return obj;
 }
+
 // Düz metin (gün sonu özeti gibi)
 export async function geminiText(prompt, { key, model, system, fetchFn, maxTokens = 2048 } = {}) {
   const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
