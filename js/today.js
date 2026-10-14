@@ -9,6 +9,8 @@ import {
   todayStr,
 } from "./core.js";
 import { ledgerOf } from "./esnaf.js";
+import { ticketReconcile } from "./assistant-docs.js";
+import { fuelFlags } from "./fuel-rules.js";
 
 const DAY = 86400000;
 const daysBetween = (a, b) =>
@@ -132,6 +134,24 @@ export function todayBoard(data, opts = {}) {
       href: "#/esnaf",
       sort: 50,
     });
+
+  // 3b) Döküm fişi ↔ sefer mutabakatı (yalnız fiş taranan gün/araçlar)
+  for (const r of ticketReconcile(data, { today })) {
+    const v = act(data.vehicles).find((x) => x.id === r.vehicle_id);
+    items.push({
+      kind: r.tickets > r.sefer ? "warn" : "info",
+      group: "Sefer",
+      ic: "🧾",
+      text: `${v?.plate || v?.name || "Araç"} · ${r.date.split("-").reverse().join(".")}: ${r.tickets} döküm fişi, ${r.sefer} sefer kayıtlı`,
+      sub: r.tickets > r.sefer ? "Fişi olan ama işe yazılmamış sefer var" : "Bazı seferlerin döküm fişi taranmamış",
+      href: "#/isler",
+      sort: 60,
+    });
+  }
+
+  // 3c) Yakıt kuralları (tutar, depo, işsiz gün, tüketim)
+  for (const f of fuelFlags(data, { today }))
+    items.push({ kind: f.kind, group: "Yakıt", ic: "⛽", text: f.text, sub: { total: "Litre × fiyat toplamı tutmuyor", capacity: "Depodan fazla dolum", nowork: "Kontrol edin", consumption: "Tüketim arttı: kaçak, arıza veya yanlış kayıt olabilir" }[f.rule], href: "#/yakit", sort: 70 });
 
   // 4) Yedek
   const age = backupAgeDays(opts.lastBackupAt, today);

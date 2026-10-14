@@ -1,0 +1,190 @@
+// Gün sonu özeti ve "Soru Sor" araçları — SAF katman. Rakamlar telefonda hesaplanır;
+// Gemini yalnız bu rakamlarla cümle kurar. Doğrulanamayan rakam içeren cümle atılır.
+import { isActive, cariBalance, todayStr, addDays, daySummary } from "./core.js";
+import { ledgerOf } from "./esnaf.js";
+import { foldTr } from "./parser.js";
+import { fuelFlags } from "./fuel-rules.js";
+import { ticketReconcile } from "./assistant-docs.js";
+import { checkAnswer } from "./assistant-core.js";
+
+const live = (d, s) => (d[s] || []).filter(isActive);
+const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const nameOf = (d, s, id) => (d[s] || []).find((x) => x.id === id)?.name || "—";
+const unitsText = (ws) => {
+  const m = {};
+  for (const w of ws) m[w.unit] = r2((m[w.unit] || 0) + (Number(w.quantity) || 0));
+  return Object.entries(m).map(([u, q]) => `${q} ${u.toLocaleLowerCase("tr-TR")}`).join(", ");
+};
+
+export function dayFacts(d, date = todayStr()) {
+  const on = (s) => live(d, s).filter((r) => r.date === date);
+  const works = on("work_records");
+  const byCust = new Map();
+  for (const w of works) byCust.set(w.customer_id, [...(byCust.get(w.customer_id) || []), w]);
+  const byVeh = new Map();
+  for (const w of works) byVeh.set(w.vehicle_id, [...(byVeh.get(w.vehicle_id) || []), w]);
+  const sum = daySummary(date, d);
+  const expenses = on("expense_records");
+  const cats = {};
+  for (const e of expenses) cats[e.category || "Diğer"] = r2((cats[e.category || "Diğer"] || 0) + Number(e.amount));
+  const fuel = on("fuel_records");
+  const collections = on("cash_records").filter((c) => c.cash_type === "Müşteriden Para Alındı");
+  // Boş araç: son 30 günde çalışmış ama bugün işi olmayan özmal araçlar (hiç kullanılmayan kartlar sayılmaz)
+  const recent = new Set(live(d, "work_records").filter((w) => w.date < date && w.date >= addDays(date, -30)).map((w) => w.vehicle_id));
+  const idle = live(d, "vehicles").filter((v) => v.active !== false && recent.has(v.id) && !byVeh.has(v.id) && v.ownership !== "Taşeron").map((v) => v.plate || v.name);
+  return {
+    tarih: date,
+    is_sayisi: works.length,
+    toplam: { sefer: sum.total_sefer, saat: sum.total_saat, yevmiye: sum.total_yevmiye },
+    musteriler: [...byCust].map(([id, ws]) => ({ musteri: nameOf(d, "customers", id), is: ws.length, miktar: unitsText(ws) })),
+    araclar: [...byVeh].map(([id, ws]) => ({ arac: nameOf(d, "vehicles", id), miktar: unitsText(ws) })),
+    bos_araclar: idle.slice(0, 10),
+    gider_TL: r2(sum.expense_total),
+    gider_kategorileri: cats,
+    yakit_litre: r2(sum.fuel_liters),
+    yakit_TL: r2(fuel.reduce((n, f) => n + (Number(f.total) || 0), 0)),
+    tahsilat_TL: r2(sum.tahsilat_total),
+    tahsilatlar: collections.map((c) => ({ musteri: nameOf(d, "customers", c.customer_id), TL: r2(c.amount) })),
+    acik_ariza: sum.open_breakdowns,
+    uyarilar: [
+      ...fuelFlags(d, { today: date, days: 0 }).map((f) => f.text),
+      ...ticketReconcile(d, { today: date, days: 0 }).map((r) => `${nameOf(d, "vehicles", r.vehicle_id)}: ${r.tickets} döküm fişi, ${r.sefer} sefer`),
+    ],
+  };
+}
+
+const tl = (n) => Number(n).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+// İnternet/Gemini yoksa da çalışan düz özet
+export function localSummary(f) {
+  const s = [];
+  const [y, m, g] = f.tarih.split("-");
+  s.push(`${g}.${m}.${y} gün sonu: ${f.is_sayisi} iş kaydı` + (f.is_sayisi ? ` (${[f.toplam.sefer && f.toplam.sefer + " sefer", f.toplam.saat && f.toplam.saat + " saat", f.toplam.yevmiye && f.toplam.yevmiye + " yevmiye"].filter(Boolean).join(", ")}).` : "."));
+  for (const c of f.musteriler.slice(0, 6)) s.push(`• ${c.musteri}: ${c.miktar}`);
+  if (f.bos_araclar.length) s.push(`Boş kalan: ${f.bos_araclar.join(", ")}.`);
+  if (f.yakit_litre) s.push(`Yakıt: ${tl(f.yakit_litre)} L` + (f.yakit_TL ? ` / ${tl(f.yakit_TL)} ₺.` : "."));
+  if (f.gider_TL) s.push(`Gider: ${tl(f.gider_TL)} ₺.`);
+  if (f.tahsilat_TL) s.push(`Tahsilat: ${tl(f.tahsilat_TL)} ₺ (${f.tahsilatlar.map((t) => t.musteri).join(", ")}).`);
+  if (f.acik_ariza) s.push(`Açık arıza/bakım: ${f.acik_ariza}.`);
+  for (const u of f.uyarilar.slice(0, 4)) s.push(`⚠ ${u}`);
+  return s.join("\n");
+}
+
+export const SUMMARY_SYSTEM = [
+  "Sen bir hafriyat/nakliye şirketinin gün sonu raporunu yazan asistansın.",
+  "Sana o günün rakamları JSON olarak verilir. 5–8 kısa Türkçe cümle yaz: ne iş yapıldı, hangi müşteriye, boş araç, yakıt, gider, tahsilat, dikkat edilmesi gerekenler.",
+  "YALNIZ verilen rakamları kullan; hesap yapma, toplama, yüzde çıkarma, tahmin etme. Rakam yoksa o konuyu atla.",
+  "Düz metin yaz; başlık, madde işareti veya JSON kullanma. WhatsApp'ta okunacak.",
+].join("\n");
+
+// Doğrulanamayan rakam içeren cümleyi at
+export function keepVerified(text, facts) {
+  const sentences = String(text || "").replace(/\r/g, "").split(/(?<=[.!?])\s+|\n+/).map((x) => x.trim()).filter(Boolean);
+  const kept = [], dropped = [];
+  for (const s of sentences) (checkAnswer(s, facts).length ? dropped : kept).push(s);
+  return { text: kept.join(" "), dropped };
+}
+
+// ---- Soru Sor: Gemini fonksiyon çağrısı ile telefondaki kayıtlardan hesap ----
+function findCard(d, store, q, aliasType) {
+  if (!q) return null;
+  const n = norm(q);
+  const list = live(d, store);
+  const exact = list.find((x) => norm(x.name) === n || norm(x.plate || "") === n);
+  if (exact) return exact;
+  const al = live(d, "aliases").find((a) => a.active !== false && a.target_type === aliasType && norm(a.alias) === n);
+  if (al) return list.find((x) => x.id === al.target_id) || null;
+  const part = list.filter((x) => (` ${norm(x.name)} ${norm(x.plate || "")} `).includes(` ${n} `) || (n.length >= 4 && norm(x.name).includes(n)));
+  return part.length === 1 ? part[0] : part.length ? { many: part.map((x) => x.name) } : null;
+}
+function range(d, a = {}, today) {
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(a.from || "") ? a.from : today.slice(0, 8) + "01";
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(a.to || "") ? a.to : today;
+  return { from, to, inR: (r) => r.date >= from && r.date <= to };
+}
+function resolve(d, a, key, store, type) {
+  if (!a[key]) return { id: null };
+  const c = findCard(d, store, a[key], type);
+  if (!c) return { error: `"${a[key]}" bulunamadı` };
+  if (c.many) return { error: `"${a[key]}" birden fazla karta uyuyor`, adaylar: c.many.slice(0, 8) };
+  return { id: c.id, name: c.name };
+}
+
+export const ASK_TOOLS = [
+  { name: "work_totals", description: "Tarih aralığında iş toplamları (sefer/saat/yevmiye/ton, iş değeri TL). Müşteri veya araç ile süzülebilir.",
+    parameters: { type: "object", properties: { from: { type: "string", description: "YYYY-MM-DD; yoksa bu ayın başı" }, to: { type: "string" }, customer: { type: "string", description: "müşteri adı ya da takma adı" }, vehicle: { type: "string", description: "araç adı/plakası" } } } },
+  { name: "customer_balance", description: "Bir müşterinin cari bakiyesi (alacak), son tahsilatı ve bu ayki işleri.",
+    parameters: { type: "object", properties: { customer: { type: "string" } }, required: ["customer"] } },
+  { name: "fuel_totals", description: "Tarih aralığında yakıt litre ve TL toplamı, araç bazında.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, vehicle: { type: "string" } } } },
+  { name: "expense_totals", description: "Tarih aralığında gider toplamı ve kategori dağılımı.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, category: { type: "string" }, vehicle: { type: "string" } } } },
+  { name: "collection_totals", description: "Tarih aralığında müşterilerden alınan tahsilat toplamı.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, customer: { type: "string" } } } },
+  { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
+    parameters: { type: "object", properties: { supplier: { type: "string" } } } },
+];
+
+export function runAskTool(d, name, args = {}, today = todayStr()) {
+  const a = args && typeof args === "object" ? args : {};
+  const { from, to, inR } = range(d, a, today);
+  if (name === "work_totals") {
+    const c = resolve(d, a, "customer", "customers", "customer"), v = resolve(d, a, "vehicle", "vehicles", "vehicle");
+    if (c.error || v.error) return c.error ? c : v;
+    const ws = live(d, "work_records").filter((w) => inR(w) && (!c.id || w.customer_id === c.id) && (!v.id || w.vehicle_id === v.id));
+    const u = (x) => r2(ws.filter((w) => w.unit === x).reduce((n, w) => n + (Number(w.quantity) || 0), 0));
+    const per = {};
+    for (const w of ws) { const k = nameOf(d, "customers", w.customer_id); per[k] = (per[k] || 0) + 1; }
+    return { from, to, musteri: c.name || "hepsi", arac: v.name || "hepsi", is_sayisi: ws.length, sefer: u("Sefer"), saat: u("Saat"), yevmiye: u("Yevmiye"), ton: u("Ton"),
+      is_degeri_TL: r2(ws.reduce((n, w) => n + (Number(w.price_snapshot?.amount) || 0), 0)), fiyatsiz_is: ws.filter((w) => !(Number(w.price_snapshot?.amount) > 0)).length,
+      musteri_bazinda_is: Object.fromEntries(Object.entries(per).sort((x, y) => y[1] - x[1]).slice(0, 10)) };
+  }
+  if (name === "customer_balance") {
+    const c = resolve(d, a, "customer", "customers", "customer");
+    if (c.error || !c.id) return c.error ? c : { error: "Müşteri adı gerekli" };
+    const cash = live(d, "cash_records").filter((x) => x.customer_id === c.id && x.cash_type === "Müşteriden Para Alındı").sort((x, y) => y.date.localeCompare(x.date));
+    const month = today.slice(0, 7);
+    const ws = live(d, "work_records").filter((w) => w.customer_id === c.id && String(w.date).startsWith(month));
+    return { musteri: c.name, cari_bakiye_TL: cariBalance(live(d, "cari_movements").filter((m) => m.customer_id === c.id)),
+      son_tahsilat: cash[0] ? { tarih: cash[0].date, TL: r2(cash[0].amount) } : null, bu_ay_is: ws.length, bu_ay_miktar: unitsText(ws) };
+  }
+  if (name === "fuel_totals") {
+    const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
+    if (v.error) return v;
+    const fl = live(d, "fuel_records").filter((f) => inR(f) && (!v.id || f.vehicle_id === v.id));
+    const per = {};
+    for (const f of fl) { const k = nameOf(d, "vehicles", f.vehicle_id); per[k] = r2((per[k] || 0) + Number(f.liters)); }
+    return { from, to, arac: v.name || "hepsi", litre: r2(fl.reduce((n, f) => n + (Number(f.liters) || 0), 0)), TL: r2(fl.reduce((n, f) => n + (Number(f.total) || 0), 0)), kayit: fl.length, arac_bazinda_litre: per };
+  }
+  if (name === "expense_totals") {
+    const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
+    if (v.error) return v;
+    const ex = live(d, "expense_records").filter((e) => inR(e) && (!v.id || e.vehicle_id === v.id) && (!a.category || norm(e.category).includes(norm(a.category))));
+    const cats = {};
+    for (const e of ex) cats[e.category || "Diğer"] = r2((cats[e.category || "Diğer"] || 0) + Number(e.amount));
+    return { from, to, TL: r2(ex.reduce((n, e) => n + (Number(e.amount) || 0), 0)), kayit: ex.length, kategoriler: cats };
+  }
+  if (name === "collection_totals") {
+    const c = resolve(d, a, "customer", "customers", "customer");
+    if (c.error) return c;
+    const cs = live(d, "cash_records").filter((x) => inR(x) && x.cash_type === "Müşteriden Para Alındı" && (!c.id || x.customer_id === c.id));
+    const per = {};
+    for (const x of cs) { const k = nameOf(d, "customers", x.customer_id); per[k] = r2((per[k] || 0) + Number(x.amount)); }
+    return { from, to, musteri: c.name || "hepsi", TL: r2(cs.reduce((n, x) => n + (Number(x.amount) || 0), 0)), kayit: cs.length, musteri_bazinda_TL: per };
+  }
+  if (name === "esnaf_debt") {
+    const s = resolve(d, a, "supplier", "suppliers", "supplier");
+    if (s.error) return s;
+    const rows = live(d, "suppliers").filter((x) => !s.id || x.id === s.id).map((x) => ({ esnaf: x.name, kalan_TL: ledgerOf(d, x.id).remaining / 100 })).filter((x) => x.kalan_TL || s.id);
+    return { toplam_TL: r2(rows.reduce((n, x) => n + x.kalan_TL, 0)), esnaflar: rows };
+  }
+  return { error: "Bilinmeyen araç: " + name };
+}
+
+export const ASK_SYSTEM = [
+  "Sen bir hafriyat/nakliye şirketinin kayıtlarına bakan asistansın. Kullanıcının sorusunu cevaplamak için araçları (functions) çağır.",
+  "Rakamları ASLA tahmin etme; yalnız araç sonuçlarındaki rakamları kullan. Toplama/bölme yapma; araç ne döndürdüyse onu söyle.",
+  "Tarih belirtilmezse bu ay; 'geçen ay', 'bu hafta' gibi ifadeleri bugüne göre YYYY-MM-DD aralığına çevir.",
+  "Araç hata döndürürse (bulunamadı / birden fazla) kullanıcıya adayları söyleyip netleştirmesini iste.",
+  "Kısa, net Türkçe cevap ver (en çok 5 cümle).",
+].join("\n");

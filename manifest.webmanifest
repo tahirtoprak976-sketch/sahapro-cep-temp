@@ -36,7 +36,8 @@
         {
           "name": "photos",
           "accept": [
-            "image/*"
+            "image/*",
+            "audio/*"
           ]
         }
       ]

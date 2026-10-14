@@ -411,6 +411,9 @@ async function vehicleDetail(ctx, id) {
         ${fDate("Sonraki Bakım", "next_maintenance_date", v.next_maintenance_date || "", false)}
         ${fText("Not", "note", v.note || "")}
       </div>
+      <div class="formgrid2">
+        ${fNum("Depo kapasitesi (L)", "tank_capacity", v.tank_capacity ?? "", { step: "any" })}
+      </div>
       <button class="btn sm" data-vsave>Kartı Kaydet</button>
     </div>
     ${lastMaint ? notice("ok", `Son tamamlanan bakım: ${trDate(lastMaint.date)} — ${lastMaint.maint_type || ""}`) : ""}
@@ -479,6 +482,7 @@ async function vehicleDetail(ctx, id) {
         machine_hours: val.machine_hours ? Number(val.machine_hours) : null,
         next_maintenance_date: val.next_maintenance_date || null,
         note: val.note || "",
+        tank_capacity: Number(val.tank_capacity) > 0 ? Number(val.tank_capacity) : null,
       },
       "Araç kartı",
     );

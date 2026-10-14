@@ -178,6 +178,32 @@ async function shrink(blob, max = 1600) {
   }
 }
 
+// Ses kaydını Gemini'nin kesin desteklediği WAV'a çevirir (16 kHz, tek kanal). Çözülemezse olduğu gibi döner.
+export async function audioToWav(blob, rate = 16000) {
+  try {
+    const AC = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext;
+    if (!AC) return blob;
+    const tmp = new AC(1, 1, rate);
+    const src = await tmp.decodeAudioData(await blob.arrayBuffer());
+    const secs = Math.min(src.duration, 180);
+    const ctx = new AC(1, Math.max(1, Math.ceil(secs * rate)), rate);
+    const node = ctx.createBufferSource();
+    node.buffer = src;
+    node.connect(ctx.destination);
+    node.start();
+    const pcm = (await ctx.startRendering()).getChannelData(0);
+    const buf = new ArrayBuffer(44 + pcm.length * 2), v = new DataView(buf);
+    const w = (o, str) => [...str].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); v.setUint32(4, 36 + pcm.length * 2, true); w(8, "WAVE"); w(12, "fmt ");
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+    v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, pcm.length * 2, true);
+    for (let i = 0; i < pcm.length; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, pcm[i])) * 0x7fff, true);
+    return new Blob([buf], { type: "audio/wav" });
+  } catch {
+    return blob;
+  }
+}
+
 export async function geminiReadReceipt(blob, { key, model, docType = "Gider Fişi", fetchFn } = {}) {
   const img = await shrink(blob);
   const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
@@ -230,4 +256,51 @@ export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens
     throw new Error("Gemini geçerli bir yanıt döndürmedi; tekrar deneyin");
   }
 }
+// Düz metin (gün sonu özeti gibi)
+export async function geminiText(prompt, { key, model, system, fetchFn, maxTokens = 2048 } = {}) {
+  const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
+    systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.2, maxOutputTokens: maxTokens },
+  }, fetchFn);
+  return text(data).trim();
+}
+
+// Fonksiyon çağrısı döngüsü: model araç ister → telefon hesaplar → sonuç modele döner (en çok 3 tur).
+// Modelin içerik parçaları (düşünce imzaları dahil) DEĞİŞTİRİLMEDEN geri gönderilir.
+export async function geminiAsk(question, { key, model, system, tools, runTool, fetchFn, maxRounds = 3 } = {}) {
+  const contents = [{ role: "user", parts: [{ text: question }] }];
+  const trace = [];
+  const req = (mode) => ({
+    systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+    contents,
+    tools: [{ functionDeclarations: tools }],
+    toolConfig: { functionCallingConfig: { mode } },
+    generationConfig: { temperature: 0, maxOutputTokens: 2048 },
+  });
+  for (let round = 0; round <= maxRounds; round++) {
+    const last = round === maxRounds;
+    const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, req(last ? "NONE" : "AUTO"), fetchFn);
+    const content = data?.candidates?.[0]?.content;
+    const parts = content?.parts || [];
+    const calls = parts.filter((p) => p.functionCall);
+    if (!calls.length || last) return { answer: parts.map((p) => p.text || "").join("").trim(), trace };
+    contents.push({ role: "model", parts });
+    const responses = [];
+    for (const p of calls.slice(0, 6)) {
+      const { name, args, id } = p.functionCall;
+      let result;
+      try {
+        result = await runTool(name, args || {});
+      } catch (e) {
+        result = { error: e.message || String(e) };
+      }
+      trace.push({ name, args: args || {}, result });
+      responses.push({ functionResponse: { name, ...(id ? { id } : {}), response: { result } } });
+    }
+    contents.push({ role: "user", parts: responses });
+  }
+  return { answer: "", trace };
+}
+
 export { parseAiJson, shrink };

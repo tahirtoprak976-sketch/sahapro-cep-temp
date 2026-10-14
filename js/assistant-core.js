@@ -4,6 +4,7 @@
 import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
+import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 
 export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -133,6 +134,7 @@ export function assistantSystem() {
     "\"memory\":[{\"alias\",\"target_type\":\"customer\"|\"site\"|\"vehicle\"|\"personnel\",\"target_id\"}] (kullanıcı 'Mahir bey Hisar Polat demek', 'X = Y', 'X dediğimde Y'yi anla' gibi bir eşleştirme öğretirse),",
     "\"photo_texts\":[string],\"questions\":[string]}",
     "20 bin = 20000, 1,5 milyon = 1500000. 'havale/EFT yaptı' = Havale.",
+    DOCS_PROMPT,
   ].join("\n");
 }
 
@@ -550,6 +552,7 @@ export function assistantSchema() {
       answer: NS,
       photo_texts: { type: "array", items: S("string") },
       questions: { type: "array", items: S("string") },
+      ...docsSchemaProps(),
     },
   };
 }
