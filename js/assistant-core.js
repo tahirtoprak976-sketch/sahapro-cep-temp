@@ -99,6 +99,7 @@ export function assistantSystem() {
     "\"answer\":string|null (kullanıcı soru sorduysa, YALNIZ verilen facts içindeki rakamlarla kısa Türkçe cevap; facts'te yoksa 'kayıtlarda bulamadım' de),",
     "\"cards\":{\"customers\":[{\"name\",\"phone\",\"note\"}],\"sites\":[{\"name\",\"customer_id\",\"customer_name\"}],\"vehicles\":[{\"name\",\"plate\",\"type\",\"ownership\":\"Özmal\"|\"Taşeron\"}],\"personnel\":[{\"name\",\"phone\",\"role\"}],\"suppliers\":[{\"name\",\"type\":\"Servis\"|\"Tedarikçi\"|\"Petrolcü\"|\"Diğer\",\"phone\"}]} (kullanıcı müşteri/filo/personel/tedarikçi LİSTESİ verirse; listede zaten olanları yazma),",
     "Her iş satırına \"mentions\":{\"customer\",\"site\",\"vehicle\",\"personnel\"} ekle: mesajda o kartı anlatan ifade, yazıldığı gibi (örn. \"mahir bey\", \"14 tonluk\").",
+    "\"memory\":[{\"alias\",\"target_type\":\"customer\"|\"site\"|\"vehicle\"|\"personnel\",\"target_id\"}] (kullanıcı 'Mahir bey Hisar Polat demek', 'X = Y', 'X dediğimde Y'yi anla' gibi bir eşleştirme öğretirse),",
     "\"photo_texts\":[string],\"questions\":[string]}",
     "20 bin = 20000, 1,5 milyon = 1500000. 'havale/EFT yaptı' = Havale.",
   ].join("\n");
@@ -208,6 +209,8 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     } else issues.push("Miktar yok");
     if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
     r.mentions = r.hinted && inMessage(w.new_customer, message) ? { customer: String(w.new_customer).trim() } : {};
+    // Kullanıcı "Yeni: X" yerine mevcut bir müşteri seçerse X ifadesi o müşteriye öğrenilir
+    if (w.new_customer && inMessage(w.new_customer, message)) r.new_customer_text = String(w.new_customer).trim();
     for (const k of ["customer", "site", "vehicle", "personnel"]) {
       const m = w.mentions && typeof w.mentions === "object" ? String(w.mentions[k] || "").trim() : "";
       if (m.length >= 3 && m.length <= 60 && !/^\d+$/.test(m) && inMessage(m, message)) r.mentions[k] = m;
@@ -449,6 +452,28 @@ export function validateCards(plan, { message = "", d, photoTexts = [] } = {}) {
   for (const it of out) if (it.kind === "sites" && it.data.customer_name && !newCustomerNames.some((n) => norm(n) === norm(it.data.customer_name))) {
     it.issues.push(`Müşteri "${it.data.customer_name}" bulunamadı`);
     it.ok = false;
+  }
+  return out;
+}
+
+
+// Kullanıcının öğrettiği eşleştirmeler ("Mahir bey = Hisar Polat")
+const MEM_STORE = { customer: "customers", site: "sites", vehicle: "vehicles", personnel: "personnel" };
+export function validateMemory(plan, { message = "", d } = {}) {
+  const out = [];
+  for (const m of (Array.isArray(plan?.memory) ? plan.memory : []).slice(0, 10)) {
+    const alias = String(m?.alias || "").trim();
+    const store = MEM_STORE[m?.target_type];
+    const card = store ? live(d, store).find((x) => x.id === m.target_id) : null;
+    const issues = [];
+    if (!card) issues.push("Kart listede yok");
+    if (alias.length < 3 || /^\d+$/.test(alias)) issues.push("İfade çok kısa");
+    if (alias && !inMessage(alias, message)) issues.push("İfade mesajda geçmiyor");
+    if (card && norm(card.name) === norm(alias)) issues.push("Zaten kartın adı");
+    const existing = live(d, "aliases").find((a) => a.active !== false && norm(a.alias) === norm(alias) && a.target_type === m.target_type);
+    if (existing && existing.target_id !== m.target_id) issues.push("Bu ifade başka karta bağlı; önce Ayarlar'dan eskisini kaldırın");
+    if (existing && existing.target_id === m.target_id) issues.push("Zaten hafızada");
+    out.push({ alias, target_type: m?.target_type, target_id: card?.id || null, target_name: card?.name || "", issues, ok: !issues.length });
   }
   return out;
 }
