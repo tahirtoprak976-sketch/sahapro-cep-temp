@@ -50,28 +50,55 @@ export function hintCustomer(name, hints) {
   return hits.length === 1 ? hits[0][0] : null;
 }
 
-export function assistantContext(d, today = todayStr()) {
+// Ücretsiz kota ve gizlilik için: liste büyükse yalnız mesajla ilgili + en çok kullanılan kartlar gider
+const SEND_ALL_UNDER = 40;
+export function relevantIds(d, message = "") {
+  const msg = ` ${norm(message)} `;
+  const has = (txt) => {
+    const n = norm(txt);
+    return n.length >= 3 && (msg.includes(` ${n} `) || n.split(" ").some((w) => w.length >= 4 && msg.includes(` ${w} `)));
+  };
+  const customers = live(d, "customers");
+  const keep = new Set();
+  for (const c of customers) if (has(c.name)) keep.add(c.id);
+  for (const a of live(d, "aliases")) if (a.target_type === "customer" && has(a.alias)) keep.add(a.target_id);
+  for (const [id, hs] of customerHints(d)) if (hs.some((h) => msg.includes(` ${h} `))) keep.add(id);
+  for (const s of live(d, "sites")) if (has(s.name)) keep.add(s.customer_id);
+  // en son iş yapılan 15 müşteri
+  const recent = [];
+  for (const w of live(d, "work_records").sort((a, b) => String(b.date).localeCompare(String(a.date))))
+    if (w.customer_id && !recent.includes(w.customer_id)) { recent.push(w.customer_id); if (recent.length >= 15) break; }
+  recent.forEach((id) => keep.add(id));
+  return keep;
+}
+export function assistantContext(d, today = todayStr(), message = "") {
+  const big = live(d, "customers").length > SEND_ALL_UNDER;
+  const keep = big ? relevantIds(d, message) : null;
+  const okC = (id) => !keep || keep.has(id);
+  const wantsEdit = /düzelt|duzelt|değil|degil|yanlış|yanlis|\bsil\b|iptal/i.test(message);
   const recent = live(d, "work_records")
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
-    .slice(0, 30)
+    .filter((w) => okC(w.customer_id))
+    .slice(0, wantsEdit ? 30 : 12)
     .map((w) => [w.id, w.date, w.customer_id, w.site_id, w.vehicle_id, w.work_type, w.quantity, w.unit].join("|"));
   const lastOf = (store, n, f) =>
     live(d, store).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, n).map(f);
   return {
     today,
-    customers: live(d, "customers").map((c) => [c.id, c.name]),
-    sites: live(d, "sites").map((s) => [s.id, s.name, s.customer_id]),
+    note: big ? "Müşteri listesinin yalnız mesajla ilgili ve son çalışılan kısmı gönderildi; listede görmediğin adı new_customer olarak yaz, uygulama tüm listede kendisi arar." : undefined,
+    customers: live(d, "customers").filter((c) => okC(c.id)).map((c) => [c.id, c.name]),
+    sites: live(d, "sites").filter((s) => okC(s.customer_id)).map((s) => [s.id, s.name, s.customer_id]),
     vehicles: live(d, "vehicles").map((v) => [v.id, v.name, v.plate || "", v.type || ""]),
     personnel: live(d, "personnel").map((p) => [p.id, p.name]),
     dump_sites: live(d, "dump_sites").map((x) => [x.id, x.name]),
     suppliers: live(d, "suppliers").map((s) => [s.id, s.name]),
-    aliases: live(d, "aliases").filter((a) => a.active !== false).map((a) => [a.alias, a.target_type, a.target_id]),
-    customer_hints: customerHints(d),
+    aliases: live(d, "aliases").filter((a) => a.active !== false && (a.target_type !== "customer" || okC(a.target_id))).map((a) => [a.alias, a.target_type, a.target_id]),
+    customer_hints: customerHints(d).filter(([id]) => okC(id)),
     bank_accounts: live(d, "bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]),
     recent_works: recent,
-    recent_expenses: lastOf("expense_records", 15, (e) => [e.id, e.date, e.amount, e.category, e.company || ""].join("|")),
-    recent_fuel: lastOf("fuel_records", 10, (f) => [f.id, f.date, f.vehicle_id, f.liters, f.total ?? ""].join("|")),
-    recent_cash: lastOf("cash_records", 10, (c) => [c.id, c.date, c.cash_type, c.customer_id || "", c.amount].join("|")),
+    recent_expenses: wantsEdit ? lastOf("expense_records", 15, (e) => [e.id, e.date, e.amount, e.category, e.company || ""].join("|")) : [],
+    recent_fuel: wantsEdit ? lastOf("fuel_records", 10, (f) => [f.id, f.date, f.vehicle_id, f.liters, f.total ?? ""].join("|")) : [],
+    recent_cash: wantsEdit ? lastOf("cash_records", 10, (c) => [c.id, c.date, c.cash_type, c.customer_id || "", c.amount].join("|")) : [],
   };
 }
 

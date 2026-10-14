@@ -1434,7 +1434,8 @@ async function expenseForm(ctx) {
       out.innerHTML = '<div class="muted small" style="margin:6px 0">Fiş okunuyor…</div>';
       try {
         const { checkFields } = await import("./ocr.js");
-        const r = await geminiReadReceipt(f, { key: g.key, model: g.model });
+        const { withModelFallback } = await import("./ai-gemini.js");
+        const r = await withModelFallback(db, (o) => geminiReadReceipt(f, o), { onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b}`, "ok") });
         const F = r.fields, set = (name, v) => { const el = qs(`[name=${name}]`, root); if (el && v != null && v !== "") { el.value = v; el.style.outline = "2px solid var(--accent,#f5a623)"; } };
         set("date", F.date);
         set("amount", F.total);

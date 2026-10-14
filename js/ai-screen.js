@@ -2,7 +2,7 @@
 // Bu ekran hiçbir kayıt oluşturmaz; yalnız önerileri ve doğrulama sonucunu gösterir.
 import { qs, esc, appbar, toast, confirmDialog, notice, kv } from "./ui.js";
 import { aiSuggest } from "./ai-assist.js";
-import { geminiSettings, listModels, geminiChat, geminiReadReceipt, findWorkingModel } from "./ai-gemini.js";
+import { geminiSettings, listModels, geminiChat, geminiReadReceipt, findWorkingModel, withModelFallback, usageToday } from "./ai-gemini.js";
 
 const SAMPLES = [
   "Ahmet Bey 34 ABC 123 6 gidiş yaptı moloz",
@@ -53,6 +53,8 @@ export async function screen(ctx) {
         <button class="btn primary grow" data-gsave>Kaydet</button>
       </div>
       <button class="btn ghost block" style="margin-top:8px" data-gclear>Anahtarı Sil</button>
+      <div class="muted small" style="margin-top:8px" data-gusage></div>
+      <div class="muted tiny">Ücretsiz kalmak için bu projeye faturalandırma (kart) eklemeyin. Seçili model ücretsiz kotası biterse veya kapatılırsa uygulama sıradaki ücretsiz modele kendiliğinden geçer.</div>
       <div class="field" style="margin-top:10px"><label>Fiş fotoğrafı ile dene</label><input type="file" accept="image/*" data-gphoto></div>
       <div data-gout></div>
     </div>
@@ -161,7 +163,7 @@ export async function screen(ctx) {
       box.innerHTML = notice("warn", "Telefondaki model yüklü değil; önce İndir ve Başlat.");
       return;
     }
-    const gen = provider === "gemini" ? (m) => geminiChat(m, { key: g.key, model: g.model }) : ai.generate;
+    const gen = provider === "gemini" ? (m) => withModelFallback(db, (o) => geminiChat(m, o), { onSwitch: (a, b) => toast(`Model değişti: ${a} → ${b}`, "ok") }) : ai.generate;
     for (let i = 0; i < lines.length; i++) {
       const t0 = Date.now();
       const r = await aiSuggest({ id: "ai-test-" + i, text: lines[i] }, d, gen);
@@ -206,6 +208,11 @@ export async function screen(ctx) {
         .join("");
   });
   // ---- Gemini ayarları ----
+  usageToday(db).then((u) => {
+    const el = qs("[data-gusage]", root);
+    const parts = Object.entries(u).map(([m, n]) => `${m}: ${n}`);
+    if (el) el.textContent = "Bugünkü Gemini isteği: " + (parts.length ? parts.join(" · ") : "0") + " (günlük ücretsiz sınırı AI Studio'da görünür)";
+  });
   const gkey = qs("[data-gkey]", root), gmodel = qs("[data-gmodel]", root), gout = qs("[data-gout]", root);
   qs("[data-provider]", root).addEventListener("change", (e) => {
     runBtn.disabled = e.target.value === "local" ? !ai.loaded() : false;
@@ -216,6 +223,7 @@ export async function screen(ctx) {
     gout.innerHTML = '<div class="muted small">Modeller alınıyor…</div>';
     try {
       const list = await listModels(key);
+      await db.metaSet("gemini_model_list", list.map((m) => m.id));
       const cur = gmodel.value;
       gmodel.innerHTML = list.map((m) => `<option value="${esc(m.id)}" ${m.id === cur ? "selected" : ""}>${esc(m.label)} (${esc(m.id)})</option>`).join("");
       gout.innerHTML = notice("ok", list.length + " model bulundu. Hızlı ve uygun olduğu için 'flash' önerilir.");
@@ -229,6 +237,7 @@ export async function screen(ctx) {
     gout.innerHTML = '<div class="muted small">Modeller tek tek deneniyor…</div>';
     try {
       const list = await listModels(key);
+      await db.metaSet("gemini_model_list", list.map((m) => m.id));
       const r = await findWorkingModel(key, list);
       gmodel.innerHTML = list.map((m) => `<option value="${esc(m.id)}" ${m.id === r.id ? "selected" : ""}>${esc(m.label)} (${esc(m.id)})</option>`).join("");
       gout.innerHTML =
@@ -266,7 +275,7 @@ export async function screen(ctx) {
     gout.innerHTML = '<div class="muted small">Fiş okunuyor…</div>';
     const t0 = Date.now();
     try {
-      const r = await geminiReadReceipt(f, { key: g.key, model: g.model });
+      const r = await withModelFallback(db, (o) => geminiReadReceipt(f, o), { onSwitch: (a, b) => toast(`Model değişti: ${a} → ${b}`, "ok") });
       gout.innerHTML =
         notice("ok", `Okundu (${((Date.now() - t0) / 1000).toFixed(1)} sn). Değerler aşağıda; hiçbir kayıt oluşturulmadı.`) +
         Object.entries(r.fields).map(([k, v]) => kv(LABELS[k] || k, String(v))).join("") +
