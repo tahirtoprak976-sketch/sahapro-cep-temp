@@ -3,6 +3,7 @@ import * as enterprise from "./enterprise.js";
 import * as esnaf from "./esnaf.js";
 import * as aiScreen from "./ai-screen.js";
 import * as assistant from "./assistant.js";
+import * as mergeScreen from "./merge.js";
 import * as pro from "./pro.js";
 // SAHAPRO SOLO — uygulama iskeleti: boot, router, alt navigasyon, PIN, SW güncelleme
 import * as core from "./core.js";
@@ -138,7 +139,7 @@ export async function renderCurrent() {
   root.innerHTML =
     '<div style="padding:40px 0"><div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div></div>';
   try {
-    const soloHandled = (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await solo.screen(ctx));
+    const soloHandled = (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await solo.screen(ctx));
     const enterpriseHandled = soloHandled || await enterprise.screen(ctx);
     const handled = enterpriseHandled || (await pro.screen(ctx));
     if (!handled) await mod(ctx);

@@ -1601,6 +1601,8 @@ async function settings(ctx) {
       </div>
       <div class="muted tiny" style="margin-top:8px">Tam ZIP: JSON + ekler (fotoğraflar). JSON'a fotoğraf GÖMÜLMEZ.</div>
     </div>
+    <div class="section-title">Kart Düzeni</div>
+    <div class="card tap" data-go="#/kart-birlestir"><div class="row between"><span>🔗 Müşteri kartlarını birleştir (aynı firma / şantiye ayrı açılmışsa)</span><span class="muted small">›</span></div></div>
     <div class="section-title">Yapay Zeka (deneysel)</div>
     <div class="card tap" data-go="#/yapay-zeka"><div class="row between"><span>🤖 Telefonda çalışan ücretsiz model — indir ve dene</span><span class="muted small">›</span></div></div>
     <div class="section-title">Geri Yükleme</div>

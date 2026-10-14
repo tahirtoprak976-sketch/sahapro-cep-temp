@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261013-asistan-4";
+const CACHE = "sahapro-solo-v3-20261013-birlestir-1";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./",
@@ -40,6 +40,8 @@ const ASSETS = [
   "./js/ai-gemini.js",
   "./js/assistant-core.js",
   "./js/assistant.js",
+  "./js/merge-core.js",
+  "./js/merge.js",
   "./vendor/DejaVuSans.ttf",
   "./vendor/DejaVuSans-Bold.ttf",
   "./manifest.webmanifest",
