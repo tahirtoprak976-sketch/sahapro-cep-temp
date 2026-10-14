@@ -34,3 +34,19 @@ const r3 = await aiSuggest({ id: 'z', text: 'Ahmet Bey 34 ABC 123 6 gidiş yapt�
 assert.equal(r3.suggestions[0].error, 'GPU kayboldu'); assert.equal(r3.suggestions[0].rows.length, 0);
 assert.ok(writtenNumbers('on iki sefer').has(12)); assert.ok(writtenNumbers('yirmi beş ton').has(25));
 console.log('ai-assist PASS');
+// ---- fiş doğrulama ----
+const { validateReceipt, numbersInText } = await import('../js/ai-assist.js');
+assert.ok(numbersInText('TOPLAM 1.234,56 KDV 205,76').has(1234.56));
+const txt = 'MESUT LASTİK\nTarih: 13.10.2026\nARA TOPLAM 1.000,00\nKDV %20 200,00\nTOPLAM 1.200,00\nPlaka 34 EC 1353';
+let vr = validateReceipt({ text: txt, date: '2026-10-13', total: 1200, subtotal: 1000, kdv: 200, kdv_rate: 20, plate: '34 EC 1353', firma: 'MESUT LASTİK', category: 'Lastik' });
+assert.deepEqual([vr.fields.total, vr.fields.subtotal, vr.fields.kdv, vr.fields.kdv_rate, vr.fields.date, vr.fields.plate, vr.fields.category_suggestion], [1200, 1000, 200, 20, '2026-10-13', '34EC1353', 'Lastik']);
+assert.equal(vr.rejected.length, 0);
+// uydurma toplam / tarih / KDV oranı reddedilir
+vr = validateReceipt({ text: 'TOPLAM 500,00\n12.10.2026', total: 550, date: '2026-10-13', kdv_rate: 20, kdv: 83.33 });
+assert.equal(vr.fields.total, undefined); assert.equal(vr.fields.date, undefined); assert.equal(vr.fields.kdv_rate, undefined); assert.equal(vr.fields.kdv, undefined);
+assert.equal(vr.rejected.length, 4);
+// geçersiz tarih
+assert.equal(validateReceipt({ text: '31.02.2026', date: '2026-02-31' }).fields.date, undefined);
+// liste dışı kategori atılır
+assert.equal(validateReceipt({ text: 'x', category: 'Roket' }).fields.category_suggestion, undefined);
+console.log('ai-receipt PASS');

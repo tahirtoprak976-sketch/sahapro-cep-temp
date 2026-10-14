@@ -1417,8 +1417,52 @@ async function expenseForm(ctx) {
       ${fText("Firma", "company", "")}
       ${fArea("Açıklama", "description", "")}
       <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*"></div>
+      <button type="button" class="btn block" data-gread hidden>🤖 Fişi Gemini ile oku ve formu doldur</button>
+      <div data-gres></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  // Gemini ile fiş okuma: yalnız formu doldurur; kaydetmek kullanıcının işidir
+  {
+    const { geminiSettings, geminiReadReceipt } = await import("./ai-gemini.js");
+    const g = await geminiSettings(db);
+    const photo = qs("input[name=photo]", root), btn = qs("[data-gread]", root), out = qs("[data-gres]", root);
+    if (g.ready) photo.addEventListener("change", () => (btn.hidden = !photo.files[0]));
+    btn.addEventListener("click", async () => {
+      const f = photo.files[0];
+      if (!f) return;
+      btn.disabled = true;
+      out.innerHTML = '<div class="muted small" style="margin:6px 0">Fiş okunuyor…</div>';
+      try {
+        const { checkFields } = await import("./ocr.js");
+        const r = await geminiReadReceipt(f, { key: g.key, model: g.model });
+        const F = r.fields, set = (name, v) => { const el = qs(`[name=${name}]`, root); if (el && v != null && v !== "") { el.value = v; el.style.outline = "2px solid var(--accent,#f5a623)"; } };
+        set("date", F.date);
+        set("amount", F.total);
+        set("kdv_rate", F.kdv_rate);
+        set("company", F.firma);
+        const cat = F.fuel_type ? "Yakıt" : F.category_suggestion;
+        if (cat && [...qs("select[name=category]", root).options].some((o) => o.value === cat)) set("category", cat);
+        if (F.plate) {
+          const hit = vehicles.find((v) => String(v.plate || v.name || "").toUpperCase().replace(/\s+/g, "") === F.plate);
+          if (hit) set("vehicle_id", hit.id);
+        }
+        const desc = qs("[name=description]", root);
+        if (desc && !desc.value && F.firma) set("description", "Fiş: " + F.firma + (F.doc_no ? " · " + F.doc_no : ""));
+        const firmKey = String(F.firma || "").toLocaleLowerCase("tr-TR").split(/\s+/)[0] || "";
+        const sup = firmKey.length >= 3 ? suppliers.find((x) => String(x.name || "").toLocaleLowerCase("tr-TR").includes(firmKey)) : null;
+        const checks = checkFields(F.fuel_type || F.liters ? "Akaryakıt Fişi" : "Gider Fişi", F);
+        out.innerHTML =
+          notice("info", "Turuncu çerçeveli alanlar fişten dolduruldu. Kontrol edin, sonra Kaydet'e basın.") +
+          (F.total == null ? notice("warn", "Toplam tutar fişte net okunamadı; elle girin.") : "") +
+          checks.map((c) => notice(c.level === "error" ? "danger" : "warn", c.text)).join("") +
+          (sup ? notice("warn", `"${sup.name}" Esnaf Hesabı'nda kayıtlı. Veresiye ise yukarıdan ustayı seçin.`) : "") +
+          (r.rejected.length ? `<div class="muted tiny">Doğrulanamayıp atlanan: ${esc(r.rejected.join("; "))}</div>` : "");
+      } catch (e) {
+        out.innerHTML = notice("warn", e.message || String(e));
+      }
+      btn.disabled = false;
+    });
+  }
   const pmSel = qs("select[name=payment_method]", root);
   pmSel.addEventListener("change", () => {
     qs("[data-reimb]", root).style.display =
