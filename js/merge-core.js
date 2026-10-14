@@ -65,6 +65,12 @@ export function planMerge(d, srcIds, targetId, { asSite = false } = {}) {
       counts[store] = (counts[store] || 0) + 1;
     }
   }
+  // Taşeron kartlarının ana firması birleşen karttaysa hedefe taşınır
+  for (const c of customers)
+    if (c.parent_customer_id && from.has(c.parent_customer_id) && !from.has(c.id) && c.id !== targetId) {
+      updates.push({ store: "customers", before: c, after: { ...c, parent_customer_id: targetId } });
+      counts.customers = (counts.customers || 0) + 1;
+    }
   for (const s of sources)
     if (norm(s.name) !== norm(target.name))
       aliases.push(asSite

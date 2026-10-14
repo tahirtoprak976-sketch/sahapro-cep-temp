@@ -5,6 +5,7 @@ import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } f
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY } from "./assistant-docs.js";
+import { occupationOnly } from "./assistant-core.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
@@ -200,7 +201,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
     (v.newCustomers.length ? notice("warn", "Yeni müşteri kartı açılacak: " + v.newCustomers.join(", ")) : "") +
     v.works
       .map((r, i) => {
-        const custOpts = [...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer]] : [])];
+        const parentName = r.new_customer_parent_id ? nameOf("customers", r.new_customer_parent_id) : "";
+        const custOpts = [...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer + (parentName ? ` (${parentName} taşeronu)` : "")]] : [])];
         const siteOpts = sites.filter((s) => !r.customer_id || s.customer_id === r.customer_id).map((s) => [s.id, s.name]);
         return `<div class="card" data-kind="work" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>İş</b> ${r.guessed ? "· tahmin içeriyor" : ""}</label>
@@ -217,7 +219,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Döküm yeri</label><select name="dump_site">${opt(dumpSites, r.dump_site_id, "— yok —")}</select></div>
           <div class="field"><label>Birim fiyat (₺, boşsa fiyat listesi)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
         </div>
-        <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>${issues(r)}</div>`;
+        <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
+        ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
       .join("") +
     v.tickets
@@ -339,6 +342,15 @@ function render(ctx, out, v, d, { message, files, ms }) {
       })
       .join("") +
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
+  // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
+  for (const b of qsa("[data-pickcust]", out))
+    b.addEventListener("click", () => {
+      const card = b.closest(".card");
+      qs("[name=customer]", card).value = b.dataset.pickcust;
+      qs("[name=customer]", card).dispatchEvent(new Event("change"));
+      qs("[data-pick]", card).checked = true;
+      for (const x of qsa("[data-pickcust]", card)) x.classList.toggle("on", x === b);
+    });
   // Müşteri değişince önerilen "yeni şantiye" o müşteriye ait olmayabilir: temizle
   for (const card of qsa('.card[data-kind="work"]', out)) {
     const cs = qs("[name=customer]", card), ss = qs("[name=site]", card);
@@ -393,6 +405,8 @@ async function save(ctx, out, v, d, { message, files }) {
     if (!alias || !target_id) return;
     const n = (x) => String(x || "").toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     if (n(alias) === n(cardName)) return;
+    // "kuyucu", "camcılar" gibi yalnız meslek adı birden fazla kişiyi anlatır: hafızaya alınmaz
+    if (occupationOnly(alias)) return;
     try {
       const before = (await db.getAll("aliases")).filter((a) => !a.deleted_at && a.active !== false).length;
       await saveMessageMemory({ alias, target_type, target_id, confirmed: true });
@@ -402,11 +416,11 @@ async function save(ctx, out, v, d, { message, files }) {
       /* başka karta bağlı takma ad: dokunma */
     }
   };
-  const ensureCustomer = async (customer) => {
+  const ensureCustomer = async (customer, parent = null) => {
     if (!customer.startsWith("new:")) return customer;
     const name = customer.slice(4);
     if (!newIds.has("c:" + name)) {
-      const rec = await db.saveNew("customers", { name, note: "Asistan ile açıldı" }, "Asistan: yeni müşteri");
+      const rec = await db.saveNew("customers", { name, note: "Asistan ile açıldı", ...(parent ? { parent_customer_id: parent } : {}) }, "Asistan: yeni müşteri");
       newIds.set("c:" + name, rec.id);
       done.customer++;
     }
@@ -514,7 +528,7 @@ async function save(ctx, out, v, d, { message, files }) {
         continue;
       }
       if (k === "work") {
-        const customer = await ensureCustomer(val(c, "customer"));
+        const customer = await ensureCustomer(val(c, "customer"), v.works[Number(c.dataset.i)].new_customer_parent_id || null);
         let site = val(c, "site") || null;
         if (site && site.startsWith("new:")) {
           const name = site.slice(4), key = "s:" + customer + ":" + name;
@@ -563,16 +577,16 @@ async function save(ctx, out, v, d, { message, files }) {
           await db.metaSet("ai_quality", addQuality(await db.metaGet("ai_quality"), m));
           const out = `${nm("customers", customer) || "?"} | ${veh.name} | ${fields.work_type} | ${fields.quantity} ${fields.unit}`;
           await db.metaSet("ai_examples", addExample(await db.metaGet("ai_examples"), { msg: message.slice(0, 300), out }));
-          if (wr.ai?.customer_id && wr.ai.customer_id !== customer && wr.mentions?.customer) {
+          if (!wr.ambiguous && wr.ai?.customer_id && wr.ai.customer_id !== customer && wr.mentions?.customer) {
             const neg = (await db.metaGet("ai_negative_aliases")) || [];
             neg.unshift({ alias: wr.mentions.customer, target_type: "customer", target_id: wr.ai.customer_id });
             await db.metaSet("ai_negative_aliases", neg.slice(0, 200));
           }
         } catch (e) {}
         const custSel = val(c, "customer");
-        await learn(wr.mentions?.customer, "customer", customer, nm("customers", customer) || (custSel.startsWith("new:") ? custSel.slice(4) : ""));
+        if (!wr.ambiguous) await learn(wr.mentions?.customer, "customer", customer, nm("customers", customer) || (custSel.startsWith("new:") ? custSel.slice(4) : ""));
         // "Yeni: Mahir Bey" önerisi yerine mevcut Hisar Polat seçildiyse "Mahir Bey" → Hisar Polat öğrenilir
-        if (!custSel.startsWith("new:") && wr.new_customer_text) await learn(wr.new_customer_text, "customer", customer, nm("customers", customer));
+        if (!wr.ambiguous && !custSel.startsWith("new:") && wr.new_customer_text) await learn(wr.new_customer_text, "customer", customer, nm("customers", customer));
         if (site) await learn(wr.mentions?.site, "site", site, nm("sites", site));
         await learn(wr.mentions?.vehicle, "vehicle", veh.id, veh.name);
         if (fields.personnel_id) await learn(wr.mentions?.personnel, "personnel", fields.personnel_id, nm("personnel", fields.personnel_id));

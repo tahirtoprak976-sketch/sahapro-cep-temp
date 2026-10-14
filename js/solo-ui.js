@@ -1408,6 +1408,27 @@ export async function augment(ctx) {
     route = parts[0],
     id = parts[1];
   if (["new", "edit"].some((p) => parts.includes(p))) return;
+  // Müşteri kartı: ana firma / taşeronları (Ağırtaş Mimarlık → Hisar Polat)
+  if (route === "musteriler" && id) {
+    try {
+      const cs = (await db.getAll("customers")).filter((c) => !c.deleted_at);
+      const me = cs.find((c) => c.id === id);
+      const parent = me?.parent_customer_id ? cs.find((c) => c.id === me.parent_customer_id) : null;
+      const subs = cs.filter((c) => c.parent_customer_id === id);
+      if (me && (parent || subs.length)) {
+        const works = (await db.getAll("work_records")).filter((w) => !w.deleted_at);
+        const month = new Date().toISOString().slice(0, 7);
+        const cnt = (cid) => { const ws = works.filter((w) => w.customer_id === cid); return `${ws.filter((w) => String(w.date).startsWith(month)).length} iş bu ay · ${ws.length} toplam`; };
+        const html = '<section class="card"><h2>' + (parent ? "Ana firma" : "Taşeronları") + "</h2>" +
+          (parent ? `<p><a href="#/musteriler/${esc(parent.id)}">${esc(parent.name)}</a> — ${esc(me.name)} bu firmanın taşeronu</p>` : "") +
+          subs.map((c) => `<p>🏗 <a href="#/musteriler/${esc(c.id)}">${esc(c.name)}</a> <span class="muted small">${cnt(c.id)}</span></p>`).join("") +
+          "</section>";
+        const tabs = root.querySelector("[data-tabs]");
+        if (tabs) tabs.insertAdjacentHTML("beforebegin", html);
+        else root.insertAdjacentHTML("beforeend", html);
+      }
+    } catch (e) {}
+  }
   let links = "";
   if (!route || route === "daha" || route === "yonetici") {
     links =
