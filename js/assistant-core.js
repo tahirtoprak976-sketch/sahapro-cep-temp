@@ -6,6 +6,7 @@ import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates } from "./assistant-rules.js";
+import { yardSite, yardCustomer, yardHint } from "./yard-core.js";
 
 export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -233,6 +234,7 @@ export function assistantContext(d, today = todayStr(), message = "") {
     today,
     note: big ? "Müşteri listesinin yalnız mesajla ilgili ve son çalışılan kısmı gönderildi; listede görmediğin adı new_customer olarak yaz, uygulama tüm listede kendisi arar." : undefined,
     customers: live(d, "customers").filter((c) => okC(c.id)).map((c) => (c.parent_customer_id ? [c.id, c.name, c.parent_customer_id] : [c.id, c.name])),
+    own_yard: yardSite(d) && yardCustomer(d) ? { dump_site_id: yardSite(d).id, internal_customer_id: yardCustomer(d).id } : undefined,
     customer_fuel_rules: live(d, "customers").filter((c) => okC(c.id) && Number(c.fuel_per_trip) > 0).map((c) => [c.id, Number(c.fuel_per_trip) + " L/sefer", c.fuel_rule_match || "tüm seferleri"]),
     sites: live(d, "sites").filter((s) => okC(s.customer_id)).map((s) => [s.id, s.name, s.customer_id]),
     vehicles: live(d, "vehicles").map((v) => [v.id, v.name, v.plate || "", v.type || ""]),
@@ -266,6 +268,7 @@ export function assistantSystem(rules = "") {
     "Mesajda geçen kişi/firma adı (örn. 'Süleyman Kaya', 'Ahmet Bey', 'Yıldız İnşaat') personel, araç, ocak veya döküm yeri değilse BÜYÜK İHTİMALLE MÜŞTERİDİR: listede varsa onu seç, yoksa new_customer olarak yaz. Müşteriyi boş bırakıp soru sormak yerine en olası müşteriyi yaz.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
     "TAŞERON: customers satırında 3. değer ana firma ID'sidir (o müşteri, ana firmanın taşeronudur). Taşeronun ADI mesajda geçmiyorsa işi ANA FİRMAYA yaz (geçmiş işlere bakarak taşeron tahmin etme); adı geçiyorsa o öder. 'X'in inşaatında/şantiyesinde Y'ye çalışıldı' → işi isteyen Y'dir: customer_id=Y (listede yoksa new_customer=Y ve new_customer_parent_id=X'in ID'si); X'in şantiyesini site_id'ye yazabilirsin. Meslek adı (kuyucu, camcı, sıvacı) tek başına geçiyorsa ve listede birden fazla benzer kart varsa tahmin etme, questions'a sor.",
+    "KENDİ DEPO (own_yard varsa): işletmenin kendi deposu/stok sahası vardır, personel buna 'şantiye' ya da 'depo' der. 'depoya / şantiyeye döküldü' → dump_site_id=own_yard.dump_site_id (müşteri yine işi veren müşteridir). 'şantiyeden / depodan X'e N sefer çöp/moloz' → depodan çıkıştır: customer_id=own_yard.internal_customer_id, dump_site_id=gittiği döküm sahası.",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
     "Sefer/gidiş/tur=Sefer, saat=Saat, yevmiye/gün=Yevmiye. İş türü listesi: " + WORK_TYPES.join(", ") + ".",
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
@@ -477,6 +480,19 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
           issues.push(`Müşteri belirtilmemiş; mesajdaki "${nm}" yeni müşteri olarak önerildi — doğruysa işaretleyin`);
         } else issues.push("Müşteri seçilmeli");
       }
+    }
+    // Kendi depo: "şantiyeden/depodan … sefer" = depodan çıkış (iç iş); "depoya/şantiyeye döküldü" = depoya giriş
+    {
+      const ys = yardSite(d), yc = yardCustomer(d);
+      const h = ys && yc ? yardHint(w.quote && quoteFound(w.quote, message) ? String(w.quote) : message) : { out: false, in: false };
+      if (h.out && (!r.customer_id || r.customerGuess || r.customer_id === yc.id) && !(r.customer_id && !r.customerGuess && r.customer_id !== yc.id)) {
+        r.customer_id = yc.id; r.new_customer = null; r.site_id = null;
+        if (r.customerGuess) { r.customerGuess = false; for (let i = issues.length - 1; i >= 0; i--) if (/Müşteri (mesajda yazmıyor|belirtilmemiş|seçilmeli)/.test(issues[i])) issues.splice(i, 1); }
+        for (let i = issues.length - 1; i >= 0; i--) if (issues[i] === "Müşteri seçilmeli") issues.splice(i, 1);
+        r.yard = "out";
+        issues.push("Kendi depodan çıkış (iç iş) — hakedişe para yazılmaz");
+      }
+      if (h.in && !r.dump_site_id && r.customer_id !== yc?.id) { r.dump_site_id = ys.id; r.yard = "in"; issues.push(`Kendi depoya giriş (${ys.name})`); }
     }
     r.mentions = r.hinted && inMessage(w.new_customer, message) ? { customer: String(w.new_customer).trim() } : {};
     // Kullanıcı "Yeni: X" yerine mevcut bir müşteri seçerse X ifadesi o müşteriye öğrenilir

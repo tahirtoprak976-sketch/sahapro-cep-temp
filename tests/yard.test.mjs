@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import { yardStock, applyYard, vehicleFactor, yardHint, yardMaterial } from "../js/yard-core.js";
+import { validatePlan } from "../js/assistant-core.js";
+import { todayBoard } from "../js/today.js";
+import { runAskTool } from "../js/day-summary.js";
+const today = "2026-10-14";
+const d = {
+  dump_sites: [{ id: "Y", name: "Muratoğlu Depo", own_yard: true }, { id: "BL", name: "Boluca Döküm" }],
+  customers: [{ id: "IC", name: "Kendi Depo (iç iş)", internal: true }, { id: "HA", name: "Hurdacı Aydın" }, { id: "KI", name: "Kaya İnşaat" }],
+  vehicles: [{ id: "KT", name: "Kamyonet", type: "Kamyonet", plate: "34KT1" }, { id: "TR", name: "34FY2482", type: "Tır", plate: "34FY2482" }, { id: "X", name: "Bilinmez" }],
+  sites: [], personnel: [], suppliers: [], aliases: [], quarries: [],
+  work_records: [
+    { id: "a", date: "2026-10-10", customer_id: "HA", vehicle_id: "KT", unit: "Sefer", quantity: 5, material: "çöp", dump_site_id: "Y" },
+    { id: "b", date: "2026-10-11", customer_id: "KI", vehicle_id: "KT", unit: "Sefer", quantity: 8, work_type: "Moloz Nakliye", dump_site_id: "Y" },
+    { id: "c", date: "2026-10-12", customer_id: "IC", vehicle_id: "TR", unit: "Sefer", quantity: 1, material: "moloz", dump_site_id: "BL" },
+    { id: "z", date: "2026-10-12", customer_id: "KI", vehicle_id: "KT", unit: "Sefer", quantity: 2, dump_site_id: "BL" }, // depoya değil
+  ],
+};
+assert.equal(vehicleFactor(d.vehicles[0]).f, 1); assert.equal(vehicleFactor(d.vehicles[1]).f, 6); assert.equal(vehicleFactor(d.vehicles[2]).known, false);
+assert.equal(vehicleFactor(d.vehicles[1], { byVehicle: { TR: 7 } }).f, 7);
+let st = yardStock(d, { today });
+const m = Object.fromEntries(st.rows.map((r) => [r.mat, r.stock]));
+assert.equal(m["Çöp"], 5); assert.equal(m["Moloz / Hafriyat"], 2); assert.equal(st.total, 7); // 8 moloz − 1 tır (6)
+// açılış stoku ve tarih
+st = yardStock(d, { today, settings: { opening: { "Moloz / Hafriyat": 10 }, opening_date: "2026-10-11" } });
+assert.equal(Object.fromEntries(st.rows.map((r) => [r.mat, r.stock]))["Moloz / Hafriyat"], 12); assert.ok(!st.rows.some((r) => r.mat === "Çöp" && r.in));
+// iç iş: hakedişe para yok
+assert.equal(applyYard(d, { customer_id: "IC", site_id: "S", price_snapshot: { amount: 5000 } }).price_snapshot.amount, 0);
+assert.equal(applyYard(d, { customer_id: "KI", price_snapshot: { amount: 5000 } }).price_snapshot.amount, 5000);
+// ipuçları
+assert.ok(yardHint("Şantiyeden 1sefer harfiyat boluca döküm").out);
+assert.ok(yardHint("Hurdacı aydından 3 sefer çöp depoya döküldü").in);
+assert.ok(!yardHint("Kaya İnşaat 3 sefer moloz").out);
+assert.equal(yardMaterial({ material: "harfiyat" }), "Moloz / Hafriyat"); assert.equal(yardMaterial({ material: "çöp" }), "Çöp");
+// asistan: "şantiyeden … boluca" → iç iş müşterisi, işaretli; "depoya döküldü" → döküm yeri depo
+let v = validatePlan({ works: [{ date: today, vehicle_id: "TR", work_type: "Hafriyat Nakliye", quantity: 1, unit: "Sefer", dump_site_id: "BL" }] }, { message: "34FY2482 Şantiyeden 1sefer harfiyat boluca döküm", d, today });
+assert.equal(v.works[0].customer_id, "IC"); assert.equal(v.works[0].yard, "out"); assert.equal(v.works[0].ok, true, v.works[0].issues.join());
+v = validatePlan({ works: [{ date: today, customer_id: "HA", vehicle_id: "KT", work_type: "Çöp Nakliye", quantity: 3, unit: "Sefer" }] }, { message: "Kamyonet Hurdacı aydından 3 sefer çöp depoya döküldü", d, today });
+assert.equal(v.works[0].customer_id, "HA"); assert.equal(v.works[0].dump_site_id, "Y");
+// pano ve soru
+const big = { ...d, work_records: [...d.work_records, { id: "q", date: today, customer_id: "KI", vehicle_id: "KT", unit: "Sefer", quantity: 20, material: "moloz", dump_site_id: "Y" }] };
+assert.ok(todayBoard(big, { today, lastBackupAt: new Date().toISOString() }).items.some((i) => /Kendi depoda/.test(i.text)));
+assert.ok(!todayBoard(d, { today, lastBackupAt: new Date().toISOString() }).items.some((i) => /Kendi depoda/.test(i.text)));
+assert.equal(runAskTool(d, "yard_stock", {}, today).depoda_kamyonet_yuku, 7);
+console.log("yard PASS");

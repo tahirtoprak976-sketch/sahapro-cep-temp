@@ -601,6 +601,8 @@ async function workForm(ctx, editId) {
       const dAll = await db.dumpAll();
       const fuelText = (r) => [r.description, r.material, r.quarry, r.dump_area, r.internal_note].filter(Boolean).join(" ");
       Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
+      const { applyYard } = await import("./yard-core.js");
+      Object.assign(fields, applyYard(dAll, fields));
       if (!fields.customer_fuel_allowance_l) fields.customer_fuel_allowance_l = null;
       const extras = batchActive() ? extraRows() : [];
       if (!editId && extras.length) {
@@ -658,7 +660,7 @@ async function workForm(ctx, editId) {
               snapshot_at: new Date().toISOString(),
             };
           }
-          rows.push({ ...applyFuelPay(dAll, r, fuelText(r)) });
+          rows.push(applyYard(dAll, applyFuelPay(dAll, r, fuelText(r))));
         }
         const sameDay = await db.listActive("work_records");
         if (

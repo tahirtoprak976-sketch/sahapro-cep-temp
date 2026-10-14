@@ -13,6 +13,7 @@ import { ledgerOf } from "./esnaf.js";
 import { ticketReconcile } from "./assistant-docs.js";
 import { fuelFlags } from "./fuel-rules.js";
 import { fuelLedgers } from "./assistant-rules.js";
+import { yardSite, yardStock } from "./yard-core.js";
 
 const DAY = 86400000;
 const daysBetween = (a, b) =>
@@ -164,6 +165,14 @@ export function todayBoard(data, opts = {}) {
   for (const l of fuelLedgers(data))
     if (l.balance >= 1)
       items.push({ kind: "info", group: "Mazot", ic: "⛽", text: `${l.name}: ${l.balance} L mazot alacağı`, sub: `${l.trips} sefer → ${l.earned} L hak edildi, ${l.received} L alındı`, href: "#/musteriler/" + l.id, sort: 55 });
+
+  // 3b4) Kendi depo stoku birikti
+  if (yardSite(data)) {
+    const ys = opts.yardSettings || {};
+    const st = yardStock(data, { settings: ys, today });
+    if (st.total >= (Number(ys.alert) || 15))
+      items.push({ kind: "warn", group: "Depo", ic: "🏗", text: `Kendi depoda ~${st.total} kamyonet yükü birikti`, sub: st.rows.filter((r) => r.stock > 0).map((r) => `${r.mat} ${r.stock}`).join(", ") + " — döküm sahasına gönderin", href: "#/kendi-depo", sort: 40 });
+  }
 
   // 3c) Yakıt kuralları (tutar, depo, işsiz gün, tüketim)
   for (const f of fuelFlags(data, { today }))

@@ -7,6 +7,7 @@ import { fuelFlags } from "./fuel-rules.js";
 import { ticketReconcile } from "./assistant-docs.js";
 import { checkAnswer } from "./assistant-core.js";
 import { fuelLedgers } from "./assistant-rules.js";
+import { yardSite, yardStock } from "./yard-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -124,13 +125,15 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, customer: { type: "string" } } } },
   { name: "customer_fuel", description: "Ücretini mazotla ödeyen müşterilerin (ör. Kılıç Hafriyat, sefer başı 75 L) mazot hesabı: sefer, hak edilen, alınan ve kalan litre.",
     parameters: { type: "object", properties: { customer: { type: "string" } } } },
+  { name: "yard_stock", description: "Kendi depo / stok sahasındaki moloz, çöp, hafriyat stoku (kamyonet yükü cinsinden tahmin), bu ay giren ve çıkan.",
+    parameters: { type: "object", properties: {} } },
   { name: "tank_status", description: "Depo yakıt tankı: kalan litre, günlük ortalama çıkış, kaç gün yeter, ortalama litre fiyatı, son giriş.",
     parameters: { type: "object", properties: {} } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
 
-export function runAskTool(d, name, args = {}, today = todayStr()) {
+export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings = {}) {
   const a = args && typeof args === "object" ? args : {};
   const { from, to, inR } = range(d, a, today);
   if (name === "work_totals") {
@@ -183,6 +186,14 @@ export function runAskTool(d, name, args = {}, today = todayStr()) {
     if (c.error) return c;
     const rows = fuelLedgers(d).filter((x) => !c.id || x.id === c.id).map((x) => ({ musteri: x.name, sefer: x.trips, hak_edilen_litre: x.earned, alinan_litre: x.received, kalan_litre: x.balance }));
     return rows.length ? { musteriler: rows } : { error: "Mazotla ödeyen müşteri kartı yok (Müşteri kartı → Sefer başı mazot)" };
+  }
+  if (name === "yard_stock") {
+    if (!yardSite(d)) return { error: "Kendi depo kurulmamış (Ayarlar → Kendi depo / stok sahası)" };
+    const st = yardStock(d, { settings: yardSettings, today });
+    const m = today.slice(0, 7);
+    return { depoda_kamyonet_yuku: st.total, malzeme: st.rows.map((r) => ({ malzeme: r.mat, stok: r.stock, giren: r.in, cikan: r.out })),
+      bu_ay_giren: Math.round(st.ins.filter((x) => x.w.date.startsWith(m)).reduce((n, x) => n + x.loads, 0) * 10) / 10,
+      bu_ay_cikan: Math.round(st.outs.filter((x) => x.w.date.startsWith(m)).reduce((n, x) => n + x.loads, 0) * 10) / 10 };
   }
   if (name === "tank_status") {
     const t = tankStatus(live(d, "fuel_tank_movements"), today);
