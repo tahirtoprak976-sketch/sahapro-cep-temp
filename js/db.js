@@ -511,7 +511,7 @@ export async function saveWorkBatch(rows) {
         r.work_type !== first.work_type ||
         r.unit !== "Sefer",
     ) ||
-    !["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"].includes(
+    !["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
       first.work_type,
     )
   )

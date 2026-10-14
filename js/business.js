@@ -136,7 +136,8 @@ export const FIELD_METADATA = {
     entity_owner: "selected",
   },
   dump_area: {
-    applies_to: ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"],
+    // malzeme nakliyesinde (mıcır/kum/gravak) teslim / dolgu yeri olarak kullanılır
+    applies_to: ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"],
     required_when: [],
     hidden_when: ["Makine Çalışması"],
     entity_owner: "work",
