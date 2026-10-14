@@ -84,7 +84,7 @@ async function dashboard(ctx) {
   const sum = daySummary(today, data);
   const lastBackup = await db.metaGet("last_backup_at");
   const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup });
-  const board = todayBoard(data, { today, lastBackupAt: lastBackup });
+  const board = todayBoard(data, { today, lastBackupAt: lastBackup, yardSettings: (await db.metaGet("yard_settings")) || {} });
   const months = monthlySeries(data, { today, months: 6 });
   const vsr = vehicleSeries(data, { today, days: 30 }).slice(0, 5);
   const mMax = Math.max(1, ...months.flatMap((m) => [m.work, m.collected, m.cost]));
@@ -723,7 +723,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.35")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.36")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

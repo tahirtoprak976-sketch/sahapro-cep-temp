@@ -90,9 +90,10 @@ async function ask(ctx, g) {
       const { checkAnswer } = await import("./assistant-core.js");
       const { withModelFallback, geminiAsk } = await import("./ai-gemini.js");
       const d = await db.dumpAll(), today = todayStr();
-      const res = await withModelFallback(db, (o) => geminiAsk(`Bugün: ${today}\n<soru>${q.replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today) }));
+      const yardSettings = (await db.metaGet("yard_settings")) || {};
+      const res = await withModelFallback(db, (o) => geminiAsk(`Bugün: ${today}\n<soru>${q.replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today, yardSettings) }));
       const bad = checkAnswer(res.answer, res.trace.map((t) => t.result));
-      const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı" };
+      const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı", yard_stock: "Depo stoku" };
       out.innerHTML = `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(res.answer || "Cevap alınamadı, soruyu farklı yazın.")}</div>
         ${bad.length ? notice("warn", "Bu sayılar hesaplanan sonuçlarda yok, güvenmeyin: " + bad.join(", ")) : res.trace.length ? '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlardan hesaplandı.</div>' : notice("warn", "Hiç hesap yapılmadı; cevaptaki rakamlara güvenmeyin.")}
         ${res.trace.length ? `<details style="margin-top:8px"><summary class="small">Yapılan hesaplar (${res.trace.length})</summary>${res.trace.map((t) => `<div class="tiny muted" style="margin-top:4px"><b>${esc(TOOL_TR[t.name] || t.name)}</b> ${esc(JSON.stringify(t.args))}<br>${esc(JSON.stringify(t.result).slice(0, 600))}</div>`).join("")}</details>` : ""}</div>`;

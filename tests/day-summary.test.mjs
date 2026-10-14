@@ -57,7 +57,7 @@ r = runAskTool(data, "esnaf_debt", {}, today);
 assert.equal(r.toplam_TL, 1500);
 r = runAskTool(data, "fuel_totals", { from: today, to: today }, today);
 assert.equal(r.litre, 100); assert.equal(r.TL, 5000);
-assert.equal(ASK_TOOLS.length, 8);
+assert.equal(ASK_TOOLS.length, 9);
 
 // ---- fonksiyon çağrısı döngüsü (sahte Gemini) ----
 const sent = [];

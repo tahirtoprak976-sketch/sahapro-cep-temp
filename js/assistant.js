@@ -607,7 +607,7 @@ async function save(ctx, out, v, d, { message, files }) {
           ? { unit_price: up, kdv_rate: Number(await db.metaGet("kdv_default")) || 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
           : priceSnapshot(fields, prices, crane);
         // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
-        Object.assign(fields, applyFuelPay(await db.dumpAll(), fields, message));
+        { const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields)); }
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity);
         if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
         await db.saveNew("work_records", fields, "Asistan");
