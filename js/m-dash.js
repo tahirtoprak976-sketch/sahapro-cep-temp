@@ -1,5 +1,6 @@
 // SAHAPRO SOLO — Dashboard · Gün Sonu · Yönetici · Raporlar · Daha Fazla
 import { todayBoard } from "./today.js";
+import { monthlySeries, vehicleSeries } from "./finance-chart.js";
 import {
   qs,
   qsa,
@@ -84,6 +85,17 @@ async function dashboard(ctx) {
   const lastBackup = await db.metaGet("last_backup_at");
   const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup });
   const board = todayBoard(data, { today, lastBackupAt: lastBackup });
+  const months = monthlySeries(data, { today, months: 6 });
+  const vsr = vehicleSeries(data, { today, days: 30 }).slice(0, 5);
+  const mMax = Math.max(1, ...months.flatMap((m) => [m.work, m.collected, m.cost]));
+  const mChart = `<svg class="chart" viewBox="0 0 320 110" role="img" aria-label="Aylık iş değeri, tahsilat ve maliyet">
+    ${months.map((m, i) => {
+      const x = 10 + i * 51;
+      const bar = (v, dx, cls, fill) => { const h = Math.max(v ? 2 : 0, (v / mMax) * 70); return `<rect x="${x + dx}" y="${84 - h}" width="13" height="${h}" rx="2" fill="${fill}"><title>${cls}: ${fmtTL(v)} ₺</title></rect>`; };
+      return bar(m.work, 0, "İş değeri", "#f5a623") + bar(m.collected, 15, "Tahsilat", "#2e9e6b") + bar(m.cost, 30, "Maliyet", "#d9534f") + `<text x="${x + 21}" y="100" text-anchor="middle" style="font-size:9px;fill:#93a4b5">${m.label}</text>`;
+    }).join("")}
+  </svg>`;
+  const cur = months[months.length - 1];
   const tank = calcTankBalance(data.fuel_tank_movements);
 
   // Son 7 gün yakıt grafiği
@@ -216,6 +228,13 @@ async function dashboard(ctx) {
 
     ${upcomingMaint.length ? `<div class="section-title">Bakım Uyarıları</div>` + upcomingMaint.map((v) => li({ ic: "🛠", href: "#/filo/" + v.id, t1: esc(v.name), t2: `Sonraki bakım: ${trDate(v.next_maintenance_date)}` })).join("") : ""}
 
+    <div class="section-title">Aylık Özet — son 6 ay</div>
+    <div class="card">${mChart}
+      <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Gider+Yakıt</span></div>
+      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay gider+yakıt", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
+      ${cur.unpriced ? `<div class="muted tiny" style="margin-top:6px">⚠ Bu ay ${cur.unpriced} işin fiyatı yok; iş değeri eksik hesaplanır.</div>` : ""}
+    </div>
+    ${vsr.length ? `<div class="section-title">Araç Başına — son 30 gün</div>` + vsr.map((v) => li({ ic: "🚚", t1: esc(v.name), t2: `${v.works} iş · ${fmtNum(v.liters)} Lt yakıt`, end: `<div class="amt">${fmtTL(v.cost)} ₺</div>` })).join("") : ""}
     <div class="section-title">Son 7 Gün — Yakıt (Lt)</div>
     <div class="card">${chart}</div>
 
@@ -697,7 +716,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.7")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.8")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
