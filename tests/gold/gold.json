@@ -731,5 +731,214 @@
     "unit": "Yevmiye"
    }
   ]
+ },
+ {
+  "t": "Ahmet bey 34 ABC 123 sefer 6",
+  "rows": [
+   {
+    "customer": "CA",
+    "vehicle": "V1",
+    "qty": 6,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "hafriyat 34 ABC 123 6 seferrr eyüp firma f",
+  "rows": [
+   {
+    "customer": "CF",
+    "site": "S2",
+    "vehicle": "V1",
+    "type": "Hafriyat Nakliye",
+    "qty": 6,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "34ABC123 x3 moloz Eyüp",
+  "rows": [
+   {
+    "customer": "CF",
+    "site": "S2",
+    "vehicle": "V1",
+    "type": "Moloz Nakliye",
+    "qty": 3,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "Soner abi 34 ABC 123 ile 4 sefer moloz Firma F Kemerburgaz akşam 18:00 gibi bitti",
+  "rows": [
+   {
+    "customer": "CF",
+    "site": "S1",
+    "vehicle": "V1",
+    "type": "Moloz Nakliye",
+    "qty": 4,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "Öztürk Grup Kağıthane 34 ABC 123 3 sefer Beylikdüzü 34EC1353 2 sefer",
+  "rows": [
+   {
+    "customer": "CO",
+    "site": "S7",
+    "vehicle": "V1",
+    "qty": 3,
+    "unit": "Sefer"
+   },
+   {
+    "customer": "CO",
+    "site": "S8",
+    "vehicle": "V3",
+    "qty": 2,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "12/10 34 ABC 123 3 sefer Ahmet Bey",
+  "rows": [
+   {
+    "customer": "CA",
+    "vehicle": "V1",
+    "qty": 3,
+    "unit": "Sefer",
+    "date": "2026-10-12"
+   }
+  ]
+ },
+ {
+  "t": "34 ABC 123 2.5 saat Ahmet Bey",
+  "rows": [
+   {
+    "customer": "CA",
+    "vehicle": "V1",
+    "qty": 2.5,
+    "unit": "Saat"
+   }
+  ]
+ },
+ {
+  "t": "34 ABC 123 sabah 3 öğleden sonra 2 sefer moloz Ahmet Bey",
+  "rows": [
+   {
+    "customer": "CA",
+    "vehicle": "V1",
+    "type": "Moloz Nakliye",
+    "qty": 5,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "[14:32, 12.10.2026] Soner Abi: 34 ABC 123 Gümüş Yapı 5 sefer moloz",
+  "rows": [
+   {
+    "customer": "CG",
+    "vehicle": "V1",
+    "type": "Moloz Nakliye",
+    "qty": 5,
+    "unit": "Sefer",
+    "date": "2026-10-12"
+   }
+  ]
+ },
+ {
+  "t": "dün 34 ABC 123 Firma F Eyüp 4 sefer hafriyat",
+  "rows": [
+   {
+    "customer": "CF",
+    "site": "S2",
+    "vehicle": "V1",
+    "qty": 4,
+    "unit": "Sefer",
+    "date": "2026-10-11"
+   }
+  ]
+ },
+ {
+  "t": "34 ABC 123 3 sefer moloz Eyüp 34EC1353 2 sefer kum Kağıthane Öztürk",
+  "rows": [
+   {
+    "customer": "CF",
+    "site": "S2",
+    "vehicle": "V1",
+    "type": "Moloz Nakliye",
+    "qty": 3,
+    "unit": "Sefer"
+   },
+   {
+    "customer": "CO",
+    "site": "S7",
+    "vehicle": "V3",
+    "type": "Kum Nakliye",
+    "qty": 2,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "JCB 07:30-17:00 mola 1 saat Ahmet Bey Bahçeşehir",
+  "rows": [
+   {
+    "customer": "CA",
+    "site": "S4",
+    "vehicle": "J",
+    "qty": 8.5,
+    "unit": "Saat"
+   }
+  ]
+ },
+ {
+  "t": "jcb tam gün Ahmet Bey Bahçeşehir",
+  "rows": [
+   {
+    "customer": "CA",
+    "site": "S4",
+    "vehicle": "J",
+    "qty": 1,
+    "unit": "Yevmiye"
+   }
+  ]
+ },
+ {
+  "t": "34 ABC 123 3 tane sefer çöp Ahmet Bey",
+  "rows": [
+   {
+    "customer": "CA",
+    "vehicle": "V1",
+    "type": "Çöp Nakliye",
+    "qty": 3,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "Ahmet Bey'in işine 2 kamyon gönderdim 4 er sefer",
+  "rows": [
+   {
+    "customer": "CA",
+    "qty": 8,
+    "unit": "Sefer"
+   }
+  ]
+ },
+ {
+  "t": "34 ABC 123 Ahmet Bey 3 sefer moloz pazartesi",
+  "rows": [
+   {
+    "customer": "CA",
+    "vehicle": "V1",
+    "qty": 3,
+    "unit": "Sefer",
+    "date": null
+   }
+  ]
  }
 ]
