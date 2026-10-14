@@ -1492,6 +1492,7 @@ export async function augment(ctx) {
     const data = await db.dumpAll();
     if (id) {
       const fuel = data.fuel_records.find((r) => r.id === id);
+      if (fuel) (await import("./m-ops.js")).fuelActions(root, db, fuel).catch(() => {});
       if (fuel) {
         const rows = rules.fuelEfficiency(data, fuel.vehicle_id);
         root.insertAdjacentHTML(

@@ -1010,6 +1010,47 @@ export async function saveFuelEvent(fields, reason = "Yakıt") {
       reject(error || t.error || Error("Yakıt işlemi iptal edildi"));
   });
 }
+// Yakıt kaydının kaynağını "Depo Tankı" yapar ya da kaydı (depo hareketiyle birlikte) siler — tek işlemde.
+// mode: "to_tank" | "delete". Tedarikçi borcuna bağlı yakıt değiştirilmez.
+export async function fuelFix(id, mode, reason = "") {
+  const linked = (await getAll("payables")).some((b) => isActive(b) && b.status !== "İptal" && b.source_store === "fuel_records" && b.source_id === id);
+  if (linked) throw Error("Tedarikçi borcuna bağlı yakıt değiştirilemez");
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["fuel_records", "fuel_tank_movements", "audit_log"], "readwrite");
+    let error, result;
+    const fr = t.objectStore("fuel_records").get(id);
+    const mv = t.objectStore("fuel_tank_movements").getAll();
+    let f, moves;
+    const run = () => {
+      if (f === undefined || !moves) return;
+      if (!f || f.deleted_at) { error = Error("Yakıt kaydı bulunamadı"); return t.abort(); }
+      const now = nowISO();
+      const live = moves.filter(isActive);
+      if (mode === "to_tank") {
+        if (f.fuel_source === "Depo Tankı") { error = Error("Zaten depodan"); return t.abort(); }
+        const remaining = live.reduce((s, r) => s + (r.move_type === "GİRİŞ" ? 1 : -1) * Number(r.liters), 0);
+        if (Number(f.liters) > remaining) { error = Error("Depoda kayıtlı " + remaining + " Lt var; önce depoya yakıt girişi yapın"); return t.abort(); }
+        const ev = f.event_id || uuid();
+        const move = newRecord({ date: f.date, move_type: "ÇIKIŞ", liters: Number(f.liters), vehicle_id: f.vehicle_id, personnel_id: f.personnel_id || null,
+          pump_no: f.pump_no || "", signature_name: "", event_id: ev, fuel_record_id: f.id });
+        t.objectStore("fuel_tank_movements").put(move);
+        result = { ...f, fuel_source: "Depo Tankı", receipt: "Depo", tank_movement_id: move.id, event_id: ev, updated_at: now };
+      } else if (mode === "delete") {
+        const m = live.find((x) => x.id === f.tank_movement_id || x.fuel_record_id === f.id);
+        if (m) t.objectStore("fuel_tank_movements").put({ ...m, deleted_at: now, updated_at: now });
+        result = { ...f, deleted_at: now, updated_at: now };
+      } else { error = Error("Geçersiz işlem"); return t.abort(); }
+      t.objectStore("fuel_records").put(result);
+      t.objectStore("audit_log").put({ id: uuid(), entity: "fuel_records", entity_id: f.id, action: mode === "delete" ? "soft_delete" : "update",
+        old: { fuel_source: f.fuel_source, deleted_at: f.deleted_at || null }, new: { fuel_source: result.fuel_source, deleted_at: result.deleted_at || null }, reason, at: now });
+    };
+    fr.onsuccess = () => { f = fr.result || null; run(); };
+    mv.onsuccess = () => { moves = mv.result; run(); };
+    t.oncomplete = () => resolve(result);
+    t.onabort = t.onerror = () => reject(error || t.error || Error("Yakıt işlemi iptal edildi"));
+  });
+}
 export async function createHakedis(fields) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
