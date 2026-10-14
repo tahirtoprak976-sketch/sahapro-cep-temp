@@ -27,6 +27,9 @@ export async function screen(ctx) {
   const gpu = await ai.gpuStatus();
   const savedId = (await db.metaGet("ai_model_id")) || "";
   const gem = await geminiSettings(db);
+  const { DEFAULT_RULES } = await import("./assistant-rules.js");
+  const savedRules = await db.metaGet("assistant_rules");
+  const rulesText = savedRules == null ? DEFAULT_RULES : savedRules;
   root.innerHTML =
     appbar("Yapay Zeka (deneysel)", "Telefonda çalışır · ücretsiz", { back: "#/ayarlar" }) +
     `<div style="height:10px"></div>
@@ -57,6 +60,13 @@ export async function screen(ctx) {
       <div class="muted tiny">Ücretsiz kalmak için bu projeye faturalandırma (kart) eklemeyin. Seçili model ücretsiz kotası biterse veya kapatılırsa uygulama sıradaki ücretsiz modele kendiliğinden geçer.</div>
       <div class="field" style="margin-top:10px"><label>Fiş fotoğrafı ile dene</label><input type="file" accept="image/*" data-gphoto></div>
       <div data-gout></div>
+    </div>
+    <div class="section-title">Asistan Kuralları (işletmenize özel)</div>
+    <div class="card">
+      <div class="muted small">Akıllı Asistan mesajları okurken bu kurallara uyar (Gemini'ye talimat olarak gider). Kendi cümlelerinizle değiştirebilirsiniz. Telefonun kontrolleri (mesajda yazmayan sayı/araç/tarih işaretsiz gelir) her zaman geçerlidir.</div>
+      <div class="muted tiny" style="margin-top:4px">Zimmetli araç: Personel kartı → Zimmetli araç. Sefer başı mazot: Müşteri kartı → Sefer başı mazot.</div>
+      <textarea data-rules rows="14" style="margin-top:8px;width:100%;font-size:13px">${esc(rulesText)}</textarea>
+      <div class="row" style="gap:8px;margin-top:8px"><button class="btn grow" data-rules-reset>Varsayılana Dön</button><button class="btn primary grow" data-rules-save>Kuralları Kaydet</button></div>
     </div>
     <div class="section-title">Deneme</div>
     <div class="card">
@@ -206,6 +216,15 @@ export async function screen(ctx) {
       </div>`,
         )
         .join("");
+  });
+  qs("[data-rules-save]", root).addEventListener("click", async () => {
+    await db.metaSet("assistant_rules", qs("[data-rules]", root).value.slice(0, 6000));
+    toast("Asistan kuralları kaydedildi", "ok");
+  });
+  qs("[data-rules-reset]", root).addEventListener("click", async () => {
+    qs("[data-rules]", root).value = DEFAULT_RULES;
+    await db.metaSet("assistant_rules", null);
+    toast("Varsayılan kurallar", "ok");
   });
   // ---- Gemini ayarları ----
   db.metaGet("ai_quality").then((q) => {

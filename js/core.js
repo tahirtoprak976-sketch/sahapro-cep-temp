@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.28";
+export const APP_VERSION = "SAHAPRO SOLO v3.7.29";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -139,6 +139,7 @@ export const MACHINE_TYPES = [
 export const FUEL_SOURCES = [
   "Depo Tankı",
   "Akaryakıt İstasyonu",
+  "Müşteri Verdi",
   "Şantiye",
   "Diğer",
 ];
