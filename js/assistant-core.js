@@ -175,6 +175,7 @@ export function assistantContext(d, today = todayStr(), message = "") {
     vehicles: live(d, "vehicles").map((v) => [v.id, v.name, v.plate || "", v.type || ""]),
     personnel: live(d, "personnel").map((p) => (p.vehicle_id ? [p.id, p.name, p.vehicle_id] : [p.id, p.name])),
     dump_sites: live(d, "dump_sites").map((x) => [x.id, x.name]),
+    quarries: live(d, "quarries").map((x) => [x.id, x.name]),
     suppliers: live(d, "suppliers").map((s) => [s.id, s.name]),
     aliases: live(d, "aliases").filter((a) => a.active !== false && (a.target_type !== "customer" || okC(a.target_id))).map((a) => [a.alias, a.target_type, a.target_id]),
     customer_hints: customerHints(d).filter(([id]) => okC(id)),
@@ -206,7 +207,7 @@ export function assistantSystem(rules = "") {
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
     "Fotoğraf varsa her fotoğrafın tüm yazısını photo_texts dizisine aynen yaz (sayı biçimini koru).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
-    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yer),\"to_place\" (teslim/döküm/dolgu yeri),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
+    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
@@ -215,7 +216,7 @@ export function assistantSystem(rules = "") {
     "\"personnel\":[{\"date\",\"personnel_id\",\"event_type\",\"amount\",\"hours_days\",\"note\"}] (event_type: " + PERSONNEL_EVENT_TYPES.join(", ") + "),",
     "\"edits\":[{\"store\":\"work_records\"|\"expense_records\"|\"fuel_records\"|\"cash_records\",\"id\",\"changes\":{alan:değer},\"delete\":bool,\"reason\"}] (kullanıcı mevcut bir kaydı düzeltmek/silmek isterse; id'yi recent_* listelerinden seç),",
     "\"answer\":string|null (kullanıcı soru sorduysa, YALNIZ verilen facts içindeki rakamlarla kısa Türkçe cevap; facts'te yoksa 'kayıtlarda bulamadım' de),",
-    "\"cards\":{\"customers\":[{\"name\",\"phone\",\"note\"}],\"sites\":[{\"name\",\"customer_id\",\"customer_name\"}],\"vehicles\":[{\"name\",\"plate\",\"type\",\"ownership\":\"Özmal\"|\"Taşeron\"}],\"personnel\":[{\"name\",\"phone\",\"role\"}],\"suppliers\":[{\"name\",\"type\":\"Servis\"|\"Tedarikçi\"|\"Petrolcü\"|\"Diğer\",\"phone\"}]} (kullanıcı müşteri/filo/personel/tedarikçi LİSTESİ verirse; listede zaten olanları yazma),",
+    "\"cards\":{\"customers\":[{\"name\",\"phone\",\"note\"}],\"sites\":[{\"name\",\"customer_id\",\"customer_name\"}],\"vehicles\":[{\"name\",\"plate\",\"type\",\"ownership\":\"Özmal\"|\"Taşeron\"}],\"personnel\":[{\"name\",\"phone\",\"role\"}],\"suppliers\":[{\"name\",\"type\":\"Servis\"|\"Tedarikçi\"|\"Petrolcü\"|\"Diğer\",\"phone\"}],\"quarries\":[{\"name\",\"address\"}] (malzeme ocakları: mıcır/kum/gravak/taş alınan yerler),\"dump_sites\":[{\"name\",\"address\"}] (döküm/dolgu sahaları)} (kullanıcı müşteri/filo/personel/tedarikçi LİSTESİ verirse; listede zaten olanları yazma),",
     "Her iş satırına \"mentions\":{\"customer\",\"site\",\"vehicle\",\"personnel\"} ekle: mesajda o kartı anlatan ifade, yazıldığı gibi (örn. \"mahir bey\", \"14 tonluk\").",
     "\"memory\":[{\"alias\",\"target_type\":\"customer\"|\"site\"|\"vehicle\"|\"personnel\",\"target_id\"}] (kullanıcı 'Mahir bey Hisar Polat demek', 'X = Y', 'X dediğimde Y'yi anla' gibi bir eşleştirme öğretirse),",
     "\"photo_texts\":[string],\"questions\":[string]}",
@@ -274,6 +275,12 @@ function validDate(s, today) {
   return diff > 1 || diff < -120 ? null : s;
 }
 
+// Yer adından ayrılma eki: "Öztaştan" → "Öztaş", "Binkılıç'a" → "Binkılıç" (yeni kart adı için)
+function placeName(t) {
+  let x = String(t || "").trim().replace(/['’](?:[a-zçğıöşü]{1,4})$/iu, "");
+  x = x.replace(/(?<=[a-zçğıöşü]{3})(?:dan|den|tan|ten)$/iu, "").replace(/(?<=[a-zçğıöşü]{2}[aeıioöuü])(?:ya|ye)$/iu, "");
+  return x.charAt(0).toLocaleUpperCase("tr-TR") + x.slice(1);
+}
 // Alıntı kontrolü: model her satır için mesajdan birebir parça yazar; telefon parçayı mesajda arar
 export function quoteFound(quote, src) {
   const q = norm(quote), t = norm(src);
@@ -299,7 +306,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const r = { date: validDate(w.date, today) || today, customer_id: null, new_customer: null, site_id: null, new_site: null,
       vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200),
       description: String(w.description || w.note || "").slice(0, 300), material: String(w.material || "").slice(0, 60),
-      dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, unit_price: null };
+      dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, quarry_id: byId(live(d, "quarries"), w.quarry_id)?.id || null, new_quarry: null, new_dump_site: null, unit_price: null };
     if (w.unit_price != null && w.unit_price !== "") {
       const up = amountOk(w.unit_price, [moneyInText(message)]);
       if (up) r.unit_price = up; else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
@@ -359,6 +366,15 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const said = (x) => { const t = String(x || "").trim(); return t && (` ${norm(message)} `).includes(` ${norm(t)}`) ? t.slice(0, 80) : ""; };
     r.from_place = said(w.from_place);
     r.to_place = said(w.to_place);
+    // Malzeme ocağı / döküm yeri kartı: ID yoksa yazılan yer adı mevcut kartla eşleştirilir, yoksa yeni kart önerilir
+    if (!r.quarry_id && r.from_place) {
+      const q = similarCard(r.from_place, live(d, "quarries")) || live(d, "quarries").find((x) => inMessage(x.name, r.from_place) || inMessage(r.from_place, x.name)) || null;
+      if (q) r.quarry_id = q.id; else r.new_quarry = placeName(r.from_place);
+    }
+    if (!r.dump_site_id && r.to_place) {
+      const ds = similarCard(r.to_place, live(d, "dump_sites")) || live(d, "dump_sites").find((x) => inMessage(x.name, r.to_place)) || null;
+      if (ds) r.dump_site_id = ds.id; else if (w.to_is_dump) r.new_dump_site = placeName(r.to_place);
+    }
     r.slip_no = w.slip_no && String(message).replace(/\s/g, "").includes(String(w.slip_no).replace(/\s/g, "")) ? String(w.slip_no).slice(0, 30) : "";
     if (w.date_source === "yok") { issues.push("İş tarihi mesajda yazmıyor — teyit edin"); r.dateUnsure = true; }
     if (WORK_TYPES.includes(w.work_type)) r.work_type = w.work_type; else issues.push("İş türü seçilmeli");
@@ -650,7 +666,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
 
 
 // ---- Liste ile kart ekleme (müşteri / şantiye / araç / personel / esnaf) ----
-const CARD_STORE = { customers: "customers", sites: "sites", vehicles: "vehicles", personnel: "personnel", suppliers: "suppliers" };
+const CARD_STORE = { customers: "customers", sites: "sites", vehicles: "vehicles", personnel: "personnel", suppliers: "suppliers", quarries: "quarries", dump_sites: "dump_sites" };
 const plateKey = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 export function validateCards(plan, { message = "", d, photoTexts = [] } = {}) {
   const src = [message, ...photoTexts].join("\n");
@@ -676,6 +692,7 @@ export function validateCards(plan, { message = "", d, photoTexts = [] } = {}) {
       if (kind === "customers") { item.data = { phone: String(c.phone || "").slice(0, 30), note: String(c.note || "").slice(0, 200) }; if (item.ok) newCustomerNames.push(name); }
       if (kind === "vehicles") item.data = { plate: String(c.plate || "").toUpperCase().slice(0, 20), type: String(c.type || "Araç/Makine").slice(0, 40), ownership: c.ownership === "Taşeron" ? "Taşeron" : "Özmal" };
       if (kind === "personnel") item.data = { phone: String(c.phone || "").slice(0, 30), role: String(c.role || "").slice(0, 40) };
+      if (kind === "quarries" || kind === "dump_sites") item.data = { address: String(c.address || "").slice(0, 120) };
       if (kind === "suppliers") item.data = { type: ["Servis", "Tedarikçi", "Petrolcü", "Diğer"].includes(c.type) ? c.type : "Servis", phone: String(c.phone || "").slice(0, 30) };
       if (kind === "sites") {
         const cust = live(d, "customers").find((x) => x.id === c.customer_id) || (c.customer_name ? similarCard(c.customer_name, live(d, "customers")) : null);
@@ -726,7 +743,7 @@ export function assistantSchema() {
     properties: {
       works: row({ date: NS, customer_id: NS, new_customer: NS, new_customer_parent_id: NS, site_id: NS, new_site: NS, vehicle_id: NS, personnel_id: NS,
         work_type: { type: ["string", "null"], enum: [...WORK_TYPES, null] }, quantity: NN, unit: { type: ["string", "null"], enum: [...ASSIST_UNITS, null] },
-        guessed: NB, reporter: NS, date_source: NS, from_place: NS, to_place: NS, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, note: NS,
+        guessed: NB, reporter: NS, date_source: NS, from_place: NS, quarry_id: NS, to_place: NS, to_is_dump: NB, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, note: NS,
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
       expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, photo: { type: ["integer", "null"] }, note: NS }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),

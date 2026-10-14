@@ -17,6 +17,12 @@ export const DEFAULT_RULES = `WHATSAPP ÇALIŞMA KAYDI KURALLARI (Muratoğlu Haf
 - Belirtilmeyen plaka, şoför, müşteri, malzeme, fiyat veya güzergâhı tahmin etme. Fiyat yazılmamışsa fiyat yazma.
 - Mesajı gönderen personelin zimmetli aracı vardır (personel listesinde 3. değer): mesajda başka araç yazmıyorsa o aracı kullan, personnel_id = gönderen.
 - Malzemenin alındığı yeri from_place, teslim edildiği şantiye/döküm/dolgu yerini to_place alanına yaz.
+
+MALZEME OCAKLARI VE DÖKÜM / DOLGU YERLERİ
+- Malzemenin alındığı yer quarries (malzeme ocakları) listesindeyse quarry_id ver; listede yoksa from_place'e yazıldığı gibi yaz (uygulama yeni ocak kartı önerir).
+- Bilinen ocaklar: Kılıç Hafriyat Maslak sahası (gravak), Danış Maden / Danış Mıcır (ocak taşı, mıcır), Öztaş (mıcır), Çiftalan Uzunlar (kum).
+- Teslim yeri döküm/dolgu sahasıysa (Göktürk Son Durak dolgu, Çatalca Binkılıç dolgu, İBB döküm sahaları) to_is_dump=true ve listede varsa dump_site_id ver; bir şantiyeye teslimse to_is_dump=false.
+- Ocak (alındığı yer) ile döküm yerini (teslim yeri) karıştırma: "Danış'tan Binkılıç'a taş" → from_place=Danış, to_place=Binkılıç.
 - Yakıtı iş ücreti veya gelir gibi gösterme.
 
 KILIÇ HAFRİYAT – MASLAK GRAVAK
