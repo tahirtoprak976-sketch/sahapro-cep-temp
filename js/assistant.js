@@ -3,7 +3,7 @@
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
-import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, businessFacts, checkAnswer, ASSIST_UNITS } from "./assistant-core.js";
+import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
   `<option value="">${esc(empty)}</option>` +
@@ -86,6 +86,7 @@ export async function screen(ctx) {
       const v = validatePlan(plan, { message, d, today, photoCount: files.length });
       Object.assign(v, validateExtras(plan, { message, d, today, photoTexts: v.photoTexts }));
       v.cards = validateCards(plan, { message, d, photoTexts: v.photoTexts });
+      v.memory = validateMemory(plan, { message, d });
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
       v.answerBad = checkAnswer(v.answer, facts);
       render(ctx, out, v, d, { message, files, ms: Date.now() - t0 });
@@ -104,7 +105,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi" };
   const personnel = live("personnel").map((p) => [p.id, p.name]);
   const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
@@ -114,6 +115,11 @@ function render(ctx, out, v, d, { message, files, ms }) {
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     (v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
+    v.memory
+      .map((r, i) => `<div class="card" data-kind="memory" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧠 Hafızaya ekle</b></label>
+        <div class="small">"${esc(r.alias)}" dendiğinde → <b>${esc(r.target_name || "?")}</b></div>${issues(r)}</div>`)
+      .join("") +
     (v.cards.length ? `<div class="section-title">Yeni kartlar (${v.cards.filter((c) => c.ok).length}/${v.cards.length})</div>` : "") +
     v.cards
       .map((r, i) => `<div class="card" data-kind="card" data-i="${i}">
@@ -222,6 +228,13 @@ function render(ctx, out, v, d, { message, files, ms }) {
       })
       .join("") +
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
+  // Müşteri değişince önerilen "yeni şantiye" o müşteriye ait olmayabilir: temizle
+  for (const card of qsa('.card[data-kind="work"]', out)) {
+    const cs = qs("[name=customer]", card), ss = qs("[name=site]", card);
+    cs?.addEventListener("change", () => {
+      if (ss && ss.value.startsWith("new:")) ss.value = "";
+    });
+  }
   qs("[data-save]", out)?.addEventListener("click", () => save(ctx, out, v, d, { message, files }));
 }
 
@@ -229,7 +242,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const { db } = ctx;
   const cards = qsa(".card[data-kind]", out)
     .filter((c) => qs("[data-pick]", c).checked)
-    .sort((a, b) => (a.dataset.kind === "card" ? 0 : 1) - (b.dataset.kind === "card" ? 0 : 1));
+    .sort((a, b) => (["card", "memory"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
@@ -287,6 +300,11 @@ async function save(ctx, out, v, d, { message, files }) {
     const existingWorks = (d.work_records || []).filter(isActive);
     for (const c of cards) {
       const k = c.dataset.kind;
+      if (k === "memory") {
+        const r = v.memory[Number(c.dataset.i)];
+        await learn(r.alias, r.target_type, r.target_id, r.target_name);
+        continue;
+      }
       if (k === "card") {
         const r = v.cards[Number(c.dataset.i)];
         const name = val(c, "name").trim();
@@ -358,6 +376,8 @@ async function save(ctx, out, v, d, { message, files }) {
         const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";
         const custSel = val(c, "customer");
         await learn(wr.mentions?.customer, "customer", customer, nm("customers", customer) || (custSel.startsWith("new:") ? custSel.slice(4) : ""));
+        // "Yeni: Mahir Bey" önerisi yerine mevcut Hisar Polat seçildiyse "Mahir Bey" → Hisar Polat öğrenilir
+        if (!custSel.startsWith("new:") && wr.new_customer_text) await learn(wr.new_customer_text, "customer", customer, nm("customers", customer));
         if (site) await learn(wr.mentions?.site, "site", site, nm("sites", site));
         await learn(wr.mentions?.vehicle, "vehicle", veh.id, veh.name);
         if (fields.personnel_id) await learn(wr.mentions?.personnel, "personnel", fields.personnel_id, nm("personnel", fields.personnel_id));

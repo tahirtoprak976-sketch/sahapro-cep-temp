@@ -107,3 +107,16 @@ console.log('assistant-cards PASS');
   assert.equal(vh.works[0].ok, false); assert.equal(vh.works[0].mentions.customer, 'Mahir Bey');
 }
 console.log('assistant-hints PASS');
+// kullanıcı eşleştirme öğretir + yeni müşteri önerisi yerine mevcut seçilince öğrenme metni
+{
+  const { validateMemory } = await import('../js/assistant-core.js');
+  const dm = { ...d, customers: [...d.customers, { id: 'HP', name: 'Hisar Polat' }] };
+  const dm0 = { ...dm, aliases: [] };
+  const mem = validateMemory({ memory: [{ alias: 'Mahir bey', target_type: 'customer', target_id: 'HP' }, { alias: 'yok böyle', target_type: 'customer', target_id: 'HP' }, { alias: 'Mahir bey', target_type: 'customer', target_id: 'YOK' }] }, { message: 'Mahir bey dediğimde Hisar Polat anla', d: dm0 });
+  assert.equal(mem[0].ok, true); assert.equal(mem[0].target_name, 'Hisar Polat'); assert.equal(mem[1].ok, false); assert.equal(mem[2].ok, false);
+  const conflict = validateMemory({ memory: [{ alias: 'Mahir Bey', target_type: 'customer', target_id: 'HP' }] }, { message: 'Mahir Bey Hisar Polat', d: dm });
+  assert.equal(conflict[0].ok, false); // fixture'da Mahir Bey → CMH zaten bağlı
+  const vp = validatePlan({ works: [{ new_customer: 'Mahir Bey', vehicle_id: 'T14', work_type: 'Makine Çalışması', quantity: 0.5, unit: 'Yevmiye' }] }, { message: '14 tonluk mahir bey şantiyesi yarım yevmiye', d: { ...dm, aliases: [] }, today });
+  assert.equal(vp.works[0].new_customer_text, 'Mahir Bey');
+}
+console.log('assistant-memory PASS');
