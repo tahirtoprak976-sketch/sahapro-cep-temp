@@ -65,3 +65,13 @@ console.log("customer-ambiguity PASS");
   assert.equal(v3.works[0].ok, false);
   console.log("taseron PASS");
 }
+// taşeron adı geçmiyorsa ana firmaya yazılır; geçiyorsa taşerona
+{
+  const dd = { ...d, sites: [{ id: "SHP", name: "Coşar Polat", customer_id: "HP" }], vehicles: [{ id: "M", name: "Manitou" }] };
+  let v = validatePlan({ works: [{ customer_id: "AG", site_id: "SHP", vehicle_id: "M", work_type: "Makine Çalışması", quantity: 2, unit: "Saat" }] }, { message: "Coşar Polat'ta 2 saat alçıpan verildi manitou", d: dd, today });
+  assert.equal(v.works[0].customer_id, "HP"); assert.equal(v.works[0].site_id, "SHP"); assert.ok(v.works[0].issues.some((x) => /ana firma/.test(x)));
+  assert.ok(!/Yer:/.test(v.works[0].description));
+  v = validatePlan({ works: [{ customer_id: "AG", site_id: "SHP", vehicle_id: "M", work_type: "Makine Çalışması", quantity: 2, unit: "Saat" }] }, { message: "Coşar Polat'ta ağırtaş mimarlığa 2 saat alçıpan manitou", d: dd, today });
+  assert.equal(v.works[0].customer_id, "AG");
+  console.log("taseron-kurali PASS");
+}
