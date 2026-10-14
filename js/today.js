@@ -12,6 +12,7 @@ import {
 import { ledgerOf } from "./esnaf.js";
 import { ticketReconcile } from "./assistant-docs.js";
 import { fuelFlags } from "./fuel-rules.js";
+import { fuelLedgers } from "./assistant-rules.js";
 
 const DAY = 86400000;
 const daysBetween = (a, b) =>
@@ -158,6 +159,11 @@ export function todayBoard(data, opts = {}) {
     else if (t.daysLeft != null && t.daysLeft <= 3)
       items.push({ kind: t.daysLeft <= 1 ? "alert" : "warn", group: "Depo", ic: "🛢", text: `Depoda ${Math.round(t.remaining)} L kaldı`, sub: `Günde ortalama ${t.daily} L → yaklaşık ${t.daysLeft} gün yeter`, href: "#/depo", sort: 6 });
   }
+
+  // 3b3) Sefer karşılığı mazot alacağı (Kılıç Hafriyat gibi ücreti mazotla ödeyen müşteriler)
+  for (const l of fuelLedgers(data))
+    if (l.balance >= 1)
+      items.push({ kind: "info", group: "Mazot", ic: "⛽", text: `${l.name}: ${l.balance} L mazot alacağı`, sub: `${l.trips} sefer → ${l.earned} L hak edildi, ${l.received} L alındı`, href: "#/musteriler/" + l.id, sort: 55 });
 
   // 3c) Yakıt kuralları (tutar, depo, işsiz gün, tüketim)
   for (const f of fuelFlags(data, { today }))

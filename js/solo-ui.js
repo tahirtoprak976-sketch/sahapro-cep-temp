@@ -1408,6 +1408,43 @@ export async function augment(ctx) {
     route = parts[0],
     id = parts[1];
   if (["new", "edit"].some((p) => parts.includes(p))) return;
+  // Müşteri kartı: sefer karşılığı mazot hesabı (Kılıç Hafriyat: sefer başı 75 L, ücret yalnız mazot)
+  if (route === "musteriler" && id) {
+    try {
+      const me = await db.get("customers", id);
+      if (me && Number(me.fuel_per_trip) > 0) {
+        const { customerFuelLedger } = await import("./assistant-rules.js");
+        const L = customerFuelLedger(await db.dumpAll(), id);
+        const html = `<section class="card"><h2>⛽ Mazot hesabı</h2>
+          <p class="small">Sefer başı ${esc(String(me.fuel_per_trip))} L${me.fuel_rule_match ? " (" + esc(me.fuel_rule_match) + ")" : ""} · ücret: ${me.fuel_only_pay === false ? "para + mazot" : "yalnız mazot"}</p>
+          <p><b>${L.trips}</b> sefer → <b>${L.earned} L</b> hak edildi · <b>${L.received} L</b> alındı</p>
+          <p style="font-size:17px">${L.balance > 0 ? `Kalan mazot alacağı: <b>${L.balance} L</b>` : L.balance < 0 ? `Fazla alınan: <b>${-L.balance} L</b>` : "Hesap kapalı ✓"}</p>
+          <p class="muted small">Mazot alınca: Yakıt → kaynak "Müşteri Verdi" (araca) ya da Depo → GİRİŞ "Müşteriden" (depoya). Asistana "Kılıç'tan 300 litre mazot aldık" yazabilirsiniz.</p>
+          <button class="btn block" data-fuelapply>Eski işlere uygula (mazot karşılığını hesapla)</button></section>`;
+        const tabs = root.querySelector("[data-tabs]");
+        if (tabs) tabs.insertAdjacentHTML("beforebegin", html);
+        else root.insertAdjacentHTML("beforeend", html);
+        root.querySelector("[data-fuelapply]")?.addEventListener("click", async () => {
+          const { applyFuelPay } = await import("./assistant-rules.js");
+          const d = await db.dumpAll();
+          let n = 0, fail = 0;
+          for (const w of (d.work_records || []).filter((x) => !x.deleted_at && x.customer_id === id)) {
+            const text = [w.description, w.material, w.quarry, w.dump_area, w.internal_note].filter(Boolean).join(" ");
+            const f = applyFuelPay(d, w, text);
+            const same = Number(f.customer_fuel_allowance_l || 0) === Number(w.customer_fuel_allowance_l || 0) && f.price_snapshot?.amount === w.price_snapshot?.amount;
+            if (same) continue;
+            try {
+              await db.saveExisting("work_records", w, { customer_fuel_allowance_l: f.customer_fuel_allowance_l || null, price_snapshot: f.price_snapshot }, "Mazot karşılığı uygulandı");
+              n++;
+            } catch (e) { fail++; }
+          }
+          const { toast } = await import("./ui.js");
+          toast(`${n} iş güncellendi${fail ? `, ${fail} iş hakedişe bağlı olduğu için değişmedi` : ""}`, n ? "ok" : "err");
+          if (n) location.reload();
+        });
+      }
+    } catch (e) {}
+  }
   // Müşteri kartı: ana firma / taşeronları (Ağırtaş Mimarlık → Hisar Polat)
   if (route === "musteriler" && id) {
     try {

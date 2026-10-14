@@ -28,13 +28,13 @@ MALZEME OCAKLARI VE DÖKÜM / DOLGU YERLERİ
 
 KILIÇ HAFRİYAT – MASLAK GRAVAK
 - Maslak'taki Kılıç Hafriyat sahasından çıkan gravak; teslim yerleri çoğunlukla Göktürk Son Durak dolgu sahası ve Çatalca Binkılıç dolgu sahası.
-- Kılıç Hafriyat her sefer için 75 L mazot verir (müşteri kartındaki "sefer başı mazot" kuralı). Bu yalnız Kılıç'ın Maslak gravak seferleri içindir.
-- Mesajda mazotun alındığı açıkça yazıyorsa fuel satırı yaz: source="Müşteri Verdi", customer_id=Kılıç Hafriyat. Yalnız sefer bilgisi varsa yakıt satırı YAZMA.
+- Kılıç Hafriyat bu seferlerin ücretini (döküm dahil) YALNIZ MAZOTLA öder: sefer başı 75 L. Para yazma, fiyat yazma. Bu yalnız Kılıç'ın Maslak gravak seferleri içindir.
+- Mazot her seferde ya da biriktirilip toplu alınabilir. Mesajda mazotun ALINDIĞI yazıyorsa: araca dolduysa fuel satırı (source="Müşteri Verdi", customer_id=Kılıç); depoya alındıysa tank_in satırı (customer_id=Kılıç). Yalnız sefer bilgisi varsa yakıt satırı YAZMA.
 - Danış Maden / Danış Mıcır'dan alınan ocak taşı, mıcır vb. Kılıç'ın gravak işiyle birleştirilmez. "Binkılıç'a taş" gravak değildir.
 - İşin kime ait olduğu hiç anlaşılmıyorsa müşteriyi boş bırak; bir ipucu varsa en olası müşteriyi customer_guess=true ile öner.`;
 
 // Eski sürümlerin varsayılan kuralları (kullanıcı değiştirmeden kaydettiyse yeni varsayılan kullanılır)
-const OLD_DEFAULT_HASHES = new Set(["ppft5k", "1b95he"]);
+const OLD_DEFAULT_HASHES = new Set(["ppft5k", "1b95he", "p4s1r8"]);
 export function rulesHash(s) {
   let x = 5381;
   for (const ch of String(s).replace(/\s+/g, " ").trim()) x = ((x * 33) ^ ch.codePointAt(0)) >>> 0;
@@ -84,6 +84,35 @@ export function fuelAllowance(d, row, text) {
   const hay = ` ${norm([text, row.material, row.description, row.from_place, row.to_place].filter(Boolean).join(" "))} `;
   if (words.length && !words.every((w) => hay.includes(` ${w}`))) return null;
   return { customer: c.name, per: L, liters: Math.round(L * row.quantity * 10) / 10 };
+}
+
+// İş kaydına mazot karşılığını uygular. Müşteri "ücreti yalnız mazot" ise iş parasal alacak oluşturmaz
+// (hakedişte 0 ₺, "Mazot karşılığı"); hak edilen litre customer_fuel_allowance_l olarak işe yazılır.
+export function applyFuelPay(d, fields, text = "") {
+  const fa = fuelAllowance(d, fields, text);
+  const out = { ...fields };
+  delete out.customer_fuel_allowance_l;
+  if (!fa) return out;
+  out.customer_fuel_allowance_l = fa.liters;
+  const c = live(d, "customers").find((x) => x.id === fields.customer_id);
+  if (c && c.fuel_only_pay !== false) // varsayılan: ücret yalnız mazot (Kılıç Hafriyat)
+    out.price_snapshot = { unit_price: 0, kdv_rate: 0, kdv_included: false, amount: 0, price_source: "Mazot karşılığı", fuel_liters_per_unit: fa.per, snapshot_at: new Date().toISOString() };
+  return out;
+}
+
+// Müşterinin mazot hesabı (litre): hak edilen (sefer × L) − alınan (araca verilen + depoya alınan)
+export function customerFuelLedger(d, customerId) {
+  const works = live(d, "work_records").filter((w) => w.customer_id === customerId && Number(w.customer_fuel_allowance_l) > 0);
+  const fuel = live(d, "fuel_records").filter((f) => f.fuel_source === "Müşteri Verdi" && f.customer_id === customerId);
+  const tank = live(d, "fuel_tank_movements").filter((m) => m.move_type === "GİRİŞ" && m.customer_id === customerId);
+  const r1 = (n) => Math.round(n * 10) / 10;
+  const earned = r1(works.reduce((n, w) => n + Number(w.customer_fuel_allowance_l), 0));
+  const received = r1(fuel.reduce((n, f) => n + (Number(f.liters) || 0), 0) + tank.reduce((n, m) => n + (Number(m.liters) || 0), 0));
+  const trips = works.reduce((n, w) => n + (w.unit === "Sefer" ? Number(w.quantity) || 0 : 0), 0);
+  return { earned, received, balance: r1(earned - received), trips, works: works.length, receipts: fuel.length + tank.length };
+}
+export function fuelLedgers(d) {
+  return live(d, "customers").filter((c) => Number(c.fuel_per_trip) > 0).map((c) => ({ id: c.id, name: c.name, ...customerFuelLedger(d, c.id) }));
 }
 
 // Aynı yapıştırmada iki kez bildirilmiş iş: aynı tarih + araç + birim + miktar + malzeme/güzergâh

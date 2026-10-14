@@ -274,7 +274,7 @@ export function assistantSystem(rules = "") {
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
-    "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
+    "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
     "\"maintenance\":[{\"date\",\"vehicle_id\",\"maint_type\",\"status\",\"description\",\"cost\",\"service_company\",\"supplier_id\",\"credit\"}] (arıza/bakım; maint_type: " + MAINT_TYPES.join(", ") + "; status: " + MAINT_STATUS.join(", ") + "),",
     "\"personnel\":[{\"date\",\"personnel_id\",\"event_type\",\"amount\",\"hours_days\",\"note\"}] (event_type: " + PERSONNEL_EVENT_TYPES.join(", ") + "),",
@@ -558,7 +558,9 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   for (const t of (Array.isArray(plan.tank_in) ? plan.tank_in : []).slice(0, 5)) {
     const liters = numOk(Number(t.liters)) ? Number(t.liters) : null;
     const r = { date: validDate(t.date, today) || today, liters, total: numOk(Number(t.total)) ? Number(t.total) : null, note: String(t.note || "").slice(0, 200),
-      unit_price: numOk(Number(t.unit_price)) ? Number(t.unit_price) : null, supplier_id: byId(suppliers, t.supplier_id)?.id || null, credit: !!t.credit };
+      unit_price: numOk(Number(t.unit_price)) ? Number(t.unit_price) : null, supplier_id: byId(suppliers, t.supplier_id)?.id || null, credit: !!t.credit,
+      customer_id: byId(customers, t.customer_id)?.id || null };
+    if (r.customer_id) { r.credit = false; r.supplier_id = null; }
     if (liters && r.unit_price && !r.total) r.total = Math.round(liters * r.unit_price * 100) / 100;
     if (liters && r.total && !r.unit_price) r.unit_price = Math.round((r.total / liters) * 100) / 100;
     r.issues = liters ? [] : ["Litre mesajda yok"];
@@ -837,7 +839,7 @@ export function assistantSchema() {
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
       expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, photo: { type: ["integer", "null"] }, note: NS }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
-      tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, note: NS }),
+      tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),
       maintenance: row({ date: NS, vehicle_id: NS, maint_type: NS, status: NS, description: NS, cost: NN, service_company: NS, supplier_id: NS, credit: NB }),
       personnel: row({ date: NS, personnel_id: NS, event_type: NS, amount: NN, hours_days: NN, note: NS }),
