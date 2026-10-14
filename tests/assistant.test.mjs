@@ -89,3 +89,21 @@ console.log('assistant-detail PASS');
   assert.deepEqual(vm.works[0].mentions, { customer: 'mahir bey', vehicle: '14 tonluk' });
 }
 console.log('assistant-cards PASS');
+// geçmiş iş ipuçları: "Mahir bey" → Hisar Polat (yeni müşteri açılmaz)
+{
+  const { customerHints, hintCustomer } = await import('../js/assistant-core.js');
+  const dh = { ...d, customers: [...d.customers.filter((c) => c.id !== 'CMH'), { id: 'HP', name: 'Hisar Polat' }], aliases: d.aliases.filter((a) => a.target_id !== 'CMH'),
+    work_records: [
+      { id: 'h1', customer_id: 'HP', description: 'Jcb kepçe Mahir bey inşaatı yol sıyırma' },
+      { id: 'h2', customer_id: 'HP', description: 'Mahir beye 2 saat tuğla verildi' },
+      { id: 'h3', customer_id: 'HP', description: 'Mahir beyin şantiyesi kablo' },
+      { id: 'h4', customer_id: 'CA', description: 'Sinan abiye 1 saat' },
+    ] };
+  const hs = customerHints(dh);
+  assert.deepEqual(hs.find(([id]) => id === 'HP')[1], ['mahir bey']);
+  assert.equal(hintCustomer('Mahir Bey', hs), 'HP'); assert.equal(hintCustomer('Sinan Abi', hs), null); // tek kayıt: yeterli değil
+  const vh = validatePlan({ works: [{ new_customer: 'Mahir Bey', vehicle_id: 'T14', work_type: 'Makine Çalışması', quantity: 0.5, unit: 'Yevmiye' }] }, { message: '14 tonluk mahir bey şantiyesi yarım yevmiye', d: dh, today });
+  assert.equal(vh.works[0].customer_id, 'HP'); assert.equal(vh.works[0].new_customer, null); assert.equal(vh.newCustomers.length, 0);
+  assert.equal(vh.works[0].ok, false); assert.equal(vh.works[0].mentions.customer, 'Mahir Bey');
+}
+console.log('assistant-hints PASS');
