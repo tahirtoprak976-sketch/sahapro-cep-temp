@@ -26,6 +26,7 @@ import {
   collectForm,
   pagedRender,
   downloadBlob,
+  shareOrDownload,
   go,
   fmtTL,
   fmtNum,
@@ -34,6 +35,7 @@ import {
 } from "./ui.js";
 import {
   isActive,
+  backupAgeDays,
   matchSearch,
   DOC_TYPES,
   ENTITY_STORES,
@@ -1427,12 +1429,22 @@ export async function doBackup(ctx) {
   const { fullBackup } = await import("./backup.js");
   const backup = await fullBackup(ctx.db);
   const name = `SAHAPRO_TAM_YEDEK_${tsName()}.json`;
-  downloadBlob(
+  const how = await shareOrDownload(
     new Blob([JSON.stringify(backup)], { type: "application/json" }),
     name,
+    "SAHAPRO yedek",
   );
+  if (how === "aborted") {
+    toast("Yedek paylaşımı iptal edildi — yedek kaydedilmedi", "warn");
+    return name;
+  }
   await ctx.db.metaSet("last_backup_at", new Date().toISOString());
-  toast("Veriler, dosyalar ve imzalar yedeklendi", "ok");
+  toast(
+    how === "shared"
+      ? "Yedek paylaşıldı — WhatsApp/Drive'a gönderdiğinizden emin olun"
+      : "Yedek indirildi — dosyayı telefonun dışına (Drive/e-posta) da kopyalayın",
+    "ok",
+  );
   return name;
 }
 async function doCsvZip(ctx) {
@@ -1535,6 +1547,12 @@ async function settings(ctx) {
     est = null;
   }
   const mb = (b) => (b / 1048576).toFixed(1) + " MB";
+  let persisted = false;
+  try {
+    persisted = !!(await navigator.storage?.persisted?.());
+  } catch (e) {
+    persisted = false;
+  }
 
   root.innerHTML =
     appbar("Ayarlar", APP_VERSION + " · şema v" + SCHEMA_VERSION) +
@@ -1542,7 +1560,8 @@ async function settings(ctx) {
     <div style="height:10px"></div>
     <div class="section-title">Yedekleme</div>
     <div class="card">
-      ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") : "Hiç yedek yok")}
+      ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}
+      ${kv("Kalıcı depolama", persisted ? "Korumalı ✓" : "Korumasız — tarayıcı yer açarken silebilir; düzenli yedek alın")}
       <div class="row" style="gap:8px;margin-top:10px">
         <button class="btn primary grow" data-bak>💾 JSON Yedek</button>
         <button class="btn grow" data-csv>📑 CSV Paket</button>

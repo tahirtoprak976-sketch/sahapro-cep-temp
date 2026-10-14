@@ -343,7 +343,7 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
   };
   const truck =
     vehicle.type === "Kamyon" ||
-    /^\d{2}[A-Z]/i.test(vehicle.plate || vehicle.name || "");
+    /^\d{2}\s*[A-Z]/i.test(vehicle.plate || vehicle.name || "");
   const required =
     vehicle.required_document_types ||
     (truck
