@@ -511,6 +511,7 @@ export function validateEnterpriseData(data) {
           ![
             "expense_records",
             "fuel_records",
+            "fuel_tank_movements",
             "maintenance_records",
             "purchase_orders",
           ].includes(b.source_store)

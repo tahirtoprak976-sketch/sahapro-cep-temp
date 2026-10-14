@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.25";
+export const APP_VERSION = "SAHAPRO SOLO v3.7.26";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -568,6 +568,29 @@ export function calcTankBalance(movements) {
     else if (m.move_type === "ÇIKIŞ") out += l;
   }
   return { in: inn, out, remaining: inn - out };
+}
+
+// Depo yakıtının litre maliyeti: verilen tarihe kadar fiyatı girilmiş depo girişlerinin litre ağırlıklı ortalaması
+export function tankUnitCost(movements, date = "9999-12-31") {
+  let L = 0, tl = 0;
+  for (const m of (movements || []).filter(isActive)) {
+    if (m.move_type !== "GİRİŞ" || (date && m.date > date)) continue;
+    const up = Number(m.unit_price) || (Number(m.total) > 0 && Number(m.liters) > 0 ? Number(m.total) / Number(m.liters) : 0);
+    if (!(up > 0)) continue;
+    L += Number(m.liters) || 0;
+    tl += up * (Number(m.liters) || 0);
+  }
+  return L > 0 ? Math.round((tl / L) * 100) / 100 : null;
+}
+
+// Depo durumu: kalan, son 14 gün günlük ortalama çıkış, kaç gün yeter
+export function tankStatus(movements, today = todayStr()) {
+  const bal = calcTankBalance(movements);
+  const from = addDays(today, -13);
+  const out14 = (movements || []).filter((m) => isActive(m) && m.move_type === "ÇIKIŞ" && m.date >= from && m.date <= today).reduce((n, m) => n + (Number(m.liters) || 0), 0);
+  const daily = Math.round((out14 / 14) * 10) / 10;
+  const lastIn = (movements || []).filter((m) => isActive(m) && m.move_type === "GİRİŞ" && !m.count_id).sort((a, b) => (b.date > a.date ? 1 : -1))[0] || null;
+  return { ...bal, daily, daysLeft: daily > 0 ? Math.floor(bal.remaining / daily) : null, lastIn, unitCost: tankUnitCost(movements, today) };
 }
 
 // ---- Gün özeti (genişletilmiş) ----
