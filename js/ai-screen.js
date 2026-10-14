@@ -2,6 +2,7 @@
 // Bu ekran hiçbir kayıt oluşturmaz; yalnız önerileri ve doğrulama sonucunu gösterir.
 import { qs, esc, appbar, toast, confirmDialog, notice, kv } from "./ui.js";
 import { aiSuggest } from "./ai-assist.js";
+import { geminiSettings, listModels, geminiChat, geminiReadReceipt } from "./ai-gemini.js";
 
 const SAMPLES = [
   "Ahmet Bey 34 ABC 123 6 gidiş yaptı moloz",
@@ -14,12 +15,18 @@ const SAMPLES = [
   "Mahir bey 14 tonluk öğlene kadar çalıştı",
 ];
 
+const LABELS = {
+  date: "Tarih", total: "Toplam", subtotal: "Ara toplam", kdv: "KDV tutarı", kdv_rate: "KDV %",
+  liters: "Litre", unit_price: "Birim fiyat", plate: "Plaka", firma: "Firma", doc_no: "Belge no",
+  fuel_type: "Yakıt türü", category_suggestion: "Kategori önerisi",
+};
 export async function screen(ctx) {
   if (ctx.parts[0] !== "yapay-zeka") return false;
   const { root, db } = ctx;
   const ai = await import("./ai-local.js");
   const gpu = await ai.gpuStatus();
   const savedId = (await db.metaGet("ai_model_id")) || "";
+  const gem = await geminiSettings(db);
   root.innerHTML =
     appbar("Yapay Zeka (deneysel)", "Telefonda çalışır · ücretsiz", { back: "#/ayarlar" }) +
     `<div style="height:10px"></div>
@@ -34,10 +41,25 @@ export async function screen(ctx) {
       </div>
       <div data-prog style="margin-top:10px"></div>
     </div>
+    <div class="section-title">Gemini (Google) — internetle</div>
+    <div class="card">
+      <div class="muted small">Fiş fotoğrafı okumada en güçlü seçenek. Anahtarı <b>aistudio.google.com</b> → "Get API key" ile alın. Anahtar yalnız bu telefonda saklanır. Google Cloud'da anahtarı bu siteyle (HTTP referrer) ve "Generative Language API" ile sınırlamanız önerilir.</div>
+      <div class="field" style="margin-top:8px"><label>API anahtarı</label><input type="password" data-gkey autocomplete="off" value="${esc(gem.key)}" placeholder="AIza…"></div>
+      <div class="field"><label>Model</label><select data-gmodel>${gem.model ? `<option value="${esc(gem.model)}">${esc(gem.model)}</option>` : "<option value=''>Önce anahtarı girip modelleri getirin</option>"}</select></div>
+      <label class="history-check"><input type="checkbox" data-gconsent ${gem.consent ? "checked" : ""}> Gemini kullandığımda mesaj metninin veya fiş fotoğrafının Google'a gönderileceğini biliyorum.</label>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button class="btn grow" data-gmodels>Modelleri Getir</button>
+        <button class="btn primary grow" data-gsave>Kaydet</button>
+      </div>
+      <button class="btn ghost block" style="margin-top:8px" data-gclear>Anahtarı Sil</button>
+      <div class="field" style="margin-top:10px"><label>Fiş fotoğrafı ile dene</label><input type="file" accept="image/*" data-gphoto></div>
+      <div data-gout></div>
+    </div>
     <div class="section-title">Deneme</div>
     <div class="card">
+      <div class="field"><label>Hangi yapay zeka?</label><select data-provider><option value="local">Telefondaki model</option><option value="gemini" ${gem.ready ? "selected" : ""}>Gemini</option></select></div>
       <div class="field"><label>Her satır bir mesaj</label><textarea data-samples rows="8">${esc(SAMPLES.join("\n"))}</textarea></div>
-      <button class="btn primary block" data-run disabled>🤖 Örnek Mesajları Dene</button>
+      <button class="btn primary block" data-run ${gem.ready ? "" : "disabled"}>🤖 Örnek Mesajları Dene</button>
       <div class="muted tiny" style="margin-top:6px">Önce kural motoru çalışır. Yapay zeka yalnız motorun miktarı bulamadığı yerlerde sorulur.</div>
     </div>
     <div data-results></div>`;
@@ -126,9 +148,22 @@ export async function screen(ctx) {
     box.innerHTML = `<div class="muted small" style="padding:8px">Çalışıyor… (0/${lines.length})</div>`;
     const d = await db.dumpAll();
     const out = [];
+    const provider = qs("[data-provider]", root).value;
+    const g = await geminiSettings(db);
+    if (provider === "gemini" && !g.ready) {
+      runBtn.disabled = false;
+      box.innerHTML = notice("warn", "Gemini için anahtar, model ve onay kutusu gerekli; önce Kaydet.");
+      return;
+    }
+    if (provider === "local" && !ai.loaded()) {
+      runBtn.disabled = false;
+      box.innerHTML = notice("warn", "Telefondaki model yüklü değil; önce İndir ve Başlat.");
+      return;
+    }
+    const gen = provider === "gemini" ? (m) => geminiChat(m, { key: g.key, model: g.model }) : ai.generate;
     for (let i = 0; i < lines.length; i++) {
       const t0 = Date.now();
-      const r = await aiSuggest({ id: "ai-test-" + i, text: lines[i] }, d, ai.generate);
+      const r = await aiSuggest({ id: "ai-test-" + i, text: lines[i] }, d, gen);
       out.push({ text: lines[i], r, ms: Date.now() - t0 });
       box.innerHTML = `<div class="muted small" style="padding:8px">Çalışıyor… (${i + 1}/${lines.length})</div>`;
     }
@@ -168,6 +203,60 @@ export async function screen(ctx) {
       </div>`,
         )
         .join("");
+  });
+  // ---- Gemini ayarları ----
+  const gkey = qs("[data-gkey]", root), gmodel = qs("[data-gmodel]", root), gout = qs("[data-gout]", root);
+  qs("[data-provider]", root).addEventListener("change", (e) => {
+    runBtn.disabled = e.target.value === "local" ? !ai.loaded() : false;
+  });
+  qs("[data-gmodels]", root).addEventListener("click", async () => {
+    const key = gkey.value.trim();
+    if (!key) return toast("Önce anahtarı girin", "err");
+    gout.innerHTML = '<div class="muted small">Modeller alınıyor…</div>';
+    try {
+      const list = await listModels(key);
+      const cur = gmodel.value;
+      gmodel.innerHTML = list.map((m) => `<option value="${esc(m.id)}" ${m.id === cur ? "selected" : ""}>${esc(m.label)} (${esc(m.id)})</option>`).join("");
+      gout.innerHTML = notice("ok", list.length + " model bulundu. Hızlı ve uygun olduğu için 'flash' önerilir.");
+    } catch (e) {
+      gout.innerHTML = notice("warn", e.message || String(e));
+    }
+  });
+  qs("[data-gsave]", root).addEventListener("click", async () => {
+    const key = gkey.value.trim(), model = gmodel.value, consent = qs("[data-gconsent]", root).checked;
+    if (!key || !model) return toast("Anahtar ve model gerekli", "err");
+    if (!consent) return toast("Onay kutusunu işaretlemeden Gemini kullanılmaz", "err");
+    await db.metaSet("gemini_key", key);
+    await db.metaSet("gemini_model", model);
+    await db.metaSet("gemini_consent", true);
+    toast("Gemini ayarları kaydedildi", "ok");
+    runBtn.disabled = false;
+  });
+  qs("[data-gclear]", root).addEventListener("click", async () => {
+    if (!(await confirmDialog("Anahtar silinsin mi?", "Gemini kullanımı kapanır.", "Sil", true))) return;
+    await db.metaSet("gemini_key", "");
+    await db.metaSet("gemini_consent", false);
+    gkey.value = "";
+    qs("[data-gconsent]", root).checked = false;
+    toast("Anahtar silindi", "ok");
+  });
+  qs("[data-gphoto]", root).addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const g = await geminiSettings(db);
+    if (!g.ready) return (gout.innerHTML = notice("warn", "Önce anahtar, model ve onayı kaydedin."));
+    gout.innerHTML = '<div class="muted small">Fiş okunuyor…</div>';
+    const t0 = Date.now();
+    try {
+      const r = await geminiReadReceipt(f, { key: g.key, model: g.model });
+      gout.innerHTML =
+        notice("ok", `Okundu (${((Date.now() - t0) / 1000).toFixed(1)} sn). Değerler aşağıda; hiçbir kayıt oluşturulmadı.`) +
+        Object.entries(r.fields).map(([k, v]) => kv(LABELS[k] || k, String(v))).join("") +
+        (r.rejected.length ? `<div class="muted tiny" style="margin-top:6px">Reddedilen: ${esc(r.rejected.join("; "))}</div>` : "") +
+        (r.text ? `<details style="margin-top:6px"><summary class="muted small">Fiş metni</summary><div class="tiny muted" style="white-space:pre-wrap">${esc(r.text.slice(0, 2000))}</div></details>` : "");
+    } catch (err) {
+      gout.innerHTML = notice("warn", err.message || String(err));
+    }
   });
   return true;
 }

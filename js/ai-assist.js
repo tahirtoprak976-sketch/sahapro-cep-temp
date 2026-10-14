@@ -138,3 +138,82 @@ export async function aiSuggest(message, d, generate, opts = {}) {
   }
   return { analysis, suggestions };
 }
+
+// ---------------- Fiş fotoğrafı (görüntü okuyabilen model) ----------------
+// Model fişin tam metnini ("text") ve alanları döndürür. Her sayısal alan, modelin kendi
+// okuduğu metinde de geçmek zorundadır; geçmiyorsa atılır. KDV metinde yoksa asla doldurulmaz.
+export const RECEIPT_CATEGORIES = [
+  "Yakıt", "Otoyol / HGS", "Otopark", "Yemek", "Döküm", "Malzeme", "Yedek Parça", "Tamir",
+  "Servis", "Lastik", "Yağ / Filtre", "Nakliye", "Şantiye Gideri", "Ofis Gideri", "Diğer",
+];
+export function receiptPrompt(docType = "Gider Fişi") {
+  return (
+    "This is a photo of a Turkish receipt / invoice (" + docType + "). Read it carefully. " +
+    "Reply with ONLY a JSON object: " +
+    '{"text": full transcription of all readable text (keep original number formatting),' +
+    ' "date": "YYYY-MM-DD"|null, "total": number|null (GENEL TOPLAM / ÖDENECEK, KDV dahil),' +
+    ' "subtotal": number|null, "kdv": number|null (KDV tutarı), "kdv_rate": number|null,' +
+    ' "liters": number|null, "unit_price": number|null, "plate": string|null (Turkish plate like 34 ABC 123),' +
+    ' "firma": string|null (seller name), "doc_no": string|null, "fuel_type": "Motorin"|"Benzin"|"LPG"|null,' +
+    ' "category": one of [' + RECEIPT_CATEGORIES.join(", ") + "]|null}. " +
+    "Numbers use dot as decimal separator in JSON. If a value is not clearly printed, use null. Never guess."
+  );
+}
+// Metindeki tüm sayıları (Türkçe biçim dahil) çıkarır
+export function numbersInText(text) {
+  const out = new Set();
+  for (const m of String(text || "").matchAll(/\d[\d.,]*/g)) {
+    let s = m[0].replace(/[.,]$/, "");
+    const cands = [s];
+    if (s.includes(",") && s.includes(".")) cands.push(s.replace(/\./g, "").replace(",", "."), s.replace(/,/g, ""));
+    else if (s.includes(",")) cands.push(s.replace(",", "."), s.replace(/,/g, ""));
+    else if (s.includes(".")) cands.push(s.replace(/\./g, ""));
+    for (const c of cands) {
+      const n = Number(c);
+      if (Number.isFinite(n)) out.add(Math.round(n * 100) / 100);
+    }
+  }
+  return out;
+}
+export function validateReceipt(obj, docType = "Gider Fişi") {
+  const fields = {}, rejected = [];
+  if (!obj || typeof obj !== "object") return { fields, rejected: ["Model geçerli yanıt vermedi"], text: "" };
+  const text = String(obj.text || "");
+  const nums = numbersInText(text);
+  const num = (k, label) => {
+    if (obj[k] == null || obj[k] === "") return;
+    const n = Number(String(obj[k]).replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0 || n > 10000000) return rejected.push(`${label} geçersiz`);
+    if (!nums.has(Math.round(n * 100) / 100)) return rejected.push(`${label} ${n} fiş metninde görünmüyor`);
+    fields[k] = Math.round(n * 100) / 100;
+  };
+  num("total", "Toplam");
+  num("subtotal", "Ara toplam");
+  num("kdv", "KDV");
+  num("liters", "Litre");
+  num("unit_price", "Birim fiyat");
+  if (obj.kdv_rate != null) {
+    const r = Number(obj.kdv_rate);
+    if ([1, 8, 10, 18, 20].includes(r) && new RegExp("%\\s*" + r + "(?!\\d)|" + r + "\\s*%").test(text)) fields.kdv_rate = r;
+    else rejected.push(`KDV oranı %${obj.kdv_rate} fişte yazılı değil`);
+  }
+  if (obj.date) {
+    const m = String(obj.date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    const ok = m && Number(m[2]) >= 1 && Number(m[2]) <= 12 && Number(m[3]) >= 1 && Number(m[3]) <= new Date(Number(m[1]), Number(m[2]), 0).getDate();
+    const seen = m && new RegExp(`${Number(m[3])}\\s*[./-]\\s*0?${Number(m[2])}\\s*[./-]\\s*(?:${m[1]}|${m[1].slice(2)})`).test(text.replace(/\b0(\d)/g, "$1"));
+    if (ok && seen) fields.date = obj.date;
+    else rejected.push(`Tarih ${obj.date} fişte okunamadı`);
+  }
+  if (obj.plate) {
+    const p = String(obj.plate).toUpperCase().replace(/\s+/g, "");
+    if (/^(0[1-9]|[1-7]\d|8[01])[A-Z]{1,3}\d{2,5}$/.test(p) && text.toUpperCase().replace(/\s+/g, "").includes(p)) fields.plate = p;
+    else rejected.push(`Plaka ${obj.plate} doğrulanamadı`);
+  }
+  for (const k of ["firma", "doc_no"])
+    if (obj[k] && String(obj[k]).trim()) fields[k] = String(obj[k]).trim().slice(0, 80);
+  if (["Motorin", "Benzin", "LPG"].includes(obj.fuel_type)) fields.fuel_type = obj.fuel_type;
+  if (obj.category) {
+    if (RECEIPT_CATEGORIES.includes(obj.category)) fields.category_suggestion = obj.category;
+  }
+  return { fields, rejected, text };
+}

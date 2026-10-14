@@ -12,6 +12,7 @@ import {
   mergePreview,
   isValidBackup,
 } from "./core.js";
+const SECRET_META = ["gemini_key"];
 export async function fullBackup(db) {
   const data = await db.dumpAll(),
     attachments = [];
@@ -30,7 +31,8 @@ export async function fullBackup(db) {
     device_install_id: await db.metaGet("device_install_id"),
     data,
     attachments,
-    meta: await db.getAll("meta"),
+    // API anahtarı gibi gizli ayarlar yedek dosyasına yazılmaz (yedek WhatsApp/Drive ile paylaşılabilir)
+    meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key)),
   };
 }
 export async function previewBackup(db, obj) {
