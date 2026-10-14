@@ -26,7 +26,18 @@ async function call(path, key, body, fetchFn = fetch) {
   } catch {}
   if (!res.ok) {
     const msg = data?.error?.message || "HTTP " + res.status;
-    if (res.status === 429) throw new Error("Gemini kotası doldu, biraz sonra tekrar deneyin (" + msg + ")");
+    if (res.status === 429) {
+      // "limit: 0" = bu model ücretsiz katmanda hiç açık değil (kota dolmadı, hiç yok)
+      if (/limit:\s*0\b/.test(msg)) {
+        const e = new Error("Bu model ücretsiz kullanımda kapalı (kota 0). Yapay Zeka ekranında \"Çalışan Modeli Bul\" ile başka model seçin.");
+        e.code = "NO_FREE";
+        throw e;
+      }
+      const wait = msg.match(/retry in\s*([\dhms.]+)/i)?.[1]?.replace(/\.\d+s$/, "s");
+      const e = new Error("Gemini kotası doldu" + (wait ? `, yaklaşık ${wait} sonra` : ", biraz sonra") + " tekrar deneyin.");
+      e.code = "RATE";
+      throw e;
+    }
     if (res.status === 400 || res.status === 403) throw new Error("Gemini anahtarı veya izin sorunu: " + msg);
     throw new Error("Gemini hatası: " + msg);
   }
@@ -39,7 +50,31 @@ export async function listModels(key, fetchFn) {
   return (data.models || [])
     .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent") && /gemini/i.test(m.name) && !/embedding|tts|image-generation|live|audio/i.test(m.name))
     .map((m) => ({ id: m.name.replace(/^models\//, ""), label: m.displayName || m.name }))
-    .sort((a, b) => (/flash/.test(b.id) - /flash/.test(a.id)) || b.id.localeCompare(a.id));
+    .sort((a, b) => rank(a.id) - rank(b.id) || b.id.localeCompare(a.id));
+}
+// Kararlı "flash" modeller önce; önizleme/deneysel/omni sona (genelde ücretsiz kotaları yok)
+function rank(id) {
+  let r = /flash-lite/.test(id) ? 0 : /flash/.test(id) ? 1 : 5;
+  if (/preview|exp|omni|thinking|latest/.test(id)) r += 10;
+  return r;
+}
+// Anahtarla gerçekten çalışan ilk modeli bulur (her deneme tek, çok kısa istek)
+export async function findWorkingModel(key, models, fetchFn) {
+  const tried = [];
+  for (const m of models.slice(0, 8)) {
+    try {
+      await call(`/models/${encodeURIComponent(m.id)}:generateContent`, key, {
+        contents: [{ role: "user", parts: [{ text: "Reply with {}" }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 8 },
+      }, fetchFn);
+      tried.push({ id: m.id, ok: true });
+      return { id: m.id, tried };
+    } catch (e) {
+      tried.push({ id: m.id, ok: false, reason: e.code === "NO_FREE" ? "ücretsiz kota yok" : e.code === "RATE" ? "kota dolu" : e.message });
+      if (!["NO_FREE", "RATE"].includes(e.code) && /anahtar/i.test(e.message)) break;
+    }
+  }
+  return { id: null, tried };
 }
 
 function text(data) {

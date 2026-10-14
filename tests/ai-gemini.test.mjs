@@ -26,3 +26,15 @@ assert.equal(b2.contents[0].parts[0].inlineData.data, 'AQID');
 await assert.rejects(() => listModels('K', mk({ error: { message: 'API key not valid' } }, 400)), /anahtarı/);
 await assert.rejects(() => listModels('K', mk({ error: { message: 'quota' } }, 429)), /kotası/);
 console.log('ai-gemini PASS');
+// kota 0 = model ücretsiz katmanda kapalı; çalışan modeli bul
+const { findWorkingModel } = await import('../js/ai-gemini.js');
+const seq = async (url) => /omni/.test(url)
+  ? { ok: false, status: 429, json: async () => ({ error: { message: 'Quota exceeded for metric: x, limit: 0, model: gemini-omni-flash' } }) }
+  : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{}' }] } }] }) };
+const fw = await findWorkingModel('K', [{ id: 'gemini-omni-flash' }, { id: 'gemini-2.5-flash' }], seq);
+assert.equal(fw.id, 'gemini-2.5-flash'); assert.equal(fw.tried[0].reason, 'ücretsiz kota yok');
+await assert.rejects(() => geminiChat([{ role: 'user', content: 'x' }], { key: 'K', model: 'gemini-omni-flash', fetchFn: seq }), /ücretsiz kullanımda kapalı/);
+// sıralama: önizleme/omni sona
+const m2 = await listModels('K', async () => ({ ok: true, status: 200, json: async () => ({ models: ['gemini-omni-flash', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview'].map((n) => ({ name: 'models/' + n, supportedGenerationMethods: ['generateContent'] })) }) }));
+assert.deepEqual(m2.map((m) => m.id), ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-omni-flash', 'gemini-3-flash-preview']);
+console.log('ai-gemini-fallback PASS');

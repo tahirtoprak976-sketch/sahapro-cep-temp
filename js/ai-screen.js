@@ -2,7 +2,7 @@
 // Bu ekran hiçbir kayıt oluşturmaz; yalnız önerileri ve doğrulama sonucunu gösterir.
 import { qs, esc, appbar, toast, confirmDialog, notice, kv } from "./ui.js";
 import { aiSuggest } from "./ai-assist.js";
-import { geminiSettings, listModels, geminiChat, geminiReadReceipt } from "./ai-gemini.js";
+import { geminiSettings, listModels, geminiChat, geminiReadReceipt, findWorkingModel } from "./ai-gemini.js";
 
 const SAMPLES = [
   "Ahmet Bey 34 ABC 123 6 gidiş yaptı moloz",
@@ -49,6 +49,7 @@ export async function screen(ctx) {
       <label class="history-check"><input type="checkbox" data-gconsent ${gem.consent ? "checked" : ""}> Gemini kullandığımda mesaj metninin veya fiş fotoğrafının Google'a gönderileceğini biliyorum.</label>
       <div class="row" style="gap:8px;margin-top:8px">
         <button class="btn grow" data-gmodels>Modelleri Getir</button>
+        <button class="btn grow" data-gfind>Çalışan Modeli Bul</button>
         <button class="btn primary grow" data-gsave>Kaydet</button>
       </div>
       <button class="btn ghost block" style="margin-top:8px" data-gclear>Anahtarı Sil</button>
@@ -186,7 +187,7 @@ export async function screen(ctx) {
             ? r.suggestions
                 .map(
                   (s) =>
-                    (s.error ? kv("Yapay zeka", "Hata: " + s.error) : "") +
+                    (s.error ? notice("warn", s.error) : "") +
                     s.rows
                       .map(
                         (x) =>
@@ -218,6 +219,23 @@ export async function screen(ctx) {
       const cur = gmodel.value;
       gmodel.innerHTML = list.map((m) => `<option value="${esc(m.id)}" ${m.id === cur ? "selected" : ""}>${esc(m.label)} (${esc(m.id)})</option>`).join("");
       gout.innerHTML = notice("ok", list.length + " model bulundu. Hızlı ve uygun olduğu için 'flash' önerilir.");
+    } catch (e) {
+      gout.innerHTML = notice("warn", e.message || String(e));
+    }
+  });
+  qs("[data-gfind]", root).addEventListener("click", async () => {
+    const key = gkey.value.trim();
+    if (!key) return toast("Önce anahtarı girin", "err");
+    gout.innerHTML = '<div class="muted small">Modeller tek tek deneniyor…</div>';
+    try {
+      const list = await listModels(key);
+      const r = await findWorkingModel(key, list);
+      gmodel.innerHTML = list.map((m) => `<option value="${esc(m.id)}" ${m.id === r.id ? "selected" : ""}>${esc(m.label)} (${esc(m.id)})</option>`).join("");
+      gout.innerHTML =
+        (r.id
+          ? notice("ok", `Çalışan model: ${r.id}. Onay kutusunu işaretleyip Kaydet'e basın.`)
+          : notice("warn", "Bu anahtarla çalışan model bulunamadı. Ücretsiz kota bitmiş olabilir veya anahtarın projesinde faturalandırma/ kredi gerekebilir.")) +
+        `<div class="muted tiny" style="margin-top:6px">${r.tried.map((t) => esc(t.id + ": " + (t.ok ? "çalışıyor ✓" : t.reason))).join("<br>")}</div>`;
     } catch (e) {
       gout.innerHTML = notice("warn", e.message || String(e));
     }
