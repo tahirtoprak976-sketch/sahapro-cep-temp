@@ -328,7 +328,11 @@ export async function createCreditBill(ctx, d, s, f, opts = {}) {
       description: desc + (kdv.kdv_unknown ? " (KDV bilinmiyor)" : ""),
       items: kdv.items,
       kdv_unknown: kdv.kdv_unknown,
-      ...(expense ? { source_store: "expense_records", source_id: expense.id } : {}),
+      ...(expense
+        ? { source_store: "expense_records", source_id: expense.id }
+        : opts.source
+          ? { source_store: opts.source.store, source_id: opts.source.id }
+          : {}),
     },
     opts.key,
   );

@@ -39,3 +39,31 @@ assert.equal(v.fuel[0].ok, true);
 const ctx = assistantContext(d, today);
 assert.ok(ctx.customers.some((c) => c[1] === 'Mahir Yapı')); assert.ok(ctx.aliases.some((a) => a[0] === 'Mahir Bey'));
 console.log('assistant PASS');
+// ---- tahsilat, arıza, personel, düzeltme, soru ----
+const { validateExtras, moneyInText, businessFacts, checkAnswer } = await import('../js/assistant-core.js');
+assert.ok(moneyInText('Ahmet Bey 20 bin havale yaptı').has(20000));
+assert.ok(moneyInText('1,5 milyon').has(1500000));
+const d2 = { ...d, bank_accounts: [{ id: 'B1', name: 'Ziraat' }], maintenance_records: [], personnel_events: [],
+  work_records: [{ id: 'W1', date: '2026-10-13', customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 4, unit: 'Sefer' }],
+  cari_movements: [{ id: 'm', customer_id: 'CA', date: '2026-10-01', type: 'Hakedis', amount: 50000 }] };
+let x = validateExtras({ collections: [{ customer_id: 'CA', amount: 20000, method: 'Havale', bank_account_id: 'B1' }, { customer_id: 'CA', amount: 25000, method: 'Nakit' }] }, { message: 'Ahmet Bey 20 bin havale yaptı', d: d2, today });
+assert.equal(x.collections[0].ok, true); assert.equal(x.collections[1].ok, false);
+x = validateExtras({ collections: [{ customer_id: 'CA', amount: 20000, method: 'Havale' }] }, { message: 'Ahmet Bey 20 bin havale', d: d2, today });
+assert.equal(x.collections[0].ok, false);
+x = validateExtras({ maintenance: [{ vehicle_id: 'J', maint_type: 'Hidrolik', status: 'Serviste', description: 'hidrolik hortum patladı', cost: 3500, supplier_id: 'S', credit: true }] }, { message: 'jcb hidrolik hortum patladı Mesut usta 3500 veresiye', d: d2, today });
+assert.equal(x.maintenance[0].ok, true); assert.equal(x.maintenance[0].cost, 3500);
+x = validateExtras({ maintenance: [{ vehicle_id: 'J', description: 'arıza', cost: 9999 }] }, { message: 'jcb arıza', d: d2, today });
+assert.equal(x.maintenance[0].ok, false);
+x = validateExtras({ personnel: [{ personnel_id: 'P1', event_type: 'Avans', amount: 2000 }] }, { message: 'Soner abiye 2000 avans', d: d2, today });
+assert.equal(x.personnel[0].ok, true);
+// düzeltme: alan ve sayı doğrulanır, varsayılan işaretsiz
+x = validateExtras({ edits: [{ store: 'work_records', id: 'W1', changes: { quantity: 5, price: 1 }, reason: 'yanlış' }] }, { message: 'dünkü 34 ABC 123 4 değil 5 sefer', d: d2, today });
+assert.equal(x.edits[0].changes.quantity, 5); assert.equal(x.edits[0].ok, false); assert.ok(x.edits[0].issues.some((i) => /price/.test(i)));
+x = validateExtras({ edits: [{ store: 'work_records', id: 'YOK', changes: { quantity: 5 } }, { store: 'customers', id: 'CA', delete: true }] }, { message: '5', d: d2, today });
+assert.equal(x.edits[0].rec, null); assert.equal(x.edits[1].rec, null);
+// soru: gerçekler yerelde hesaplanır, cevaptaki uydurma sayı yakalanır
+const facts = await businessFacts(d2, today);
+assert.equal(facts.musteriler.find((m) => m.musteri === 'Ahmet Yılmaz İnşaat').cari_bakiye_TL, 50000);
+assert.deepEqual(checkAnswer('Ahmet Bey 50.000 TL borçlu', facts), []);
+assert.deepEqual(checkAnswer('Ahmet Bey 65.000 TL borçlu', facts), [65000]);
+console.log('assistant-extras PASS');
