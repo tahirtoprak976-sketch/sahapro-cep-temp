@@ -197,7 +197,7 @@ export function assistantSystem() {
     "examples: bu işletmenin daha önce onaylanmış mesaj→kayıt örnekleridir; aynı yazış alışkanlıklarını izle.",
     "Kurallar: Kartı listeden ID ile seç. Mesajda listede olmayan bir müşteri adı geçiyorsa customer_id=null ve new_customer=mesajda yazdığı haliyle ad.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
-    "TAŞERON: customers satırında 3. değer ana firma ID'sidir (o müşteri, ana firmanın taşeronudur). 'X'in inşaatında/şantiyesinde Y'ye çalışıldı' → işi isteyen Y'dir: customer_id=Y (listede yoksa new_customer=Y ve new_customer_parent_id=X'in ID'si); X'in şantiyesini site_id'ye yazabilirsin. Meslek adı (kuyucu, camcı, sıvacı) tek başına geçiyorsa ve listede birden fazla benzer kart varsa tahmin etme, questions'a sor.",
+    "TAŞERON: customers satırında 3. değer ana firma ID'sidir (o müşteri, ana firmanın taşeronudur). Taşeronun ADI mesajda geçmiyorsa işi ANA FİRMAYA yaz (geçmiş işlere bakarak taşeron tahmin etme); adı geçiyorsa o öder. 'X'in inşaatında/şantiyesinde Y'ye çalışıldı' → işi isteyen Y'dir: customer_id=Y (listede yoksa new_customer=Y ve new_customer_parent_id=X'in ID'si); X'in şantiyesini site_id'ye yazabilirsin. Meslek adı (kuyucu, camcı, sıvacı) tek başına geçiyorsa ve listede birden fazla benzer kart varsa tahmin etme, questions'a sor.",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
     "Sefer/gidiş/tur=Sefer, saat=Saat, yevmiye/gün=Yevmiye. İş türü listesi: " + WORK_TYPES.join(", ") + ".",
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
@@ -368,6 +368,22 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
         const best = amb.cands[0];
         if (best.score > (amb.cands[1]?.score || 0) && best.id !== r.customer_id) r.customer_id = best.id;
         issues.push(`Kime çalışıldı belli değil — ${amb.cands.map((c) => c.name).join(" / ")}. Doğru müşteriyi seçin` + (best.why ? ` (ipucu: ${best.name}: ${best.why})` : ""));
+      }
+    }
+    // Taşeron kuralı (işletme sahibi): personel taşeronu ADIYLA yazdıysa iş taşerona (o öder); yazmadıysa ana firmaya.
+    {
+      const card = r.customer_id ? byId(customers, r.customer_id) : null;
+      const parent = card?.parent_customer_id ? byId(customers, card.parent_customer_id) : null;
+      if (card && parent) {
+        const rowText = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
+        const named = inMessage(card.name, rowText) || tok(card.name).filter((x) => !GENERIC.has(x) && x.length >= 4).some((x) => tok(rowText).some((t) => sameWord(t, x)))
+          || live(d, "aliases").some((a) => a.active !== false && a.target_type === "customer" && a.target_id === card.id && inMessage(a.alias, rowText));
+        if (!named) {
+          issues.push(`Taşeron "${card.name}" mesajda yazmıyor; iş ana firma "${parent.name}" adına yazıldı`);
+          r.customer_id = parent.id;
+          r.toParent = true;
+          if (r.place) { const ps = sites.find((x) => x.customer_id === parent.id && norm(x.name) === norm(r.place)); if (ps) { r.site_id = ps.id; r.description = r.description.replace(" · Yer: " + r.place, "").replace("Yer: " + r.place, ""); r.place = null; } }
+        }
       }
     }
     // Kaynak alıntı: varsa mesajda birebir geçmeli
