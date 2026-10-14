@@ -142,4 +142,18 @@ export async function geminiReadReceipt(blob, { key, model, docType = "Gider Fi�
   return { raw, ...validateReceipt(obj, docType) };
 }
 
-export { parseAiJson };
+// Serbest parça listesi (metin + görseller) ile JSON yanıt
+export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 4096 } = {}) {
+  const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, {
+    systemInstruction: system ? { parts: [{ text: system }] } : undefined,
+    contents: [{ role: "user", parts }],
+    generationConfig: { temperature: 0, responseMimeType: "application/json", maxOutputTokens: maxTokens },
+  }, fetchFn);
+  const raw = text(data).replace(/```(?:json)?/gi, "");
+  try {
+    return JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+  } catch {
+    throw new Error("Gemini geçerli bir yanıt döndürmedi; tekrar deneyin");
+  }
+}
+export { parseAiJson, shrink };

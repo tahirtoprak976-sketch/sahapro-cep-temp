@@ -181,6 +181,7 @@ async function dashboard(ctx) {
       <button data-go="#/finans/kasa/new"><span class="ic">💰</span>Tahsilat</button>
       <button data-go="#/bakim/new"><span class="ic">🔧</span>Arıza</button>
     </div>
+    <button class="btn primary block" style="margin-top:10px" data-go="#/akilli-asistan">🤖 Akıllı Asistan — mesaj veya fiş fotoğrafından kayıt</button>
 
     <div class="row between" style="margin-top:14px"><div class="section-title" style="margin:0">Bugünkü Son İşler</div><button class="btn sm ghost" data-go="#/isler">tümü ›</button></div>
     ${
@@ -716,7 +717,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.14")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.15")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
