@@ -77,3 +77,20 @@ const sc = assistantSchema();
 assert.ok(sc.properties.tickets && sc.properties.documents && sc.properties.heard_text);
 assert.ok(/tickets/.test(assistantSystem()) && /heard_text/.test(assistantSystem()));
 console.log("assistant-docs PASS");
+
+// ---- yakıt kaynağı: varsayılan depo; stok yetmezse işaretsiz; depo girişi stoğa eklenir ----
+{
+  const { validatePlan } = await import("../js/assistant-core.js");
+  const dd = { ...d, fuel_tank_movements: [{ id: "m", move_type: "GİRİŞ", liters: 100 }] };
+  let v = validatePlan({ fuel: [{ vehicle_id: "V1", liters: 44 }] }, { message: "34 ABC 123 44 litre mazot", d: dd, today });
+  assert.equal(v.fuel[0].source, "Depo Tankı"); assert.equal(v.fuel[0].ok, true);
+  v = validatePlan({ fuel: [{ vehicle_id: "V1", liters: 150 }] }, { message: "34 ABC 123 150 litre mazot", d: dd, today });
+  assert.equal(v.fuel[0].ok, false); assert.ok(v.fuel[0].stockShort);
+  v = validatePlan({ tank_in: [{ liters: 5000 }], fuel: [{ vehicle_id: "V1", liters: 150 }] }, { message: "depoya 5000 litre geldi, 34 ABC 123 150 litre aldı", d: dd, today });
+  assert.equal(v.tankIn[0].ok, true); assert.equal(v.fuel[0].ok, true);
+  v = validatePlan({ fuel: [{ vehicle_id: "V1", liters: 150 }] }, { message: "34 ABC 123 Opet istasyondan 150 litre", d: dd, today });
+  assert.equal(v.fuel[0].source, "Akaryakıt İstasyonu"); assert.equal(v.fuel[0].ok, true);
+  v = validatePlan({ tank_in: [{ liters: 9999 }] }, { message: "depoya 5000 litre geldi", d: dd, today });
+  assert.equal(v.tankIn[0].ok, false);
+  console.log("assistant-fuel-source PASS");
+}

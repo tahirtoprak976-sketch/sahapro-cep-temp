@@ -97,6 +97,9 @@ async function dashboard(ctx) {
   </svg>`;
   const cur = months[months.length - 1];
   const tank = calcTankBalance(data.fuel_tank_movements);
+  const monthFuel = { depo: 0, other: 0 };
+  for (const f of (data.fuel_records || []).filter(isActive))
+    if (String(f.date).startsWith(today.slice(0, 7))) monthFuel[f.fuel_source === "Depo Tankı" ? "depo" : "other"] += Number(f.liters) || 0;
 
   // Son 7 gün yakıt grafiği
   const days = Array.from({ length: 7 }, (_, i) => addDays(today, i - 6));
@@ -162,12 +165,13 @@ async function dashboard(ctx) {
     ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="muted small" style="padding:4px 2px">+${board.items.length - 6} madde daha — “uyarı” kartında</div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
+    <div class="section-title" style="margin-top:12px">Bugün <span class="muted small">${trDate(today)}</span></div>
     <div class="statgrid">
       ${stat(fmtNum(sum.work_count), "İş")}
       ${stat(fmtNum(sum.slip_count), "Fiş")}
       ${stat(fmtNum(sum.total_sefer), "Sefer")}
       ${stat(fmtNum(sum.total_saat), "Saat")}
-      ${stat(fmtNum(sum.fuel_liters), "Yakıt L", sum.fuel_liters ? "accent" : "")}
+      ${stat(fmtNum(sum.fuel_liters), "Yakıt L (bugün)", sum.fuel_liters ? "accent" : "")}
       ${stat(fmtTL(sum.expense_total), "Gider ₺", sum.expense_total ? "warn" : "")}
       ${stat(fmtTL(sum.tahsilat_total), "Tahsilat ₺", sum.tahsilat_total ? "ok" : "")}
       ${stat(fmtNum(sum.open_breakdowns), "Açık Arıza", sum.open_breakdowns ? "danger" : "")}
@@ -224,7 +228,9 @@ async function dashboard(ctx) {
     <div class="card" style="margin-top:12px">
       <div class="row between"><span class="muted small">Kasada/Personelde Bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${fmtTL(pendingSum)} ₺</span></div>
       <div class="divider"></div>
-      <div class="row between"><span class="muted small">Depo Yakıt (tahmini)</span><span class="strong">${fmtNum(tank.remaining)} Lt</span></div>
+      <div class="row between tap" data-go="#/yakit"><span class="muted small">Bu ay verilen yakıt</span><span class="strong">${fmtNum(monthFuel.depo + monthFuel.other)} Lt${monthFuel.depo && monthFuel.other ? ` <span class="muted small">(depodan ${fmtNum(monthFuel.depo)})</span>` : ""}</span></div>
+      <div class="divider"></div>
+      <div class="row between tap" data-go="#/depo"><span class="muted small">Depo Yakıt (tahmini)</span><span class="strong">${fmtNum(tank.remaining)} Lt</span></div>
     </div>
 
     ${upcomingMaint.length ? `<div class="section-title">Bakım Uyarıları</div>` + upcomingMaint.map((v) => li({ ic: "🛠", href: "#/filo/" + v.id, t1: esc(v.name), t2: `Sonraki bakım: ${trDate(v.next_maintenance_date)}` })).join("") : ""}
