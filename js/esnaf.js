@@ -162,7 +162,8 @@ function supplierSheet(ctx) {
     <button class="btn primary block" data-ok>Kaydet</button>`);
   const key = uuid();
   qs("[data-ok]", sh).addEventListener("click", async (ev) => {
-    ev.currentTarget.disabled = true;
+    const okBtn = ev.currentTarget;
+    okBtn.disabled = true;
     try {
       const f = collectForm(sh);
       const s = await edb.saveSupplier(f, key);
@@ -170,7 +171,7 @@ function supplierSheet(ctx) {
       toast("Eklendi", "ok");
       ctx.go("#/esnaf/" + s.id);
     } catch (e) {
-      ev.currentTarget.disabled = false;
+      okBtn.disabled = false;
       toast(e.message || String(e), "err");
     }
   });

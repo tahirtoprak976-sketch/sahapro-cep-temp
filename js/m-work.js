@@ -225,6 +225,13 @@ async function workForm(ctx, editId) {
         ${fSelect("Fiş Durumu", "slip_status", ["Fiş Var", "Fiş Yok"], v.slip_status || "")}
         ${fText("Fiş No", "slip_no", v.slip_no || "")}
       </div>
+      ${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}
+      <section class="card" style="margin:8px 0" data-slip-ai>
+        <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/*,application/pdf" multiple data-wfiles></div>
+        <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>
+        <button type="button" class="btn block" style="margin-top:6px" data-wai>🤖 Gemini ile fişi oku (ton, fiş no, tarih, plaka)</button>
+        <div data-wai-out></div>
+      </section>
       <div class="formgrid2">${fNum("Manuel birim fiyat (opsiyonel)", "manual_price", v.price_snapshot?.price_source === "Manuel" ? v.price_snapshot.unit_price : "", { step: "any" })}${fNum("KDV %", "manual_kdv", v.price_snapshot?.kdv_rate ?? 20, { step: "any" })}</div>
       ${fNum("Mesafe (km, opsiyonel)", "distance_km", v.distance_km ?? "", { step: "any" })}
       ${editId ? "" : '<section data-transport-batch hidden><div data-transport-rows></div><button type="button" class="btn" data-add-transport>+ Satır ekle</button><div class="notice" data-transport-total aria-live="polite"></div><p class="tiny">Ek satırda boş bırakılan araç, personel ve fiyat üstteki seçimden alınır. Her satır ayrı iş kaydı olarak saklanır.</p></section>'}
@@ -240,6 +247,55 @@ async function workForm(ctx, editId) {
   const form = qs("[data-form]", root);
   let draftTimer,
     saving = false;
+  // ---- Fiş fotoğrafı: işe eklenir; Gemini tonu ve fiş bilgisini okuyup boş alanları doldurur ----
+  let wfiles = [];
+  const wIn = qs("[data-wfiles]", form), wOut = qs("[data-wai-out]", form);
+  wIn.addEventListener("change", () => {
+    wfiles = [...wIn.files].slice(0, 10);
+    qs("[data-wthumbs]", form).innerHTML = wfiles.map((f) => (f.type.startsWith("image/") ? `<img src="${URL.createObjectURL(f)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : `<span class="chip">📄 ${esc(f.name)}</span>`)).join("");
+  });
+  qs("[data-wai]", form).addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    const imgs = wfiles.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) return toast("Önce fiş fotoğrafı seçin", "err");
+    const { geminiSettings, withModelFallback, geminiJson, blobToBase64, shrink } = await import("./ai-gemini.js");
+    if (!(await geminiSettings(db)).ready) return toast("Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin", "err");
+    if (!navigator.onLine) return toast("İnternet yok", "err");
+    b.disabled = true;
+    wOut.innerHTML = '<div class="muted small" style="padding:6px">Gemini fişi okuyor…</div>';
+    try {
+      const { SLIP_PROMPT, slipSchema, validateSlips, slipFill } = await import("./slip-read.js");
+      const parts = [];
+      for (const f of imgs) { const img = await shrink(f); parts.push({ inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } }); }
+      parts.push({ text: `Fotoğraf sayısı: ${imgs.length} (sıra 0'dan başlar)` });
+      const obj = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: SLIP_PROMPT, schema: slipSchema() }));
+      const d = await db.dumpAll();
+      const res = validateSlips(obj, { d, count: imgs.length });
+      const cur = collectForm(form);
+      const fill = slipFill(res, cur, { d });
+      for (const [k, val] of Object.entries(fill)) { const el = qs(`[name=${k}]`, form); if (el) el.value = val; }
+      form.dispatchEvent(new Event("change"));
+      form.dispatchEvent(new Event("input"));
+      const vName = (id) => vehicles.find((x) => x.id === id)?.name || "";
+      wOut.innerHTML = `<div class="small" style="margin-top:6px">${res.rows.map((r) => `• Fiş ${r.photo + 1}: <b>${r.net_ton != null ? fmtNum(r.net_ton) + " ton" : "ton yok"}</b>${r.slip_no ? " · No " + esc(r.slip_no) : ""}${r.date ? " · " + trDate(r.date) : ""}${r.plate ? " · " + esc(r.plate) + (r.vehicle_id ? " (" + esc(vName(r.vehicle_id)) + ")" : "") : ""}${r.issues.length ? ` <span class="muted">⚠ ${esc(r.issues.join(", "))}</span>` : ""}`).join("<br>")}</div>
+        ${res.read ? `<div class="small" style="margin-top:4px">Toplam <b>${fmtNum(res.total_ton)} ton</b> (${res.read}/${imgs.length} fiş) — Tonaj alanına yazıldı${fill.quantity != null ? ", miktar dolduruldu" : ""}.</div>` : ""}
+        ${res.read && cur.unit !== "Ton" ? `<button type="button" class="btn block" style="margin-top:6px" data-wton>Ton hesabı: birimi Ton, miktarı ${fmtNum(res.total_ton)} yap</button>` : ""}
+        <div class="muted tiny" style="margin-top:4px">Fişte yazmayan değer doldurulmadı. Kaydetmeden önce kontrol edin.</div>`;
+      qs("[data-wton]", wOut)?.addEventListener("click", () => {
+        qs("[name=unit]", form).value = "Ton";
+        qs("[name=quantity]", form).value = res.total_ton;
+        form.dispatchEvent(new Event("change"));
+        form.dispatchEvent(new Event("input"));
+        toast("Birim Ton yapıldı", "ok");
+      });
+    } catch (e) {
+      wOut.innerHTML = notice("warn", e.message || String(e));
+    }
+    b.disabled = false;
+  });
+  const attachFiles = async (id) => {
+    for (const f of wfiles) await db.addAttachment("work", id, f, { kind: "slip_photo" });
+  };
   const timeSection = qs("[data-work-time]", form);
   const syncTime = () => {
     const active = qs("[name=unit]", form).value === "Saat";
@@ -502,6 +558,7 @@ async function workForm(ctx, editId) {
         customer_note: val.customer_note || "",
         internal_note: val.internal_note || "",
         distance_km: val.distance_km ? Number(val.distance_km) : null,
+        tonnage: Number(val.tonnage) > 0 ? Number(val.tonnage) : null,
       };
       if (!editId) {
         const { priceSnapshot } = await import("./business.js");
@@ -619,6 +676,7 @@ async function workForm(ctx, editId) {
             return;
         }
         const created = await db.saveWorkBatch(rows);
+        await attachFiles(created[0].id);
         await db.draftClear("work");
         toast(
           `${created.length} satır · ${fmtNum(created.reduce((s, r) => s + r.quantity, 0))} sefer kaydedildi`,
@@ -650,10 +708,12 @@ async function workForm(ctx, editId) {
       }
       if (editId) {
         await db.saveExisting("work_records", rec, fields);
+        await attachFiles(editId);
         toast("İş güncellendi", "ok");
         go("#/isler/" + editId);
       } else {
         const created = await db.saveNew("work_records", fields);
+        await attachFiles(created.id);
         await db.draftClear("work");
         toast("İş kaydedildi", "ok");
         go("#/isler/" + created.id);
@@ -681,6 +741,7 @@ async function workDetail(ctx, id) {
         .sort((a, b) => a.batch_row - b.batch_row)
     : [];
   const slip = w.slip_id ? await db.get("slips", w.slip_id) : null;
+  const atts = await db.attachmentsFor("work", id);
   const inHakedis = (await db.getAll("hakedis")).some(
     (h) =>
       isActive(h) &&
@@ -702,18 +763,26 @@ async function workDetail(ctx, id) {
       ${w.dump_area ? kv("Döküm", w.dump_area) : ""}
       ${w.quarry ? kv("Ocak", w.quarry) : ""}
       ${w.slip_status ? kv("Fiş", w.slip_status + (w.slip_no ? " #" + w.slip_no : "")) : ""}
+      ${w.tonnage ? kv("Tonaj", fmtNum(w.tonnage) + " ton") : ""}
       ${w.description ? kv("Açıklama", w.description) : ""}
       ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}
       ${w.internal_note ? kv("İç Not", w.internal_note) : ""}
       ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
       ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
     </div>
+    <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/*,application/pdf" multiple data-watt hidden></label></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${atts.map((a) => (String(a.type).startsWith("image/") ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>` : `<a class="chip" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name)}</a>`)).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
     <div class="actionbar">
       ${slip ? `<button class="btn" data-go="#/fisler/${slip.id}">🧾 Fiş</button>` : `<button class="btn" data-mkslip>🧾 ${siblings.length ? "Toplam Sefer Fişi" : "Fiş Oluştur"}</button>`}
       ${inHakedis ? "" : `<button class="btn" data-go="#/isler/${id}/edit">Düzenle</button>`}
       <button class="btn danger" data-del>Sil</button>
     </div>`;
+  qs("[data-watt]", root)?.addEventListener("change", async (e) => {
+    for (const f of [...e.target.files].slice(0, 10)) await db.addAttachment("work", id, f, { kind: "slip_photo" });
+    toast("Eklendi", "ok");
+    ctx.reload();
+  });
   const mk = qs("[data-mkslip]", root);
   if (mk)
     mk.addEventListener("click", () =>
