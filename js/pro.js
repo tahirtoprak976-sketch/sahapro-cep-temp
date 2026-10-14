@@ -1649,14 +1649,8 @@ async function backupPanel(ctx) {
   );
   qs("[data-full-backup]", root).onclick = async () => {
     try {
-      const { fullBackup } = await import("./backup.js");
-      const obj = await fullBackup(db);
-      downloadBlob(
-        new Blob([JSON.stringify(obj)], { type: "application/json" }),
-        "SAHAPRO_TAM_YEDEK_" + core.todayStr() + ".json",
-      );
-      await db.metaSet("last_backup_at", new Date().toISOString());
-      toast("Tam yedek indirildi", "ok");
+      const crm = await import("./m-crm.js");
+      await crm.doBackup(ctx);
     } catch (e) {
       toast(e.message, "err");
     }

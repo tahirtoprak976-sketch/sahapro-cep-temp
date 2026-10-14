@@ -132,7 +132,8 @@ async function customerDetail(ctx, id) {
       db.getAll("documents"),
     ]);
   const mine = (arr) => arr.filter((r) => isActive(r) && r.customer_id === id);
-  const mSites = mine(sitesA),
+  const mCash = mine(cash),
+    mSites = mine(sitesA),
     mWorks = mine(works),
     mSlips = mine(slips),
     mQuotes = mine(quotes),
