@@ -5,6 +5,7 @@ import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PE
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
+import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates } from "./assistant-rules.js";
 
 export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -169,9 +170,10 @@ export function assistantContext(d, today = todayStr(), message = "") {
     today,
     note: big ? "Müşteri listesinin yalnız mesajla ilgili ve son çalışılan kısmı gönderildi; listede görmediğin adı new_customer olarak yaz, uygulama tüm listede kendisi arar." : undefined,
     customers: live(d, "customers").filter((c) => okC(c.id)).map((c) => (c.parent_customer_id ? [c.id, c.name, c.parent_customer_id] : [c.id, c.name])),
+    customer_fuel_rules: live(d, "customers").filter((c) => okC(c.id) && Number(c.fuel_per_trip) > 0).map((c) => [c.id, Number(c.fuel_per_trip) + " L/sefer", c.fuel_rule_match || "tüm seferleri"]),
     sites: live(d, "sites").filter((s) => okC(s.customer_id)).map((s) => [s.id, s.name, s.customer_id]),
     vehicles: live(d, "vehicles").map((v) => [v.id, v.name, v.plate || "", v.type || ""]),
-    personnel: live(d, "personnel").map((p) => [p.id, p.name]),
+    personnel: live(d, "personnel").map((p) => (p.vehicle_id ? [p.id, p.name, p.vehicle_id] : [p.id, p.name])),
     dump_sites: live(d, "dump_sites").map((x) => [x.id, x.name]),
     suppliers: live(d, "suppliers").map((s) => [s.id, s.name]),
     aliases: live(d, "aliases").filter((a) => a.active !== false && (a.target_type !== "customer" || okC(a.target_id))).map((a) => [a.alias, a.target_type, a.target_id]),
@@ -184,7 +186,8 @@ export function assistantContext(d, today = todayStr(), message = "") {
   };
 }
 
-export function assistantSystem() {
+export function assistantSystem(rules = "") {
+  const extra = String(rules || "").trim().slice(0, 6000);
   return [
     "Sen Muratoğlu Hafriyat (hafriyat, kamyon nakliye, iş makinesi) şirketinin kayıt asistanısın.",
     "Sana şirketin kartları (müşteri, şantiye, araç, personel, esnaf/tedarikçi), takma adlar ve son işler verilir.",
@@ -203,9 +206,9 @@ export function assistantSystem() {
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
     "Fotoğraf varsa her fotoğrafın tüm yazısını photo_texts dizisine aynen yaz (sayı biçimini koru).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
-    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
+    "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yer),\"to_place\" (teslim/döküm/dolgu yeri),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
-    "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
+    "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
     "\"maintenance\":[{\"date\",\"vehicle_id\",\"maint_type\",\"status\",\"description\",\"cost\",\"service_company\",\"supplier_id\",\"credit\"}] (arıza/bakım; maint_type: " + MAINT_TYPES.join(", ") + "; status: " + MAINT_STATUS.join(", ") + "),",
@@ -218,6 +221,7 @@ export function assistantSystem() {
     "\"photo_texts\":[string],\"questions\":[string]}",
     "20 bin = 20000, 1,5 milyon = 1500000. 'havale/EFT yaptı' = Havale.",
     DOCS_PROMPT,
+    ...(extra ? ["İŞLETME KURALLARI (işletme sahibi yazdı; yukarıdaki JSON biçimi ve 'uydurma' yasakları her zaman geçerlidir):", extra] : []),
   ].join("\n");
 }
 
@@ -332,10 +336,31 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (!norm(r.description).includes(norm(s.name))) r.description = (r.description ? r.description + " · " : "") + "Yer: " + s.name;
     } else if (s) issues.push("Şantiye bu müşteriye ait değil");
     else if (w.new_site && inMessage(w.new_site, message)) r.new_site = String(w.new_site).trim();
+    const rowTextV = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
+    const sender = w.reporter ? senderPersonnel(d, w.reporter, message) : null;
+    if (sender) r.reporter = sender.name;
     const v = byId(vehicles, w.vehicle_id);
-    if (v) r.vehicle_id = v.id; else issues.push("Araç seçilmeli");
+    if (v) {
+      r.vehicle_id = v.id;
+      // Plaka/araç mesajda yazmıyorsa: yalnız gönderenin zimmetli aracıysa kabul (WhatsApp kuralı)
+      if (!vehicleNamed(d, v, rowTextV) && !vehicleNamed(d, v, message)) {
+        if (sender && sender.vehicle_id === v.id) r.vehicleNote = `Araç yazılmamış; gönderen ${sender.name}'in zimmetli aracı (${v.plate || v.name}) alındı`;
+        else { issues.push(`Araç "${v.plate || v.name}" mesajda yazmıyor — kontrol edin`); r.vehicleGuess = true; }
+      }
+    } else if (sender?.vehicle_id && byId(vehicles, sender.vehicle_id)) {
+      r.vehicle_id = sender.vehicle_id;
+      r.vehicleNote = `Araç yazılmamış; gönderen ${sender.name}'in zimmetli aracı alındı`;
+    } else issues.push("Araç seçilmeli");
+    if (r.vehicleNote) issues.push(r.vehicleNote);
     const p = byId(personnel, w.personnel_id);
     if (p) r.personnel_id = p.id;
+    else if (sender) r.personnel_id = sender.id;
+    // Güzergâh ve fiş: mesajda geçen ifade
+    const said = (x) => { const t = String(x || "").trim(); return t && (` ${norm(message)} `).includes(` ${norm(t)}`) ? t.slice(0, 80) : ""; };
+    r.from_place = said(w.from_place);
+    r.to_place = said(w.to_place);
+    r.slip_no = w.slip_no && String(message).replace(/\s/g, "").includes(String(w.slip_no).replace(/\s/g, "")) ? String(w.slip_no).slice(0, 30) : "";
+    if (w.date_source === "yok") { issues.push("İş tarihi mesajda yazmıyor — teyit edin"); r.dateUnsure = true; }
     if (WORK_TYPES.includes(w.work_type)) r.work_type = w.work_type; else issues.push("İş türü seçilmeli");
     if (ASSIST_UNITS.includes(w.unit)) r.unit = w.unit; else issues.push("Birim seçilmeli");
     const q = w.quantity == null ? null : Number(w.quantity);
@@ -394,9 +419,12 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure);
+    r.fuelAllowance = fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     out.works.push(r);
   }
+
+  markPasteDuplicates(out.works);
 
   for (const e of (Array.isArray(plan.expenses) ? plan.expenses : []).slice(0, 10)) {
     const issues = [];
@@ -445,8 +473,11 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       liters: numOk(Number(f.liters)) ? Number(f.liters) : null, total: numOk(Number(f.total)) ? Number(f.total) : null, photo };
     // Model kaynağı söylemediyse: fiş fotoğrafı ya da istasyon adı → istasyon. Aynı mesajda depoya giriş varsa
     // "petrol" kelimesi büyük ihtimalle petrolcünün adıdır (Ahmet Petrol): depo varsayılır.
-    r.source = ["Depo Tankı", "Akaryakıt İstasyonu"].includes(f.source) ? f.source
+    r.source = ["Depo Tankı", "Akaryakıt İstasyonu", "Müşteri Verdi"].includes(f.source) ? f.source
       : photo != null || (STATION.test(message) && !out.tankIn.length) ? "Akaryakıt İstasyonu" : "Depo Tankı";
+    // Müşterinin verdiği mazot (örn. Kılıç Hafriyat sefer başı 75 L): depodan düşmez, maliyet değildir
+    r.customer_id = r.source === "Müşteri Verdi" ? byId(customers, f.customer_id)?.id || null : null;
+    if (r.source === "Müşteri Verdi" && !r.customer_id) issues.push("Mazotu veren müşteri seçilmeli");
     if (!r.vehicle_id) issues.push("Araç seçilmeli");
     if (!r.liters) issues.push("Litre mesajda/fişte yok");
     r.stockShort = false;
@@ -455,7 +486,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       else stock -= r.liters;
     }
     r.issues = issues;
-    r.ok = !!(r.vehicle_id && r.liters && !r.stockShort);
+    r.ok = !!(r.vehicle_id && r.liters && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));
     out.fuel.push(r);
   }
   out.questions = (Array.isArray(plan.questions) ? plan.questions : []).map(String).slice(0, 5);
@@ -695,10 +726,10 @@ export function assistantSchema() {
     properties: {
       works: row({ date: NS, customer_id: NS, new_customer: NS, new_customer_parent_id: NS, site_id: NS, new_site: NS, vehicle_id: NS, personnel_id: NS,
         work_type: { type: ["string", "null"], enum: [...WORK_TYPES, null] }, quantity: NN, unit: { type: ["string", "null"], enum: [...ASSIST_UNITS, null] },
-        guessed: NB, description: NS, material: NS, dump_site_id: NS, unit_price: NN, note: NS,
+        guessed: NB, reporter: NS, date_source: NS, from_place: NS, to_place: NS, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, note: NS,
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
       expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, photo: { type: ["integer", "null"] }, note: NS }),
-      fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, photo: { type: ["integer", "null"] }, source: NS }),
+      fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, note: NS }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),
       maintenance: row({ date: NS, vehicle_id: NS, maint_type: NS, status: NS, description: NS, cost: NN, service_company: NS, supplier_id: NS, credit: NB }),

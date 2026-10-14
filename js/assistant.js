@@ -6,6 +6,7 @@ import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EV
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
+import { planTotals } from "./assistant-rules.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
@@ -138,7 +139,10 @@ export async function screen(ctx) {
       parts.push({ text: `Fotoğraf sayısı: ${images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(message || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
-      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: assistantSystem(), schema: assistantSchema() }), {
+      const { DEFAULT_RULES } = await import("./assistant-rules.js");
+      const savedRules = await db.metaGet("assistant_rules");
+      const system = assistantSystem(savedRules == null ? DEFAULT_RULES : savedRules);
+      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema: assistantSchema() }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       });
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
@@ -163,6 +167,16 @@ export async function screen(ctx) {
   return true;
 }
 
+// Araç / müşteri toplamları (kesin = işaretli satırlar) ve teyit gerekenler
+function summaryHtml(v, d) {
+  if (v.works.length < 2) return "";
+  const t = planTotals(v.works, d);
+  const line = (x) => `<div class="small">• <b>${esc(x.name)}</b>: ${esc(x.sure || "—")}${x.unsure ? ` <span class="muted">(+ teyit bekleyen ${esc(x.unsure)})</span>` : ""}</div>`;
+  const todo = v.works.map((r, i) => (r.ok ? null : `${i + 1}. iş: ${r.issues.filter((x) => !/zimmetli aracı/.test(x)).join(" · ") || "eksik alan"}`)).filter(Boolean);
+  return `<div class="card"><div class="strong small">Toplamlar (kesin olanlar)</div>${t.vehicles.map(line).join("")}<div class="divider"></div>${t.customers.map(line).join("")}
+    ${todo.length ? `<div class="strong small" style="margin-top:8px">Teyit gerekenler (${todo.length})</div>${todo.map((x) => `<div class="tiny muted">${esc(x)}</div>`).join("")}` : ""}</div>`;
+}
+
 function render(ctx, out, v, d, { message, files, ms }) {
   const live = (s) => (d[s] || []).filter(isActive);
   const customers = live("customers").map((c) => [c.id, c.name]);
@@ -178,6 +192,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const nameOf = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || id || "—";
   out.innerHTML =
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
+    summaryHtml(v, d) +
     (v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
@@ -218,7 +233,12 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Malzeme</label><input name="material" value="${esc(r.material || "")}" placeholder="moloz, kum, mıcır…"></div>
           <div class="field"><label>Döküm yeri</label><select name="dump_site">${opt(dumpSites, r.dump_site_id, "— yok —")}</select></div>
           <div class="field"><label>Birim fiyat (₺, boşsa fiyat listesi)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
+          <div class="field"><label>Alındığı yer</label><input name="from_place" value="${esc(r.from_place || "")}" placeholder="ocak / saha"></div>
+          <div class="field"><label>Teslim yeri</label><input name="to_place" value="${esc(r.to_place || "")}" placeholder="şantiye / dolgu"></div>
+          <div class="field"><label>Fiş no</label><input name="slip_no" value="${esc(r.slip_no || "")}"></div>
         </div>
+        ${r.reporter ? `<div class="muted tiny">Bildiren: ${esc(r.reporter)}</div>` : ""}
+        ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> karşılık (alındıysa yakıt olarak ayrıca girilir; hakedişe yazılmaz)</div>` : ""}
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
         ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
@@ -287,7 +307,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Araç</label><select name="vehicle">${opt(vehicles, r.vehicle_id)}</select></div>
-          <div class="field"><label>Nereden</label><select name="source">${opt([["Depo Tankı", "Depo tankından"], ["Akaryakıt İstasyonu", "Akaryakıt istasyonu"]], r.source, "Depo Tankı")}</select></div>
+          <div class="field"><label>Nereden</label><select name="source">${opt([["Depo Tankı", "Depo tankından"], ["Akaryakıt İstasyonu", "Akaryakıt istasyonu"], ["Müşteri Verdi", "Müşteri verdi (örn. Kılıç)"]], r.source, "Depo Tankı")}</select></div>
+          <div class="field"><label>Veren müşteri (müşteri verdiyse)</label><select name="fuel_customer">${opt(customers, r.customer_id, "— yok —")}</select></div>
           <div class="field"><label>Litre</label><input type="number" step="any" name="liters" value="${r.liters ?? ""}"></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
         </div>${issues(r)}</div>`)
@@ -374,7 +395,7 @@ async function save(ctx, out, v, d, { message, files }) {
     const miss =
       k === "work" ? !val(c, "customer") || !val(c, "vehicle") || !val(c, "work_type") || !(Number(val(c, "quantity")) > 0) || !val(c, "unit")
       : k === "expense" ? !(Number(val(c, "amount")) > 0)
-      : k === "fuel" ? !val(c, "vehicle") || !(Number(val(c, "liters")) > 0)
+      : k === "fuel" ? !val(c, "vehicle") || !(Number(val(c, "liters")) > 0) || (val(c, "source") === "Müşteri Verdi" && !val(c, "fuel_customer"))
       : k === "tank" ? !(Number(val(c, "liters")) > 0) || (val(c, "supplier") && !(Number(val(c, "total")) > 0 || Number(val(c, "unit_price")) > 0))
       : k === "collection" ? !val(c, "customer") || !(Number(val(c, "amount")) > 0) || (val(c, "method") === "Havale" && !val(c, "bank"))
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
@@ -555,12 +576,14 @@ async function save(ctx, out, v, d, { message, files }) {
           quantity: Number(val(c, "quantity")),
           unit: val(c, "unit"),
           dump_site_id: val(c, "dump_site") || null, quarry_id: null,
-          dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || "", quarry: "",
-          slip_status: null, slip_no: "", customer_note: "", distance_km: null,
+          dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || val(c, "to_place") || "", quarry: val(c, "from_place") || "",
+          slip_status: null, slip_no: val(c, "slip_no") || "", customer_note: "", distance_km: null,
           source: "asistan",
         };
         delete fields.internal_note_src;
-        fields.internal_note = source;
+        const wr0 = v.works[Number(c.dataset.i)];
+        fields.internal_note = (wr0.reporter ? "Bildiren: " + wr0.reporter + " · " : "") + source;
+        if (wr0.fuelAllowance && fields.unit === "Sefer") fields.customer_fuel_allowance_l = Math.round(wr0.fuelAllowance.per * fields.quantity * 10) / 10;
         const up = Number(val(c, "unit_price"));
         fields.price_snapshot = up > 0
           ? { unit_price: up, kdv_rate: Number(await db.metaGet("kdv_default")) || 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
@@ -664,10 +687,12 @@ async function save(ctx, out, v, d, { message, files }) {
         const r = v.fuel[Number(c.dataset.i)];
         const liters = Number(val(c, "liters")), total = Number(val(c, "total")) || null;
         const src = val(c, "source") || "Depo Tankı";
+        const byCustomer = src === "Müşteri Verdi";
         const rec = await db.saveNew("fuel_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
-          unit_price: total ? Math.round((total / liters) * 100) / 100 : null, total,
-          fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: null,
+          unit_price: !byCustomer && total ? Math.round((total / liters) * 100) / 100 : null, total: byCustomer ? null : total,
+          ...(byCustomer ? { customer_id: val(c, "fuel_customer") || null } : {}),
+          fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: null,
           machine_hours: null, description: source, customer_billable: false,
         }, "Asistan");
         if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
