@@ -67,3 +67,12 @@ assert.equal(facts.musteriler.find((m) => m.musteri === 'Ahmet Yılmaz İnşaat'
 assert.deepEqual(checkAnswer('Ahmet Bey 50.000 TL borçlu', facts), []);
 assert.deepEqual(checkAnswer('Ahmet Bey 65.000 TL borçlu', facts), [65000]);
 console.log('assistant-extras PASS');
+// iş açıklaması, malzeme, döküm, fiyat
+{
+  const dd = { ...d, dump_sites: [{ id: 'D1', name: 'Kemerburgaz Döküm' }] };
+  const v3 = validatePlan({ works: [{ customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer', description: 'Bahçeşehir şantiyesinden moloz', material: 'moloz', dump_site_id: 'D1', unit_price: 1800 }] }, { message: 'Ahmet Bey 34 ABC 123 3 sefer moloz Kemerburgaz döküme sefer 1800', d: dd, today });
+  assert.equal(v3.works[0].description, 'Bahçeşehir şantiyesinden moloz'); assert.equal(v3.works[0].dump_site_id, 'D1'); assert.equal(v3.works[0].unit_price, 1800); assert.equal(v3.works[0].material, 'moloz');
+  const v4 = validatePlan({ works: [{ customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer', unit_price: 2500, dump_site_id: 'YOK' }] }, { message: 'Ahmet Bey 34 ABC 123 3 sefer moloz', d: dd, today });
+  assert.equal(v4.works[0].unit_price, null); assert.equal(v4.works[0].dump_site_id, null);
+}
+console.log('assistant-detail PASS');
