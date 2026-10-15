@@ -26,7 +26,7 @@ export function monthlySeries(data, opts = {}) {
   const today = opts.today || todayStr();
   const keys = lastMonths(today, opts.months || 6);
   const rows = new Map(
-    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0 }]),
+    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0 }]),
   );
   for (const w of data.work_records || []) {
     if (!isActive(w)) continue;
@@ -65,17 +65,31 @@ export function monthlySeries(data, opts = {}) {
       if (p) r.fuel += toKurus((Number(f.liters) || 0) * p);
     } else r.fuel += toKurus(f.total);
   }
+  // Bakım/arıza tutarı ve gidere/bakıma bağlı olmayan esnaf alışları da masraftır (Giderler ekranıyla aynı tanım)
+  for (const m of data.maintenance_records || []) {
+    if (!isActive(m) || !(Number(m.cost) > 0)) continue;
+    const r = rows.get(monthKey(m.date));
+    if (r) r.maint += toKurus(m.cost);
+  }
+  for (const b of data.payables || []) {
+    if (!isActive(b) || b.status === "İptal" || b.party_type !== "supplier") continue;
+    if (["expense_records", "maintenance_records", "fuel_tank_movements", "fuel_records"].includes(b.source_store)) continue;
+    const r = rows.get(monthKey(b.date));
+    if (r) r.esnaf += toKurus(Number(b.gross_total) || 0);
+  }
   return [...rows.values()].map((r) => ({
     ...r,
     work: fromKurus(r.work),
+    maint: fromKurus(r.maint),
+    esnaf: fromKurus(r.esnaf),
     collected: fromKurus(r.collected),
     expense: fromKurus(r.expense),
     fuel: fromKurus(r.fuel),
-    cost: fromKurus(r.expense + r.fuel),
+    cost: fromKurus(r.expense + r.fuel + r.maint + r.esnaf),
     fuelPay: fromKurus(r.fuelPay),
     fuelPayL: Math.round(r.fuelPayL * 10) / 10,
     // tahmini kâr = fiyatlı iş değeri + mazotla ödenen işlerin değeri − (gider + yakıt); fiyatsız iş ayrıca işaretlenir
-    profit: fromKurus(r.work + r.fuelPay - r.expense - r.fuel),
+    profit: fromKurus(r.work + r.fuelPay - r.expense - r.fuel - r.maint - r.esnaf),
   }));
 }
 

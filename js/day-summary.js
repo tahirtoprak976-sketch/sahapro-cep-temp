@@ -9,6 +9,7 @@ import { checkAnswer } from "./assistant-core.js";
 import { fuelLedgers } from "./assistant-rules.js";
 import { yardSite, yardStock } from "./yard-core.js";
 import { receivables, customerLedgerMovements } from "./collect-core.js";
+import { costRows, costTotals } from "./costs-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -120,7 +121,7 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { customer: { type: "string" } }, required: ["customer"] } },
   { name: "fuel_totals", description: "Tarih aralığında yakıt litre ve TL toplamı, araç bazında.",
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, vehicle: { type: "string" } } } },
-  { name: "expense_totals", description: "Tarih aralığında gider toplamı ve kategori dağılımı.",
+  { name: "expense_totals", description: "Tarih aralığında gider toplamı ve kategori dağılımı; ayrıca TÜM masraflar (gider + yakıt + bakım/arıza + esnaf alışı). 'Ne kadar masraf yaptık' sorusunda tum_masraflar_TL kullan.",
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, category: { type: "string" }, vehicle: { type: "string" } } } },
   { name: "collection_totals", description: "Tarih aralığında müşterilerden alınan tahsilat toplamı.",
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, customer: { type: "string" } } } },
@@ -174,7 +175,9 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const ex = live(d, "expense_records").filter((e) => inR(e) && (!v.id || e.vehicle_id === v.id) && (!a.category || norm(e.category).includes(norm(a.category))));
     const cats = {};
     for (const e of ex) cats[e.category || "Diğer"] = r2((cats[e.category || "Diğer"] || 0) + Number(e.amount));
-    return { from, to, TL: r2(ex.reduce((n, e) => n + (Number(e.amount) || 0), 0)), kayit: ex.length, kategoriler: cats };
+    const all = costTotals(costRows(d, { from, to }).filter((r) => !v.id || r.vehicle_id === v.id));
+    return { from, to, TL: r2(ex.reduce((n, e) => n + (Number(e.amount) || 0), 0)), kayit: ex.length, kategoriler: cats,
+      tum_masraflar_TL: all.total, masraf_dagilimi: { gider: all.gider, yakit: all.yakit, bakim_ariza: all.bakim, esnaf_alisi: all.esnaf } };
   }
   if (name === "collection_totals") {
     const c = resolve(d, a, "customer", "customers", "customer");
