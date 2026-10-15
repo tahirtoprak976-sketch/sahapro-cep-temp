@@ -8,6 +8,7 @@ import { ticketReconcile } from "./assistant-docs.js";
 import { checkAnswer } from "./assistant-core.js";
 import { fuelLedgers } from "./assistant-rules.js";
 import { yardSite, yardStock } from "./yard-core.js";
+import { receivables } from "./collect-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -129,11 +130,13 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: {} } },
   { name: "tank_status", description: "Depo yakıt tankı: kalan litre, günlük ortalama çıkış, kaç gün yeter, ortalama litre fiyatı, son giriş.",
     parameters: { type: "object", properties: {} } },
+  { name: "receivables", description: "Müşterilerden alacaklar (tahsilat takibi): toplam, 0-30/31-60/61-90/90+ gün dağılımı, en riskli müşteriler, en eski açık kalemin yaşı, son ödeme, ödeme sözü, vadesi yaklaşan çek/senet. Müşteri adıyla tek müşteri.",
+    parameters: { type: "object", properties: { customer: { type: "string" } } } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
 
-export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings = {}) {
+export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings = {}, extra = {}) {
   const a = args && typeof args === "object" ? args : {};
   const { from, to, inR } = range(d, a, today);
   if (name === "work_totals") {
@@ -199,6 +202,21 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const t = tankStatus(live(d, "fuel_tank_movements"), today);
     return { kalan_litre: r2(t.remaining), toplam_giris_litre: r2(t.in), toplam_cikis_litre: r2(t.out), gunluk_ortalama_litre: t.daily, kac_gun_yeter: t.daysLeft,
       ortalama_litre_fiyati_TL: t.unitCost, son_giris: t.lastIn ? { tarih: t.lastIn.date, litre: r2(t.lastIn.liters), TL: t.lastIn.total ? r2(t.lastIn.total) : null } : null };
+  }
+  if (name === "receivables") {
+    const c = resolve(d, a, "customer", "customers", "customer");
+    if (c.error) return c;
+    const res = receivables(d, { today, notes: extra.collectNotes || {} });
+    const row = (x) => ({ musteri: x.name, alacak_TL: x.total, en_eski_gun: x.oldest_days, hakedise_girmemis_TL: x.unbilled,
+      son_odeme: x.last_payment ? { tarih: x.last_payment.date, TL: x.last_payment.amount, gun_once: x.last_payment.days } : null,
+      odeme_sozu: x.promise ? { tarih: x.promise.date, TL: x.promise.amount || null, gecti: x.promise.late } : null, cek_senet_TL: x.cheque_total || 0 });
+    if (c.id) {
+      const x = res.rows.find((r) => r.id === c.id);
+      return x ? { ...row(x), acik_kalemler: x.open.slice(0, 10).map((o) => ({ tarih: o.date, aciklama: o.label, kalan_TL: o.left, gun: o.days })) } : { musteri: c.name, alacak_TL: 0, not: "açık alacak yok" };
+    }
+    return { toplam_alacak_TL: res.total, gun_0_30_TL: res.buckets.b0, gun_31_60_TL: res.buckets.b30, gun_61_90_TL: res.buckets.b60, gun_90_ustu_TL: res.buckets.b90,
+      alacakli_musteri_sayisi: res.rows.length, en_riskli: res.rows.slice(0, 8).map(row),
+      yaklasan_cek_senet: res.cheques.filter((q) => q.days_left <= 30).slice(0, 8).map((q) => ({ tur: q.kind, yon: q.direction, no: q.document_no, vade: q.due_date, TL: q.amount, durum: q.status })) };
   }
   if (name === "esnaf_debt") {
     const s = resolve(d, a, "supplier", "suppliers", "supplier");

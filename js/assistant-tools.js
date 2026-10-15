@@ -86,21 +86,37 @@ async function ask(ctx, g) {
     b.disabled = true;
     out.innerHTML = '<div class="muted small" style="padding:10px">Hesaplanıyor…</div>';
     try {
-      const { ASK_TOOLS, ASK_SYSTEM, runAskTool } = await import("./day-summary.js");
-      const { checkAnswer } = await import("./assistant-core.js");
-      const { withModelFallback, geminiAsk } = await import("./ai-gemini.js");
-      const d = await db.dumpAll(), today = todayStr();
-      const yardSettings = (await db.metaGet("yard_settings")) || {};
-      const res = await withModelFallback(db, (o) => geminiAsk(`Bugün: ${today}\n<soru>${q.replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today, yardSettings) }));
-      const bad = checkAnswer(res.answer, res.trace.map((t) => t.result));
-      const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı", yard_stock: "Depo stoku" };
-      out.innerHTML = `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(res.answer || "Cevap alınamadı, soruyu farklı yazın.")}</div>
-        ${bad.length ? notice("warn", "Bu sayılar hesaplanan sonuçlarda yok, güvenmeyin: " + bad.join(", ")) : res.trace.length ? '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlardan hesaplandı.</div>' : notice("warn", "Hiç hesap yapılmadı; cevaptaki rakamlara güvenmeyin.")}
-        ${res.trace.length ? `<details style="margin-top:8px"><summary class="small">Yapılan hesaplar (${res.trace.length})</summary>${res.trace.map((t) => `<div class="tiny muted" style="margin-top:4px"><b>${esc(TOOL_TR[t.name] || t.name)}</b> ${esc(JSON.stringify(t.args))}<br>${esc(JSON.stringify(t.result).slice(0, 600))}</div>`).join("")}</details>` : ""}</div>`;
+      const res = await askWithTools(db, q);
+      out.innerHTML = answerHtml(res);
     } catch (e) {
       out.innerHTML = notice("warn", e.message || String(e));
     }
     b.disabled = false;
   });
   return true;
+}
+
+// Soruyu hesap araçlarıyla cevapla (Soru Sor ekranı ve Akıllı Asistan ortak kullanır)
+export async function askWithTools(db, q) {
+  const { ASK_TOOLS, ASK_SYSTEM, runAskTool } = await import("./day-summary.js");
+  const { checkAnswer } = await import("./assistant-core.js");
+  const { withModelFallback, geminiAsk } = await import("./ai-gemini.js");
+  const d = await db.dumpAll(), today = todayStr();
+  const yardSettings = (await db.metaGet("yard_settings")) || {};
+  const collectNotes = (await db.metaGet("collect_notes")) || {};
+  const res = await withModelFallback(db, (o) => geminiAsk(`Bugün: ${today}\n<soru>${String(q).replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today, yardSettings, { collectNotes }) }));
+  return { ...res, bad: checkAnswer(res.answer, res.trace.map((t) => t.result)) };
+}
+const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı", yard_stock: "Depo stoku", receivables: "Alacaklar" };
+export function answerHtml(res) {
+  const bad = res.bad || [];
+  return `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(res.answer || "Cevap alınamadı, soruyu farklı yazın.")}</div>
+    ${bad.length ? notice("warn", "Bu sayılar hesaplanan sonuçlarda yok, güvenmeyin: " + bad.join(", ")) : res.trace.length ? '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlardan hesaplandı.</div>' : notice("warn", "Hiç hesap yapılmadı; cevaptaki rakamlara güvenmeyin.")}
+    ${res.trace.length ? `<details style="margin-top:8px"><summary class="small">Yapılan hesaplar (${res.trace.length})</summary>${res.trace.map((t) => `<div class="tiny muted" style="margin-top:4px"><b>${esc(TOOL_TR[t.name] || t.name)}</b> ${esc(JSON.stringify(t.args))}<br>${esc(JSON.stringify(t.result).slice(0, 600))}</div>`).join("")}</details>` : ""}</div>`;
+}
+
+// Mesajda soru var mı? (Akıllı Asistan soruyu hesap araçlarına da gönderir)
+export function isQuestion(text) {
+  const t = String(text || "").toLocaleLowerCase("tr-TR");
+  return /\?/.test(t) || /(?<!\p{L})(kaç|kac|ne kadar|nedir|ne zaman|kimde|kimin|hangi|hangisi|toplam(ı|i)? ne|var mı|var mi|kaldı mı|kaldi mi|söyle|soyle|göster bana|hesapla)(?!\p{L})/u.test(t);
 }
