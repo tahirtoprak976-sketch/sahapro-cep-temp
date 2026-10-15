@@ -1,7 +1,7 @@
 // Döküm ücreti: döküm sahasının kartındaki ücret (ton başı ya da sefer başı, KDV dahil) × işin tonu / seferi.
-// Ton: fişteki ton (iş kaydında "tonaj"); fiş yoksa aracın kartındaki "ortalama yük (ton)" × sefer — tahmin olarak işaretlenir.
+// Ton: fişteki ton (iş kaydında "tonaj"); fiş yoksa aracın "ortalama yük"ü (kartta yoksa tır 27, kamyon 22 ton) × sefer — tahmin olarak işaretlenir.
 // Belediyenin resmi sahaları: Bolluca 160 ₺/ton, Cebeci 210 ₺/ton, İSTAÇ 235 ₺/ton (KDV dahil, Ekim 2026, işletme sahibinden).
-import { isActive } from "./core.js";
+import { isActive, transportVehicleType } from "./core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
@@ -13,6 +13,12 @@ export const OFFICIAL_DUMPS = [
   { key: "istac", name: "İSTAÇ Döküm", fee: 235 },
 ];
 export const FEE_UNITS = ["Ton", "Sefer"];
+// Araç kartında "ortalama yük" yoksa türüne göre (işletme sahibinden, Ekim 2026): tır 27 ton, kamyon 22 ton
+export const DEFAULT_LOAD_TON = { TIR: 27, TRUCK: 22 };
+export function loadTon(v) {
+  if (Number(v?.load_ton) > 0) return Number(v.load_ton);
+  return DEFAULT_LOAD_TON[transportVehicleType(v?.type)] || 0;
+}
 
 // Bir işin döküm ücreti. null: döküm yerinde ücret tanımlı değil
 export function dumpFee(d, w) {
@@ -26,7 +32,7 @@ export function dumpFee(d, w) {
   let ton = Number(w.tonnage) || (w.unit === "Ton" ? qty : 0), estimated = false;
   if (!(ton > 0)) {
     const v = live(d, "vehicles").find((x) => x.id === w.vehicle_id);
-    const load = Number(v?.load_ton) || 0;
+    const load = loadTon(v);
     if (load > 0 && w.unit === "Sefer") { ton = r2(load * trips); estimated = true; }
   }
   if (!(ton > 0)) return { site: s.name, unit: "Ton", fee, amount: null, trips, ton: null, estimated: false, missing: true };

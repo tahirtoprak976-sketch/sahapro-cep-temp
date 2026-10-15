@@ -35,3 +35,11 @@ assert.equal(await seedOfficialDumps(db), 3);
 assert.deepEqual(store.dump_sites.map((x) => [x.name, x.fee]), [["BOLLUCA DÖKÜM", 160], ["Cebeci", 210], ["İSTAÇ Döküm", 235]]);
 assert.equal(await seedOfficialDumps(db), 0, "bir kez");
 console.log("dump-fees ok");
+{
+  const { dumpFee, loadTon } = await import("../js/dump-fees.js");
+  assert.equal(loadTon({ type: "Tır" }), 27); assert.equal(loadTon({ type: "Kamyon" }), 22); assert.equal(loadTon({ type: "Kamyon", load_ton: 20 }), 20); assert.equal(loadTon({ type: "Kamyonet" }), 0);
+  const dd = { dump_sites: [{ id: "B", name: "Bolluca", fee: 160, fee_unit: "Ton", created_at: "x" }], vehicles: [{ id: "K", name: "34UL9492", type: "Kamyon", created_at: "x" }] };
+  const f = dumpFee(dd, { vehicle_id: "K", unit: "Sefer", quantity: 2, dump_site_id: "B" });
+  assert.equal(f.ton, 44); assert.equal(f.amount, 7040); assert.equal(f.estimated, true);
+  console.log("load ton ok");
+}
