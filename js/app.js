@@ -304,6 +304,11 @@ async function registerSW() {
         }
       });
     });
+    // Uygulamaya her dönüşte (arka plandan öne gelince) ve 30 dakikada bir yeni sürüm aranır
+    const check = () => reg.update().catch(() => {});
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
+    setInterval(check, 30 * 60 * 1000);
+    window.__swCheck = async () => { await reg.update(); return !!(reg.waiting || reg.installing); };
     let reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return;
