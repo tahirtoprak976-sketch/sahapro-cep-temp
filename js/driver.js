@@ -65,7 +65,7 @@ export async function screen(ctx) {
   const today = todayStr();
   let entries = ls.get(K_ENT, []).filter((e) => !e.sent || e.date >= new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10));
   const nm = (list, id) => (list || []).find((x) => x[0] === id)?.[1] || "";
-  let tab = "is", photos = [];
+  let tab = "is", photos = [], slipFor = null;
   const st = { vid: ls.get("sp_driver_vid") || cfg.veh || "", cid: "", cn: "", sid: "", wt: core.DRIVER_TYPES[0], q: 1, u: "Sefer", ds: "", dn: "", ton: "", slip: "", note: "", mat: "", f: {} };
   const opt = (rows, val, empty) => (empty != null ? `<option value="">${esc(empty)}</option>` : "") + rows.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(val) ? "selected" : ""}>${esc(t)}</option>`).join("");
   const big = "min-height:52px;font-size:17px";
@@ -109,7 +109,74 @@ export async function screen(ctx) {
       <button class="btn primary block" data-addx style="${big};margin-top:8px">✓ Kaydet</button>
     </div>`;
   };
+  // ---- Dijital iş fişi: şantiye şefi telefonda imzalar, PDF WhatsApp'tan şefe gider ----
+  const drawSlip = () => {
+    const e = entries.find((x) => x.id === slipFor);
+    if (!e) { slipFor = null; return draw(); }
+    const sc = core.siteContact(cfg, e.sid);
+    root.innerHTML = `
+      <div class="row between" style="margin:10px 0"><button class="btn" data-slipback>‹ Geri</button><b>🧾 Dijital iş fişi</b><span></span></div>
+      <div class="card small">${esc(core.entryLine({ ...e, dfs: null }, cfg))}</div>
+      ${e.dfs ? notice("ok", `Fiş ${e.dfs} oluşturuldu${e.rcv ? " · imzalayan " + e.rcv : ""}. Tekrar gönderebilir ya da yeni imza alabilirsiniz.`) : ""}
+      <div class="card">
+        <div class="field"><label>Teslim alan (şantiye şefi / yetkili)</label><input data-rcv value="${esc(e.rcv || sc.name)}" placeholder="Ad Soyad" style="${big}"></div>
+        ${sc.phone ? `<div class="small muted" style="margin:-4px 0 8px">📞 Şantiye: ${esc(sc.name || "")} ${esc(sc.phone)}</div>` : ""}
+        <label class="small strong">İmza (parmakla)</label>
+        <canvas data-sig width="600" height="220" class="signature" style="width:100%;height:170px;background:#fff;border:1.5px dashed var(--border);border-radius:10px;touch-action:none"></canvas>
+        <div class="row between" style="margin-top:4px"><span class="tiny muted">Şefe telefonu uzatın, kutuya imzalasın.</span><button class="btn sm ghost" data-sigclear>Temizle</button></div>
+        ${e.ph ? '<label class="row small" style="gap:8px;margin-top:8px"><input type="checkbox" data-slipphoto checked> Döküm/kantar fişi fotoğrafı PDF\'e eklensin</label>' : ""}
+        <button class="btn primary block" data-slipgo style="${big};margin-top:10px">📄 İmzala, PDF oluştur ve gönder</button>
+        ${e.dfs ? '<button class="btn block" data-slipresend style="margin-top:6px">📤 Aynı fişi tekrar gönder</button>' : ""}
+      </div>
+      <div class="tiny muted" style="margin:6px 4px">PDF'i WhatsApp'ta şantiye şefine gönderin. Fiş numarası ve imzalayan adı akşam patrona giden kayda da eklenir.</div>`;
+    const cv = qs("[data-sig]", root), ctx2 = cv.getContext("2d");
+    ctx2.lineWidth = 3.2; ctx2.lineCap = "round"; ctx2.strokeStyle = "#0b2340";
+    let down = false, drawn = false;
+    const pt = (ev) => { const r = cv.getBoundingClientRect(); return [(ev.clientX - r.left) * (cv.width / r.width), (ev.clientY - r.top) * (cv.height / r.height)]; };
+    cv.onpointerdown = (ev) => { down = true; cv.setPointerCapture?.(ev.pointerId); ctx2.beginPath(); ctx2.moveTo(...pt(ev)); };
+    cv.onpointermove = (ev) => { if (!down) return; ctx2.lineTo(...pt(ev)); ctx2.stroke(); drawn = true; };
+    cv.onpointerup = cv.onpointercancel = () => (down = false);
+    qs("[data-sigclear]", root).onclick = () => { ctx2.clearRect(0, 0, cv.width, cv.height); drawn = false; };
+    qs("[data-slipback]", root).onclick = () => { slipFor = null; draw(); };
+    const sigKey = `./__drv/sig-${e.id}`;
+    const send = async (sigBlob, no, receiver, signedAt) => {
+      const photo = e.ph && qs("[data-slipphoto]", root)?.checked !== false ? (await getPhotos(e))[0] || null : null;
+      const { buildDocument } = await import("./document-engine.js");
+      const pdf = await buildDocument(core.driverSlipSpec(e, cfg, { no, receiver, signedAt, sigBlob, photo }));
+      const file = new File([pdf], `Is_Fisi_${no}.pdf`, { type: "application/pdf" });
+      const text = core.slipShareText(e, cfg, no, receiver);
+      try {
+        if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text });
+        else { const a = document.createElement("a"); a.href = URL.createObjectURL(file); a.download = file.name; a.click(); toast("PDF indirildi; WhatsApp'tan dosya olarak gönderin", "ok"); }
+      } catch (err) { if (err?.name !== "AbortError") throw err; }
+    };
+    qs("[data-slipgo]", root).onclick = async (ev) => {
+      const receiver = qs("[data-rcv]", root).value.trim();
+      if (!receiver) return toast("Teslim alanın adını yazın", "err");
+      if (!drawn && !(await confirmDialog("İmza yok", "Fiş imzasız (taslak) olarak mı oluşturulsun?", "İmzasız oluştur"))) return;
+      const b = ev.currentTarget; b.disabled = true;
+      try {
+        const sigBlob = drawn ? await new Promise((r) => cv.toBlob(r, "image/png")) : null;
+        const no = e.dfs || core.slipNo(cfg, (ls.get("sp_driver_slip_seq", 0) || 0) + 1);
+        if (!e.dfs) ls.set("sp_driver_slip_seq", (ls.get("sp_driver_slip_seq", 0) || 0) + 1);
+        const signedAt = sigBlob ? new Date().toISOString() : "";
+        if (sigBlob && "caches" in self) await (await caches.open(PHOTO_CACHE)).put(sigKey, new Response(sigBlob, { headers: { "content-type": "image/png" } }));
+        Object.assign(e, { dfs: no, rcv: receiver, ...(signedAt ? { sgt: signedAt } : {}) });
+        save();
+        await send(sigBlob, no, receiver, signedAt);
+        toast(`Fiş ${no} hazır`, "ok"); slipFor = null; draw();
+      } catch (err) { toast("Fiş oluşturulamadı: " + (err.message || err), "err"); }
+      b.disabled = false;
+    };
+    qs("[data-slipresend]", root)?.addEventListener("click", async () => {
+      try {
+        const r = "caches" in self ? await (await caches.open(PHOTO_CACHE)).match(sigKey) : null;
+        await send(r ? await r.blob() : null, e.dfs, e.rcv || "", e.sgt || "");
+      } catch (err) { toast("Gönderilemedi: " + (err.message || err), "err"); }
+    });
+  };
   const draw = () => {
+    if (slipFor) return drawSlip();
     const unsent = entries.filter((e) => !e.sent), sent = entries.filter((e) => e.sent).slice(-15).reverse();
     const sites = (cfg.S || []).filter((s) => s[2] === st.cid);
     root.innerHTML = `
@@ -150,7 +217,7 @@ export async function screen(ctx) {
         <button class="btn primary block" data-addf style="${big};margin-top:8px">✓ Kaydet</button>
       </div>`}
       <div class="section-title">Gönderilmemiş (${unsent.length})</div>
-      ${unsent.map((e) => `<div class="card"><div class="row between"><span class="small">${esc(core.entryLine(e, cfg))}</span><button class="btn sm ghost" data-del="${esc(e.id)}">🗑</button></div></div>`).join("") || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}
+      ${unsent.map((e) => `<div class="card"><div class="row between"><span class="small">${esc(core.entryLine(e, cfg))}</span><span class="row" style="gap:4px">${!e.k ? `<button class="btn sm" data-slip="${esc(e.id)}" title="Dijital fiş">🧾</button>` : ""}<button class="btn sm ghost" data-del="${esc(e.id)}">🗑</button></span></div>${!e.k && !e.dfs ? '<div class="tiny muted">🧾 Şantiye şefine imzalı dijital fiş</div>' : ""}</div>`).join("") || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}
       ${unsent.length ? `<button class="btn block" data-send style="${big};background:#25d366;color:#fff;border:0;font-weight:800">📤 Patrona gönder (WhatsApp)</button>` : ""}
       ${sent.length ? `<details class="card" style="margin-top:10px"><summary class="small">Gönderilenler (${sent.length})</summary>${sent.map((e) => `<div class="tiny muted" style="margin-top:4px">✓ ${esc(core.entryLine(e, cfg))}</div>`).join("")}<button class="btn sm" style="margin-top:6px" data-resend>Son gönderileni tekrar gönder</button></details>` : ""}
       <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
@@ -227,6 +294,7 @@ export async function screen(ctx) {
       entries.push({ id: core.newId(), k: "f", date: st.date || today, vid: st.vid, L, src: st.src, ...(f.cid ? { cid: f.cid } : {}), ...(Number(f.tl) > 0 ? { tl: Number(f.tl) } : {}), ...(Number(f.km) > 0 ? { km: Number(f.km) } : {}), ...(Number(f.hr) > 0 ? { hr: Number(f.hr) } : {}) });
       st.f = {}; save(); toast("Kaydedildi", "ok"); draw();
     });
+    for (const b of qsa("[data-slip]", root)) b.addEventListener("click", () => { readForm(); slipFor = b.dataset.slip; draw(); window.scrollTo(0, 0); });
     for (const b of qsa("[data-del]", root)) b.addEventListener("click", async () => {
       const e = entries.find((x) => x.id === b.dataset.del);
       if (!(await confirmDialog("Silinsin mi?", core.entryLine(e, cfg), "Sil", true))) return;
@@ -280,7 +348,7 @@ async function setupScreen(ctx) {
       <b>Nasıl çalışır?</b><br>
       1. Şoförü seçin, <b>📤 WhatsApp'tan gönder</b>'e basın.<br>
       2. Şoför bağlantıya dokunur; açılan sayfada tarayıcı menüsünden <b>Ana ekrana ekle</b> der. Artık telefonunda yalnız kendi ekranı açılır.<br>
-      3. Şoför seferleri, mazotu ve fiş fotoğrafını girer, akşam <b>Patrona gönder</b>'e basar (size ya da gruba).<br>
+      3. Şoför seferleri, mazotu, arıza ve giderleri girer; istenirse işe <b>🧾 dijital fiş</b> açar: şantiye şefi telefonda imzalar, PDF WhatsApp'tan şefe gider (şefin adı/telefonu şantiye kartından gelir). Akşam <b>Patrona gönder</b>'e basar (size ya da gruba).<br>
       4. Mesajı SAHAPRO'ya paylaşın ya da Akıllı Asistan'a yapıştırın / WhatsApp toplu işlemeyle alın: kartlar <b>Gemini'siz, birebir</b> dolar; aynı kayıt iki kez gelirse atlanır.<br>
       Müşteri listesi değişince bağlantıyı yeniden gönderin.
     </div>
