@@ -204,6 +204,7 @@ export async function screen(ctx) {
           row.driver_entry_id = m.driver_entry_id;
           if (m.photos) row.photos = m.photos;
           if (m.tonnage && !row.tonnage) row.tonnage = m.tonnage;
+          if (m.digital) row.digital = m.digital;
           if (seen.has(m.driver_entry_id)) { row.issues.push("Bu şoför kaydı daha önce alındı — atlandı"); row.ok = false; row.driverDup = true; }
         };
         drvPlan.meta.forEach((m, i) => tag(v.works[i], m));
@@ -814,6 +815,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (wr0.driver_entry_id) {
           if (existingWorks.some((w) => w.driver_entry_id === wr0.driver_entry_id)) { toast("Şoför kaydı zaten alınmış, atlandı", "err"); continue; }
           fields.driver_entry_id = wr0.driver_entry_id; fields.source = "şoför";
+          if (wr0.digital) Object.assign(fields, { digital_slip_no: wr0.digital.no, slip_receiver: wr0.digital.receiver || "", slip_signed_at: wr0.digital.signed_at || null, slip_status: "Fiş Var", slip_no: fields.slip_no || wr0.digital.no });
         }
         const up = Number(val(c, "unit_price"));
         fields.price_snapshot = up > 0
@@ -826,6 +828,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const savedWork = await db.saveNew("work_records", fields, "Asistan");
         batchWorks[c.dataset.i] = savedWork;
         for (const p of v.works[Number(c.dataset.i)].photos || []) if (files[p]) await db.addAttachment("work", savedWork.id, files[p], { kind: "slip_photo" });
+        { const dg = v.works[Number(c.dataset.i)].digital; if (dg?.sigPhoto != null && files[dg.sigPhoto]) await db.addAttachment("work", savedWork.id, files[dg.sigPhoto], { kind: "signature" }); }
         done.work++;
         const wr = v.works[Number(c.dataset.i)];
         const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";
