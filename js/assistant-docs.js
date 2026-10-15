@@ -227,7 +227,7 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null } = {}) {
     if (mk && wk && mk !== wk) w.issues.push(`Fişte malzeme "${t.material}", işte "${w.material || w.work_type}" — kontrol edin`);
     if (mk && !w.work_type && MATERIAL_WORK_TYPE[mk]) w.work_type = MATERIAL_WORK_TYPE[mk];
     if (t.vehicle_id && w.vehicle_id && t.vehicle_id !== w.vehicle_id)
-      w.issues.push(sameVeh(t.vehicle_id, w.vehicle_id) ? "Aynı plaka iki ayrı araç kartında kayıtlı — Ayarlar → Kart birleştir ile birleştirin" : "Fişteki plaka işteki araçla aynı değil — kontrol edin");
+      w.issues.push(sameVeh(t.vehicle_id, w.vehicle_id) ? "Aynı plaka iki ayrı araç kartında kayıtlı — Ayarlar → Kartları birleştir → Araç ile birleştirin" : "Fişteki plaka işteki araçla aynı değil — kontrol edin");
     if (t.date && w.date !== t.date) {
       if (w.dateUnsure) w.date = t.date;
       else w.issues.push(`Fiş tarihi ${t.date.split("-").reverse().join(".")}, iş tarihi farklı`);

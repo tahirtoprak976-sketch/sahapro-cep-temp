@@ -117,3 +117,69 @@ export function suggestGroups(d) {
     .map((g) => ({ level: g.level, customers: [...g.ids].map((id) => ({ ...byId.get(id), works: usage(id) })).sort((x, y) => y.works - x.works) }))
     .sort((a, b) => (a.level === b.level ? b.customers.length - a.customers.length : a.level === "güçlü" ? -1 : 1));
 }
+
+// ---- Araç / personel kartı birleştirme (aynı plaka iki kartta, aynı kişi iki kartta) ----
+export const CARD_KINDS = {
+  customers: { label: "Müşteri", key: "customer_id", alias: "customer" },
+  vehicles: { label: "Araç / makine", key: "vehicle_id", alias: "vehicle", fill: ["plate", "type", "tank_capacity", "ownership", "contractor_id", "next_maintenance_date"] },
+  personnel: { label: "Personel", key: "personnel_id", alias: "personnel", fill: ["phone", "role", "vehicle_id"] },
+};
+const plateKey = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+export function planMergeCards(d, store, srcIds, targetId) {
+  if (store === "customers") return { store, ...planMerge(d, srcIds, targetId) };
+  const K = CARD_KINDS[store];
+  if (!K) throw Error("Bu kart türü birleştirilemez");
+  const cards = live(d, store);
+  const target = cards.find((c) => c.id === targetId);
+  if (!target) throw Error("Kalacak kart bulunamadı");
+  const sources = cards.filter((c) => srcIds.includes(c.id) && c.id !== targetId);
+  if (!sources.length) throw Error("Birleştirilecek kart seçin");
+  const from = new Set(sources.map((s) => s.id));
+  const updates = [], counts = {}, aliases = [];
+  // ID'ler benzersiz (uuid): bu kartlara işaret eden her alan hedefe çevrilir
+  const KEYS = [K.key, "owner_id", "party_id", "target_id"];
+  const swap = (o) => {
+    let changed = false;
+    const out = { ...o };
+    for (const k of KEYS) if (typeof out[k] === "string" && from.has(out[k])) { out[k] = targetId; changed = true; }
+    return { out, changed };
+  };
+  for (const s of ENTITY_STORES) {
+    if (s === "audit_log") continue;
+    for (const r of live(d, s)) {
+      if (s === store && (from.has(r.id) || r.id === targetId)) continue;
+      let { out, changed } = swap(r);
+      for (const [k, v] of Object.entries(out))
+        if (Array.isArray(v) && v.some((x) => x && typeof x === "object")) {
+          let any = false;
+          const arr = v.map((x) => { if (!x || typeof x !== "object") return x; const w = swap(x); if (w.changed) any = true; return w.out; });
+          if (any) { out[k] = arr; changed = true; }
+        }
+      if (!changed) continue;
+      updates.push({ store: s, before: r, after: out });
+      counts[s] = (counts[s] || 0) + 1;
+    }
+  }
+  // Kalacak kartta boş olan bilgiler (plaka, tür, telefon…) birleşen karttan tamamlanır
+  const patch = {};
+  for (const f of K.fill || []) if (target[f] == null || target[f] === "") { const v = sources.map((x) => x[f]).find((x) => x != null && x !== ""); if (v != null) patch[f] = v; }
+  if (Object.keys(patch).length) updates.push({ store, before: target, after: { ...target, ...patch } });
+  for (const s of sources) if (norm(s.name) !== norm(target.name)) aliases.push({ alias: s.name, target_type: K.alias, target_ref: targetId });
+  return { store, target, sources, updates, counts, newSites: [], aliases, patch };
+}
+
+export function suggestCardGroups(d, store) {
+  if (store === "customers") return suggestGroups(d);
+  const K = CARD_KINDS[store];
+  const cards = live(d, store);
+  const keyOf = (c) => {
+    if (store === "vehicles") { const p = plateKey(c.plate) || plateKey(c.name); return /^\d{2}[A-Z]{1,3}\d{2,4}$/.test(p) ? p : "n:" + norm(c.name); }
+    return "n:" + norm(c.name).split(" ")[0];
+  };
+  const by = new Map();
+  for (const c of cards) { const k = keyOf(c); if (k.length > 3) by.set(k, [...(by.get(k) || []), c]); }
+  const usage = (id) => live(d, "work_records").filter((w) => w[K.key] === id).length;
+  return [...by.values()].filter((g) => g.length > 1)
+    .map((g) => ({ level: "güçlü", customers: g.map((c) => ({ ...c, works: usage(c.id) })).sort((x, y) => y.works - x.works || String(y.plate || "").length - String(x.plate || "").length) }));
+}
