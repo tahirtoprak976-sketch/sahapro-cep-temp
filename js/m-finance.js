@@ -77,30 +77,12 @@ async function hub(ctx) {
   const { root, db } = ctx;
   const today = todayStr();
   const from = today.slice(0, 8) + "01";
-  const [hak, cashR, exp] = await Promise.all([
-    db.getAll("hakedis"),
-    db.getAll("cash_records"),
-    db.getAll("expense_records"),
-  ]);
-  const monthH = hak
-    .filter(
-      (h) =>
-        isActive(h) &&
-        h.status === "Kesinleşti" &&
-        (h.created_date || "") >= from,
-    )
-    .reduce((s, h) => s + (Number(h.grand_total) || 0), 0);
-  const monthT = cashR
-    .filter(
-      (c) =>
-        isActive(c) &&
-        c.cash_type === "Müşteriden Para Alındı" &&
-        c.date >= from,
-    )
-    .reduce((s, c) => s + (Number(c.amount) || 0), 0);
-  const monthG = exp
-    .filter((e) => isActive(e) && e.date >= from)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const d = await db.dumpAll();
+  const { monthlySeries } = await import("./finance-chart.js");
+  const cur = monthlySeries(d, { today, months: 1, fuelRefPrice: await db.metaGet("fuel_ref_price") })[0];
+  const monthH = cur.work + cur.fuelPay;
+  const monthT = cur.collected;
+  const monthG = cur.cost;
   const items = [
     ["#/sozlesmeler", "▤", "Sözleşmeler", "şablonlar + imzalar"],
     ["#/teklif", "📄", "Teklif", "4 teklif türü + PDF"],
@@ -115,10 +97,12 @@ async function hub(ctx) {
     appbar("Finans", "Bu ay") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-      ${financeCard(fmtTL(monthH), "Hakediş ₺", "accent", "#/hakedis")}
+      ${financeCard(fmtTL(monthH), "İş değeri ₺", "accent", "#/cari")}
       ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
-      ${financeCard(fmtTL(monthG), "Gider ₺", "warn", "#/gider")}
+      ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
+    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span class="strong ${cur.profit < 0 ? "danger" : ""}">${fmtTL(cur.profit)} ₺</span></div>
+      <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
     </div>`;
@@ -1296,52 +1280,66 @@ async function expenses(ctx) {
   if (sub === "new") return expenseForm(ctx);
   const { root, db, names, query } = ctx;
   const q = query.q || "";
-  let rows = (await db.getAll("expense_records"))
-    .filter(isActive)
-    .sort((a, b) => (b.date < a.date ? -1 : 1));
-  rows = rows.filter((r) =>
-    matchSearch(
-      `${r.category} ${r.description || ""} ${names.personnel[r.personnel_id] || ""}`,
-      q,
-    ),
-  );
+  const kind = query.k || "";
+  const per = query.p || "month";
+  const today = todayStr();
+  const from = per === "month" ? today.slice(0, 8) + "01" : per === "3m" ? addDays(today, -90) : "";
+  const d = await db.dumpAll();
+  const { costRows, costTotals, COST_KINDS } = await import("./costs-core.js");
+  const all = costRows(d, { from, to: today, fuelRefPrice: await db.metaGet("fuel_ref_price") });
+  const tot = costTotals(all);
+  const expenseRecs = (d.expense_records || []).filter(isActive);
+  let rows = all.filter((r) => (!kind || r.kind === kind) && matchSearch(`${r.label} ${r.sub || ""} ${COST_KINDS[r.kind]}`, q));
   const attMap = await db.attachmentsCountMap();
+  const link = (k, p) => "#/gider?" + new URLSearchParams({ ...(k ? { k } : {}), p, ...(q ? { q } : {}) }).toString();
+  const chip = (k, label, amt) => `<button class="chip ${kind === k ? "on" : ""}" data-go="${link(k, per)}">${label}${amt != null ? ` <b>${fmtTL(amt)}</b>` : ""}</button>`;
   root.innerHTML =
-    appbar("Giderler", `${rows.length} kayıt`) +
+    appbar("Masraflar", `${rows.length} kayıt · ${fmtTL(rows.reduce((n, r) => n + r.amount, 0))} ₺`) +
     `
     <div style="height:10px"></div>
-    ${searchBar("Kategori, açıklama…", q)}
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      ${[["month", "Bu ay"], ["3m", "Son 3 ay"], ["all", "Tümü"]].map(([p, t]) => `<button class="chip ${per === p ? "on" : ""}" data-go="${link(kind, p)}">${t}</button>`).join("")}
+    </div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}
+    </div>
+    <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış. Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
+    ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
     <div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/gider/new">+ Gider</button></div>`;
   const listEl = qs("[data-list]", root);
-  if (!rows.length) listEl.innerHTML = emptyState("💸", "Gider yok");
+  const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾" };
+  if (!rows.length) listEl.innerHTML = emptyState("💸", per === "month" ? "Bu ay masraf yok" : "Masraf yok");
   else
-    pagedRender(listEl, rows, (e) =>
-      li({
-        id: e.id,
-        ic: "💸",
-        t1: `${esc(e.category || "Gider")} · ${fmtTL(e.amount)} ₺`,
-        t2: `${trDate(e.date)} · ${esc(names.personnel[e.personnel_id] || "—")} · ${esc(e.payment_method || "")}${attMap[e.id] ? " · 📷" + attMap[e.id] : ""}${e.description ? " · " + esc(e.description) : ""}`,
-        badgeHtml:
-          e.payment_method === "Personel Ödedi"
+    pagedRender(listEl, rows, (r) => {
+      const e = r.kind === "gider" ? expenseRecs.find((x) => x.id === r.id) : null;
+      return li({
+        id: r.kind === "gider" ? r.id : "",
+        href: r.kind === "gider" ? "" : r.href,
+        ic: IC[r.kind],
+        t1: `${esc(r.label)} · ${fmtTL(r.amount)} ₺`,
+        t2: `${trDate(r.date)} · ${esc(COST_KINDS[r.kind])}${r.sub ? " · " + esc(r.sub) : ""}${e && attMap[e.id] ? " · 📷" + attMap[e.id] : ""}`,
+        badgeHtml: e
+          ? e.payment_method === "Personel Ödedi"
             ? statusBadge(e.reimbursement_status || "Bekliyor")
             : e.receipt === "Hayır"
               ? badge("Fişsiz", "warn")
-              : "",
-      }),
-    );
+              : ""
+          : "",
+      });
+    });
   let st;
   qs("[data-search]", root).addEventListener("input", (ev) => {
     clearTimeout(st);
     st = setTimeout(
-      () => go("#/gider?q=" + encodeURIComponent(ev.target.value)),
+      () => go("#/gider?" + new URLSearchParams({ ...(kind ? { k: kind } : {}), p: per, q: ev.target.value }).toString()),
       450,
     );
   });
   listEl.addEventListener("click", async (e) => {
     const card = e.target.closest(".li");
     if (!card) return;
-    const rec = rows.find((r) => r.id === card.dataset.rid);
+    const rec = expenseRecs.find((r) => r.id === card.dataset.rid);
     if (rec) await expenseDetail(db, rec, names);
   });
 }

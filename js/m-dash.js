@@ -374,7 +374,7 @@ async function manager(ctx) {
 
   // Kârlılık (bu ay)
   const from = today.slice(0, 8) + "01";
-  const prof = profitability(data, { from, to: today });
+  const curM = monthlySeries(data, { today, months: 1, fuelRefPrice: await db.metaGet("fuel_ref_price") })[0];
 
   root.innerHTML =
     appbar("Yönetici Paneli", trDate(today)) +
@@ -404,12 +404,14 @@ async function manager(ctx) {
     <div class="section-title">Tahmini Operasyon Sonucu — Bu Ay</div>
     <div class="card">
       <div class="tiny muted" style="margin-bottom:6px">Muhasebe net kârı değildir; saha verilerinden tahmindir.</div>
-      ${kv("Gelir (kesinleşen hakediş)", fmtTL(prof.gelir) + " ₺")}
-      ${kv("Yakıt", fmtTL(prof.yakit) + " ₺ (" + fmtNum(prof.yakitLt) + " Lt)")}
-      ${kv("Gider", fmtTL(prof.gider) + " ₺")}
-      ${kv("Bakım/Arıza", fmtTL(prof.bakim) + " ₺")}
+      ${kv("İş değeri (fiyatlı işler" + (curM.fuelPay ? " + mazot karşılığı" : "") + ")", fmtTL(curM.work + curM.fuelPay) + " ₺")}
+      ${kv("Yakıt", fmtTL(curM.fuel) + " ₺")}
+      ${kv("Gider", fmtTL(curM.expense) + " ₺")}
+      ${kv("Bakım/Arıza", fmtTL(curM.maint) + " ₺")}
+      ${kv("Esnaf alışı", fmtTL(curM.esnaf) + " ₺")}
       <div class="divider"></div>
-      ${kv("TAHMİNİ SONUÇ", fmtTL(prof.sonuc) + " ₺")}
+      ${kv("TAHMİNİ SONUÇ", fmtTL(curM.profit) + " ₺")}
+      ${curM.unpriced ? `<div class="muted tiny">⚠ ${curM.unpriced} işin fiyatı yok; sonuç eksik olabilir.</div>` : ""}
     </div>`;
 }
 
@@ -748,7 +750,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.47")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.48")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
