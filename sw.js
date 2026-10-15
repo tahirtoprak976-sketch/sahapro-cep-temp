@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261015-mazot-litre-1";
+const CACHE = "sahapro-solo-v3-20261015-wa-toplu-1";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./",
@@ -53,6 +53,9 @@ const ASSETS = [
   "./js/yard.js",
   "./js/fuel-pay.js",
   "./js/collect.js",
+  "./js/unzip.js",
+  "./js/wa-bulk-core.js",
+  "./js/wa-bulk.js",
   "./js/quote-core.js",
   "./js/quote-calc.js",
   "./js/collect-core.js",
@@ -103,6 +106,17 @@ self.addEventListener("fetch", (event) => {
     (async () => {
       try {
         const fd = await event.request.formData();
+        // WhatsApp "Sohbeti dışa aktar" → SAHAPRO: sohbet dosyası (.txt / .zip) + medya → WhatsApp toplu işleme
+        const all = fd.getAll("photos").filter((f) => f && f.size);
+        const chat = all.find((f) => /\.zip$/i.test(f.name || "") || /zip/.test(f.type || "")) || all.find((f) => /\.txt$/i.test(f.name || "") || f.type === "text/plain");
+        if (chat) {
+          await caches.delete("sahapro-wa");
+          const wa = await caches.open("sahapro-wa");
+          await wa.put("./__wa/source", new Response(chat, { headers: { "x-name": encodeURIComponent(chat.name || "sohbet.txt"), "content-type": chat.type || "application/octet-stream" } }));
+          let j = 0;
+          for (const f of all) if (f !== chat) await wa.put(`./__wa/media-${j++}`, new Response(f, { headers: { "x-name": encodeURIComponent(f.name || "medya"), "content-type": f.type || "application/octet-stream" } }));
+          return Response.redirect("./index.html#/whatsapp-toplu?shared=1", 303);
+        }
         const cache = await caches.open("sahapro-share");
         for (const k of await cache.keys()) await cache.delete(k);
         const text = [fd.get("title"), fd.get("text"), fd.get("url")].filter(Boolean).join("\n");

@@ -37,7 +37,13 @@
           "name": "photos",
           "accept": [
             "image/*",
-            "audio/*"
+            "audio/*",
+            "application/pdf",
+            "application/zip",
+            "application/x-zip-compressed",
+            "text/plain",
+            ".zip",
+            ".txt"
           ]
         }
       ]

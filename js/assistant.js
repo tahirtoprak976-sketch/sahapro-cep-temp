@@ -23,10 +23,12 @@ export async function screen(ctx) {
   root.innerHTML =
     appbar("Akıllı Asistan", "Gemini · işletmenizi tanır") +
     `<div style="height:10px"></div>
+    ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
     ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Önce Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
     <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/danisman">🎓 Yönetim Danışmanı — araç / müşteri karnesi ve öneriler</button>
     <button class="btn block" style="margin-bottom:8px" data-go="#/teklif-hesap">🧮 Teklif Asistanı — kaça vermeliyim?</button>
+    ${ctx.query?.wa ? "" : '<button class="btn block" style="margin-bottom:8px" data-go="#/whatsapp-toplu">💬 WhatsApp Grubu — günün tüm mesajlarını toplu işle</button>'}
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
       <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>
@@ -907,9 +909,20 @@ async function save(ctx, out, v, d, { message, files }) {
     const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
+    // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır
+    let waNext = "";
+    if (ctx.query?.wa) {
+      const wa = await db.metaGet("wa_bulk_pending");
+      if (wa?.keys?.length) {
+        const { markDone } = await import("./wa-bulk-core.js");
+        await db.metaSet("wa_bulk_done", markDone((await db.metaGet("wa_bulk_done")) || {}, wa.keys.map((key) => ({ key })), todayStr()));
+        await db.metaSet("wa_bulk_pending", null);
+        waNext = '<button class="btn primary block" style="margin-top:8px" data-go="#/whatsapp-toplu">💬 Bu parça işlendi — WhatsApp listesine dön ›</button>';
+      }
+    }
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
-      (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "");
+      (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;
     bindUndo(ctx, out);
     qs("[data-msg]", ctx.root).value = "";
     await db.metaSet("assistant_draft", "");

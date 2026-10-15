@@ -1305,6 +1305,7 @@ async function whatsapp(ctx) {
   root.innerHTML =
     appbar("WhatsApp Ayrıştırıcı", "Mesajı yapıştır → taslak → sen onayla") +
     `
+    <div class="card tap" data-go="#/whatsapp-toplu" style="border-left:4px solid #25d366;margin-top:10px"><div class="row between"><span><b>💬 WhatsApp grubunu toplu işle</b><br><span class="muted small">Grubu dışa aktarın; yalnız yeni mesajlar, fişleriyle birlikte asistana gider</span></span><span class="muted">›</span></div></div>
     <div class="notice info"><span>ℹ</span><span>Taslaklar otomatik kaydedilmez; her birini tek tek onaylarsın. Belirsizler "KONTROL GEREKLİ" işaretlenir. Ham mesaj saklanır.</span></div>
     <div class="slip-panel"><p>Eski mesajları tarih ve fiyat kontrolüyle aktarmak için:</p><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div class="field"><label>Mesaj metni</label><textarea data-raw style="min-height:130px" placeholder="U55 sevgi sokak ahmet bey 1 yevmiye&#10;34UL9492 leda 3 sefer hafriyat"></textarea></div>
     <div class="row" style="gap:8px;margin-bottom:12px">
