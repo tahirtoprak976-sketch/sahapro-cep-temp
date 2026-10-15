@@ -203,3 +203,20 @@ export function customerBalances(d) {
   }
   return { bal, unbilled };
 }
+
+// Cari'de 0 görünmesinin nedenleri: fiyatı girilmemiş işler (alacağa sayılamaz) — iş türü + birime göre gruplu
+export function unpricedGroups(d, customerId) {
+  const billed = new Set(live(d, "hakedis").filter((h) => h.status === "Kesinleşti").flatMap((h) => (h.items || []).map((i) => i.work_record_id)));
+  const groups = new Map();
+  for (const w of live(d, "work_records")) {
+    if (w.customer_id !== customerId || billed.has(w.id) || w.price_snapshot?.locked) continue;
+    if (workAmount(w) > 0 || Number(w.customer_fuel_allowance_l) > 0 || w.price_snapshot?.price_source === "Mazot karşılığı" || w.price_snapshot?.price_source === "İç iş (kendi depo)") continue;
+    const key = (w.work_type || "Diğer") + "|" + (w.unit || "");
+    const g = groups.get(key) || { key, work_type: w.work_type || "Diğer", unit: w.unit || "", works: [], qty: 0, vehicles: new Set() };
+    g.works.push(w);
+    g.qty = Math.round((g.qty + (Number(w.quantity) || 0)) * 100) / 100;
+    if (w.vehicle_id) g.vehicles.add(w.vehicle_id);
+    groups.set(key, g);
+  }
+  return [...groups.values()].map((g) => ({ ...g, vehicles: [...g.vehicles] })).sort((a, b) => b.works.length - a.works.length);
+}
