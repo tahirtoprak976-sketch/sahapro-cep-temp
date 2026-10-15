@@ -84,9 +84,18 @@ export function applyYard(d, fields) {
 }
 
 // Mesaj kendi depodan çıkışı mı anlatıyor? ("şantiyeden 2 sefer çöp İBB", "depodan boluca")
-export const FROM_YARD = /(?:^|\s)(?:santiyeden|depodan|sahadan|depomuzdan|bizim (?:depo|saha)dan)(?:\s|$)/;
-export const TO_YARD = /(?:^|\s)(?:depoya|santiyeye|depomuza|bizim (?:depo|saha)ya|sahaya) (?:dokul|bosalt|getir|indir)/;
+export const FROM_YARD = /(?:^|\s)(?:santiyeden|depodan|sahadan|depomuzdan|depodaki|stoktan|stoktaki|depodakini|bizim (?:depo|saha)dan|bizim (?:depo|saha)daki)(?:\s|$)/;
+// Kesin çıkış ifadeleri: "depodaki stoktan", "depodan" — müşteri adı yazılmış olsa bile iç iştir ("şantiyeden" ise müşterinin şantiyesi olabilir)
+export const FROM_YARD_STRONG = /(?:^|\s)(?:depodan|depomuzdan|depodaki|stoktan|stoktaki|bizim depo(?:dan|daki))(?:\s|$)/;
+export const TO_YARD = /(?:^|\s)(?:depoya|santiyeye|depomuza|bizim (?:depo|saha)ya|sahaya|stoga)(?:\s\S+){0,4}\s(?:dokul|dok|bosalt|getir|indir|birak)/;
 export function yardHint(text) {
   const t = ` ${norm(text)} `;
-  return { out: FROM_YARD.test(t), in: TO_YARD.test(t) || /depoya dokuldu|depoya dokduk|depoya bosaltildi/.test(t) };
+  // "depoya 5000 litre mazot boşaltıldı" yakıt tankıdır, malzeme deposu değil
+  const fuel = /(?:^|\s)(?:mazot|motorin|yakit|litre|lt|tanker|benzin)(?:\s|$)/.test(t);
+  return { out: !fuel && FROM_YARD.test(t), strong: !fuel && FROM_YARD_STRONG.test(t), in: !fuel && (TO_YARD.test(t) || /depoya dokuldu|depoya dokduk|depoya bosaltildi|depoya birakildi/.test(t)) };
+}
+// Mesaj kendi depodan söz ediyor mu (depo henüz kurulmadıysa asistan kendiliğinden kurar)
+export function mentionsYard(text) {
+  const h = yardHint(text);
+  return h.in || h.out;
 }

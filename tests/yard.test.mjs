@@ -43,3 +43,12 @@ assert.ok(todayBoard(big, { today, lastBackupAt: new Date().toISOString() }).ite
 assert.ok(!todayBoard(d, { today, lastBackupAt: new Date().toISOString() }).items.some((i) => /Kendi depoda/.test(i.text)));
 assert.equal(runAskTool(d, "yard_stock", {}, today).depoda_kamyonet_yuku, 7);
 console.log("yard PASS");
+{
+  const { yardHint } = await import("../js/yard-core.js");
+  assert.ok(yardHint("1 seferi bizim depoya döküldü").in);
+  assert.ok(yardHint("depoya 3 sefer moloz döktük").in);
+  const h = yardHint("depodaki stoktan moloz 1 sefer bolluca döküm"); assert.ok(h.out && h.strong);
+  assert.ok(!yardHint("depoya 5000 litre mazot boşaltıldı").in);
+  assert.ok(!yardHint("1 seferi göktürk son durak dolguya döküldü").in);
+  console.log("yard hint ok");
+}
