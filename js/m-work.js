@@ -178,6 +178,8 @@ async function workForm(ctx, editId) {
       };
     }
   }
+  // Müşteri kartından "+ Bu müşteriye iş"
+  if (!editId && !prefill && query.customer_id) prefill = { customer_id: query.customer_id };
   // Taslak autosave
   if (!editId && !prefill) {
     const draft = await db.draftGet("work");
