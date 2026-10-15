@@ -141,7 +141,8 @@ async function fuelForm(ctx) {
     db.listActive("personnel"),
     db.listActive("customers"),
   ]);
-  const fuelCustomers = allCust.filter((c) => Number(c.fuel_per_trip) > 0);
+  const { hasFuelRules } = await import("./assistant-rules.js");
+  const fuelCustomers = allCust.filter(hasFuelRules);
   root.innerHTML =
     appbar("+ Yakıt", "Litre zorunlu; fiyat/tutar opsiyonel") +
     `
@@ -255,6 +256,7 @@ async function tank(ctx) {
     db.getAll("fuel_records"),
     db.listActive("customers"),
   ]);
+  const { hasFuelRules: hasFuelRulesT } = await import("./assistant-rules.js");
   const uncosted = fuels.filter((f) => isActive(f) && f.fuel_source === "Depo Tankı" && !(Number(f.total) > 0)).length;
 
   root.innerHTML =
@@ -291,7 +293,7 @@ async function tank(ctx) {
           ${fNum("Toplam ₺ (girişte)", "total", "", { step: "any" })}
         </div>
         <div data-in>${fSelect("Veresiye petrolcü (ops.)", "supplier_id", suppliers.map((x) => ({ v: x.id, t: x.name })), "")}</div>
-        <div data-in>${fSelect("Müşteriden (sefer karşılığı mazot, ops.)", "customer_id", custs.filter((c) => Number(c.fuel_per_trip) > 0).map((x) => ({ v: x.id, t: x.name })), "")}</div>
+        <div data-in>${fSelect("Müşteriden (sefer karşılığı mazot, ops.)", "customer_id", custs.filter(hasFuelRulesT).map((x) => ({ v: x.id, t: x.name })), "")}</div>
         <div class="formgrid2">
           ${fSelect(
             "Personel",

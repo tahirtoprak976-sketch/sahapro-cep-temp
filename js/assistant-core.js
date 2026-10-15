@@ -5,7 +5,7 @@ import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PE
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
-import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates } from "./assistant-rules.js";
+import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates, fuelRulesOf } from "./assistant-rules.js";
 import { yardSite, yardCustomer, yardHint } from "./yard-core.js";
 
 export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
@@ -235,7 +235,7 @@ export function assistantContext(d, today = todayStr(), message = "") {
     note: big ? "Müşteri listesinin yalnız mesajla ilgili ve son çalışılan kısmı gönderildi; listede görmediğin adı new_customer olarak yaz, uygulama tüm listede kendisi arar." : undefined,
     customers: live(d, "customers").filter((c) => okC(c.id)).map((c) => (c.parent_customer_id ? [c.id, c.name, c.parent_customer_id] : [c.id, c.name])),
     own_yard: yardSite(d) && yardCustomer(d) ? { dump_site_id: yardSite(d).id, internal_customer_id: yardCustomer(d).id } : undefined,
-    customer_fuel_rules: live(d, "customers").filter((c) => okC(c.id) && Number(c.fuel_per_trip) > 0).map((c) => [c.id, Number(c.fuel_per_trip) + " L/sefer", c.fuel_rule_match || "tüm seferleri"]),
+    customer_fuel_rules: live(d, "customers").filter((c) => okC(c.id)).flatMap((c) => fuelRulesOf(c).map((r) => [c.id, `${r.per} L/${String(r.unit || "Sefer").toLocaleLowerCase("tr-TR")}`, r.match || "tüm işleri", r.only_pay !== false ? "ücret yalnız mazot" : "para + mazot"])),
     sites: live(d, "sites").filter((s) => okC(s.customer_id)).map((s) => [s.id, s.name, s.customer_id]),
     vehicles: live(d, "vehicles").map((v) => [v.id, v.name, v.plate || "", v.type || ""]),
     personnel: live(d, "personnel").map((p) => (p.vehicle_id ? [p.id, p.name, p.vehicle_id] : [p.id, p.name])),

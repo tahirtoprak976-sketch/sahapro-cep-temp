@@ -105,3 +105,22 @@ console.log("assistant-rules PASS");
   assert.equal(v5.tankIn[0].customer_id, "KL"); assert.equal(v5.tankIn[0].credit, false); assert.equal(v5.tankIn[0].ok, true);
   console.log("mazot-odeme PASS");
 }
+// iskelet: birden çok kural, birim, tarih aralığı, şantiye adında eşleşme
+{
+  const { applyFuelPay, fuelRulesOf, matchFuelRule } = await import("../js/assistant-rules.js");
+  const dd = { ...d, sites: [{ id: "SM", name: "Kılıç Hafriyat Maslak", customer_id: "KL" }],
+    customers: [{ id: "KL", name: "Kılıç Hafriyat", fuel_rules: [
+      { id: "r1", per: 75, unit: "Sefer", match: "gravak maslak", only_pay: true },
+      { id: "r2", per: 20, unit: "Saat", match: "", only_pay: false, from: "2026-10-01" } ] }] };
+  // "maslak" yalnız şantiye adında: yine eşleşir (kullanıcının eski işi)
+  let f = applyFuelPay(dd, { customer_id: "KL", site_id: "SM", unit: "Sefer", quantity: 1, material: "Gravak", dump_area: "Çatalca Binkılıç", date: "2026-10-10", price_snapshot: { amount: 3000 } });
+  assert.equal(f.customer_fuel_allowance_l, 75); assert.equal(f.price_snapshot.amount, 0); assert.equal(f.fuel_rule_id, "r1");
+  // saat kuralı: para + mazot → fiyat korunur
+  f = applyFuelPay(dd, { customer_id: "KL", unit: "Saat", quantity: 8, date: "2026-10-12", price_snapshot: { amount: 8000 } });
+  assert.equal(f.customer_fuel_allowance_l, 160); assert.equal(f.price_snapshot.amount, 8000);
+  // tarih aralığı dışında uygulanmaz
+  assert.equal(matchFuelRule(dd, { customer_id: "KL", unit: "Saat", quantity: 8, date: "2026-09-20" }), null);
+  // eski tek alanlı kart okunur
+  assert.equal(fuelRulesOf({ fuel_per_trip: 75, fuel_rule_match: "gravak" })[0].per, 75);
+  console.log("mazot-iskelet PASS");
+}

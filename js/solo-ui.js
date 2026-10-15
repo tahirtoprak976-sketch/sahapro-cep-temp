@@ -1408,39 +1408,45 @@ export async function augment(ctx) {
     route = parts[0],
     id = parts[1];
   if (["new", "edit"].some((p) => parts.includes(p))) return;
-  // Müşteri kartı: sefer karşılığı mazot hesabı (Kılıç Hafriyat: sefer başı 75 L, ücret yalnız mazot)
+  // Müşteri kartı: mazotla ödeme kuralları ve mazot hesabı (ör. Kılıç Hafriyat: 75 L/sefer, ücret yalnız mazot)
   if (route === "musteriler" && id) {
     try {
       const me = await db.get("customers", id);
-      if (me && Number(me.fuel_per_trip) > 0) {
-        const { customerFuelLedger } = await import("./assistant-rules.js");
-        const L = customerFuelLedger(await db.dumpAll(), id);
+      const R = await import("./assistant-rules.js");
+      const d0 = await db.dumpAll();
+      const rules = R.fuelRulesOf(me);
+      const L = R.customerFuelLedger(d0, id);
+      if (me && (rules.length || L.works)) {
+        const unitTxt = Object.entries(L.units || {}).map(([u, q]) => `${q} ${String(u).toLocaleLowerCase("tr-TR")}`).join(", ") || "0 iş";
         const html = `<section class="card"><h2>⛽ Mazot hesabı</h2>
-          <p class="small">Sefer başı ${esc(String(me.fuel_per_trip))} L${me.fuel_rule_match ? " (" + esc(me.fuel_rule_match) + ")" : ""} · ücret: ${me.fuel_only_pay === false ? "para + mazot" : "yalnız mazot"}</p>
-          <p><b>${L.trips}</b> sefer → <b>${L.earned} L</b> hak edildi · <b>${L.received} L</b> alındı</p>
+          ${rules.map((r) => `<p class="small">• ${esc(String(r.per))} L / ${esc(String(r.unit || "Sefer").toLocaleLowerCase("tr-TR"))}${r.match ? " · " + esc(r.match) : " · tüm işleri"} · ${r.only_pay !== false ? "ücret yalnız mazot" : "para + mazot"}${r.from || r.to ? " · " + esc(r.from || "…") + " → " + esc(r.to || "…") : ""}</p>`).join("") || '<p class="small muted">Kural yok (Kartı Düzenle → Mazotla ödeme kuralları)</p>'}
+          <p><b>${esc(unitTxt)}</b> → <b>${L.earned} L</b> hak edildi · <b>${L.received} L</b> alındı</p>
           <p style="font-size:17px">${L.balance > 0 ? `Kalan mazot alacağı: <b>${L.balance} L</b>` : L.balance < 0 ? `Fazla alınan: <b>${-L.balance} L</b>` : "Hesap kapalı ✓"}</p>
-          <p class="muted small">Mazot alınca: Yakıt → kaynak "Müşteri Verdi" (araca) ya da Depo → GİRİŞ "Müşteriden" (depoya). Asistana "Kılıç'tan 300 litre mazot aldık" yazabilirsiniz.</p>
-          <button class="btn block" data-fuelapply>Eski işlere uygula (mazot karşılığını hesapla)</button></section>`;
+          <p class="muted small">Mazot alınca: Yakıt → kaynak "Müşteri Verdi" (araca) ya da Depo Tankı → GİRİŞ "Müşteriden" (depoya). Asistana "${esc(me.name)}'tan 300 litre mazot aldık" yazabilirsiniz.</p>
+          ${rules.length ? '<button class="btn block" data-fuelapply>Eski işlere uygula (kurala uyanları hesapla)</button><div data-fuelapply-out class="small" style="margin-top:6px"></div>' : ""}</section>`;
         const tabs = root.querySelector("[data-tabs]");
         if (tabs) tabs.insertAdjacentHTML("beforebegin", html);
         else root.insertAdjacentHTML("beforeend", html);
         root.querySelector("[data-fuelapply]")?.addEventListener("click", async () => {
-          const { applyFuelPay } = await import("./assistant-rules.js");
           const d = await db.dumpAll();
-          let n = 0, fail = 0;
-          for (const w of (d.work_records || []).filter((x) => !x.deleted_at && x.customer_id === id)) {
-            const text = [w.description, w.material, w.quarry, w.dump_area, w.internal_note].filter(Boolean).join(" ");
-            const f = applyFuelPay(d, w, text);
+          const mine = (d.work_records || []).filter((x) => !x.deleted_at && x.customer_id === id);
+          let n = 0, fail = 0, matched = 0;
+          const miss = [];
+          for (const w of mine) {
+            const f = R.applyFuelPay(d, w, "");
+            if (f.customer_fuel_allowance_l) matched++;
+            else if (miss.length < 5) miss.push(`${w.date} · ${w.quantity} ${w.unit || ""} · ${w.material || w.work_type || ""}`);
             const same = Number(f.customer_fuel_allowance_l || 0) === Number(w.customer_fuel_allowance_l || 0) && f.price_snapshot?.amount === w.price_snapshot?.amount;
             if (same) continue;
             try {
-              await db.saveExisting("work_records", w, { customer_fuel_allowance_l: f.customer_fuel_allowance_l || null, price_snapshot: f.price_snapshot }, "Mazot karşılığı uygulandı");
+              await db.saveExisting("work_records", w, { customer_fuel_allowance_l: f.customer_fuel_allowance_l || null, fuel_rule_id: f.fuel_rule_id || null, price_snapshot: f.price_snapshot }, "Mazot karşılığı uygulandı");
               n++;
             } catch (e) { fail++; }
           }
-          const { toast } = await import("./ui.js");
-          toast(`${n} iş güncellendi${fail ? `, ${fail} iş hakedişe bağlı olduğu için değişmedi` : ""}`, n ? "ok" : "err");
-          if (n) location.reload();
+          const out = root.querySelector("[data-fuelapply-out]");
+          out.innerHTML = `${mine.length} işten ${matched} tanesi kurala uydu; ${n} iş güncellendi${fail ? `, ${fail} iş hakedişe bağlı olduğu için değişmedi` : ""}.` +
+            (miss.length ? `<div class="muted tiny" style="margin-top:4px">Kurala uymayan örnekler (birim veya kelimeler tutmuyor): ${miss.map(esc).join(" | ")}</div>` : "");
+          if (n) setTimeout(() => location.reload(), 1800);
         });
       }
     } catch (e) {}
