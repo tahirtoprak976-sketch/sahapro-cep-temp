@@ -133,6 +133,16 @@ export async function screen(ctx) {
     out.innerHTML = '<div class="muted small" style="padding:10px">Gemini okuyor…</div>';
     try {
       const { geminiJson, blobToBase64, shrink, audioToWav } = await import("./ai-gemini.js");
+      // Mesaj kendi depodan söz ediyor ama depo henüz kurulmadıysa: kendiliğinden kurulur (iç müşteri + depo sahası)
+      {
+        const yc0 = await import("./yard-core.js");
+        const d0 = await db.dumpAll();
+        if (yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
+          if (!yc0.yardSite(d0)) await db.saveNew("dump_sites", { name: yc0.YARD_SITE_NAME, own_yard: true, note: "Kendi depo / stok sahası (asistan kurdu)" }, "Kendi depo kuruldu");
+          if (!yc0.yardCustomer(d0)) await db.saveNew("customers", { name: yc0.YARD_CUSTOMER_NAME, internal: true, note: "Depodan döküm sahalarına giden iç seferler. Hakedişe para yazılmaz." }, "Kendi depo kuruldu");
+          toast("Kendi depo kuruldu (Ayarlar → Kendi depo)", "ok");
+        }
+      }
       const d = await db.dumpAll();
       const today = todayStr();
       const facts = await businessFacts(d, today);

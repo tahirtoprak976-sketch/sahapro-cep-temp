@@ -269,7 +269,9 @@ export function assistantSystem(rules = "") {
     "Mesajda geçen kişi/firma adı (örn. 'Süleyman Kaya', 'Ahmet Bey', 'Yıldız İnşaat') personel, araç, ocak veya döküm yeri değilse BÜYÜK İHTİMALLE MÜŞTERİDİR: listede varsa onu seç, yoksa new_customer olarak yaz. Müşteriyi boş bırakıp soru sormak yerine en olası müşteriyi yaz.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
     "TAŞERON: customers satırında 3. değer ana firma ID'sidir (o müşteri, ana firmanın taşeronudur). Taşeronun ADI mesajda geçmiyorsa işi ANA FİRMAYA yaz (geçmiş işlere bakarak taşeron tahmin etme); adı geçiyorsa o öder. 'X'in inşaatında/şantiyesinde Y'ye çalışıldı' → işi isteyen Y'dir: customer_id=Y (listede yoksa new_customer=Y ve new_customer_parent_id=X'in ID'si); X'in şantiyesini site_id'ye yazabilirsin. Meslek adı (kuyucu, camcı, sıvacı) tek başına geçiyorsa ve listede birden fazla benzer kart varsa tahmin etme, questions'a sor.",
-    "KENDİ DEPO (own_yard varsa): işletmenin kendi deposu/stok sahası vardır, personel buna 'şantiye' ya da 'depo' der. 'depoya / şantiyeye döküldü' → dump_site_id=own_yard.dump_site_id (müşteri yine işi veren müşteridir). 'şantiyeden / depodan X'e N sefer çöp/moloz' → depodan çıkıştır: customer_id=own_yard.internal_customer_id, dump_site_id=gittiği döküm sahası.",
+    "KENDİ DEPO (own_yard varsa): işletmenin kendi deposu/stok sahası vardır, personel buna 'şantiye', 'depo', 'bizim depo', 'stok' der. 'depoya / bizim depoya / şantiyeye döküldü' → dump_site_id=own_yard.dump_site_id (müşteri yine işi veren müşteridir). 'şantiyeden / depodan / depodaki stoktan X'e N sefer çöp/moloz' → depodan çıkıştır: customer_id=own_yard.internal_customer_id, material=moloz/çöp/hafriyat, to_place=gittiği döküm sahası, to_is_dump=true.",
+    "BÖLÜNMÜŞ SEFERLER: 'Müşteri X, araç Y; 1 seferi depoya, 1 seferi Göktürk dolguya döküldü' → AYNI müşteri ve araçla AYRI işler yaz (her biri 1 sefer, kendi döküm yeriyle; quote her seferin kendi parçası). Müşteri ve araç bir kez yazılıp sonraki cümlelerde tekrar edilmeyebilir; sonraki seferlere de uygula. Yalnız 'depodan / stoktan' diye başlayan cümle iç iştir.",
+    "Döküm/dolgu yeri listede yoksa to_place'e adını yaz ve to_is_dump=true ('Göktürk son durak dolgu' → to_place='Göktürk Son Durak Dolgu'; 'Bolluca döküm' → 'Bolluca').",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
     "Sefer/gidiş/tur=Sefer, saat=Saat, yevmiye/gün=Yevmiye. İş türü listesi: " + WORK_TYPES.join(", ") + ".",
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
@@ -487,7 +489,9 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     {
       const ys = yardSite(d), yc = yardCustomer(d);
       const h = ys && yc ? yardHint(w.quote && quoteFound(w.quote, message) ? String(w.quote) : message) : { out: false, in: false };
-      if (h.out && (!r.customer_id || r.customerGuess || r.customer_id === yc.id) && !(r.customer_id && !r.customerGuess && r.customer_id !== yc.id)) {
+      const override = h.out && h.strong && r.customer_id && !r.customerGuess && r.customer_id !== yc.id;
+      if (h.out && (override || !r.customer_id || r.customerGuess || r.customer_id === yc.id)) {
+        if (override) issues.push(`"${live(d, "customers").find((c) => c.id === r.customer_id)?.name || "Müşteri"}" yerine kendi depo (iç iş) seçildi — "depodan / stoktan" yazıyor; yanlışsa müşteriyi değiştirin`);
         r.customer_id = yc.id; r.new_customer = null; r.site_id = null;
         if (r.customerGuess) { r.customerGuess = false; for (let i = issues.length - 1; i >= 0; i--) if (/Müşteri (mesajda yazmıyor|belirtilmemiş|seçilmeli)/.test(issues[i])) issues.splice(i, 1); }
         for (let i = issues.length - 1; i >= 0; i--) if (issues[i] === "Müşteri seçilmeli") issues.splice(i, 1);
