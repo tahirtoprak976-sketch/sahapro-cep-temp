@@ -116,3 +116,24 @@ console.log("assistant-docs PASS");
   mergeTicketsIntoWorks(vv, { photoCount: 1 }); assert.ok(vv.works[0].issues.some((x) => /26.74 ton/.test(x)));
   console.log("is-fis-birlesik PASS");
 }
+// malzeme: fişten okunur, işle çelişirse uyarı, boş iş türü doldurulur
+{
+  const { materialKind, mergeTicketsIntoWorks, validateTickets: vt } = await import("../js/assistant-docs.js");
+  assert.equal(materialKind("06 MM KUM"), "kum"); assert.equal(materialKind("MICIR 0-5"), "mıcır"); assert.equal(materialKind("Süleyman Kaya"), null); assert.equal(materialKind("Öztaş"), null);
+  assert.equal(materialKind("Ocak taşı"), "taş");
+  const tk = vt({ tickets: [{ photo: 0, ticket_no: "T1", date: "2026-10-13", plate: "34 ABC 123", material: "mıcır" }] }, { d, today, photoTexts: ["Fiş T1 13.10.2026 34ABC123 Malzeme: 06 MM KUM 26,74 ton"], photoCount: 1 });
+  assert.equal(tk[0].material, "Kum", "fişte kum yazıyor: model mıcır dese de kum");
+  const w = { date: "2026-10-13", vehicle_id: "V1", unit: "Sefer", quantity: 1, issues: [], material: "mıcır", work_type: "Mıcır Nakliye" };
+  const vv = { works: [w], tickets: [{ ...tk[0], vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 });
+  assert.ok(w.issues.some((x) => /Fişte malzeme "Kum"/.test(x)));
+  const w2 = { date: "2026-10-13", vehicle_id: "V1", unit: "Sefer", quantity: 1, issues: [], material: "", work_type: null };
+  mergeTicketsIntoWorks({ works: [w2], tickets: [{ ...tk[0], vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] }, { photoCount: 1 });
+  assert.equal(w2.material, "Kum"); assert.equal(w2.work_type, "Kum Nakliye");
+  const { slipFill } = await import("../js/slip-read.js");
+  const f = slipFill({ rows: [{ photo: 0, net_ton: 26.74, material: "", text: "06 MM KUM", slip_no: "", date: null, vehicle_id: null, from_place: "", to_place: "" }], total_ton: 26.74, read: 1, count: 1 }, { unit: "Sefer", work_type: "" }, { d: {}, today });
+  assert.equal(f.work_type, "Kum Nakliye");
+  const f2 = slipFill({ rows: [{ photo: 0, net_ton: 26.74, material: "Kum", text: "KUM", slip_no: "", date: null, vehicle_id: null, from_place: "", to_place: "" }], total_ton: 26.74, read: 1, count: 1 }, { unit: "Sefer", work_type: "Hafriyat Nakliye" }, { d: {}, today });
+  assert.ok(/Kum Nakliye mi/.test(f2.material_hint));
+  console.log("malzeme PASS");
+}
