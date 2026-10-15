@@ -124,6 +124,14 @@ console.log("assistant-docs PASS");
   mergeTicketsIntoWorks(vv, { photoCount: 1 });
   assert.equal(vv.tickets.length, 0); assert.equal(vv.works[0].date, "2026-10-12"); assert.ok(vv.works[0].issues.some((x) => /Tarih fişten alındı/.test(x)));
   assert.equal(vv.works[0].ok, true, "fiş aracı ve tarihi teyit etti: kart işaretli gelir " + vv.works[0].issues.join());
+  // Gemini mesajda tarih yokken bugünü yazdı (date_source ≠ yok): mesajda tarih yoksa fiş tarihi geçerli
+  vv = { works: [{ ...w(), date: "2026-10-15", issues: [] }], tickets: [{ photo: 0, ticket_no: "777843", date: "2026-10-12", vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1, message: "Entodan 3no mocır 1sefer muarem sef arnavutkoy" });
+  assert.equal(vv.tickets.length, 0); assert.equal(vv.works[0].date, "2026-10-12");
+  // mesajda "bugün" varsa eski fiş ayrı kalır
+  vv = { works: [{ ...w(), date: "2026-10-15", issues: [] }], tickets: [{ photo: 0, ticket_no: "X9", date: "2026-10-12", vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1, message: "bugün 1 sefer mıcır" });
+  assert.equal(vv.tickets.length, 1);
   console.log("is-fis-birlesik PASS");
 }
 // malzeme: fişten okunur, işle çelişirse uyarı, boş iş türü doldurulur
