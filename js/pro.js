@@ -1653,8 +1653,10 @@ export async function augment(ctx) {
 
 async function backupPanel(ctx) {
   const { root, db } = ctx;
-  root.insertAdjacentHTML(
-    "afterbegin",
+  // Ayarlar'daki Yedekleme kartının altına (yoksa başlığın altına) — başlığın üstüne düşmesin
+  const anchor = qs("[data-bak]", root)?.closest(".card") || qs(".appbar", root);
+  (anchor || root).insertAdjacentHTML(
+    anchor ? "afterend" : "afterbegin",
     '<div class="card"><h3>Tam Yedek ve Geri Yükleme</h3><p>Veriler, orijinal dosyalar, imzalar ve ayarlar tek JSON dosyasında.</p><button class="btn primary" data-full-backup>Tam Yedeği İndir</button><div class="field"><label>Tam yedeği geri yükle</label><input type="file" data-full-restore accept=".json,application/json"></div><div data-full-preview></div></div>',
   );
   qs("[data-full-backup]", root).onclick = async () => {
