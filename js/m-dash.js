@@ -178,6 +178,7 @@ async function dashboard(ctx) {
       <div class="hero-foot">${trDate(today)} · Veriler bu cihazda saklanır</div>
     </section>
 
+    <div data-brief style="margin-top:12px"></div>
     ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="card tap" data-board-all><div class="row between"><span class="small">+${board.items.length - 6} madde daha</span><span class="muted small">tümü ›</span></div></div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
@@ -270,6 +271,10 @@ async function dashboard(ctx) {
       <button class="btn grow" data-go="#/yonetici">📊 Yönetici</button>
     </div>`;
 
+  {
+    const bh = qs("[data-brief]", root);
+    if (bh) (await import("./brief.js")).briefCard({ ...ctx, toast }, bh, data).catch((e) => console.warn(e));
+  }
   const al = qs("[data-alerts]", root);
   if (al) al.addEventListener("click", () => showAlerts(ctx, alerts));
   qs("[data-board-all]", root)?.addEventListener("click", () =>
@@ -765,7 +770,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.60")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.61")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
