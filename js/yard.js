@@ -49,17 +49,16 @@ export async function screen(ctx) {
   const line = (href, left, right, warn = "") => `<div class="tap" data-go="${esc(href)}" style="padding:5px 0 5px 10px;border-left:2px solid ${warn ? "#e0a030" : "#e3e8ef"};margin:3px 0"><div class="row between tiny"><span>${left}</span><b style="white-space:nowrap;margin-left:8px">${right}</b></div>${warn ? `<div class="tiny" style="color:#b9770e">⚠ ${warn} — dokunup düzeltin</div>` : ""}</div>`;
   const inLine = (r) => line("#/isler/" + r.w.id, `${trDate(r.w.date)} · ${esc(vOf(r.w))} · ${esc(cName(r.w.customer_id))}${r.fuelL ? ` · ⛽ ${fmtNum(r.fuelL)} L mazot karşılığı` : ""}`, r.amount ? tl(r.amount) : "—",
     r.unpriced ? "fiyat girilmemiş, 0 sayıldı" : r.fuelUnvalued ? "mazot fiyatı bilinmiyor (depo alışı ya da Ayarlar'da litre fiyatı yok)" : "");
-  const outLine = (r) => { const f = r.fee; const how = f?.amount ? (f.unit === "Ton" ? `${f.estimated ? "~" : ""}${fmtNum(f.ton)} ton × ${fmtNum(f.fee)} ₺${f.estimated ? " (fiş yok, tahmini yük)" : ""}` : `${fmtNum(f.trips)} sefer × ${fmtNum(f.fee)} ₺`) : "";
-    return line("#/isler/" + r.w.id, `${trDate(r.w.date)} · ${esc(vOf(r.w))} → ${esc(r.site || "?")}${how ? `<br><span class="muted">${how}</span>` : ""}`, r.amount ? "− " + tl(r.amount) : "?", r.why); };
+  const outLine = (r) => line("#/isler/" + r.w.id, `${trDate(r.w.date)} · ${esc(vOf(r.w))} · ${esc(r.w.material || r.w.work_type || "")} → ${esc(r.site || "?")}${r.empty ? '<br><span class="muted">maliyet yazılmadı (0 sayıldı) — yazmak için dokunun</span>' : ""}`, r.amount ? "− " + tl(r.amount) : "0 ₺");
   const same = plA.ins === plM.ins && plA.outs === plM.outs && Math.round(plA.result) === Math.round(plM.result);
   const plCard = (t, p, detail) => `<div class="card"><div class="strong small">${t}</div>
     <div class="row between small" style="margin-top:6px"><span>📥 Depoya getirilen işlerin değeri (${p.ins})</span><b style="white-space:nowrap;margin-left:8px">${tl(p.income)}</b></div>
     ${detail ? p.inRows.map(inLine).join("") : ""}
-    <div class="row between small" style="margin-top:6px"><span>📤 Depodan götürülen seferlerin döküm ücreti (${fmtNum(p.trips)} sefer)</span><b style="white-space:nowrap;margin-left:8px">− ${tl(p.dump)}</b></div>
+    <div class="row between small" style="margin-top:6px"><span>📤 Depodan çıkan seferlerin maliyeti (${fmtNum(p.trips)} sefer)</span><b style="white-space:nowrap;margin-left:8px">− ${tl(p.dump)}</b></div>
     ${detail ? p.outRows.map(outLine).join("") : ""}
     ${tripCost ? `<div class="row between small" style="margin-top:6px"><span>Sefer maliyeti (${fmtNum(p.trips)} × ${tl(tripCost)})</span><b>− ${tl(p.extra)}</b></div>` : ""}
     <div class="divider"></div><div class="row between"><span class="strong">Sonuç</span><span class="strong" style="color:${p.result < 0 ? "#d9534f" : "#2e9e6b"}">${tl(p.result)}</span></div>
-    ${p.noFee || p.unpriced || p.fuelUnvalued ? `<div class="tiny" style="color:#b9770e;margin-top:4px">⚠ Sonuç eksik: ${[p.unpriced ? p.unpriced + " giriş fiyatsız" : "", p.fuelUnvalued ? p.fuelUnvalued + " girişin mazot değeri bilinmiyor" : "", p.noFee ? p.noFee + " çıkışın döküm ücreti hesaplanamadı" : ""].filter(Boolean).join(", ")}. Yukarıdaki işaretli satırlara dokunup düzeltin.</div>` : ""}
+    ${p.noFee || p.unpriced || p.fuelUnvalued ? `<div class="tiny" style="color:#b9770e;margin-top:4px">⚠ Sonuç eksik: ${[p.unpriced ? p.unpriced + " giriş fiyatsız" : "", p.fuelUnvalued ? p.fuelUnvalued + " girişin mazot değeri bilinmiyor" : "", ""].filter(Boolean).join(", ")}. Yukarıdaki işaretli satırlara dokunup düzeltin.</div>` : ""}
     </div>`;
   root.innerHTML =
     appbar("Kendi Depo / Stok Sahası", esc(site.name)) +
@@ -75,11 +74,11 @@ export async function screen(ctx) {
     ${st.unknownVehicles.length ? notice("warn", "Yük katsayısı bilinmeyen araç: " + st.unknownVehicles.map((v) => esc(vName(v))).join(", ") + " — aşağıdan girin (şimdilik 1 sayıldı).") : ""}
     <div class="section-title">Depo kâr–zarar</div>
     ${plM.ins || plM.outs ? plCard("Bu ay", plM, true) : '<div class="card muted small">Bu ay depoya giriş/çıkış yok.</div>'}${same ? (plA.ins || plA.outs ? '<div class="muted tiny" style="margin:-4px 2px 8px">Tüm kayıtlar bu aya ait (tüm zamanlar = bu ay).</div>' : "") : plCard("Tüm zamanlar", plA, false)}
-    <div class="muted tiny" style="margin:-4px 2px 8px">Döküm ücretleri döküm sahası kartlarından (Bolluca 160, Cebeci 210, İSTAÇ 235 ₺/ton, KDV dahil). Ton fişten; fiş yoksa aracın kartındaki "ortalama yük". Mazotla ödenen işler, hak edilen litre × depo mazot fiyatıyla sayılır. Mazot ve şoför için sefer başı bir maliyet girebilirsiniz (aşağıda).</div>
+    <div class="muted tiny" style="margin:-4px 2px 8px">Depodan çıkan seferlerin maliyetini siz yazarsınız: iş kaydında "Döküm maliyeti (₺)". Boş bırakılırsa (ör. stabilize çıkışı) maliyet 0 sayılır. Mazotla ödenen işler, hak edilen litre × depo mazot fiyatıyla sayılır. Mazot ve şoför için sefer başı bir maliyet girebilirsiniz (aşağıda).</div>
     <div class="section-title">Nasıl kaydedilir?</div>
     <div class="card small">
       • <b>Depoya giriş:</b> kamyonetin müşteri işini normal kaydedin, <b>Döküm Sahası = ${esc(site.name)}</b> seçin. Asistan "depoya döküldü / şantiyeye döktük" ifadesini anlar.<br>
-      • <b>Depodan çıkış:</b> iş formunda müşteri yerine en alttaki <b>📦 Kendi depodan çıkış</b> seçeneği, Döküm Sahası = gittiği yer (Bolluca, Cebeci, İSTAÇ…), fiş varsa tonaj. Asistan "depodaki stoktan 1 sefer moloz Bolluca'ya" ifadesini anlar. Bu seferler kimseye borç yazmaz; maliyet olarak sayılır.
+      • <b>Depodan çıkış:</b> iş formunda müşteri yerine en alttaki <b>📦 Kendi depodan çıkış</b> seçeneği, Döküm Sahası = gittiği yer, varsa <b>Döküm maliyeti (₺)</b>. Stabilize gibi maliyetsiz çıkışta boş bırakın. Asistan "depodaki stoktan 1 sefer moloz Bolluca'ya" ifadesini anlar. Bu seferler kimseye borç yazmaz; maliyet olarak sayılır.
     </div>
     <div class="section-title">Araç yük katsayıları (1 sefer = kaç kamyonet yükü)</div>
     <div class="card" data-factors>
