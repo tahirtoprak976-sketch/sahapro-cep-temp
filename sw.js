@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261016-dijital-fis-1";
+const CACHE = "sahapro-solo-v3-20261016-guncelleme-onarim-1";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./",
@@ -80,8 +80,10 @@ const ASSETS = [
   "./icons/icon-192.png",
   "./icons/icon-512.png",
 ];
+// Dosyalar her zaman internetten TAZE indirilir (cache: "reload"): tarayıcının HTTP önbelleğindeki eski kopya
+// yeni sürümün içine karışmasın (GitHub Pages dosyaları 10 dk önbellekte tutar).
 self.addEventListener("install", (event) =>
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS))),
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS.map((u) => new Request(u, { cache: "reload" }))))),
 );
 // New release waits for the user or until every old window is closed.
 self.addEventListener("message", (event) => {
