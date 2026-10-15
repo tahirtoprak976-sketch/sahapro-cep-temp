@@ -229,7 +229,8 @@ async function workForm(ctx, editId) {
         ${fSelect("Fiş Durumu", "slip_status", ["Fiş Var", "Fiş Yok"], v.slip_status || "")}
         ${fText("Fiş No", "slip_no", v.slip_no || "")}
       </div>
-      ${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}
+      <div class="formgrid2">${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}${fNum("Döküm maliyeti (₺, elle — opsiyonel)", "dump_cost", v.dump_cost ?? "", { step: "any" })}</div>
+      <div class="muted tiny" style="margin:-4px 2px 8px">Döküm maliyeti: depodan çıkışta siz yazarsınız (boş = maliyet yok). Müşteri işinde boşsa döküm sahası ücretinden hesaplanır.</div>
       <section class="card" style="margin:8px 0" data-slip-ai>
         <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/*,application/pdf" multiple data-wfiles></div>
         <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>
@@ -569,6 +570,7 @@ async function workForm(ctx, editId) {
         internal_note: val.internal_note || "",
         distance_km: val.distance_km ? Number(val.distance_km) : null,
         tonnage: Number(val.tonnage) > 0 ? Number(val.tonnage) : null,
+        dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
       };
       if (!editId) {
         const { priceSnapshot } = await import("./business.js");
@@ -782,6 +784,7 @@ async function workDetail(ctx, id) {
       ${w.quarry ? kv("Ocak", w.quarry) : ""}
       ${w.slip_status ? kv("Fiş", w.slip_status + (w.slip_no ? " #" + w.slip_no : "")) : ""}
       ${w.tonnage ? kv("Tonaj", fmtNum(w.tonnage) + " ton") : ""}
+      ${w.dump_cost ? kv("Döküm maliyeti", fmtNum(w.dump_cost) + " ₺ (elle)") : ""}
       ${w.customer_fuel_allowance_l ? kv("Mazot karşılığı", fmtNum(w.customer_fuel_allowance_l) + " L" + (w.price_snapshot?.price_source === "Mazot karşılığı" ? " (ücret yalnız mazot)" : "")) : ""}
       ${w.description ? kv("Açıklama", w.description) : ""}
       ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}

@@ -8,11 +8,13 @@ const d = {
   vehicles: [{ id: "T", name: "34GAM627", load_ton: 27, created_at: n }],
   customers: [{ id: "I", name: "Kendi Depo", internal: true, created_at: n }],
   work_records: [
-    { id: "W1", date: "2026-10-12", customer_id: "I", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "B", tonnage: 27.22, created_at: n },
-    { id: "W2", date: "2026-10-13", customer_id: "I", vehicle_id: "T", unit: "Sefer", quantity: 2, dump_site_id: "B", created_at: n },
+    { id: "W1", date: "2026-10-12", customer_id: "K", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "B", tonnage: 27.22, created_at: n },
+    { id: "W2", date: "2026-10-13", customer_id: "K", vehicle_id: "T", unit: "Sefer", quantity: 2, dump_site_id: "B", created_at: n },
     { id: "W3", date: "2026-10-13", customer_id: "K", vehicle_id: "T", unit: "Sefer", quantity: 2, dump_site_id: "G", price_snapshot: { amount: 20000 }, created_at: n },
     { id: "W4", date: "2026-10-13", customer_id: "K", vehicle_id: "X", unit: "Sefer", quantity: 1, dump_site_id: "B", created_at: n },
     { id: "W5", date: "2026-10-13", customer_id: "K", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "Y", created_at: n },
+    { id: "W6", date: "2026-10-13", customer_id: "I", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "B", material: "stabilize", created_at: n },
+    { id: "W7", date: "2026-10-14", customer_id: "I", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "B", dump_cost: 3800, created_at: n },
   ],
 };
 assert.equal(dumpFee(d, d.work_records[0]).amount, 4355.2, "27,22 ton × 160");
@@ -20,8 +22,10 @@ const f2 = dumpFee(d, d.work_records[1]); assert.equal(f2.amount, 8640); assert.
 assert.equal(dumpFee(d, d.work_records[2]).amount, 3000, "sefer başı");
 assert.equal(dumpFee(d, d.work_records[3]).missing, true, "ton bilinmiyor");
 assert.equal(dumpFee(d, d.work_records[4]), null, "ücretsiz yer");
+assert.equal(dumpFee(d, d.work_records[5]), null, "depodan çıkış: elle yazılmadıysa maliyet yok (stabilize)");
+assert.equal(dumpFee(d, d.work_records[6]).amount, 3800, "depodan çıkış: elle yazılan");
 const t = costTotals(costRows(d, { from: "2026-10-01", to: "2026-10-31" }));
-assert.equal(t.dokum, 4355.2 + 8640 + 3000);
+assert.equal(t.dokum, 4355.2 + 8640 + 3000 + 3800);
 assert.equal(monthlySeries(d, { today: "2026-10-15", months: 1 })[0].dump, t.dokum);
 // İlk açılış: resmi sahalar
 const store = { dump_sites: [{ id: "B", name: "BOLLUCA DÖKÜM", created_at: n }], meta: {} };

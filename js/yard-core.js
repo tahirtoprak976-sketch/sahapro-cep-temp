@@ -115,13 +115,13 @@ export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workA
   const outRows = outs.map((x) => {
     const f = dumpFee(d, x.w);
     const site = sites.find((s) => s.id === x.w.dump_site_id);
-    const why = !x.w.dump_site_id ? "döküm yeri seçilmemiş" : !f ? `${site?.name || "döküm sahası"} kartında ücret yok` : f.missing ? "ton bilinmiyor (aracın ortalama yükü yok)" : "";
-    return { w: x.w, fee: f, amount: f?.amount || 0, site: site?.name || "", why };
+    // Depodan çıkışın döküm maliyetini işletme sahibi elle yazar; boşsa maliyet yok (stabilize gibi)
+    return { w: x.w, fee: f, amount: f?.amount || 0, site: site?.name || x.w.dump_area || "", why: "", empty: !(f?.amount > 0) };
   });
   const dump = outRows.reduce((n, r) => n + r.amount, 0);
   const trips = outs.reduce((n, x) => n + (x.w.unit === "Sefer" ? Number(x.w.quantity) || 0 : 1), 0);
   const cost = dump + trips * tripCost;
-  return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee: outRows.filter((r) => r.why).length, est: outRows.filter((r) => r.fee?.estimated).length, unpriced: inRows.filter((r) => r.unpriced).length, fuelUnvalued: inRows.filter((r) => r.fuelUnvalued).length, ins: ins.length, outs: outs.length, tripCost, inRows, outRows };
+  return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee: 0, noCost: outRows.filter((r) => r.empty).length, est: outRows.filter((r) => r.fee?.estimated).length, unpriced: inRows.filter((r) => r.unpriced).length, fuelUnvalued: inRows.filter((r) => r.fuelUnvalued).length, ins: ins.length, outs: outs.length, tripCost, inRows, outRows };
 }
 
 // Bilinen araç türleri (işletme sahibinden): tır / kamyon — boş ya da genel türü olan karta bir kez yazılır

@@ -20,10 +20,16 @@ export function loadTon(v) {
   return DEFAULT_LOAD_TON[transportVehicleType(v?.type)] || 0;
 }
 
-// Bir işin döküm ücreti. null: döküm yerinde ücret tanımlı değil
+// Bir işin döküm ücreti. null: maliyet yok (döküm yeri/ücret tanımlı değil ya da depodan çıkışta elle yazılmamış)
 export function dumpFee(d, w) {
-  if (!w?.dump_site_id) return null;
-  const s = live(d, "dump_sites").find((x) => x.id === w.dump_site_id);
+  if (!w) return null;
+  const s0 = live(d, "dump_sites").find((x) => x.id === w.dump_site_id);
+  // Elle yazılan döküm maliyeti her zaman geçerli (iş kaydında "Döküm maliyeti ₺")
+  if (Number(w.dump_cost) > 0) return { site: s0?.name || w.dump_area || "Döküm", unit: "Elle", fee: null, amount: r2(Number(w.dump_cost)), trips: w.unit === "Sefer" ? Number(w.quantity) || 0 : 1, ton: null, estimated: false, manual: true };
+  // Kendi depodan çıkış (iç iş): maliyeti işletme sahibi elle yazar; boşsa maliyet yok (ör. stabilize çıkışı)
+  if (live(d, "customers").find((c) => c.id === w.customer_id)?.internal) return null;
+  if (!w.dump_site_id) return null;
+  const s = s0;
   const fee = Number(s?.fee) || 0;
   if (!s || !(fee > 0) || !FEE_UNITS.includes(s.fee_unit)) return null;
   const qty = Number(w.quantity) || 0;

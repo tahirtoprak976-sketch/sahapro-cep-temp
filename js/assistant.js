@@ -299,6 +299,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Teslim yeri</label><input name="to_place" value="${esc(r.to_place || "")}" placeholder="şantiye / dolgu"></div>
           <div class="field"><label>Fiş no</label><input name="slip_no" value="${esc(r.slip_no || "")}"></div>
           <div class="field"><label>Tonaj (fişteki net ton)</label><input type="number" step="any" name="tonnage" value="${r.tonnage ?? ""}"></div>
+          <div class="field"><label>Döküm maliyeti (₺, elle)</label><input type="number" step="any" name="dump_cost" value="${r.dump_cost ?? ""}" placeholder="boş = yok / otomatik"></div>
         </div>
         ${(r.photos || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${r.photos.filter((p) => files[p]).map((p) => `<img src="${URL.createObjectURL(files[p])}" alt="Fiş" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`).join("")}<span class="muted tiny" style="align-self:center">🧾 fiş bu işe eklenecek</span></div>` : ""}
         ${r.reporter ? `<div class="muted tiny">Bildiren: ${esc(r.reporter)}</div>` : ""}
@@ -777,6 +778,7 @@ async function save(ctx, out, v, d, { message, files }) {
           dump_area: (await placeName("dump_sites", dumpId)) || val(c, "to_place") || "", quarry: (await placeName("quarries", quarryId)) || val(c, "from_place") || "",
           slip_status: val(c, "slip_no") || (v.works[Number(c.dataset.i)].photos || []).length ? "Fiş Var" : null, slip_no: val(c, "slip_no") || "", customer_note: "", distance_km: null,
           tonnage: Number(val(c, "tonnage")) > 0 ? Number(val(c, "tonnage")) : null,
+          dump_cost: Number(val(c, "dump_cost")) > 0 ? Number(val(c, "dump_cost")) : null,
           source: "asistan",
         };
         delete fields.internal_note_src;

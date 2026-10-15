@@ -40,7 +40,7 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
   // Döküm ücreti: döküm sahası kartındaki ücret × fişteki ton (ya da aracın ortalama yükü) / sefer
   for (const f of dumpFeeRows(d, { from, to }))
     if (f.amount > 0)
-      rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, label: `${f.site} · ${f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺" : f.trips + " sefer × " + f.fee + " ₺"}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
+      rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, label: `${f.site} · ${f.manual ? "elle yazılan" : f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺" : f.trips + " sefer × " + f.fee + " ₺"}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
   rows.sort((a, b) => b.date.localeCompare(a.date));
   return rows;
 }
