@@ -130,3 +130,10 @@ export function validatePriceRules(plan, { message = "", d } = {}) {
   }
   return out;
 }
+// Yer adı (döküm sahası / ocak) mesajda anıldı mı: "Bolluca'ya", "göktürk dolguya"
+const PLACE_STOP = new Set(["dokum", "sahasi", "saha", "dolgu", "dolgusu", "depo", "alani", "ocak", "ocagi", "son", "durak"]);
+export function placeNamed(p, text) {
+  const mw = words(text);
+  const tw = words(p.name).filter((w) => !PLACE_STOP.has(w) && !/^\d+$/.test(w));
+  return tw.length > 0 && said(tw[0], mw);
+}

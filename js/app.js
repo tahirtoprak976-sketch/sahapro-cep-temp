@@ -8,6 +8,7 @@ import * as whoCheck from "./who-check.js";
 import * as yardScreen from "./yard.js";
 import * as fuelPayScreen from "./fuel-pay.js";
 import * as collectScreen from "./collect.js";
+import * as quoteCalcScreen from "./quote-calc.js";
 import * as pro from "./pro.js";
 // SAHAPRO SOLO — uygulama iskeleti: boot, router, alt navigasyon, PIN, SW güncelleme
 import * as core from "./core.js";
@@ -66,6 +67,7 @@ const SECTION = {
   tara: "fisler",
   finans: "finans",
   teklif: "finans",
+  "teklif-hesap": "finans",
   hakedis: "finans",
   cari: "finans",
   kasa: "finans",
@@ -143,7 +145,7 @@ export async function renderCurrent() {
   root.innerHTML =
     '<div style="padding:40px 0"><div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div></div>';
   try {
-    const soloHandled = (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await whoCheck.screen(ctx)) || (await yardScreen.screen(ctx)) || (await fuelPayScreen.screen(ctx)) || (await collectScreen.screen(ctx)) || (await solo.screen(ctx));
+    const soloHandled = (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await whoCheck.screen(ctx)) || (await yardScreen.screen(ctx)) || (await fuelPayScreen.screen(ctx)) || (await collectScreen.screen(ctx)) || (await quoteCalcScreen.screen(ctx)) || (await solo.screen(ctx));
     const enterpriseHandled = soloHandled || await enterprise.screen(ctx);
     const handled = enterpriseHandled || (await pro.screen(ctx));
     if (!handled) await mod(ctx);

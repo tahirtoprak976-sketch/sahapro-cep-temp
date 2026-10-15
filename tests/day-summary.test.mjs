@@ -57,7 +57,10 @@ r = runAskTool(data, "esnaf_debt", {}, today);
 assert.equal(r.toplam_TL, 1500);
 r = runAskTool(data, "fuel_totals", { from: today, to: today }, today);
 assert.equal(r.litre, 100); assert.equal(r.TL, 5000);
-assert.equal(ASK_TOOLS.length, 14);
+assert.equal(ASK_TOOLS.length, 15);
+r = runAskTool(data, "quote_price", { customer: "Hisar", unit: "sefer", quantity: 10, extra: 1 }, today, {}, { quoteSettings: { extra: { Sefer: 3000 } } });
+assert.equal(r.musteri, "Hisar Polat"); assert.equal(r.birim, "Sefer"); assert.equal(r.birim_maliyet_TL.diger, 3000); assert.ok(r.onerilen_birim_KDV_dahil_TL >= 3600);
+assert.ok(runAskTool(data, "quote_price", { customer: "Yok Böyle" }, today).error);
 
 // ---- fonksiyon çağrısı döngüsü (sahte Gemini) ----
 const sent = [];
