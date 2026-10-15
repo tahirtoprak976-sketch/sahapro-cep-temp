@@ -280,7 +280,7 @@ export function assistantSystem(rules = "") {
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
-    "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
+    "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
     "\"maintenance\":[{\"date\",\"vehicle_id\",\"maint_type\",\"status\",\"description\",\"cost\",\"service_company\",\"supplier_id\",\"credit\"}] (arıza/bakım; maint_type: " + MAINT_TYPES.join(", ") + "; status: " + MAINT_STATUS.join(", ") + "),",
@@ -608,6 +608,9 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const photo = Number.isInteger(f.photo) && f.photo >= 0 && f.photo < photoCount ? f.photo : null;
     const r = { date: validDate(f.date, today) || today, vehicle_id: byId(vehicles, f.vehicle_id)?.id || null,
       liters: numOk(Number(f.liters)) ? Number(f.liters) : null, total: numOk(Number(f.total)) ? Number(f.total) : null, photo };
+    // Kilometre / makine saati (bakım takvimi için): yalnız mesajda yazıyorsa
+    const msgNums = numbersInText(message);
+    for (const k of ["km", "machine_hours"]) { const x = Number(f[k]); r[k] = x > 0 && msgNums.has(x) ? x : null; if (x > 0 && !r[k]) issues.push(`${k === "km" ? "Km" : "Makine saati"} ${x} mesajda yazmıyor; alınmadı`); }
     // Model kaynağı söylemediyse: fiş fotoğrafı ya da istasyon adı → istasyon. Aynı mesajda depoya giriş varsa
     // "petrol" kelimesi büyük ihtimalle petrolcünün adıdır (Ahmet Petrol): depo varsayılır.
     r.source = ["Depo Tankı", "Akaryakıt İstasyonu", "Müşteri Verdi"].includes(f.source) ? f.source
@@ -870,7 +873,7 @@ export function assistantSchema() {
         guessed: NB, customer_guess: NB, reporter: NS, date_source: NS, from_place: NS, quarry_id: NS, to_place: NS, to_is_dump: NB, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, dump_cost: NN, note: NS,
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
       expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, photo: { type: ["integer", "null"] }, note: NS }),
-      fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
+      fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, km: NN, machine_hours: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),
       maintenance: row({ date: NS, vehicle_id: NS, maint_type: NS, status: NS, description: NS, cost: NN, service_company: NS, supplier_id: NS, credit: NB }),

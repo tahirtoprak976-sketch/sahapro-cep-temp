@@ -3,6 +3,7 @@
 import { isActive, todayStr, addDays, latestDocuments, tankStatus, trDate } from "./core.js";
 import { receivables, workAmount } from "./collect-core.js";
 import { monthlySeries } from "./finance-chart.js";
+import { maintenanceBoard } from "./maint-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fmt = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
@@ -14,6 +15,7 @@ const units = (ws) => {
 };
 
 export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, fuelRefPrice = null } = {}) {
+  const maintDue = maintenanceBoard(d, { today }).filter((r) => r.state === "late" || r.state === "soon");
   const lines = [];
   const add = (ic, text, href = "", kind = "") => lines.push({ ic, text, href, kind });
   // 1) Dün (pazartesi ise cumartesiden beri)
@@ -44,6 +46,8 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   // 4) Belgeler (14 gün)
   const docs = latestDocuments(live(d, "documents")).filter((x) => x.expiry_date && x.expiry_date <= addDays(today, 14)).sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
   for (const x of docs.slice(0, 3)) add("📄", `${nm(d, "vehicles", x.vehicle_id || x.owner_id) || nm(d, "personnel", x.personnel_id || x.owner_id) || "Belge"} · ${x.category || "belge"} ${x.expiry_date < today ? "süresi doldu" : trDate(x.expiry_date) + "'de bitiyor"}`, "#/belgeler", x.expiry_date < today ? "alert" : "warn");
+  // 4b) Bakım takvimi
+  for (const r of maintDue.slice(0, 3)) add("🔧", `${r.v.name} · ${r.rule.title}: ${r.text}`, "#/bakim-takvimi/" + r.v.id, r.state === "late" ? "alert" : "warn");
   // 5) Kendi depo stoku
   if (yard && yard.total >= (yard.alert || 15)) add("🏗", `Kendi depoda ~${fmt(yard.total)} kamyonet yükü birikti — döküm sahasına gönderme zamanı`, "#/kendi-depo", "warn");
   // 6) Bu ay

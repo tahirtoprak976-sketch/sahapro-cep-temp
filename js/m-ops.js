@@ -511,6 +511,7 @@ async function vehicleDetail(ctx, id) {
       <button class="btn sm" data-vsave>Kartı Kaydet</button>
     </div>
     ${lastMaint ? notice("ok", `Son tamamlanan bakım: ${trDate(lastMaint.date)} — ${lastMaint.maint_type || ""}`) : ""}
+    <div class="card tap" data-go="#/bakim-takvimi/${esc(v.id)}"><div class="row between"><span>🗓 Bakım takvimi${(v.service_rules || []).length ? ` · ${(v.service_rules || []).length} kural` : " — kural ekle (yağ, filtre…)"}</span><span class="muted small">›</span></div></div>
     <div class="section-title">Son İşler</div>
     ${
       w.length
@@ -611,7 +612,7 @@ async function maint(ctx) {
       (v) => `#/bakim?f=${v}`,
     )}
     <div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/bakim/new">+ Arıza / Bakım</button></div>`;
+    <div class="actionbar"><button class="btn" data-go="#/bakim-takvimi">🗓 Bakım Takvimi</button><button class="btn primary" data-go="#/bakim/new">+ Arıza / Bakım</button></div>`;
   const listEl = qs("[data-list]", root);
   if (!rows.length) listEl.innerHTML = emptyState("🔧", "Kayıt yok");
   else

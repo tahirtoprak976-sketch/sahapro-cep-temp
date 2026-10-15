@@ -899,8 +899,8 @@ async function save(ctx, out, v, d, { message, files }) {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
           unit_price: !byCustomer && total ? Math.round((total / liters) * 100) / 100 : null, total: byCustomer ? null : total,
           ...(byCustomer ? { customer_id: val(c, "fuel_customer") || null } : {}),
-          fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: null,
-          machine_hours: null, description: source, customer_billable: false,
+          fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: r.km || null,
+          machine_hours: r.machine_hours || null, description: source, customer_billable: false,
         }, "Asistan");
         if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
         done.fuel++;
