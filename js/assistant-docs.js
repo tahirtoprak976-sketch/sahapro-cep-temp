@@ -182,3 +182,31 @@ export function docsSchemaProps() {
     heard_text: NS,
   };
 }
+
+// ---- İş + fişi tek satır: aynı işe ait fiş (irsaliye/kantar/döküm) ayrı kart değil, işin içine girer ----
+// Eşleşme: tek iş + tek fiş ya da aynı tarih ve aynı araç. Fiş no, tonaj, fotoğraf işe yazılır; tutmayan bilgi uyarı olur.
+export function mergeTicketsIntoWorks(v, { photoCount = 0 } = {}) {
+  const works = v.works || [];
+  if (!works.length) return v;
+  const keep = [];
+  for (const t of v.tickets || []) {
+    let cands = works.filter((w) => (!t.vehicle_id || !w.vehicle_id || w.vehicle_id === t.vehicle_id) && (!t.date || w.date === t.date));
+    if (!cands.length && !t.date && works.length === 1 && (v.tickets || []).length === 1) cands = works;
+    if (cands.length !== 1 || t.dup) { keep.push(t); continue; }
+    const w = cands[0];
+    w.photos = [...new Set([...(w.photos || []), t.photo].filter((x) => x != null))];
+    if (t.ticket_no && !w.slip_no) w.slip_no = t.ticket_no;
+    if (t.tonnage) w.tonnage = Math.round(((w.tonnage || 0) + t.tonnage) * 100) / 100;
+    if (t.dump_site_id && !w.dump_site_id && !w.new_dump_site) w.dump_site_id = t.dump_site_id;
+    if (t.vehicle_id && w.vehicle_id && t.vehicle_id !== w.vehicle_id) w.issues.push("Fişteki plaka işteki araçla aynı değil — kontrol edin");
+    if (t.date && w.date !== t.date) w.issues.push(`Fiş tarihi ${t.date.split("-").reverse().join(".")}, iş tarihi farklı`);
+    if (w.unit === "Ton" && t.tonnage && Math.abs((Number(w.quantity) || 0) - w.tonnage) > 0.05) w.issues.push(`Fişte ${w.tonnage} ton yazıyor, işte ${w.quantity} ton`);
+    w.merged_ticket = true;
+  }
+  v.tickets = keep;
+  // Başka bir yere bağlanmamış fotoğraf ve tek iş varsa: fotoğraf o işin fişidir
+  const used = new Set([...(v.tickets || []).map((t) => t.photo), ...(v.docs || []).map((x) => x.photo), ...(v.expenses || []).map((e) => e.photo), ...(v.fuel || []).map((f) => f.photo), ...works.flatMap((w) => w.photos || [])]);
+  if (works.length === 1)
+    for (let i = 0; i < photoCount; i++) if (!used.has(i)) works[0].photos = [...(works[0].photos || []), i];
+  return v;
+}
