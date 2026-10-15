@@ -282,6 +282,17 @@ async function customerForm(ctx, editId) {
   const allC = (await db.listActive("customers")).sort((a, b) => String(a.name).localeCompare(String(b.name), "tr"));
   // kendisi ve kendi taşeronları ana firma olamaz (döngü olmasın)
   const parentOpts = allC.filter((c) => c.id !== editId && c.parent_customer_id !== editId).map((c) => ({ v: c.id, t: c.name }));
+  const { fuelRulesOf, FUEL_RULE_UNITS } = await import("./assistant-rules.js");
+  const ruleRow = (r = {}) => `<div class="card" data-frule style="margin:6px 0;padding:8px">
+      <div class="formgrid2">
+        <div class="field"><label>Birim başı mazot (L)</label><input type="number" step="any" data-f="per" value="${esc(r.per ?? "")}"></div>
+        <div class="field"><label>Birim</label><select data-f="unit">${FUEL_RULE_UNITS.map((u) => `<option ${u === (r.unit || "Sefer") ? "selected" : ""}>${u}</option>`).join("")}</select></div>
+        <div class="field"><label>Hangi işlerde (kelimeler; boşsa tüm işleri)</label><input data-f="match" value="${esc(r.match || "")}" placeholder="gravak maslak"></div>
+        <div class="field"><label>Ücret</label><select data-f="only_pay"><option value="1" ${r.only_pay !== false ? "selected" : ""}>Yalnız mazot (para alınmaz)</option><option value="0" ${r.only_pay === false ? "selected" : ""}>Para + mazot ayrıca</option></select></div>
+        <div class="field"><label>Başlangıç (ops.)</label><input type="date" data-f="from" value="${esc(r.from || "")}"></div>
+        <div class="field"><label>Bitiş (ops.)</label><input type="date" data-f="to" value="${esc(r.to || "")}"></div>
+      </div>
+      <input type="hidden" data-f="id" value="${esc(r.id || "")}"><button type="button" class="btn sm ghost" data-frule-del>Kuralı kaldır</button></div>`;
   root.innerHTML =
     appbar(editId ? "Müşteri Düzenle" : "+ Müşteri", "", {
       back: editId ? "#/musteriler/" + editId : "#/musteriler",
@@ -291,12 +302,21 @@ async function customerForm(ctx, editId) {
       ${fText("Firma / Müşteri Adı", "name", v.name || "", { req: true })}
       <div class="formgrid2">${fText("Yetkili", "contact", v.contact || "")}${fText("Telefon", "phone", v.phone || "", { type: "tel" })}</div>
       ${fSelect("Ana firma (taşeronsa — örn. Ağırtaş → Hisar Polat)", "parent_customer_id", parentOpts, v.parent_customer_id || "")}
-      <div class="formgrid2">${fNum("Sefer başı verdiği mazot (L)", "fuel_per_trip", v.fuel_per_trip ?? "", { step: "any" })}${fText("Hangi işlerde (kelimeler, ör. gravak maslak)", "fuel_rule_match", v.fuel_rule_match || "")}</div>
-      ${fSelect("Bu işlerin ücreti", "fuel_only_pay", [{ v: "1", t: "Yalnız mazot (para alınmaz)" }, { v: "0", t: "Para + mazot ayrıca" }], v.fuel_only_pay === false ? "0" : "1", { empty: false })}
+      <details ${fuelRulesOf(v).length ? "open" : ""} style="margin:8px 0"><summary class="strong">⛽ Mazotla ödeme kuralları (${fuelRulesOf(v).length})</summary>
+        <div class="muted tiny" style="margin:4px 0">Müşteri işin karşılığını mazotla ödüyorsa: ör. "75 L / Sefer, gravak maslak, yalnız mazot". Kelimeler işin malzemesinde, açıklamasında, şantiye/ocak/döküm yeri adında aranır.</div>
+        <div data-frules>${fuelRulesOf(v).map(ruleRow).join("")}</div>
+        <button type="button" class="btn sm" data-frule-add>+ Kural ekle</button>
+      </details>
       ${fArea("Not", "note", v.note || "")}
       ${fSelect("Durum", "active", ACTIVE_SEL, v.active === false ? "0" : "1", { empty: false })}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const bindDel = () => qsa("[data-frule-del]", root).forEach((b) => (b.onclick = () => b.closest("[data-frule]").remove()));
+  qs("[data-frule-add]", root).addEventListener("click", () => {
+    qs("[data-frules]", root).insertAdjacentHTML("beforeend", ruleRow({ unit: "Sefer", only_pay: true }));
+    bindDel();
+  });
+  bindDel();
   qs("[data-save]", root).addEventListener("click", async () => {
     const val = collectForm(qs("[data-form]", root));
     if (!val.name || !val.name.trim()) {
@@ -310,9 +330,11 @@ async function customerForm(ctx, editId) {
       note: val.note || "",
       active: val.active !== "0",
       parent_customer_id: val.parent_customer_id || null,
-      fuel_per_trip: Number(val.fuel_per_trip) > 0 ? Number(val.fuel_per_trip) : null,
-      fuel_rule_match: (val.fuel_rule_match || "").trim(),
-      fuel_only_pay: Number(val.fuel_per_trip) > 0 && val.fuel_only_pay === "1",
+      fuel_rules: qsa("[data-frule]", root).map((el) => {
+        const g = (k) => el.querySelector(`[data-f=${k}]`).value;
+        return { id: g("id") && g("id") !== "legacy" ? g("id") : "fr-" + Math.random().toString(36).slice(2, 9), per: Number(g("per")), unit: g("unit"), match: g("match").trim(), only_pay: g("only_pay") === "1", from: g("from") || "", to: g("to") || "" };
+      }).filter((r) => r.per > 0),
+      fuel_per_trip: null, fuel_rule_match: "", fuel_only_pay: null,
     };
     if (editId) {
       await db.saveExisting("customers", rec, fields, "Müşteri düzenlendi");
@@ -1620,6 +1642,7 @@ async function settings(ctx) {
       <div class="muted tiny" style="margin-top:8px">Tam ZIP: JSON + ekler (fotoğraflar). JSON'a fotoğraf GÖMÜLMEZ.</div>
     </div>
     <div class="section-title">Kart Düzeni</div>
+    <div class="card tap" data-go="#/mazot-hesaplari"><div class="row between"><span>⛽ Mazotla ödeme hesapları (ör. Kılıç: sefer başı 75 L)</span><span class="muted small">›</span></div></div>
     <div class="card tap" data-go="#/kendi-depo"><div class="row between"><span>🏗 Kendi depo / stok sahası (moloz, çöp, hafriyat stoku)</span><span class="muted small">›</span></div></div>
     <div class="card tap" data-go="#/kime-kontrol"><div class="row between"><span>🔎 Kime çalışıldı? (Kuyucu / Aydın gibi benzer adlı müşterilerin işleri)</span><span class="muted small">›</span></div></div>
     <div class="card tap" data-go="#/kart-birlestir"><div class="row between"><span>🔗 Müşteri kartlarını birleştir (aynı firma / şantiye ayrı açılmışsa)</span><span class="muted small">›</span></div></div>

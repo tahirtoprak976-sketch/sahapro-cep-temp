@@ -75,18 +75,46 @@ export function senderPersonnel(d, reporter, text) {
   return pick(ps.filter((p) => { const m = norm(p.name); return m.length >= 3 && (n.startsWith(m + " ") || m.startsWith(n + " ")); }));
 }
 
-// Müşterinin sefer başı mazot kuralı: { liters, match } — match boşsa müşterinin tüm seferleri
-export function fuelAllowance(d, row, text) {
+// ---- Mazotla ödeme anlaşmaları (iskelet) ----
+// Bir müşterinin birden fazla kuralı olabilir: { id, per (L), unit (Sefer/Saat/Yevmiye/Ton/m³), match (kelimeler),
+// only_pay (ücret yalnız mazot), from, to (tarih aralığı, boş = süresiz), note }. Eski tek alanlı kayıt (fuel_per_trip) de okunur.
+export const FUEL_RULE_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³"];
+export function fuelRulesOf(c) {
+  if (!c) return [];
+  if (Array.isArray(c.fuel_rules)) return c.fuel_rules.filter((r) => Number(r.per) > 0);
+  if (Number(c.fuel_per_trip) > 0) return [{ id: "legacy", per: Number(c.fuel_per_trip), unit: "Sefer", match: c.fuel_rule_match || "", only_pay: c.fuel_only_pay !== false }];
+  return [];
+}
+export const hasFuelRules = (c) => fuelRulesOf(c).length > 0;
+const nameOf = (d, s, id) => (id ? live(d, s).find((x) => x.id === id)?.name || "" : "");
+// İşin aranacak metni: mesaj + malzeme + açıklama + iş türü + şantiye / ocak / döküm yeri adları
+export function workHay(d, row, text = "") {
+  return ` ${norm([text, row.material, row.description, row.work_type, row.from_place, row.to_place, row.quarry, row.dump_area, row.internal_note,
+    nameOf(d, "sites", row.site_id), nameOf(d, "quarries", row.quarry_id), nameOf(d, "dump_sites", row.dump_site_id)].filter(Boolean).join(" "))} `;
+}
+export function matchFuelRule(d, row, text = "") {
   const c = live(d, "customers").find((x) => x.id === row.customer_id);
-  const L = Number(c?.fuel_per_trip);
-  if (!c || !(L > 0) || row.unit !== "Sefer" || !(row.quantity > 0)) return null;
-  const words = norm(c.fuel_rule_match || "").split(" ").filter((w) => w.length >= 3);
-  const hay = ` ${norm([text, row.material, row.description, row.from_place, row.to_place].filter(Boolean).join(" "))} `;
-  if (words.length && !words.every((w) => hay.includes(` ${w}`))) return null;
-  return { customer: c.name, per: L, liters: Math.round(L * row.quantity * 10) / 10 };
+  const rules = fuelRulesOf(c);
+  if (!rules.length || !(Number(row.quantity) > 0)) return null;
+  const hay = workHay(d, row, text);
+  for (const r of rules) {
+    if ((r.unit || "Sefer") !== row.unit) continue;
+    if (r.from && row.date && row.date < r.from) continue;
+    if (r.to && row.date && row.date > r.to) continue;
+    const words = norm(r.match || "").split(" ").filter((w) => w.length >= 3);
+    if (words.length && !words.every((w) => hay.includes(` ${w}`))) continue;
+    return { c, rule: r };
+  }
+  return null;
+}
+// Müşterinin mazot kuralı: { customer, per, unit, liters, only_pay }
+export function fuelAllowance(d, row, text) {
+  const m = matchFuelRule(d, row, text);
+  if (!m) return null;
+  return { customer: m.c.name, per: Number(m.rule.per), unit: m.rule.unit || "Sefer", liters: Math.round(Number(m.rule.per) * Number(row.quantity) * 10) / 10, only_pay: m.rule.only_pay !== false, rule_id: m.rule.id };
 }
 
-// İş kaydına mazot karşılığını uygular. Müşteri "ücreti yalnız mazot" ise iş parasal alacak oluşturmaz
+// İş kaydına mazot karşılığını uygular. Kural "ücret yalnız mazot" ise iş parasal alacak oluşturmaz
 // (hakedişte 0 ₺, "Mazot karşılığı"); hak edilen litre customer_fuel_allowance_l olarak işe yazılır.
 export function applyFuelPay(d, fields, text = "") {
   const fa = fuelAllowance(d, fields, text);
@@ -94,8 +122,8 @@ export function applyFuelPay(d, fields, text = "") {
   delete out.customer_fuel_allowance_l;
   if (!fa) return out;
   out.customer_fuel_allowance_l = fa.liters;
-  const c = live(d, "customers").find((x) => x.id === fields.customer_id);
-  if (c && c.fuel_only_pay !== false) // varsayılan: ücret yalnız mazot (Kılıç Hafriyat)
+  out.fuel_rule_id = fa.rule_id;
+  if (fa.only_pay)
     out.price_snapshot = { unit_price: 0, kdv_rate: 0, kdv_included: false, amount: 0, price_source: "Mazot karşılığı", fuel_liters_per_unit: fa.per, snapshot_at: new Date().toISOString() };
   return out;
 }
@@ -109,10 +137,13 @@ export function customerFuelLedger(d, customerId) {
   const earned = r1(works.reduce((n, w) => n + Number(w.customer_fuel_allowance_l), 0));
   const received = r1(fuel.reduce((n, f) => n + (Number(f.liters) || 0), 0) + tank.reduce((n, m) => n + (Number(m.liters) || 0), 0));
   const trips = works.reduce((n, w) => n + (w.unit === "Sefer" ? Number(w.quantity) || 0 : 0), 0);
-  return { earned, received, balance: r1(earned - received), trips, works: works.length, receipts: fuel.length + tank.length };
+  const units = {};
+  for (const w of works) units[w.unit] = Math.round(((units[w.unit] || 0) + (Number(w.quantity) || 0)) * 100) / 100;
+  return { earned, received, balance: r1(earned - received), trips, units, works: works.length, receipts: fuel.length + tank.length };
 }
 export function fuelLedgers(d) {
-  return live(d, "customers").filter((c) => Number(c.fuel_per_trip) > 0).map((c) => ({ id: c.id, name: c.name, ...customerFuelLedger(d, c.id) }));
+  return live(d, "customers").filter((c) => hasFuelRules(c) || live(d, "work_records").some((w) => w.customer_id === c.id && Number(w.customer_fuel_allowance_l) > 0))
+    .map((c) => ({ id: c.id, name: c.name, ...customerFuelLedger(d, c.id) }));
 }
 
 // Aynı yapıştırmada iki kez bildirilmiş iş: aynı tarih + araç + birim + miktar + malzeme/güzergâh
