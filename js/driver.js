@@ -168,7 +168,7 @@ export async function screen(ctx) {
     for (const b of qsa("[data-tab]", root)) b.addEventListener("click", () => { readForm(); tab = b.dataset.tab; draw(); });
     qs("[data-cid]", root)?.addEventListener("change", (e) => { readForm(); st.cid = e.target.value; st.sid = ""; draw(); });
     qs("[data-ds]", root)?.addEventListener("change", (e) => { readForm(); st.ds = e.target.value; draw(); });
-    for (const b of qsa("[data-wt]", root)) b.addEventListener("click", () => { readForm(); st.wt = b.dataset.wt; if (/Makine|Kazı|Yükleme/.test(st.wt) && st.u === "Sefer") st.u = "Saat"; draw(); });
+    for (const b of qsa("[data-wt]", root)) b.addEventListener("click", () => { readForm(); st.wt = b.dataset.wt; if (/Makine|Kazı|Yükleme/.test(st.wt) && st.u === "Sefer") st.u = "Saat"; else if (/Nakliye/.test(st.wt) && st.u === "Saat") st.u = "Sefer"; draw(); });
     for (const b of qsa("[data-u]", root)) b.addEventListener("click", () => { readForm(); st.u = b.dataset.u; draw(); });
     for (const b of qsa("[data-src]", root)) b.addEventListener("click", () => { readForm(); st.src = b.dataset.src; draw(); });
     for (const b of qsa("[data-q]", root)) b.addEventListener("click", () => { readForm(); st.q = Math.max(0, (Number(st.q) || 0) + Number(b.dataset.q)); draw(); });
@@ -179,6 +179,7 @@ export async function screen(ctx) {
       if (!st.vid) return toast("Araç seçin", "err");
       if (!st.cid || (st.cid === "__new" && !st.cn.trim())) return toast("Müşteri seçin", "err");
       if (!(q > 0)) return toast("Miktar yazın", "err");
+      if (/Nakliye/.test(st.wt) && st.u === "Saat" && !(await confirmDialog("Birim saat mi?", `${st.wt} genelde sefer olur. ${q} SAAT olarak mı kaydedilsin?`, "Evet, saat"))) return;
       const e = { id: core.newId(), date: st.date || today, vid: st.vid, wt: st.wt, q, u: st.u,
         ...(st.cid === "__new" ? { cn: st.cn.trim() } : { cid: st.cid }), ...(st.sid ? { sid: st.sid } : {}),
         ...(st.ds && st.ds !== "__new" ? { ds: st.ds } : st.ds === "__new" && st.dn.trim() ? { dn: st.dn.trim() } : {}),
