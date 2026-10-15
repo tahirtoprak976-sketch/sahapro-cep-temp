@@ -149,6 +149,11 @@ export async function screen(ctx) {
       }
       const d = await db.dumpAll();
       const today = todayStr();
+      // Şoför ekranından gelen kayıtlar (SP1 kodu): Gemini'siz, birebir; fotoğraflar sırayla o işlere. Kalan serbest metin Gemini'ye gider.
+      const drv = await import("./driver-core.js");
+      const drvPayloads = await drv.extractPayloads(message);
+      const drvRest = drvPayloads.length ? drv.stripDriverBlocks(message) : message;
+      const useGemini = !drvPayloads.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0;
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
@@ -163,7 +168,7 @@ export async function screen(ctx) {
         const img = await shrink(f);
         const part = { inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } };
         imgParts.push(part);
-        parts.push(part);
+        if (!drvPayloads.length) parts.push(part);
       }
       for (const f of audios) {
         const a = await audioToWav(f);
@@ -171,7 +176,7 @@ export async function screen(ctx) {
         parts.push({ inlineData: { mimeType: (a.type || "audio/ogg").split(";")[0], data: await blobToBase64(a) } });
       }
       if (refine) parts.push({ text: "ÖNCEKİ TASLAK (kullanıcı aşağıdaki mesajın sonunda [DÜZELTME] ile düzeltme yazdı). Düzeltmeyi uygula, düzeltilmeyen satırları AYNEN koru ve TAM planı yeniden döndür:\n" + JSON.stringify(refine.plan).slice(0, 20000) });
-      parts.push({ text: `Fotoğraf sayısı: ${images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(message || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
+      parts.push({ text: `Fotoğraf sayısı: ${drvPayloads.length ? 0 : images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(drvRest || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
       const { effectiveRules } = await import("./assistant-rules.js");
@@ -181,14 +186,29 @@ export async function screen(ctx) {
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
       const askP = message && tools.isQuestion(message) ? tools.askWithTools(db, message).catch(() => null) : Promise.resolve(null);
-      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
+      let plan = useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
-      });
+      }) : {};
+      const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length }) : null;
+      if (drvPlan) plan = { ...plan, works: [...drvPlan.plan.works, ...(plan.works || [])], fuel: [...drvPlan.plan.fuel, ...(plan.fuel || [])] };
       const asked = await askP;
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      if (drvPlan) {
+        const seen = drv.seenDriverIds(d);
+        const tag = (row, m) => {
+          if (!row) return;
+          row.driver_entry_id = m.driver_entry_id;
+          if (m.photos) row.photos = m.photos;
+          if (m.tonnage && !row.tonnage) row.tonnage = m.tonnage;
+          if (seen.has(m.driver_entry_id)) { row.issues.push("Bu şoför kaydı daha önce alındı — atlandı"); row.ok = false; row.driverDup = true; }
+        };
+        drvPlan.meta.forEach((m, i) => tag(v.works[i], m));
+        drvPlan.fuelMeta.forEach((m, i) => tag(v.fuel[i], m));
+        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${drvPlan.meta.length} iş, ${drvPlan.fuelMeta.length} yakıt kaydı (Gemini'siz, birebir)`;
+      }
       Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message: vmsg, d });
@@ -202,6 +222,7 @@ export async function screen(ctx) {
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
       try { await rereadSlips(db, v, imgParts, d, today); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
+      for (const w of [...v.works, ...v.fuel]) if (w.driverDup) w.ok = false;
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
@@ -258,6 +279,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
+    (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
@@ -787,6 +809,10 @@ async function save(ctx, out, v, d, { message, files }) {
         delete fields.internal_note_src;
         const wr0 = v.works[Number(c.dataset.i)];
         fields.internal_note = (wr0.reporter ? "Bildiren: " + wr0.reporter + " · " : "") + source;
+        if (wr0.driver_entry_id) {
+          if (existingWorks.some((w) => w.driver_entry_id === wr0.driver_entry_id)) { toast("Şoför kaydı zaten alınmış, atlandı", "err"); continue; }
+          fields.driver_entry_id = wr0.driver_entry_id; fields.source = "şoför";
+        }
         const up = Number(val(c, "unit_price"));
         fields.price_snapshot = up > 0
           ? { unit_price: up, kdv_rate: Number(await db.metaGet("kdv_default")) || 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
@@ -900,7 +926,7 @@ async function save(ctx, out, v, d, { message, files }) {
           unit_price: !byCustomer && total ? Math.round((total / liters) * 100) / 100 : null, total: byCustomer ? null : total,
           ...(byCustomer ? { customer_id: val(c, "fuel_customer") || null } : {}),
           fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: r.km || null,
-          machine_hours: r.machine_hours || null, description: source, customer_billable: false,
+          machine_hours: r.machine_hours || null, description: source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id } : {}), customer_billable: false,
         }, "Asistan");
         if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
         done.fuel++;
