@@ -151,6 +151,7 @@ export async function screen(ctx) {
       Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message: vmsg, d });
+      v.prices = (await import("./price-rule-core.js")).validatePriceRules(plan, { message: vmsg, d });
       v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
@@ -185,7 +186,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length + (v.prices || []).length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi", quarries: "Malzeme ocağı", dump_sites: "Döküm / dolgu sahası" };
   const quarries = live("quarries").map((x) => [x.id, x.name]);
   const personnel = live("personnel").map((p) => [p.id, p.name]);
@@ -368,6 +369,20 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${r.remove ? `<div class="small">Neden: ${esc(r.reason)}</div>` : ""}${issues(r)}</div>`;
       })
       .join("") +
+    (v.prices || [])
+      .map((r, i) => `<div class="card" data-kind="price" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>💲 Fiyat kuralı</b> (fiyat listesine)</label>
+        <div class="formgrid2">
+          <div class="field"><label>Müşteri</label><select name="customer">${opt([...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer]] : [])], r.customer_id || (r.new_customer ? "new:" + r.new_customer : ""), "— tüm müşteriler —")}</select></div>
+          <div class="field"><label>Kapsam</label><select name="scope">${r.scopes.map((s, j) => `<option value="${j}">${esc(s.label)}</option>`).join("")}</select></div>
+          <div class="field"><label>Birim</label><select name="unit">${opt(ASSIST_UNITS.map((u) => [u, u]), r.unit || "")}</select></div>
+          <div class="field"><label>Fiyat (₺, KDV hariç)</label><input type="number" step="any" name="price" value="${r.price ?? ""}"></div>
+        </div>
+        <div data-scopeinfo class="small" style="margin-top:4px"></div>
+        <label class="history-check small"><input type="checkbox" name="apply_unpriced" checked> Fiyatı boş eski işlere uygula <span data-n-unpriced class="muted"></span></label>
+        <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
+        ${issues(r)}</div>`)
+      .join("") +
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
   // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
   for (const b of qsa("[data-pickcust]", out))
@@ -385,6 +400,22 @@ function render(ctx, out, v, d, { message, files, ms }) {
       if (ss && ss.value.startsWith("new:")) ss.value = "";
     });
   }
+  // Fiyat kuralı: seçilen kapsama göre eski iş sayıları ve mevcut kural
+  for (const card of qsa('.card[data-kind="price"]', out)) {
+    const r = v.prices[Number(card.dataset.i)];
+    const show = () => {
+      const s = r.scopes[Number(qs("[name=scope]", card).value) || 0];
+      const same = qs("[name=customer]", card).value === (r.customer_id || "") && qs("[name=unit]", card).value === r.unit;
+      qs("[data-n-unpriced]", card).textContent = same ? `(${s.unpriced} iş)` : "";
+      qs("[data-n-differ]", card).textContent = same ? `(${s.differ} iş)` : "";
+      qs("[data-scopeinfo]", card).innerHTML = [
+        s.existing ? `Mevcut kural: <b>${fmtTL(s.existing.price)} ₺</b> → yeni fiyatla güncellenecek` : "Yeni kural eklenecek",
+        s.locked ? `<span class="muted">${s.locked} iş hakedişe girdiği için değişmez</span>` : "",
+      ].filter(Boolean).join(" · ");
+    };
+    for (const n of ["scope", "customer", "unit"]) qs(`[name=${n}]`, card).addEventListener("change", show);
+    show();
+  }
   qs("[data-save]", out)?.addEventListener("click", () => save(ctx, out, v, d, { message, files }));
 }
 
@@ -392,7 +423,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const { db } = ctx;
   const cards = qsa(".card[data-kind]", out)
     .filter((c) => qs("[data-pick]", c).checked)
-    .sort((a, b) => (["card", "memory", "tank"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank"].includes(b.dataset.kind) ? 0 : 1));
+    .sort((a, b) => (["card", "memory", "tank", "price"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
@@ -408,6 +439,7 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "personnel" ? !val(c, "personnel")
       : k === "ticket" ? !val(c, "ticket_no").trim() || !val(c, "date") || !val(c, "vehicle") || !val(c, "link") || (val(c, "link") === "new" && (!val(c, "customer") || !val(c, "work_type")))
       : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== val(c, "owner").split(":")[0] || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
+      : k === "price" ? !(Number(val(c, "price")) > 0) || !val(c, "unit")
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
     if (miss) {
@@ -425,7 +457,7 @@ async function save(ctx, out, v, d, { message, files }) {
   }
   const btn = qs("[data-save]", out);
   btn.disabled = true;
-  const done = { tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
+  const done = { price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -457,7 +489,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const source = "Asistan: " + message.slice(0, 300);
   try {
     const { priceSnapshot } = await import("./business.js");
-    const prices = await db.listActive("price_book");
+    let prices = await db.listActive("price_book");
     const crane = { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") };
     const vehicles = (d.vehicles || []).filter(isActive);
     const existingWorks = (d.work_records || []).filter(isActive);
@@ -466,6 +498,29 @@ async function save(ctx, out, v, d, { message, files }) {
       if (k === "memory") {
         const r = v.memory[Number(c.dataset.i)];
         await learn(r.alias, r.target_type, r.target_id, r.target_name);
+        continue;
+      }
+      if (k === "price") {
+        const r = v.prices[Number(c.dataset.i)];
+        const pr = await import("./price-rule-core.js");
+        const s = r.scopes[Number(val(c, "scope")) || 0];
+        const cust = val(c, "customer") ? await ensureCustomer(val(c, "customer")) : null;
+        const rule = { customer_id: cust, site_id: cust === r.customer_id ? r.site_id : null, work_type: s.work_type, vehicle_id: s.vehicle_id,
+          unit: val(c, "unit"), price: Number(val(c, "price")), kdv_rate: 20, kdv_included: false, valid_from: null };
+        let fresh = await db.dumpAll();
+        const old = pr.sameRule(fresh, rule);
+        const rec = old
+          ? await db.saveExisting("price_book", old, { price: rule.price }, "Asistan: fiyat kuralı güncellendi")
+          : await db.saveNew("price_book", { ...rule, active: true, note: "Asistan: " + message.slice(0, 120) }, "Asistan: fiyat kuralı");
+        done.price++;
+        const ruleId = rec?.id || old?.id || null;
+        const pw = pr.pastWorksFor(fresh, rule);
+        const todo = [...(qs("[name=apply_unpriced]", c).checked ? pw.unpriced : []), ...(qs("[name=apply_differ]", c).checked ? pw.differ : [])];
+        for (const w of todo) {
+          await db.saveExisting("work_records", w, { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Asistan: fiyat kuralı eski işe uygulandı");
+          done.priced++;
+        }
+        prices = await db.listActive("price_book");
         continue;
       }
       if (k === "card") {
@@ -725,7 +780,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
     qs("[data-msg]", ctx.root).value = "";
