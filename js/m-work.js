@@ -274,12 +274,14 @@ async function workForm(ctx, editId) {
       const cur = collectForm(form);
       const fill = slipFill(res, cur, { d });
       for (const [k, val] of Object.entries(fill)) { const el = qs(`[name=${k}]`, form); if (el) el.value = val; }
+      if (fill.work_type) qs("[name=work_type]", form).dispatchEvent(new Event("change"));
       form.dispatchEvent(new Event("change"));
       form.dispatchEvent(new Event("input"));
       const vName = (id) => vehicles.find((x) => x.id === id)?.name || "";
       wOut.innerHTML = `<div class="small" style="margin-top:6px">${res.rows.map((r) => `• Fiş ${r.photo + 1}: <b>${r.net_ton != null ? fmtNum(r.net_ton) + " ton" : "ton yok"}</b>${r.slip_no ? " · No " + esc(r.slip_no) : ""}${r.date ? " · " + trDate(r.date) : ""}${r.plate ? " · " + esc(r.plate) + (r.vehicle_id ? " (" + esc(vName(r.vehicle_id)) + ")" : "") : ""}${r.issues.length ? ` <span class="muted">⚠ ${esc(r.issues.join(", "))}</span>` : ""}`).join("<br>")}</div>
         ${res.read ? `<div class="small" style="margin-top:4px">Toplam <b>${fmtNum(res.total_ton)} ton</b> (${res.read}/${imgs.length} fiş) — Tonaj alanına yazıldı${fill.quantity != null ? ", miktar dolduruldu" : ""}.</div>` : ""}
         ${res.read && cur.unit !== "Ton" ? `<button type="button" class="btn block" style="margin-top:6px" data-wton>Ton hesabı: birimi Ton, miktarı ${fmtNum(res.total_ton)} yap</button>` : ""}
+        ${fill.material_hint ? `<div class="small" style="margin-top:4px">⚠ ${esc(fill.material_hint)}</div>` : ""}
         <div class="muted tiny" style="margin-top:4px">Fişte yazmayan değer doldurulmadı. Kaydetmeden önce kontrol edin.</div>`;
       qs("[data-wton]", wOut)?.addEventListener("click", () => {
         qs("[name=unit]", form).value = "Ton";

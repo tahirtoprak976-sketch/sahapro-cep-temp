@@ -51,7 +51,10 @@ export function validateTickets(plan, { d, today = todayStr(), photoTexts = [], 
     const text = photo != null ? String(photoTexts[photo] || "") : "";
     if (photo == null) issues.push("Hangi fotoğraf olduğu belli değil");
     else if (!text.trim()) issues.push("Fotoğrafın yazısı okunamadı");
-    const r = { photo, date: null, vehicle_id: null, ticket_no: "", tonnage: null, dump_site_id: null, dump_site_name: "", material: String(t.material || "").slice(0, 40), customer_id: null, site_id: null, link: "" };
+    const r = { photo, date: null, vehicle_id: null, ticket_no: "", tonnage: null, dump_site_id: null, dump_site_name: "", material: "", customer_id: null, site_id: null, link: "" };
+    // Malzeme: fişin yazısında geçmeli (kum, mıcır 0-5, gravak…)
+    if (t.material && materialKind(t.material) && materialKind(text) === materialKind(t.material)) r.material = String(t.material).slice(0, 40);
+    else if (materialKind(text)) r.material = MATERIAL_LABEL[materialKind(text)];
     // Fiş no: yazıda birebir geçmeli
     const no = String(t.ticket_no || "").trim();
     if (no && alnum(no).length >= 2 && alnum(text).includes(alnum(no))) r.ticket_no = no.slice(0, 40);
@@ -183,6 +186,17 @@ export function docsSchemaProps() {
   };
 }
 
+// ---- Malzeme türü (fiş ya da mesaj metninden): kum / mıcır / gravak / hafriyat / moloz / çöp / taş ----
+const MATERIAL_RE = [["mıcır", /\bmi[cç]ir|\bmicir|\bmıcır|\bkirmata/i], ["kum", /\bkum\b|\bkumu\b|\bdere kumu|\bmm kum/i], ["gravak", /\bgravak|\bgrobeton|\bstabilize/i],
+  ["taş", /\bocak ta[sş]|\bta[sş]\b/i], ["moloz", /\bmoloz/i], ["çöp", /\bc[oö]p\b|\bhurda/i], ["hafriyat", /\bhafriyat|\bharfiyat|\btoprak/i]];
+export const MATERIAL_LABEL = { "mıcır": "Mıcır", kum: "Kum", gravak: "Gravak", "taş": "Ocak taşı", moloz: "Moloz", "çöp": "Çöp", hafriyat: "Hafriyat" };
+export const MATERIAL_WORK_TYPE = { "mıcır": "Mıcır Nakliye", kum: "Kum Nakliye", gravak: "Gravak Nakliye", moloz: "Moloz Nakliye", "çöp": "Çöp Nakliye", hafriyat: "Hafriyat Nakliye" };
+export function materialKind(text) {
+  const t = String(text || "");
+  for (const [k, re] of MATERIAL_RE) if (re.test(t) || re.test(foldTr(t))) return k;
+  return null;
+}
+
 // ---- İş + fişi tek satır: aynı işe ait fiş (irsaliye/kantar/döküm) ayrı kart değil, işin içine girer ----
 // Eşleşme: tek iş + tek fiş ya da aynı tarih ve aynı araç. Fiş no, tonaj, fotoğraf işe yazılır; tutmayan bilgi uyarı olur.
 export function mergeTicketsIntoWorks(v, { photoCount = 0 } = {}) {
@@ -198,6 +212,11 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0 } = {}) {
     if (t.ticket_no && !w.slip_no) w.slip_no = t.ticket_no;
     if (t.tonnage) w.tonnage = Math.round(((w.tonnage || 0) + t.tonnage) * 100) / 100;
     if (t.dump_site_id && !w.dump_site_id && !w.new_dump_site) w.dump_site_id = t.dump_site_id;
+    // Malzeme: fişte yazan malzeme işte yoksa yazılır; işle çelişiyorsa uyarı (mesaj "kum", fiş "mıcır")
+    const mk = materialKind(t.material), wk = materialKind([w.material, w.work_type].join(" "));
+    if (mk && !w.material) w.material = t.material;
+    if (mk && wk && mk !== wk) w.issues.push(`Fişte malzeme "${t.material}", işte "${w.material || w.work_type}" — kontrol edin`);
+    if (mk && !w.work_type && MATERIAL_WORK_TYPE[mk]) w.work_type = MATERIAL_WORK_TYPE[mk];
     if (t.vehicle_id && w.vehicle_id && t.vehicle_id !== w.vehicle_id) w.issues.push("Fişteki plaka işteki araçla aynı değil — kontrol edin");
     if (t.date && w.date !== t.date) w.issues.push(`Fiş tarihi ${t.date.split("-").reverse().join(".")}, iş tarihi farklı`);
     if (w.unit === "Ton" && t.tonnage && Math.abs((Number(w.quantity) || 0) - w.tonnage) > 0.05) w.issues.push(`Fişte ${w.tonnage} ton yazıyor, işte ${w.quantity} ton`);

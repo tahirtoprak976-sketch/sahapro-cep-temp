@@ -2,7 +2,7 @@
 // SAF katman: istem, şablon ve doğrulama. Rakam, fiş no, tarih ve plaka fişin yazısında geçmeli; geçmeyen alan doldurulmaz.
 import { isActive, todayStr, addDays } from "./core.js";
 import { numbersInText } from "./ai-assist.js";
-import { datesInText } from "./assistant-docs.js";
+import { datesInText, materialKind, MATERIAL_WORK_TYPE, MATERIAL_LABEL } from "./assistant-docs.js";
 import { foldTr } from "./parser.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -40,7 +40,7 @@ export function validateSlips(obj, { d, today = todayStr(), count = 0 } = {}) {
     const text = String(s.text || "");
     const nums = numbersInText(text);
     const issues = [];
-    const r = { photo, net_ton: null, slip_no: "", date: null, vehicle_id: null, plate: "", material: "", from_place: "", to_place: "", company: "", issues };
+    const r = { photo, net_ton: null, slip_no: "", date: null, vehicle_id: null, plate: "", material: "", from_place: "", to_place: "", company: "", issues, text: text.slice(0, 800) };
     // Ton: fişte ton olarak ya da kg olarak (×1000) yazmalı; brüt − dara da kabul
     const n = Number(s.net_ton);
     if (Number.isFinite(n) && n > 0 && n < 100) {
@@ -89,6 +89,12 @@ export function slipFill(res, form, { d, today = todayStr() } = {}) {
   const vids = [...new Set(res.rows.map((r) => r.vehicle_id).filter(Boolean))];
   if (vids.length === 1 && !form.vehicle_id) out.vehicle_id = vids[0];
   if (!form.material && first("material")) out.material = first("material");
+  // İş türü boşsa ya da genel kaldıysa fişteki malzemeden: kum → Kum Nakliye, mıcır → Mıcır Nakliye
+  const mk = materialKind(first("material") || res.rows.map((r) => r.text || "").join(" "));
+  if (mk && MATERIAL_WORK_TYPE[mk] && (!form.work_type || form.work_type === "Hafriyat Nakliye" && mk !== "hafriyat")) {
+    if (!form.work_type) out.work_type = MATERIAL_WORK_TYPE[mk];
+    else out.material_hint = `Fişte "${MATERIAL_LABEL[mk]}" yazıyor; iş türü ${form.work_type} seçili — ${MATERIAL_WORK_TYPE[mk]} mi olmalı?`;
+  }
   const match = (store, name) => {
     if (!name) return null;
     const n = norm(name);
