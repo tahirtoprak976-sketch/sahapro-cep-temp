@@ -30,9 +30,20 @@ export async function screen(ctx) {
       <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div>
+      <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
       <button class="btn primary block" style="margin-top:10px" data-ask ${g.ready ? "" : "disabled"}>🤖 Asistana Gönder</button>
     </div>
+    <div data-lastundo></div>
     <div data-out></div>`;
+  {
+    const last = await db.metaGet("assistant_undo");
+    if (last && Date.now() - new Date(last.at).getTime() < 86400000) {
+      const box = qs("[data-lastundo]", root);
+      box.innerHTML = `<div class="card"><div class="row between"><span class="small">Son asistan kaydı: ${esc(new Date(last.at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }))} · ${esc(last.label || "")}</span><button class="btn sm" data-undo>↩️ Geri al</button></div></div>`;
+      bindUndo(ctx, box);
+    }
+  }
+  let prev = null; // son sonuç (kaydedilmediyse düzeltme için)
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
   let files = [];
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
@@ -107,7 +118,11 @@ export async function screen(ctx) {
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
-    const message = qs("[data-msg]", root).value.trim();
+    const typed = qs("[data-msg]", root).value.trim();
+    // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
+    const refine = prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message ? prev : null;
+    if (prev && !prev.v._done && !refine && !typed) return toast("Düzeltme yazın ya da yeni mesaj girin", "err");
+    const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
@@ -138,6 +153,7 @@ export async function screen(ctx) {
         if (a.size > 15e6) throw new Error("Ses kaydı çok uzun; 3 dakikadan kısa kaydedin");
         parts.push({ inlineData: { mimeType: (a.type || "audio/ogg").split(";")[0], data: await blobToBase64(a) } });
       }
+      if (refine) parts.push({ text: "ÖNCEKİ TASLAK (kullanıcı aşağıdaki mesajın sonunda [DÜZELTME] ile düzeltme yazdı). Düzeltmeyi uygula, düzeltilmeyen satırları AYNEN koru ve TAM planı yeniden döndür:\n" + JSON.stringify(refine.plan).slice(0, 20000) });
       parts.push({ text: `Fotoğraf sayısı: ${images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(message || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
@@ -173,6 +189,13 @@ export async function screen(ctx) {
       v.answerBad = checkAnswer(v.answer, facts);
       v.asked = asked && asked.answer ? asked : null;
       if (v.asked) v.askedHtml = tools.answerHtml(v.asked);
+      prev = { message, plan, v };
+      const rw = qs("[data-refine-wrap]", root);
+      rw.hidden = false;
+      qs("[data-refine]", root).checked = true;
+      msgEl.value = "";
+      msgEl.placeholder = "Düzeltme yazın (ör. müşteri Kaya olacak) — yeni bir mesaj için alttaki kutucuğu kaldırın";
+      qs("[data-refine-prev]", root).textContent = typed ? `Önceki mesaj: "${typed.slice(0, 120)}${typed.length > 120 ? "…" : ""}"` : "";
       render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
     } catch (e) {
       out.innerHTML = notice("warn", e.message || String(e));
@@ -491,6 +514,8 @@ async function save(ctx, out, v, d, { message, files }) {
   const btn = qs("[data-save]", out);
   btn.disabled = true;
   const batchWorks = {};
+  const undo = await import("./undo.js");
+  const snap0 = await undo.snapshot(db);
   const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
@@ -861,12 +886,34 @@ async function save(ctx, out, v, d, { message, files }) {
       }
     }
     const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const plan = await undo.saveUndo(db, snap0, parts.join(", "));
+    v._done = true;
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
-      '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
+      '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
+      (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "");
+    bindUndo(ctx, out);
     qs("[data-msg]", ctx.root).value = "";
     await db.metaSet("assistant_draft", "");
   } catch (e) {
     btn.disabled = false;
+    const plan = await undo.saveUndo(db, snap0, "yarım kalan kayıt").catch(() => null);
     toast((e.message || String(e)) + ` (kaydedilen: ${done.work} iş, ${done.expense} gider, ${done.fuel} yakıt)`, "err");
+    if (plan) { out.insertAdjacentHTML("afterbegin", '<button class="btn block" data-undo>↩️ Yarım kalan kaydı geri al</button>'); bindUndo(ctx, out); }
   }
+}
+
+function bindUndo(ctx, box) {
+  for (const b of qsa("[data-undo]", box))
+    b.addEventListener("click", async () => {
+      const plan = await ctx.db.metaGet("assistant_undo");
+      if (!plan) return toast("Geri alınacak kayıt yok", "err");
+      if (!(await confirmDialog("Geri alınsın mı?", `Asistanın ${new Date(plan.at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} kaydı (${plan.label || "değişiklikler"}) tamamen geri alınacak.`, "Geri al", true))) return;
+      try {
+        await (await import("./undo.js")).applyUndo(ctx.db);
+        toast("Geri alındı", "ok");
+        ctx.reload();
+      } catch (e) {
+        toast(e.message || String(e), "err");
+      }
+    });
 }
