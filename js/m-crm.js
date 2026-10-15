@@ -1649,7 +1649,7 @@ async function settings(ctx) {
     <div class="card tap" data-go="#/mazot-hesaplari"><div class="row between"><span>⛽ Mazotla ödeme hesapları (ör. Kılıç: sefer başı 75 L)</span><span class="muted small">›</span></div></div>
     <div class="card tap" data-go="#/kendi-depo"><div class="row between"><span>🏗 Kendi depo / stok sahası (moloz, çöp, hafriyat stoku)</span><span class="muted small">›</span></div></div>
     <div class="card tap" data-go="#/kime-kontrol"><div class="row between"><span>🔎 Kime çalışıldı? (Kuyucu / Aydın gibi benzer adlı müşterilerin işleri)</span><span class="muted small">›</span></div></div>
-    <div class="card tap" data-go="#/kart-birlestir"><div class="row between"><span>🔗 Müşteri kartlarını birleştir (aynı firma / şantiye ayrı açılmışsa)</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/kart-birlestir"><div class="row between"><span>🔗 Kartları birleştir (aynı müşteri, aynı plaka, aynı personel iki kart olmuşsa)</span><span class="muted small">›</span></div></div>
     <div class="section-title">Yapay Zeka (deneysel)</div>
     <div class="card tap" data-go="#/yapay-zeka"><div class="row between"><span>🤖 Telefonda çalışan ücretsiz model — indir ve dene</span><span class="muted small">›</span></div></div>
     <div class="section-title">Geri Yükleme</div>
