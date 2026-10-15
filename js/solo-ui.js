@@ -1408,6 +1408,10 @@ export async function augment(ctx) {
     route = parts[0],
     id = parts[1];
   if (["new", "edit"].some((p) => parts.includes(p))) return;
+  // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
+  if (route === "musteriler" && id) {
+    try { await customerWorks(ctx, id); } catch (e) {}
+  }
   // Müşteri kartı: mazotla ödeme kuralları ve mazot hesabı (ör. Kılıç Hafriyat: 75 L/sefer, ücret yalnız mazot)
   if (route === "musteriler" && id) {
     try {
@@ -1682,4 +1686,65 @@ async function quoteResult(ctx, d) {
       ]),
     () => t,
   );
+}
+
+// ---- Müşteri kartında yapılan işler ----
+export function customerWorkRows(d, id, { from = "", subs = false } = {}) {
+  const live = (s) => (d[s] || []).filter((x) => !x.deleted_at);
+  const ids = new Set([id, ...(subs ? live("customers").filter((c) => c.parent_customer_id === id).map((c) => c.id) : [])]);
+  const nm = (s, x) => (x ? live(s).find((r) => r.id === x)?.name || "" : "");
+  const rows = live("work_records")
+    .filter((w) => ids.has(w.customer_id) && (!from || String(w.date) >= from))
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || "").localeCompare(String(a.created_at || "")))
+    .map((w) => {
+      const amt = Number(w.price_snapshot?.amount);
+      const where = [nm("sites", w.site_id), nm("quarries", w.quarry_id) || w.quarry, nm("dump_sites", w.dump_site_id) || w.dump_area].filter(Boolean).join(" → ");
+      return { id: w.id, date: w.date, vehicle: nm("vehicles", w.vehicle_id), qty: Number(w.quantity) || 0, unit: w.unit || "", type: w.work_type || "", where,
+        sub: w.customer_id !== id ? nm("customers", w.customer_id) : "", amount: Number.isFinite(amt) && amt > 0 ? amt : 0,
+        fuelL: Number(w.customer_fuel_allowance_l) || 0, unpriced: !(Number.isFinite(amt) && amt > 0) && !w.customer_fuel_allowance_l,
+        tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", material: w.material || "" };
+    });
+  const units = {};
+  for (const r of rows) units[r.unit] = Math.round(((units[r.unit] || 0) + r.qty) * 100) / 100;
+  return { rows, units, amount: Math.round(rows.reduce((n, r) => n + r.amount, 0) * 100) / 100, unpriced: rows.filter((r) => r.unpriced).length, fuelL: rows.reduce((n, r) => n + r.fuelL, 0) };
+}
+export function customerWorksText(name, res, label) {
+  const tr = (s) => (s ? String(s).slice(0, 10).split("-").reverse().join(".") : "");
+  const tl = (n) => Number(n).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+  const lines = [`*${name}* — Yapılan işler (${label})`, ""];
+  for (const r of [...res.rows].reverse()) lines.push(`${tr(r.date)} · ${r.vehicle || "-"} · ${tl(r.qty)} ${r.unit.toLocaleLowerCase("tr-TR")} ${r.type}${r.sub ? " [" + r.sub + "]" : ""}${r.where ? " (" + r.where + ")" : ""}${r.tonnage ? " · " + tl(r.tonnage) + " ton" : ""}${r.amount ? " · " + tl(r.amount) + " ₺" : ""}`);
+  lines.push("", "Toplam: " + Object.entries(res.units).map(([u, q]) => `${tl(q)} ${u.toLocaleLowerCase("tr-TR")}`).join(", ") + (res.amount ? ` · ${tl(res.amount)} ₺` : ""));
+  return lines.join("\n");
+}
+async function customerWorks(ctx, id) {
+  const { root, db } = ctx;
+  const d = await db.dumpAll();
+  const me = (d.customers || []).find((c) => c.id === id);
+  if (!me) return;
+  const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);
+  const { customerLedgerMovements } = await import("./collect-core.js");
+  const bal = Math.round(customerLedgerMovements(d, id).reduce((n, m) => n + (Number(m.amount) || 0), 0) * 100) / 100;
+  const today = new Date().toISOString().slice(0, 10);
+  const PER = { month: ["Bu ay", today.slice(0, 8) + "01"], m3: ["Son 3 ay", core.addDays(today, -90)], all: ["Tümü", ""] };
+  const fmt = (n) => Number(n).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+  const sec = document.createElement("section");
+  sec.className = "card";
+  sec.dataset.custworks = "1";
+  const tabs = root.querySelector("[data-tabs]");
+  if (tabs) tabs.before(sec); else root.append(sec);
+  let per = "all", subs = false, limit = 40;
+  const draw = () => {
+    const res = customerWorkRows(d, id, { from: PER[per][1], subs });
+    sec.innerHTML = `<div class="row between"><h2 style="margin:0">⚒ Yapılan işler</h2><span class="${bal > 0 ? "badge warn" : "badge ok"}">Bakiye ${fmt(bal)} ₺</span></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${Object.entries(PER).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-per="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-subs>Taşeronlar dahil</button>` : ""}</div>
+      <p class="small"><b>${res.rows.length} iş</b> · ${Object.entries(res.units).map(([u, q]) => `${fmt(q)} ${esc(u.toLocaleLowerCase("tr-TR"))}`).join(" · ") || "—"}${res.amount ? ` · <b>${fmt(res.amount)} ₺</b>` : ""}${res.fuelL ? ` · ⛽ ${fmt(res.fuelL)} L mazot karşılığı` : ""}${res.unpriced ? ` · <span class="badge warn">${res.unpriced} fiyatsız</span>` : ""}</p>
+      ${res.rows.length ? res.rows.slice(0, limit).map((r) => `<div class="li" data-go="#/isler/${esc(r.id)}"><div class="ic">${r.unit === "Sefer" ? "🚚" : "⚙"}</div><div class="grow"><div class="t1 ellipsis">${esc(core.trDate(r.date))} · ${fmt(r.qty)} ${esc(r.unit.toLocaleLowerCase("tr-TR"))} ${esc(r.type)}${r.sub ? ` <span class="muted tiny">(${esc(r.sub)})</span>` : ""}</div><div class="t2 ellipsis">${esc([r.vehicle, r.where, r.material, r.tonnage ? fmt(r.tonnage) + " ton" : "", r.slip ? "fiş " + r.slip : ""].filter(Boolean).join(" · "))}</div></div><div class="end"><span class="amt">${r.amount ? fmt(r.amount) + " ₺" : r.fuelL ? "⛽ " + fmt(r.fuelL) + " L" : '<span class="muted tiny">fiyatsız</span>'}</span></div></div>`).join("") : '<p class="muted small">Bu dönemde iş yok.</p>'}
+      ${res.rows.length > limit ? `<button class="btn block sm" data-more>+${res.rows.length - limit} iş daha</button>` : ""}
+      <div class="row" style="gap:6px;margin-top:8px"><button class="btn grow" data-go="#/isler/new?customer_id=${esc(id)}">+ Bu müşteriye iş</button><button class="btn grow" data-wshare>📤 Listeyi paylaş</button><button class="btn grow" data-go="#/tahsilat/${esc(id)}">💰 Tahsilat</button></div>`;
+    for (const b of sec.querySelectorAll("[data-per]")) b.onclick = () => { per = b.dataset.per; limit = 40; draw(); };
+    sec.querySelector("[data-subs]")?.addEventListener("click", () => { subs = !subs; draw(); });
+    sec.querySelector("[data-more]")?.addEventListener("click", () => { limit += 60; draw(); });
+    sec.querySelector("[data-wshare]").onclick = async () => ui.shareText(customerWorksText(me.name, res, PER[per][0]));
+  };
+  draw();
 }
