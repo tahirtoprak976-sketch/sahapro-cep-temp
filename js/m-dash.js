@@ -162,7 +162,7 @@ async function dashboard(ctx) {
       <div class="hero-foot">${trDate(today)} · Veriler bu cihazda saklanır</div>
     </section>
 
-    ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="muted small" style="padding:4px 2px">+${board.items.length - 6} madde daha — “uyarı” kartında</div>` : "") : ""}
+    ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="card tap" data-board-all><div class="row between"><span class="small">+${board.items.length - 6} madde daha</span><span class="muted small">tümü ›</span></div></div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
     <div class="section-title" style="margin-top:12px">Bugün <span class="muted small">${trDate(today)}</span></div>
@@ -252,18 +252,39 @@ async function dashboard(ctx) {
 
   const al = qs("[data-alerts]", root);
   if (al) al.addEventListener("click", () => showAlerts(ctx, alerts));
+  qs("[data-board-all]", root)?.addEventListener("click", () =>
+    showAlerts(ctx, board.items.map((i) => ({ kind: i.kind, text: i.text + (i.sub ? " — " + i.sub : ""), href: i.href })), "Bugün Dikkat"));
 }
 
-function showAlerts(ctx, alerts) {
+// Uyarının ilgili kaydı / bölümü
+export function alertHref(a) {
+  if (a?.href) return a.href;
+  const r = a?.ref || {};
+  const id = r.id ? "/" + encodeURIComponent(r.id) : "";
+  const map = { work: "#/isler", expense: "#/gider", fuel: "#/yakit", maintenance: "#/bakim", cash: "#/kasa", vehicle: "#/filo", document: "#/belgeler", customer: "#/musteriler", supplier: "#/esnaf" };
+  if (r.type === "settings") return "#/ayarlar?tab=yedek";
+  if (r.type === "tank") return "#/depo";
+  return map[r.type] ? map[r.type] + id : null;
+}
+function showAlerts(ctx, alerts, title = "Akıllı Uyarılar") {
   const sh = sheet(
-    `<h3>Akıllı Uyarılar (${alerts.length})</h3>` +
+    `<h3>${esc(title)} (${alerts.length})</h3><div class="muted tiny" style="margin-bottom:6px">Uyarıya dokunun → ilgili kayda gider.</div>` +
       alerts
-        .map(
-          (a) =>
-            `<div class="notice ${a.kind === "alert" ? "danger" : a.kind === "warn" ? "warn" : "info"}" style="margin-bottom:7px"><span>${a.kind === "alert" ? "⛔" : a.kind === "warn" ? "⚠" : "ℹ"}</span><span>${esc(a.text)}</span></div>`,
-        )
+        .map((a, i) => {
+          const href = alertHref(a);
+          return `<div class="notice ${a.kind === "alert" ? "danger" : a.kind === "warn" ? "warn" : "info"} ${href ? "tap" : ""}" style="margin-bottom:7px;${href ? "cursor:pointer" : ""}" ${href ? `data-alert-go="${esc(href)}" role="button" tabindex="0"` : ""}><span>${a.kind === "alert" ? "⛔" : a.kind === "warn" ? "⚠" : "ℹ"}</span><span style="flex:1">${esc(a.text)}</span>${href ? '<span class="muted">›</span>' : ""}</div>`;
+        })
         .join(""),
   );
+  const open = async (href) => {
+    const { sheetClose } = await import("./ui.js");
+    sheetClose(true);
+    location.hash = href;
+  };
+  for (const el of document.querySelectorAll("[data-alert-go]")) {
+    el.addEventListener("click", () => open(el.dataset.alertGo));
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") open(el.dataset.alertGo); });
+  }
   return sh;
 }
 
@@ -723,7 +744,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.36")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.37")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
