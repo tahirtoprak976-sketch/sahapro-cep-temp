@@ -62,3 +62,32 @@ console.log("yard PASS");
   assert.equal(await seedVehicleTypes(db), 0);
   console.log("vehicle types ok");
 }
+{
+  // Depo kâr–zarar: mazotla ödenen giriş değeri sayılır; eksik çıkışların nedeni satır satır döner
+  const { yardPL } = await import("../js/yard-core.js");
+  const { dumpFee } = await import("../js/dump-fees.js");
+  const { workAmount } = await import("../js/collect-core.js");
+  const dd = {
+    dump_sites: [{ id: "Y", name: "Depo", own_yard: true }, { id: "BL", name: "Bolluca", fee: 160, fee_unit: "Ton" }, { id: "GK", name: "Göktürk dolgu" }],
+    customers: [{ id: "IC", name: "İç", internal: true }, { id: "KL", name: "Kılıç" }, { id: "AY", name: "Ayşe" }],
+    vehicles: [{ id: "T", name: "34GAM627", type: "Tır" }],
+    work_records: [
+      { id: "i1", date: "2026-10-12", customer_id: "KL", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "Y", customer_fuel_allowance_l: 100, price_snapshot: { price_source: "Mazot karşılığı", amount: 0 } },
+      { id: "i2", date: "2026-10-12", customer_id: "AY", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "Y" },
+      { id: "o1", date: "2026-10-12", customer_id: "IC", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "BL" },
+      { id: "o2", date: "2026-10-12", customer_id: "IC", vehicle_id: "T", unit: "Sefer", quantity: 1 },
+      { id: "o3", date: "2026-10-12", customer_id: "IC", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "GK" },
+    ],
+  };
+  const st = yardStock(dd, { today });
+  const p = yardPL(dd, st, { dumpFee, workAmount, fuelValue: (w) => w.customer_fuel_allowance_l * 40 });
+  assert.equal(p.income, 4000, "100 L × 40 ₺");
+  assert.equal(p.unpriced, 1);
+  assert.equal(p.dump, 4320, "27 ton × 160");
+  assert.equal(p.noFee, 2);
+  assert.deepEqual(p.outRows.map((r) => r.why), ["", "döküm yeri seçilmemiş", "Göktürk dolgu kartında ücret yok"]);
+  assert.equal(p.result, 4000 - 4320);
+  const p0 = yardPL(dd, st, { dumpFee, workAmount });
+  assert.equal(p0.income, 0); assert.equal(p0.fuelUnvalued, 1);
+  console.log("yard P&L ok");
+}
