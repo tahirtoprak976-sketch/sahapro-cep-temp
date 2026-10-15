@@ -358,10 +358,8 @@ async function manager(ctx) {
   const pendingCash = data.cash_records
     .filter((c) => isActive(c) && c.cash_status === "PERSONELDE")
     .reduce((s, c) => s + (Number(c.amount) || 0), 0);
-  const cariByCust = {};
-  for (const m of data.cari_movements.filter(isActive))
-    cariByCust[m.customer_id] =
-      (cariByCust[m.customer_id] || 0) + (Number(m.amount) || 0);
+  const { customerBalances } = await import("./collect-core.js");
+  const cariByCust = customerBalances(data).bal;
   const alacaklar = Object.entries(cariByCust)
     .filter(([, v]) => v > 0)
     .sort((a, b) => b[1] - a[1])
@@ -750,7 +748,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.46")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.47")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

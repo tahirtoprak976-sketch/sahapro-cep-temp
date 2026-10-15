@@ -77,3 +77,16 @@ assert.ok(!texts.some((x) => /#9/.test(x)), "vadesi uzak senet yok");
 // Yakın zamanda hatırlatılan müşteri tekrar uyarı vermez
 assert.ok(!collectBoardItems(d, { today, notes: { C2: { reminded_at: "2026-10-12T10:00:00Z" } } }).some((i) => /Hisar/.test(i.text)));
 console.log("collect ok");
+{
+  const { customerLedgerMovements, customerBalances } = await import("../js/collect-core.js");
+  const { customerStatement, statementText } = await import("../js/statement.js");
+  const mv = customerLedgerMovements(d, "C1");
+  assert.deepEqual(mv.map((m) => [m.type, m.amount]).sort(), [["Is", 6000], ["Is", 9000], ["Tahsilat", -5000]]);
+  const b = customerBalances(d);
+  assert.equal(b.bal.C1, 10000); assert.equal(b.unbilled.C1, 15000);
+  assert.equal(b.bal.C3, 0, "hakedişe giren işler iki kez sayılmaz");
+  const st = customerStatement(mv, "C1");
+  assert.equal(st.closing, 10000);
+  assert.match(statementText("Kaya", st), /İş \(3 sefer Moloz Nakliye · Maslak\): \+9\.000,00/);
+  console.log("ledger ok");
+}

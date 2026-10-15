@@ -8,7 +8,7 @@ import { ticketReconcile } from "./assistant-docs.js";
 import { checkAnswer } from "./assistant-core.js";
 import { fuelLedgers } from "./assistant-rules.js";
 import { yardSite, yardStock } from "./yard-core.js";
-import { receivables } from "./collect-core.js";
+import { receivables, customerLedgerMovements } from "./collect-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -156,7 +156,7 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const cash = live(d, "cash_records").filter((x) => x.customer_id === c.id && x.cash_type === "Müşteriden Para Alındı").sort((x, y) => y.date.localeCompare(x.date));
     const month = today.slice(0, 7);
     const ws = live(d, "work_records").filter((w) => w.customer_id === c.id && String(w.date).startsWith(month));
-    return { musteri: c.name, cari_bakiye_TL: cariBalance(live(d, "cari_movements").filter((m) => m.customer_id === c.id)),
+    return { musteri: c.name, cari_bakiye_TL: Math.round(customerLedgerMovements(d, c.id).reduce((n, m) => n + (Number(m.amount) || 0), 0) * 100) / 100,
       son_tahsilat: cash[0] ? { tarih: cash[0].date, TL: r2(cash[0].amount) } : null, bu_ay_is: ws.length, bu_ay_miktar: unitsText(ws) };
   }
   if (name === "fuel_totals") {

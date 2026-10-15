@@ -180,3 +180,26 @@ export function collectBoardItems(d, { today = todayStr(), notes = {} } = {}) {
   }
   return items;
 }
+
+// Müşterinin tüm cari hareketleri: kayıtlı cari hareketler + hakedişe girmemiş fiyatlı işler ("İş" satırı).
+// Cari ekranı, müşteri kartı, ekstre ve asistan aynı bakiyeyi gösterir.
+export function customerLedgerMovements(d, customerId) {
+  const billed = new Set(
+    live(d, "hakedis").filter((h) => h.status === "Kesinleşti").flatMap((h) => (h.items || []).map((i) => i.work_record_id)),
+  );
+  const out = live(d, "cari_movements").filter((m) => m.customer_id === customerId);
+  for (const w of live(d, "work_records").filter((w) => w.customer_id === customerId && !billed.has(w.id))) {
+    const a = workAmount(w);
+    if (a > 0 && w.date) out.push({ id: "is:" + w.id, ref_id: w.id, date: w.date, customer_id: customerId, type: "Is", amount: a, note: workLabel(d, w), created_at: w.created_at });
+  }
+  return out;
+}
+export function customerBalances(d) {
+  const bal = {}, unbilled = {};
+  for (const c of live(d, "customers")) {
+    const mv = customerLedgerMovements(d, c.id);
+    bal[c.id] = fromKurus(mv.reduce((n, m) => n + toKurus(m.amount), 0));
+    unbilled[c.id] = fromKurus(mv.filter((m) => m.type === "Is").reduce((n, m) => n + toKurus(m.amount), 0));
+  }
+  return { bal, unbilled };
+}

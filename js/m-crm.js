@@ -139,13 +139,15 @@ async function customerDetail(ctx, id) {
     mQuotes = mine(quotes),
     mHaks = mine(haks),
     mDocs = mine(docs);
-  const hakSum = mHaks
-    .filter((h) => h.status === "Kesinleşti")
-    .reduce((s, h) => s + (Number(h.grand_total) || 0), 0);
+  const { customerLedgerMovements } = await import("./collect-core.js");
+  const ledger = customerLedgerMovements(await db.dumpAll(), id);
+  const hakSum = ledger
+    .filter((m) => m.type === "Hakedis" || m.type === "Is")
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const tahSum = mCash
     .filter((x) => x.cash_type === "Müşteriden Para Alındı")
     .reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const bakiye = cariBalance(mine(cari));
+  const bakiye = Math.round(ledger.reduce((s, m) => s + (Number(m.amount) || 0), 0) * 100) / 100;
   const allCust = await db.listActive("customers");
   const parent = c.parent_customer_id ? allCust.find((x) => x.id === c.parent_customer_id) : null;
   const month = new Date().toISOString().slice(0, 7);
@@ -158,7 +160,7 @@ async function customerDetail(ctx, id) {
     `
     <div style="height:10px"></div>
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr)">
-      ${stat(fmtTL(hakSum), "Hakediş ₺")}${stat(fmtTL(tahSum), "Tahsilat ₺")}${stat(fmtTL(bakiye), "Bakiye ₺", bakiye > 0 ? "warn" : "ok")}
+      ${stat(fmtTL(hakSum), "İş + Hakediş ₺")}${stat(fmtTL(tahSum), "Tahsilat ₺")}${stat(fmtTL(bakiye), "Bakiye ₺", bakiye > 0 ? "warn" : "ok")}
     </div>
     <div class="card tap" data-go="#/tahsilat/${esc(id)}"><div class="row between"><span>💰 Tahsilat takibi · WhatsApp hatırlatma · ödeme sözü</span><span class="muted small">›</span></div></div>
     ${c.phone || c.note || parent ? `<div class="card">${parent ? `<div class="kv"><span class="k">Ana firma</span><span class="v"><a href="#/musteriler/${parent.id}">${esc(parent.name)}</a> (taşeronu)</span></div>` : ""}${c.phone ? kv("Telefon", c.phone) : ""}${c.note ? kv("Not", c.note) : ""}</div>` : ""}
