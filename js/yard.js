@@ -38,27 +38,24 @@ export async function screen(ctx) {
   const { dumpFee } = await import("./dump-fees.js");
   const { workAmount } = await import("./collect-core.js");
   const { yardPL } = await import("./yard-core.js");
-  const { fuelPrice } = await import("./finance-chart.js");
-  const fuelRef = await db.metaGet("fuel_ref_price");
-  const fuelValue = (w) => (Number(w.customer_fuel_allowance_l) || 0) * (fuelPrice(d, w.date, fuelRef) || 0);
-  const pl = (pred) => yardPL(d, st, { settings, pred, dumpFee, workAmount, fuelValue });
+  const pl = (pred) => yardPL(d, st, { settings, pred, dumpFee, workAmount });
   const tripCost = Number(settings.trip_cost) || 0;
   const plM = pl((x) => x.startsWith(month)), plA = pl(() => true);
   const tl = (n) => Math.round(n).toLocaleString("tr-TR") + " ₺";
   const vOf = (w) => vName((d.vehicles || []).find((v) => v.id === w.vehicle_id));
   const line = (href, left, right, warn = "") => `<div class="tap" data-go="${esc(href)}" style="padding:5px 0 5px 10px;border-left:2px solid ${warn ? "#e0a030" : "#e3e8ef"};margin:3px 0"><div class="row between tiny"><span>${left}</span><b style="white-space:nowrap;margin-left:8px">${right}</b></div>${warn ? `<div class="tiny" style="color:#b9770e">⚠ ${warn} — dokunup düzeltin</div>` : ""}</div>`;
-  const inLine = (r) => line("#/isler/" + r.w.id, `${trDate(r.w.date)} · ${esc(vOf(r.w))} · ${esc(cName(r.w.customer_id))}${r.fuelL ? ` · ⛽ ${fmtNum(r.fuelL)} L mazot karşılığı` : ""}`, r.amount ? tl(r.amount) : "—",
-    r.unpriced ? "fiyat girilmemiş, 0 sayıldı" : r.fuelUnvalued ? "mazot fiyatı bilinmiyor (depo alışı ya da Ayarlar'da litre fiyatı yok)" : "");
+  const inLine = (r) => line("#/isler/" + r.w.id, `${trDate(r.w.date)} · ${esc(vOf(r.w))} · ${esc(cName(r.w.customer_id))}${r.fuelL ? ` · ⛽ ${fmtNum(r.fuelL)} L mazot karşılığı` : ""}`, r.amount ? tl(r.amount) : r.fuelL ? "⛽ " + fmtNum(r.fuelL) + " L" : "—",
+    r.unpriced ? "fiyat girilmemiş, 0 sayıldı" : "");
   const outLine = (r) => line("#/isler/" + r.w.id, `${trDate(r.w.date)} · ${esc(vOf(r.w))} · ${esc(r.w.material || r.w.work_type || "")} → ${esc(r.site || "?")}${r.empty ? '<br><span class="muted">maliyet yazılmadı (0 sayıldı) — yazmak için dokunun</span>' : ""}`, r.amount ? "− " + tl(r.amount) : "0 ₺");
   const same = plA.ins === plM.ins && plA.outs === plM.outs && Math.round(plA.result) === Math.round(plM.result);
   const plCard = (t, p, detail) => `<div class="card"><div class="strong small">${t}</div>
-    <div class="row between small" style="margin-top:6px"><span>📥 Depoya getirilen işlerin değeri (${p.ins})</span><b style="white-space:nowrap;margin-left:8px">${tl(p.income)}</b></div>
+    <div class="row between small" style="margin-top:6px"><span>📥 Depoya getirilen işlerin değeri (${p.ins})</span><b style="white-space:nowrap;margin-left:8px">${tl(p.income)}${p.fuelL ? `<br><span class="small">+ ⛽ ${fmtNum(p.fuelL)} L</span>` : ""}</b></div>
     ${detail ? p.inRows.map(inLine).join("") : ""}
     <div class="row between small" style="margin-top:6px"><span>📤 Depodan çıkan seferlerin maliyeti (${fmtNum(p.trips)} sefer)</span><b style="white-space:nowrap;margin-left:8px">− ${tl(p.dump)}</b></div>
     ${detail ? p.outRows.map(outLine).join("") : ""}
     ${tripCost ? `<div class="row between small" style="margin-top:6px"><span>Sefer maliyeti (${fmtNum(p.trips)} × ${tl(tripCost)})</span><b>− ${tl(p.extra)}</b></div>` : ""}
     <div class="divider"></div><div class="row between"><span class="strong">Sonuç</span><span class="strong" style="color:${p.result < 0 ? "#d9534f" : "#2e9e6b"}">${tl(p.result)}</span></div>
-    ${p.noFee || p.unpriced || p.fuelUnvalued ? `<div class="tiny" style="color:#b9770e;margin-top:4px">⚠ Sonuç eksik: ${[p.unpriced ? p.unpriced + " giriş fiyatsız" : "", p.fuelUnvalued ? p.fuelUnvalued + " girişin mazot değeri bilinmiyor" : "", ""].filter(Boolean).join(", ")}. Yukarıdaki işaretli satırlara dokunup düzeltin.</div>` : ""}
+    ${p.unpriced ? `<div class="tiny" style="color:#b9770e;margin-top:4px">⚠ Sonuç eksik: ${[p.unpriced ? p.unpriced + " giriş fiyatsız" : "", ""].filter(Boolean).join(", ")}. Yukarıdaki işaretli satırlara dokunup düzeltin.</div>` : ""}
     </div>`;
   root.innerHTML =
     appbar("Kendi Depo / Stok Sahası", esc(site.name)) +
@@ -74,7 +71,7 @@ export async function screen(ctx) {
     ${st.unknownVehicles.length ? notice("warn", "Yük katsayısı bilinmeyen araç: " + st.unknownVehicles.map((v) => esc(vName(v))).join(", ") + " — aşağıdan girin (şimdilik 1 sayıldı).") : ""}
     <div class="section-title">Depo kâr–zarar</div>
     ${plM.ins || plM.outs ? plCard("Bu ay", plM, true) : '<div class="card muted small">Bu ay depoya giriş/çıkış yok.</div>'}${same ? (plA.ins || plA.outs ? '<div class="muted tiny" style="margin:-4px 2px 8px">Tüm kayıtlar bu aya ait (tüm zamanlar = bu ay).</div>' : "") : plCard("Tüm zamanlar", plA, false)}
-    <div class="muted tiny" style="margin:-4px 2px 8px">Depodan çıkan seferlerin maliyetini siz yazarsınız: iş kaydında "Döküm maliyeti (₺)". Boş bırakılırsa (ör. stabilize çıkışı) maliyet 0 sayılır. Mazotla ödenen işler, hak edilen litre × depo mazot fiyatıyla sayılır. Mazot ve şoför için sefer başı bir maliyet girebilirsiniz (aşağıda).</div>
+    <div class="muted tiny" style="margin:-4px 2px 8px">Depodan çıkan seferlerin maliyetini siz yazarsınız: iş kaydında "Döküm maliyeti (₺)". Boş bırakılırsa (ör. stabilize çıkışı) maliyet 0 sayılır. Mazotla ödenen işler (Kılıç gibi) TL sayılmaz; hak edilen litre ayrıca yazılır. Mazot ve şoför için sefer başı bir maliyet girebilirsiniz (aşağıda).</div>
     <div class="section-title">Nasıl kaydedilir?</div>
     <div class="card small">
       • <b>Depoya giriş:</b> kamyonetin müşteri işini normal kaydedin, <b>Döküm Sahası = ${esc(site.name)}</b> seçin. Asistan "depoya döküldü / şantiyeye döktük" ifadesini anlar.<br>

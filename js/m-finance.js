@@ -80,7 +80,7 @@ async function hub(ctx) {
   const d = await db.dumpAll();
   const { monthlySeries } = await import("./finance-chart.js");
   const cur = monthlySeries(d, { today, months: 1, fuelRefPrice: await db.metaGet("fuel_ref_price") })[0];
-  const monthH = cur.work + cur.fuelPay;
+  const monthH = cur.work;
   const monthT = cur.collected;
   const monthG = cur.cost;
   const items = [

@@ -89,12 +89,12 @@ async function dashboard(ctx) {
   const board = todayBoard(data, { today, lastBackupAt: lastBackup, yardSettings: (await db.metaGet("yard_settings")) || {}, collectNotes: (await db.metaGet("collect_notes")) || {} });
   const months = monthlySeries(data, { today, months: 6, fuelRefPrice: await db.metaGet("fuel_ref_price") });
   const vsr = vehicleSeries(data, { today, days: 30 }).slice(0, 5);
-  const mMax = Math.max(1, ...months.flatMap((m) => [m.work + m.fuelPay, m.collected, m.cost]));
+  const mMax = Math.max(1, ...months.flatMap((m) => [m.work, m.collected, m.cost]));
   const mChart = `<svg class="chart" viewBox="0 0 320 110" role="img" aria-label="Aylık iş değeri, tahsilat ve maliyet">
     ${months.map((m, i) => {
       const x = 10 + i * 51;
       const bar = (v, dx, cls, fill) => { const h = Math.max(v ? 2 : 0, (v / mMax) * 70); return `<rect x="${x + dx}" y="${84 - h}" width="13" height="${h}" rx="2" fill="${fill}"><title>${cls}: ${fmtTL(v)} ₺</title></rect>`; };
-      return bar(m.work + m.fuelPay, 0, "İş değeri (mazot karşılığı dahil)", "#f5a623") + bar(m.collected, 15, "Tahsilat", "#2e9e6b") + bar(m.cost, 30, "Maliyet", "#d9534f") + `<text x="${x + 21}" y="100" text-anchor="middle" style="font-size:9px;fill:#93a4b5">${m.label}</text>`;
+      return bar(m.work, 0, "İş değeri (parayla)", "#f5a623") + bar(m.collected, 15, "Tahsilat", "#2e9e6b") + bar(m.cost, 30, "Maliyet", "#d9534f") + `<text x="${x + 21}" y="100" text-anchor="middle" style="font-size:9px;fill:#93a4b5">${m.label}</text>`;
     }).join("")}
   </svg>`;
   const { receivables, workAmount } = await import("./collect-core.js");
@@ -106,10 +106,7 @@ async function dashboard(ctx) {
       const ys = (await db.metaGet("yard_settings")) || {};
       const st = yc.yardStock(data, { settings: ys, today });
       const { dumpFee } = await import("./dump-fees.js");
-      const { fuelPrice } = await import("./finance-chart.js");
-      const ref = await db.metaGet("fuel_ref_price");
-      const fuelValue = (w) => (Number(w.customer_fuel_allowance_l) || 0) * (fuelPrice(data, w.date, ref) || 0);
-      const p = yc.yardPL(data, st, { settings: ys, pred: (x) => x.startsWith(today.slice(0, 7)), dumpFee, workAmount, fuelValue });
+      const p = yc.yardPL(data, st, { settings: ys, pred: (x) => x.startsWith(today.slice(0, 7)), dumpFee, workAmount });
       yardCard = `<div class="row between tap" data-go="#/kendi-depo"><span class="muted small">🏗 Kendi depo · stok ~${fmtNum(st.total)} kamyonet yükü</span><span class="strong" style="color:${p.result < 0 ? "#d9534f" : "#2e9e6b"}">${p.ins || p.outs ? (p.result < 0 ? "" : "+") + fmtTL(p.result) + " ₺ bu ay" : "aç ›"}</span></div><div class="divider"></div>`;
     } else yardCard = `<div class="row between tap" data-go="#/kendi-depo"><span class="muted small">🏗 Kendi depo / stok sahası</span><span class="muted small">kur ›</span></div><div class="divider"></div>`;
   }
@@ -261,8 +258,7 @@ async function dashboard(ctx) {
     <div class="section-title">Aylık Özet — son 6 ay</div>
     <div class="card">${mChart}
       <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Gider+Yakıt</span></div>
-      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL ? kv("Mazotla ödenen işler", fmtNum(cur.fuelPayL) + " L ≈ " + fmtTL(cur.fuelPay) + " ₺") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay gider+yakıt", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
-      ${cur.fuelPayUnvalued ? `<div class="muted tiny" style="margin-top:6px">⚠ ${fmtNum(cur.fuelPayUnvalued)} L mazot karşılığı TL'ye çevrilemedi: depo alış fiyatı yok. Mazotla Ödeme Hesapları'ndan referans litre fiyatı girin.</div>` : ""}
+      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay gider+yakıt", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
       ${cur.unpriced ? `<div class="muted tiny" style="margin-top:6px">⚠ Bu ay ${cur.unpriced} işin fiyatı yok; iş değeri eksik hesaplanır.</div>` : ""}
     </div>
     ${vsr.length ? `<div class="section-title">Araç Başına — son 30 gün</div>` + vsr.map((v) => li({ ic: "🚚", t1: esc(v.name), t2: `${v.works} iş · ${fmtNum(v.liters)} Lt yakıt`, end: `<div class="amt">${fmtTL(v.cost)} ₺</div>` })).join("") : ""}
@@ -426,7 +422,8 @@ async function manager(ctx) {
     <div class="section-title">Tahmini Operasyon Sonucu — Bu Ay</div>
     <div class="card">
       <div class="tiny muted" style="margin-bottom:6px">Muhasebe net kârı değildir; saha verilerinden tahmindir.</div>
-      ${kv("İş değeri (fiyatlı işler" + (curM.fuelPay ? " + mazot karşılığı" : "") + ")", fmtTL(curM.work + curM.fuelPay) + " ₺")}
+      ${kv("İş değeri (parayla ödenen fiyatlı işler)", fmtTL(curM.work) + " ₺")}
+      ${curM.fuelPayL || curM.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(curM.fuelPayL) + " L hak edildi · " + fmtNum(curM.fuelGotL) + " L alındı") : ""}
       ${kv("Yakıt", fmtTL(curM.fuel) + " ₺")}
       ${kv("Gider", fmtTL(curM.expense) + " ₺")}
       ${kv("Bakım/Arıza", fmtTL(curM.maint) + " ₺")}
@@ -773,7 +770,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.65")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.66")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

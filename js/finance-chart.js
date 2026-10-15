@@ -27,7 +27,7 @@ export function monthlySeries(data, opts = {}) {
   const today = opts.today || todayStr();
   const keys = lastMonths(today, opts.months || 6);
   const rows = new Map(
-    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0 }]),
+    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0, fuelGotL: 0 }]),
   );
   for (const w of data.work_records || []) {
     if (!isActive(w)) continue;
@@ -37,14 +37,10 @@ export function monthlySeries(data, opts = {}) {
     const amt = w.price_snapshot?.amount;
     if (amt == null || !Number.isFinite(Number(amt))) r.unpriced++;
     else r.work += toKurus(amt);
-    // Ücreti mazotla ödenen iş: hak edilen litre × litre fiyatı gelir sayılır
+    // Ücreti mazotla ödenen iş (ör. Kılıç): TL gelir SAYILMAZ, yalnız hak edilen litre tutulur.
+    // Müşterinin verdiği mazot da araca konunca masraf sayılmaz (kasadan para çıkmaz). İkisi litre hesabında izlenir.
     const L = Number(w.customer_fuel_allowance_l) || 0;
-    if (L > 0 && w.price_snapshot?.price_source === "Mazot karşılığı") {
-      const p = fuelPrice(data, w.date, opts.fuelRefPrice);
-      r.fuelPayL += L;
-      if (p) r.fuelPay += toKurus(L * p);
-      else r.fuelPayUnvalued += L;
-    }
+    if (L > 0) r.fuelPayL += L;
   }
   for (const c of data.cash_records || []) {
     if (!isActive(c) || c.cash_type !== "Müşteriden Para Alındı") continue;
@@ -60,11 +56,9 @@ export function monthlySeries(data, opts = {}) {
     if (!isActive(f)) continue;
     const r = rows.get(monthKey(f.date));
     if (!r) continue;
-    // Müşterinin verdiği mazot araca konduysa tutarı yoktur: tüketim maliyeti aynı fiyatla sayılır (gelirle dengeli)
-    if (f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0)) {
-      const p = fuelPrice(data, f.date, opts.fuelRefPrice);
-      if (p) r.fuel += toKurus((Number(f.liters) || 0) * p);
-    } else r.fuel += toKurus(f.total);
+    // Müşterinin verdiği mazot (tutarsız): para çıkmadı → masraf değil, yalnız litre
+    if (f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0)) r.fuelGotL += Number(f.liters) || 0;
+    else r.fuel += toKurus(f.total);
   }
   // Bakım/arıza tutarı ve gidere/bakıma bağlı olmayan esnaf alışları da masraftır (Giderler ekranıyla aynı tanım)
   for (const m of data.maintenance_records || []) {
@@ -94,8 +88,9 @@ export function monthlySeries(data, opts = {}) {
     cost: fromKurus(r.expense + r.fuel + r.maint + r.esnaf + r.dump),
     fuelPay: fromKurus(r.fuelPay),
     fuelPayL: Math.round(r.fuelPayL * 10) / 10,
-    // tahmini kâr = fiyatlı iş değeri + mazotla ödenen işlerin değeri − (gider + yakıt); fiyatsız iş ayrıca işaretlenir
-    profit: fromKurus(r.work + r.fuelPay - r.expense - r.fuel - r.maint - r.esnaf - r.dump),
+    fuelGotL: Math.round(r.fuelGotL * 10) / 10,
+    // tahmini kâr = fiyatlı (parayla) iş değeri − masraflar; mazotla ödenen işler litre olarak ayrı (fuelPayL / fuelGotL)
+    profit: fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump),
   }));
 }
 
@@ -119,8 +114,7 @@ export function vehicleSeries(data, opts = {}) {
       const r = get(f.vehicle_id);
       if (r) {
         r.liters += Number(f.liters) || 0;
-        if (f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0)) { const p = fuelPrice(data, f.date, opts.fuelRefPrice); if (p) r.cost += toKurus((Number(f.liters) || 0) * p); }
-        else r.cost += toKurus(f.total);
+        if (!(f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0))) r.cost += toKurus(f.total);
       }
     }
   for (const e of data.expense_records || []) if (inRange(e)) { const r = get(e.vehicle_id); if (r) r.cost += toKurus(e.amount); }

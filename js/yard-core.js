@@ -101,16 +101,17 @@ export function mentionsYard(text) {
 }
 
 // Depo kâr–zarar: depoya döküm yapılan müşteri işlerinin tutarı − depodan çıkan seferlerin döküm ücreti (− sefer başı ek maliyet)
-export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workAmount, fuelValue = () => 0 } = {}) {
+export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workAmount } = {}) {
   const tripCost = Number(settings.trip_cost) || 0;
   const ins = st.ins.filter((x) => pred(x.w.date)), outs = st.outs.filter((x) => pred(x.w.date));
-  // Giren işin değeri: fiyatı varsa tutarı; ücreti mazotla ödeniyorsa hak edilen litre × litre fiyatı
+  // Giren işin değeri: parayla ödenen tutar. Mazotla ödenen iş (Kılıç) TL sayılmaz, hak edilen litre ayrıca gösterilir.
   const inRows = ins.map((x) => {
     const L = Number(x.w.customer_fuel_allowance_l) || 0;
-    const money = workAmount(x.w), fuel = L > 0 && !(money > 0) ? Number(fuelValue(x.w)) || 0 : 0;
-    return { w: x.w, amount: money + fuel, fuelL: L, fuelUnvalued: L > 0 && !(money > 0) && !(fuel > 0), unpriced: !(money > 0) && !(L > 0) };
+    const money = workAmount(x.w);
+    return { w: x.w, amount: money, fuelL: L, unpriced: !(money > 0) && !(L > 0) };
   });
   const income = inRows.reduce((n, r) => n + r.amount, 0);
+  const fuelL = Math.round(inRows.reduce((n, r) => n + r.fuelL, 0) * 10) / 10;
   const sites = (d.dump_sites || []);
   const outRows = outs.map((x) => {
     const f = dumpFee(d, x.w);
@@ -121,7 +122,7 @@ export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workA
   const dump = outRows.reduce((n, r) => n + r.amount, 0);
   const trips = outs.reduce((n, x) => n + (x.w.unit === "Sefer" ? Number(x.w.quantity) || 0 : 1), 0);
   const cost = dump + trips * tripCost;
-  return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee: 0, noCost: outRows.filter((r) => r.empty).length, est: outRows.filter((r) => r.fee?.estimated).length, unpriced: inRows.filter((r) => r.unpriced).length, fuelUnvalued: inRows.filter((r) => r.fuelUnvalued).length, ins: ins.length, outs: outs.length, tripCost, inRows, outRows };
+  return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee: 0, noCost: outRows.filter((r) => r.empty).length, est: outRows.filter((r) => r.fee?.estimated).length, unpriced: inRows.filter((r) => r.unpriced).length, fuelL, ins: ins.length, outs: outs.length, tripCost, inRows, outRows };
 }
 
 // Bilinen araç türleri (işletme sahibinden): tır / kamyon — boş ya da genel türü olan karta bir kez yazılır

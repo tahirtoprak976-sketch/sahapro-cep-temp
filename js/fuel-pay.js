@@ -18,7 +18,7 @@ export async function screen(ctx) {
     <div class="card"><div class="small">Litre değeri: <b>${price ? price.toLocaleString("tr-TR") + " ₺/L" : "bilinmiyor"}</b> ${price && !ref ? "(depo alış ortalaması)" : ref ? "(referans)" : ""}${price ? ` · toplam alacak ≈ <b>${Math.round(total * price).toLocaleString("tr-TR")} ₺</b>` : ""}</div>
       <div class="formgrid2" style="margin-top:6px"><div class="field"><label>Referans litre fiyatı (depoya fiyatlı giriş yoksa)</label><input type="number" step="any" data-ref value="${esc(ref ?? "")}"></div></div>
       <button class="btn sm" data-ref-save>Kaydet</button>
-      <div class="muted tiny" style="margin-top:4px">Mazotla ödenen işler aylık kârda bu fiyatla gelir sayılır; müşterinin araca verdiği mazot da aynı fiyatla yakıt maliyeti sayılır.</div></div>
+      <div class="muted tiny" style="margin-top:4px">Mazotla ödenen işler kâr hesabında TL gelir sayılmaz; müşterinin araca verdiği mazot da masraf sayılmaz. Takip litre iledir; bu fiyat yalnız kalan alacağın yaklaşık değerini gösterir.</div></div>
     ${rows.map((r) => {
       const c = (d.customers || []).find((x) => x.id === r.id);
       const rules = fuelRulesOf(c);

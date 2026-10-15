@@ -17,7 +17,7 @@ export const EXPERT_KNOWLEDGE = [
   "• Kiralama şekilleri: operatörlü/operatörsüz, yakıt dahil/hariç. Makinenin şantiyeye götürülmesi (lowbed nakliye, mobilizasyon) ayrı bir kalemdir; unutulursa zarar edilir.",
   "• 'Döküm dahil' fiyat: döküm sahası ücretini nakliyeci öder; kâr = sefer fiyatı − döküm ücreti − mazot − şoför/araç gideri. Resmi sahalar ton başı ücret alır (Bolluca 160, Cebeci 210, İSTAÇ 235 ₺/ton KDV dahil); tır ~27 ton, kamyon ~22 ton taşır. Dolgu yerleri pazarlıkla.",
   "• Malzeme nakliyesi (mıcır, kum, gravak): ocaktan kantar fişiyle alınır; fiyat sefer ya da ton başıdır; fişteki net ton esas.",
-  "• Mazot karşılığı iş: bazı müşteriler ücreti mazotla öder (ör. sefer başı 75 L); bu alacak litre olarak izlenir.",
+  "• Mazot karşılığı iş: bazı müşteriler ücreti mazotla öder (ör. Kılıç, sefer başı 75 L); her araç birkaç seferde bir kendi hakkını doğrudan deposuna alır. Bu işler TL gelir, alınan mazot da TL masraf SAYILMAZ; alacak litre olarak izlenir. Araç kârında bu işler 0 ₺ görünür: aracı yalnız TL kârına bakıp zararda sanma, mazot karşılığı litreyi de söyle.",
   "• Taşeron: ana firmanın işini yapan alt yüklenici; işi kim istediyse o öder, taşeron adı geçmiyorsa ana firma.",
   "• Kendi depo: kamyonet müşteriden döküm dahil alıp depoya döker; birikince tır/kamyonla resmi sahaya gider — depo kârı = gelen işler − çıkış döküm ücretleri.",
   "• Yönetim ölçüleri: araç başı aylık kâr; doluluk (çalışılan gün / iş günü, %70 altı düşük); günlük getiri; sefer başı / saat başı fiyat ortalaması ve altında kalan müşteriler; mazot verimi (L/sefer, L/saat — ani artış kaçak/arıza/yanlış kayıt belirtisi); tahsilat süresi (60 gün üstü risk, 90 üstü acil); fiyatsız iş = kayıp gelir; bakım masrafı yüksek eski araç = değiştirme/satma adayı.",
@@ -40,16 +40,13 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
     const fuel = live(d, "fuel_records").filter((f) => f.vehicle_id === v.id && inR(f.date));
     const lastAll = live(d, "work_records").filter((w) => w.vehicle_id === v.id).map((w) => w.date).sort().at(-1) || null;
     if (!ws.length && !fuel.length && !lastAll) continue;
-    let revenue = 0, fuelPay = 0;
-    for (const w of ws) {
-      revenue += workAmount(w);
-      const L = Number(w.customer_fuel_allowance_l) || 0;
-      if (L) { const p = fuelPrice(d, w.date, fuelRefPrice); if (p) fuelPay += L * p; }
-    }
-    let fuelCost = 0, liters = 0;
+    // Mazotla ödenen işler TL gelir sayılmaz; müşterinin verdiği mazot da masraf sayılmaz (ikisi litre olarak ayrı)
+    let revenue = 0, earnedL = 0;
+    for (const w of ws) { revenue += workAmount(w); earnedL += Number(w.customer_fuel_allowance_l) || 0; }
+    let fuelCost = 0, liters = 0, gotL = 0;
     for (const f of fuel) {
       liters += Number(f.liters) || 0;
-      if (f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0)) { const p = fuelPrice(d, f.date, fuelRefPrice); fuelCost += p ? (Number(f.liters) || 0) * p : 0; }
+      if (f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0)) gotL += Number(f.liters) || 0;
       else fuelCost += Number(f.total) || 0;
     }
     const maint = live(d, "maintenance_records").filter((m) => m.vehicle_id === v.id && inR(m.date)).reduce((n, m) => n + (Number(m.cost) || 0), 0);
@@ -59,11 +56,11 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
     const u = {};
     for (const w of ws) u[w.unit || "?"] = r1((u[w.unit || "?"] || 0) + (Number(w.quantity) || 0));
     const trips = u.Sefer || 0, hours = u.Saat || 0;
-    const income = revenue + fuelPay, cost = fuelCost + maint + expense + dump;
+    const income = revenue, cost = fuelCost + maint + expense + dump;
     rows.push({
       id: v.id, arac: v.name, tur: v.type || "", is: ws.length, calisilan_gun: worked, is_gunu: days, doluluk_yuzde: days ? r0((worked / days) * 100) : 0,
       birimler: u, gelir_TL: r0(income), yakit_TL: r0(fuelCost), bakim_TL: r0(maint), gider_TL: r0(expense), dokum_TL: r0(dump), kar_TL: r0(income - cost),
-      gunluk_getiri_TL: worked ? r0((income - cost) / worked) : 0, litre: r1(liters), L_sefer: trips ? r1(liters / trips) : null, L_saat: hours ? r1(liters / hours) : null,
+      gunluk_getiri_TL: worked ? r0((income - cost) / worked) : 0, mazot_karsiligi_hak_L: r1(earnedL), musteriden_alinan_mazot_L: r1(gotL), litre: r1(liters), L_sefer: trips ? r1(liters / trips) : null, L_saat: hours ? r1(liters / hours) : null,
       fiyatsiz_is: ws.filter((w) => !workAmount(w) && !w.customer_fuel_allowance_l).length, son_is: lastAll, bos_gun: lastAll ? Math.max(0, Math.round((new Date(to) - new Date(lastAll)) / 86400000)) : null,
     });
   }
@@ -120,7 +117,7 @@ export function businessReview(d, { from, to = todayStr(), today = todayStr(), n
   for (const v of veh) {
     if (v.bos_gun != null && v.bos_gun >= 7) findings.push({ kind: "bos", text: `${v.arac} ${v.bos_gun} gündür iş kaydı yok` });
     else if (v.is_gunu >= 6 && v.doluluk_yuzde < 50 && v.is) findings.push({ kind: "doluluk", text: `${v.arac} doluluğu %${v.doluluk_yuzde} (${v.calisilan_gun}/${v.is_gunu} gün)` });
-    if (v.kar_TL < 0 && v.is) findings.push({ kind: "zarar", text: `${v.arac} bu dönemde ${v.kar_TL.toLocaleString("tr-TR")} ₺ (gelir ${v.gelir_TL.toLocaleString("tr-TR")} − masraf)` });
+    if (v.kar_TL < 0 && v.is) findings.push({ kind: "zarar", text: `${v.arac} bu dönemde ${v.kar_TL.toLocaleString("tr-TR")} ₺ (gelir ${v.gelir_TL.toLocaleString("tr-TR")} − masraf)${v.mazot_karsiligi_hak_L ? ` · ayrıca ${v.mazot_karsiligi_hak_L.toLocaleString("tr-TR")} L mazot karşılığı iş yaptı (TL sayılmaz)` : ""}` });
     if (v.fiyatsiz_is) findings.push({ kind: "fiyatsiz", text: `${v.arac}: ${v.fiyatsiz_is} iş fiyatsız` });
   }
   for (const p of price) for (const l of p.dusuk_kalan_musteriler) findings.push({ kind: "fiyat", text: `${l.musteri} — ${p.is_turu} ortalama ${l.ortalama_TL.toLocaleString("tr-TR")} ₺ (genel orta ${p.orta_fiyat_TL.toLocaleString("tr-TR")} ₺)` });

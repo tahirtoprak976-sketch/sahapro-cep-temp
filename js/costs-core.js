@@ -1,5 +1,6 @@
 // Tüm masraflar tek listede: gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış (gidere/bakıma bağlı değilse).
 // Ana sayfa grafiği, Finans özeti, Giderler ekranı ve Yönetici paneli aynı tanımı kullanır.
+// Müşterinin iş karşılığı verdiği mazot masraf sayılmaz (litre olarak müşterinin mazot hesabında izlenir).
 // Depoya alınan mazot (tank girişi) masraf sayılmaz: araca verildikçe "Yakıt" olarak sayılır (çift sayım olmasın).
 import { isActive, toKurus, fromKurus } from "./core.js";
 import { fuelPrice } from "./finance-chart.js";
@@ -24,8 +25,8 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
       rows.push({ kind: "gider", id: e.id, date: e.date, amount: Number(e.amount), label: e.category || "Gider", sub: [e.company, e.description].filter(Boolean).join(" · "), vehicle_id: e.vehicle_id || null, href: null });
   for (const f of live(d, "fuel_records")) {
     if (!inR(f.date)) continue;
-    let a = Number(f.total) || 0;
-    if (f.fuel_source === "Müşteri Verdi" && !(a > 0)) { const p = fuelPrice(d, f.date, fuelRefPrice); a = p ? (Number(f.liters) || 0) * p : 0; }
+    // Müşterinin verdiği mazot (ör. Kılıç'ın iş karşılığı) masraf değildir: kasadan para çıkmaz
+    const a = Number(f.total) || 0;
     if (a > 0) rows.push({ kind: "yakit", id: f.id, date: f.date, amount: Math.round(a * 100) / 100, label: `${name("vehicles", f.vehicle_id) || "Araç"} · ${Number(f.liters) || 0} L`, sub: f.fuel_source || "", vehicle_id: f.vehicle_id || null, href: "#/yakit/" + f.id });
   }
   for (const m of live(d, "maintenance_records"))

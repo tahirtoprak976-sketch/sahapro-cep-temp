@@ -48,7 +48,7 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   if (yard && yard.total >= (yard.alert || 15)) add("🏗", `Kendi depoda ~${fmt(yard.total)} kamyonet yükü birikti — döküm sahasına gönderme zamanı`, "#/kendi-depo", "warn");
   // 6) Bu ay
   const m = monthlySeries(d, { today, months: 1, fuelRefPrice })[0];
-  if (m.works || m.cost) add("📊", `Bu ay: iş ${fmt(m.work + m.fuelPay)} ₺ · masraf ${fmt(m.cost)} ₺ · tahmini kâr ${fmt(m.profit)} ₺${m.unpriced ? ` · ${m.unpriced} iş fiyatsız` : ""}`, "#/finans", m.profit < 0 ? "warn" : "");
+  if (m.works || m.cost) add("📊", `Bu ay: iş ${fmt(m.work)} ₺ · masraf ${fmt(m.cost)} ₺ · tahmini kâr ${fmt(m.profit)} ₺${m.fuelPayL ? ` · mazot karşılığı ${fmt(m.fuelPayL)} L` : ""}${m.unpriced ? ` · ${m.unpriced} iş fiyatsız` : ""}`, "#/finans", m.profit < 0 ? "warn" : "");
   const text = lines.map((l) => (l.ic ? l.ic + " " : "   ") + l.text).join("\n");
   return { date: today, lines, text, facts: { yesterday_works: yWorks.length, receivable: rec.total, overdue90: rec.buckets.b90, tank_days: tank.daysLeft, month_profit: m.profit } };
 }
