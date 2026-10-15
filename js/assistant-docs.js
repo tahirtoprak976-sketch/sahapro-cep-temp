@@ -74,7 +74,7 @@ export function validateTickets(plan, { d, today = todayStr(), photoTexts = [], 
     }
     // Araç: plaka fişte yazmalı
     const byId = vehicles.find((v) => v.id === t.vehicle_id);
-    const byPlate = t.plate ? vehicles.find((v) => alnum(v.plate || "") && alnum(v.plate) === alnum(t.plate)) : null;
+    const byPlate = t.plate ? vehicles.find((v) => alnum(v.plate || v.name || "").length >= 5 && alnum(v.plate || v.name) === alnum(t.plate)) : null;
     const veh = byId || byPlate || vehicles.find((v) => vehicleInText(v, text)) || null;
     if (veh && (vehicleInText(veh, text) || !veh.plate)) r.vehicle_id = veh.id;
     else if (veh) { r.vehicle_id = veh.id; issues.push(`${veh.plate} plakası fişte görünmüyor`); }
@@ -199,7 +199,10 @@ export function materialKind(text) {
 
 // ---- İş + fişi tek satır: aynı işe ait fiş (irsaliye/kantar/döküm) ayrı kart değil, işin içine girer ----
 // Eşleşme: tek iş + tek fiş ya da aynı tarih ve aynı araç. Fiş no, tonaj, fotoğraf işe yazılır; tutmayan bilgi uyarı olur.
-export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null } = {}) {
+export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = null } = {}) {
+  // Mesajda hiç tarih / gün ifadesi yoksa işin tarihi tahmindir (Gemini bugünü yazmış olabilir)
+  const noDateInMsg = message != null && !datesInText(message).size && !/(?<!\p{L})(dün|dun|bugün|bugun|evvelsi|önceki gün|pazartesi|salı|sali|çarşamba|carsamba|perşembe|persembe|cuma|cumartesi|pazar|sabah|akşam|aksam|\d{1,2}\s*(ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik))(?!\p{L})/iu.test(message);
+  if (noDateInMsg) for (const w of v.works || []) w.dateUnsure = true;
   const works = v.works || [];
   if (!works.length) return v;
   // Aynı plaka iki ayrı kartta olabilir (ör. "34GAM627" adlı kart + plakası 34 GAM 627 olan "Bayram Tır"): kart değil plaka karşılaştırılır

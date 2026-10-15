@@ -166,7 +166,7 @@ export async function screen(ctx) {
       v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
-      mergeTicketsIntoWorks(v, { photoCount: images.length, d });
+      mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
@@ -270,7 +270,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
       .join("") +
     v.tickets
       .map((r, i) => {
-        const linkOpts = [...r.works.map((id) => { const w = d.work_records.find((x) => x.id === id); return [id, `Mevcut: ${nameOf("customers", w.customer_id)} · ${w.quantity} sefer`]; }), ["new", "➕ Yeni 1 sefer iş aç"]];
+        const batch = v.works.map((w, j) => ["batch:" + j, `Bu mesajdaki iş${v.works.length > 1 ? " " + (j + 1) : ""}: ${nameOf("customers", w.customer_id) || w.new_customer || "—"} · ${w.quantity ?? ""} ${String(w.unit || "").toLocaleLowerCase("tr-TR")} (aynı satıra eklenir)`]);
+        if (!r.link && v.works.length === 1) r.link = "batch:0";
+        const linkOpts = [...batch, ...r.works.map((id) => { const w = d.work_records.find((x) => x.id === id); return [id, `Mevcut: ${nameOf("customers", w.customer_id)} · ${w.quantity} sefer`]; }), ["new", "➕ Yeni 1 sefer iş aç"]];
         return `<div class="card" data-kind="ticket" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧾 Döküm / kantar fişi</b></label>
         ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Döküm fişi" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
@@ -488,6 +490,7 @@ async function save(ctx, out, v, d, { message, files }) {
   }
   const btn = qs("[data-save]", out);
   btn.disabled = true;
+  const batchWorks = {};
   const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
@@ -650,6 +653,14 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         let workId = val(c, "link");
         const veh = vehicles.find((x) => x.id === vid);
+        if (workId.startsWith("batch:")) {
+          const w = batchWorks[workId.slice(6)];
+          if (!w) { toast(`Fiş ${no}: bağlanacak iş kartı işaretli değil — fiş kaydedilmedi`, "err"); continue; }
+          workId = w.id;
+          const tn = Number(val(c, "tonnage")) || null;
+          const patch = { ...(!w.slip_no ? { slip_no: no } : {}), ...(tn && !w.tonnage ? { tonnage: tn } : {}), slip_status: w.slip_status || "Fiş Var" };
+          try { await db.saveExisting("work_records", await db.get("work_records", w.id), patch, "Asistan: fiş işe eklendi"); } catch (e) { /* iş kilitliyse yalnız belge bağlanır */ }
+        }
         if (workId === "new") {
           const f = {
             date, customer_id: val(c, "customer"), site_id: null, vehicle_id: vid, personnel_id: null, vehicle_type: veh.type || null,
@@ -739,6 +750,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity);
         if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
         const savedWork = await db.saveNew("work_records", fields, "Asistan");
+        batchWorks[c.dataset.i] = savedWork;
         for (const p of v.works[Number(c.dataset.i)].photos || []) if (files[p]) await db.addAttachment("work", savedWork.id, files[p], { kind: "slip_photo" });
         done.work++;
         const wr = v.works[Number(c.dataset.i)];
