@@ -92,3 +92,18 @@ console.log("driver ok");
   assert.equal(v.works[0].slip_no, "AS-0012");
   console.log("driver slip ok");
 }
+{
+  const { driverMessage: dm, extractPayloads: ex, payloadsToPlan: p2p, workSlipSpec } = await import("../js/driver-core.js");
+  const cfg4 = driverConfig(d, { personnel_id: "A", company: "Muratoğlu" });
+  const ents = [{ id: "w1", date: "2026-10-16", vid: "T", cid: "C", wt: "Hafriyat Nakliye", q: 2, u: "Sefer", ph: 1, dfs: "ASA-0001", rcv: "Ahmet", sgt: "2026-10-16T08:00:00Z", sg: 1 },
+    { id: "w2", date: "2026-10-16", vid: "T", cid: "C", wt: "Hafriyat Nakliye", q: 1, u: "Sefer", ph: 1 }];
+  const { meta } = p2p(await ex(await dm(ents, cfg4)), d, { photoCount: 3 });
+  assert.deepEqual(meta[0].photos, [0]); assert.equal(meta[0].digital.sigPhoto, 1, "imza fişten sonra"); assert.deepEqual(meta[1].photos, [2], "sonraki işin fotoğrafı kaymaz");
+  assert.equal(meta[0].digital.no, "ASA-0001"); assert.equal(meta[1].digital, undefined);
+  const w = { date: "2026-10-16", vehicle_id: "T", customer_id: "C", site_id: null, personnel_id: "A", work_type: "Hafriyat Nakliye", quantity: 2, unit: "Sefer", digital_slip_no: "ASA-0001", slip_no: "ASA-0001", slip_receiver: "Ahmet", slip_signed_at: "2026-10-16T08:00:00Z" };
+  const names = { customers: { C: "Kılıç Hafriyat" }, vehicles: { T: "34GAM627" }, personnel: { A: "Ali Şoför" }, sites: {}, dump_sites: {} };
+  const spec = workSlipSpec(w, names, { company: "Muratoğlu", sigBlob: { x: 1 } });
+  assert.equal(spec.number, "ASA-0001"); assert.equal(spec.sections[0].pairs[2][1], "Kılıç Hafriyat"); assert.equal(spec.sections[0].pairs[5][1], "Ali Şoför");
+  assert.ok(!spec.sections[1].pairs.some(([k]) => k === "Döküm fişi no"), "dijital fiş no kâğıt fiş gibi tekrar yazılmaz");
+  console.log("driver slip to owner ok");
+}

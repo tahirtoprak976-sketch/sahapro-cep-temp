@@ -98,6 +98,8 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
       continue;
     }
     const photos = takePhotos(e.ph);
+    // İmzalı dijital fişin imza görüntüsü: işin fotoğraflarından hemen sonra gelir
+    const sigPhoto = e.sg ? takePhotos(1)[0] ?? null : null;
     works.push({
       date: e.date, customer_id: has("customers", e.cid) ? e.cid : null, new_customer: !has("customers", e.cid) && e.cn ? e.cn : null,
       site_id: has("sites", e.sid) ? e.sid : null, vehicle_id: has("vehicles", e.vid) ? e.vid : null, personnel_id: has("personnel", p.p) ? p.p : null,
@@ -106,7 +108,8 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
       quarry_id: has("quarries", e.qy) ? e.qy : null, slip_no: e.slip || e.dfs || "", material: e.mat || "",
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
     });
-    meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null });
+    meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
+      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto } } : {}) });
   }
   return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta };
 }
@@ -154,4 +157,13 @@ export function driverSlipSpec(e, cfg, { no, receiver = "", signedAt = "", sigBl
 }
 export function slipShareText(e, cfg, no, receiver) {
   return `${cfg.co || "SAHAPRO"} — dijital iş fişi ${no}\n${entryLine({ ...e, dfs: null }, cfg).replace(/^🚚 /, "")}${receiver ? "\nTeslim alan: " + receiver : ""}`;
+}
+
+// Patron tarafı: iş kaydından aynı imzalı fiş PDF'i (şoförün şefe gönderdiğinin aynısı)
+export function workSlipSpec(w, names, { company = "", sigBlob = null, photo = null } = {}) {
+  const nmOf = (st, id) => (id ? [[id, names?.[st]?.[id] || ""]] : []);
+  const cfg = { co: company, p: [w.personnel_id || "", names?.personnel?.[w.personnel_id] || ""], C: nmOf("customers", w.customer_id), S: nmOf("sites", w.site_id), V: nmOf("vehicles", w.vehicle_id), D: nmOf("dump_sites", w.dump_site_id), Y: null };
+  const e = { date: w.date, vid: w.vehicle_id, cid: w.customer_id, sid: w.site_id, wt: w.work_type, q: w.quantity, u: w.unit, mat: w.material || "", ds: w.dump_site_id, dn: w.dump_area || "",
+    ton: w.tonnage || null, slip: w.slip_no && w.slip_no !== w.digital_slip_no ? w.slip_no : "", note: w.customer_note || "" };
+  return driverSlipSpec(e, cfg, { no: w.digital_slip_no, receiver: w.slip_receiver || "", signedAt: w.slip_signed_at || "", sigBlob, photo });
 }

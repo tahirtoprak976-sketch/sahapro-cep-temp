@@ -161,7 +161,7 @@ export async function screen(ctx) {
         if (!e.dfs) ls.set("sp_driver_slip_seq", (ls.get("sp_driver_slip_seq", 0) || 0) + 1);
         const signedAt = sigBlob ? new Date().toISOString() : "";
         if (sigBlob && "caches" in self) await (await caches.open(PHOTO_CACHE)).put(sigKey, new Response(sigBlob, { headers: { "content-type": "image/png" } }));
-        Object.assign(e, { dfs: no, rcv: receiver, ...(signedAt ? { sgt: signedAt } : {}) });
+        Object.assign(e, { dfs: no, rcv: receiver, ...(signedAt ? { sgt: signedAt, sg: 1 } : {}) });
         save();
         await send(sigBlob, no, receiver, signedAt);
         toast(`Fiş ${no} hazır`, "ok"); slipFor = null; draw();
@@ -301,8 +301,18 @@ export async function screen(ctx) {
       await dropPhotos(e); entries = entries.filter((x) => x !== e); save(); draw();
     });
     const send = async (list) => {
+      const files = [];
+      for (const e of list) {
+        files.push(...(await getPhotos(e)));
+        // İmzalı fişin imzası da patrona gider (iş kaydına eklenir, patron aynı PDF'i oluşturabilir)
+        if (e.sg && "caches" in self) {
+          const r = await (await caches.open(PHOTO_CACHE)).match(`./__drv/sig-${e.id}`);
+          if (r) files.push(new File([await r.blob()], `imza-${e.dfs || e.id}.png`, { type: "image/png" }));
+          else delete e.sg;
+        }
+      }
+      // Metin dosyalardan sonra: imzası bulunamayan fişin işareti düştüyse kodda da yer almaz (fotoğraf sırası kaymasın)
       const text = await core.driverMessage(list, cfg);
-      const files = []; for (const e of list) files.push(...(await getPhotos(e)));
       let ok = false;
       try {
         if (files.length && navigator.canShare?.({ files, text })) { await navigator.share({ text, files }); ok = true; }
