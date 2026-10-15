@@ -199,12 +199,21 @@ export function materialKind(text) {
 
 // ---- İş + fişi tek satır: aynı işe ait fiş (irsaliye/kantar/döküm) ayrı kart değil, işin içine girer ----
 // Eşleşme: tek iş + tek fiş ya da aynı tarih ve aynı araç. Fiş no, tonaj, fotoğraf işe yazılır; tutmayan bilgi uyarı olur.
-export function mergeTicketsIntoWorks(v, { photoCount = 0 } = {}) {
+export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null } = {}) {
   const works = v.works || [];
   if (!works.length) return v;
+  // Aynı plaka iki ayrı kartta olabilir (ör. "34GAM627" adlı kart + plakası 34 GAM 627 olan "Bayram Tır"): kart değil plaka karşılaştırılır
+  const pk = (id) => {
+    const x = d ? (d.vehicles || []).find((r) => r.id === id) : null;
+    return x ? String(x.plate || x.name || "").toUpperCase().replace(/[^A-Z0-9]/g, "") : id;
+  };
+  const sameVeh = (a, b) => !a || !b || a === b || (pk(a).length >= 5 && pk(a) === pk(b));
+  // Mesajda tarih yoksa iş tarihi tahmindir: fişin tarihi geçerli
+  const sameDay = (w, t) => !t.date || w.date === t.date || w.dateUnsure;
   const keep = [];
   for (const t of v.tickets || []) {
-    let cands = works.filter((w) => (!t.vehicle_id || !w.vehicle_id || w.vehicle_id === t.vehicle_id) && (!t.date || w.date === t.date));
+    let cands = works.filter((w) => sameVeh(w.vehicle_id, t.vehicle_id) && sameDay(w, t));
+    if (cands.length > 1) { const exact = cands.filter((w) => w.date === t.date); if (exact.length === 1) cands = exact; }
     if (!cands.length && !t.date && works.length === 1 && (v.tickets || []).length === 1) cands = works;
     if (cands.length !== 1 || t.dup) { keep.push(t); continue; }
     const w = cands[0];
@@ -217,8 +226,24 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0 } = {}) {
     if (mk && !w.material) w.material = t.material;
     if (mk && wk && mk !== wk) w.issues.push(`Fişte malzeme "${t.material}", işte "${w.material || w.work_type}" — kontrol edin`);
     if (mk && !w.work_type && MATERIAL_WORK_TYPE[mk]) w.work_type = MATERIAL_WORK_TYPE[mk];
-    if (t.vehicle_id && w.vehicle_id && t.vehicle_id !== w.vehicle_id) w.issues.push("Fişteki plaka işteki araçla aynı değil — kontrol edin");
-    if (t.date && w.date !== t.date) w.issues.push(`Fiş tarihi ${t.date.split("-").reverse().join(".")}, iş tarihi farklı`);
+    if (t.vehicle_id && w.vehicle_id && t.vehicle_id !== w.vehicle_id)
+      w.issues.push(sameVeh(t.vehicle_id, w.vehicle_id) ? "Aynı plaka iki ayrı araç kartında kayıtlı — Ayarlar → Kart birleştir ile birleştirin" : "Fişteki plaka işteki araçla aynı değil — kontrol edin");
+    if (t.date && w.date !== t.date) {
+      if (w.dateUnsure) w.date = t.date;
+      else w.issues.push(`Fiş tarihi ${t.date.split("-").reverse().join(".")}, iş tarihi farklı`);
+    }
+    // Fiş, mesajda yazmayan tarihi ve aracı teyit eder (fişteki plaka / tarih okunmuş ve doğrulanmış)
+    if (w.dateUnsure && t.date && w.date === t.date) {
+      w.dateUnsure = false;
+      w.issues = w.issues.filter((x) => !/İş tarihi mesajda yazmıyor/.test(x));
+      w.issues.push(`Tarih fişten alındı (${t.date.split("-").reverse().join(".")})`);
+    }
+    if (w.vehicleGuess && t.vehicle_id && sameVeh(w.vehicle_id, t.vehicle_id)) {
+      w.vehicleGuess = false;
+      w.issues = w.issues.filter((x) => !/^Araç ".*" mesajda yazmıyor/.test(x));
+    }
+    if ("ok" in w)
+      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess);
     if (w.unit === "Ton" && t.tonnage && Math.abs((Number(w.quantity) || 0) - w.tonnage) > 0.05) w.issues.push(`Fişte ${w.tonnage} ton yazıyor, işte ${w.quantity} ton`);
     w.merged_ticket = true;
   }
