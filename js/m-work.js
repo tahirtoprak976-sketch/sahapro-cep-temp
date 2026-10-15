@@ -187,7 +187,9 @@ async function workForm(ctx, editId) {
   }
   const v = rec || prefill || {};
 
-  const custOpts = customers.map((c) => ({ v: c.id, t: c.name }));
+  // Kendi depo iç müşterisi listede müşteri gibi görünmez; ayrı ve açık bir seçenek olarak en altta durur
+  const custOpts = [...customers.filter((c) => !c.internal).map((c) => ({ v: c.id, t: c.name })),
+    ...customers.filter((c) => c.internal).map((c) => ({ v: c.id, t: "📦 Kendi depodan çıkış (iç iş — para istenmez)" }))];
   const siteOpts = sites.map((s) => ({ v: s.id, t: s.name }));
   const vehOpts = vehicles.map((x) => ({ v: x.id, t: x.name }));
   const perOpts = personnel.map((x) => ({ v: x.id, t: x.name }));

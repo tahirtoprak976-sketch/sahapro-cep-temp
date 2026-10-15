@@ -75,7 +75,8 @@ async function customers(ctx) {
   if (sub) return customerDetail(ctx, sub);
   const { root, db, query } = ctx;
   const q = query.q || "";
-  let rows = (await db.listActive("customers")).sort((a, b) =>
+  // "Kendi Depo (iç iş)" müşteri değildir: depodan çıkış seferleri Kendi Depo ekranında izlenir
+  let rows = (await db.listActive("customers")).filter((c) => !c.internal).sort((a, b) =>
     String(a.name).localeCompare(String(b.name), "tr"),
   );
   rows = rows.filter((r) =>

@@ -828,6 +828,7 @@ async function master(ctx) {
             "km",
             "machine_hours",
             "tank_capacity",
+            "load_ton",
           ]
         : store === "personnel"
           ? ["name", "role", "phone", "employment_date", "vehicle_id"]
@@ -835,7 +836,9 @@ async function master(ctx) {
             ? ["name", "customer_id", "address", "location", "contact", "phone"]
             : store === "contractors"
               ? ["name", "contact", "phone", "address"]
-              : [
+              : store === "dump_sites"
+                ? ["name", "address", "location", "contact", "phone", "fee_unit", "fee"]
+                : [
                   "name",
                   "address",
                   "location",
@@ -883,6 +886,10 @@ async function master(ctx) {
                   r[k] || "Araç/Makine",
                   { empty: false },
                 )
+              : k === "fee_unit"
+                ? fSelect("Döküm ücreti nasıl alınıyor?", k, [{ v: "", t: "Ücret yok / anlaşmalı (işte ayrıca)" }, { v: "Ton", t: "Ton başına" }, { v: "Sefer", t: "Sefer başına" }], r[k] || "", { empty: false })
+              : k === "fee" || k === "load_ton"
+                ? fNum(k === "fee" ? "Döküm ücreti (₺, KDV dahil)" : "Ortalama yük (ton) — fiş yoksa döküm ücreti buna göre", k, r[k] ?? "", { step: "any" })
               : k === "ownership"
                 ? fSelect(
                     "Mülkiyet",
@@ -912,6 +919,7 @@ async function master(ctx) {
         const val = collectForm(qs("[data-form]", root));
         if (!val.name?.trim()) throw Error("Ad zorunlu");
         const fields = { ...val, active: val.active === "1" };
+        for (const k of ["fee", "load_ton"]) if (k in fields) fields[k] = fields[k] === "" ? null : Number(fields[k]);
         const created =
           id === "new"
             ? await db.saveNew(store, fields)
@@ -934,7 +942,7 @@ async function master(ctx) {
     li({
       href: "#/" + parts[0] + "/" + r.id,
       t1: esc(r.name),
-      t2: esc(r.address || ""),
+      t2: esc([r.fee > 0 && r.fee_unit ? `${r.fee} ₺ / ${String(r.fee_unit).toLocaleLowerCase("tr-TR")} (KDV dahil)` : "", r.own_yard ? "kendi depo" : "", r.address || ""].filter(Boolean).join(" · ")),
     }),
   );
   return true;

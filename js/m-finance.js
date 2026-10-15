@@ -102,7 +102,7 @@ async function hub(ctx) {
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
     <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span class="strong ${cur.profit < 0 ? "danger" : ""}">${fmtTL(cur.profit)} ₺</span></div>
-      <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
+      <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
     </div>`;
@@ -1301,14 +1301,15 @@ async function expenses(ctx) {
       ${[["month", "Bu ay"], ["3m", "Son 3 ay"], ["all", "Tümü"]].map(([p, t]) => `<button class="chip ${per === p ? "on" : ""}" data-go="${link(kind, p)}">${t}</button>`).join("")}
     </div>
     <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">
-      ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}
+      ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}${tot.dokum ? chip("dokum", "Döküm", tot.dokum) : ""}
     </div>
-    <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış. Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
+    <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti (döküm sahası kartındaki ücret × fişteki ton / sefer). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
+    ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Döküm ücreti hem iş kayıtlarından hesaplanıyor hem de \"Döküm\" gideri olarak girilmiş. Aynı parayı iki kez saymamak için birini kullanın (döküm sahası kartındaki ücreti silin ya da gider kaydını silin).") : ""}
     ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
     <div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/gider/new">+ Gider</button></div>`;
   const listEl = qs("[data-list]", root);
-  const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾" };
+  const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾", dokum: "🚛" };
   if (!rows.length) listEl.innerHTML = emptyState("💸", per === "month" ? "Bu ay masraf yok" : "Masraf yok");
   else
     pagedRender(listEl, rows, (r) => {

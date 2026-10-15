@@ -3,9 +3,10 @@
 // Depoya alınan mazot (tank girişi) masraf sayılmaz: araca verildikçe "Yakıt" olarak sayılır (çift sayım olmasın).
 import { isActive, toKurus, fromKurus } from "./core.js";
 import { fuelPrice } from "./finance-chart.js";
+import { dumpFeeRows } from "./dump-fees.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
-export const COST_KINDS = { gider: "Gider", yakit: "Yakıt", bakim: "Bakım / Arıza", esnaf: "Esnaf alışı" };
+export const COST_KINDS = { gider: "Gider", yakit: "Yakıt", bakim: "Bakım / Arıza", esnaf: "Esnaf alışı", dokum: "Döküm ücreti" };
 
 export function billTotal(b) {
   if (Number(b.gross_total) > 0) return Number(b.gross_total);
@@ -36,13 +37,17 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
     const a = billTotal(b);
     if (a > 0) rows.push({ kind: "esnaf", id: b.id, date: b.date, amount: Math.round(a * 100) / 100, label: `${name("suppliers", b.party_id) || "Esnaf"} · ${b.cost_category || "Alış"}`, sub: b.description || "", vehicle_id: b.vehicle_id || null, href: "#/esnaf/" + b.party_id });
   }
+  // Döküm ücreti: döküm sahası kartındaki ücret × fişteki ton (ya da aracın ortalama yükü) / sefer
+  for (const f of dumpFeeRows(d, { from, to }))
+    if (f.amount > 0)
+      rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, label: `${f.site} · ${f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺" : f.trips + " sefer × " + f.fee + " ₺"}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
   rows.sort((a, b) => b.date.localeCompare(a.date));
   return rows;
 }
 
 export function costTotals(rows) {
-  const t = { gider: 0, yakit: 0, bakim: 0, esnaf: 0 };
+  const t = { gider: 0, yakit: 0, bakim: 0, esnaf: 0, dokum: 0 };
   for (const r of rows) t[r.kind] += toKurus(r.amount);
-  const total = t.gider + t.yakit + t.bakim + t.esnaf;
-  return { gider: fromKurus(t.gider), yakit: fromKurus(t.yakit), bakim: fromKurus(t.bakim), esnaf: fromKurus(t.esnaf), total: fromKurus(total) };
+  const total = t.gider + t.yakit + t.bakim + t.esnaf + t.dokum;
+  return { gider: fromKurus(t.gider), yakit: fromKurus(t.yakit), bakim: fromKurus(t.bakim), esnaf: fromKurus(t.esnaf), dokum: fromKurus(t.dokum), total: fromKurus(total) };
 }
