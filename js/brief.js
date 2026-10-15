@@ -4,6 +4,8 @@ import { isActive, todayStr, addDays, latestDocuments, tankStatus, trDate } from
 import { receivables, workAmount } from "./collect-core.js";
 import { monthlySeries } from "./finance-chart.js";
 import { maintenanceBoard } from "./maint-core.js";
+import { staleQuotes } from "./quote-core.js";
+import { payrollAll } from "./payroll-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fmt = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
@@ -48,6 +50,16 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   for (const x of docs.slice(0, 3)) add("📄", `${nm(d, "vehicles", x.vehicle_id || x.owner_id) || nm(d, "personnel", x.personnel_id || x.owner_id) || "Belge"} · ${x.category || "belge"} ${x.expiry_date < today ? "süresi doldu" : trDate(x.expiry_date) + "'de bitiyor"}`, "#/belgeler", x.expiry_date < today ? "alert" : "warn");
   // 4b) Bakım takvimi
   for (const r of maintDue.slice(0, 3)) add("🔧", `${r.v.name} · ${r.rule.title}: ${r.text}`, "#/bakim-takvimi/" + r.v.id, r.state === "late" ? "alert" : "warn");
+  // 4c) Cevap bekleyen teklifler
+  for (const { q, age } of staleQuotes(d, { today }).slice(0, 2)) add("📄", `Teklif #${String(q.quote_no || "").padStart(4, "0")} (${nm(d, "customers", q.customer_id) || "müşteri"}) ${age} gündür cevapsız — arayın`, "#/teklif/" + q.id, "warn");
+  // 4d) Ay sonu maaş: 28'inden ayın 3'üne kadar, kapatılmamış maaşlar
+  const day = Number(today.slice(8, 10));
+  if (day >= 28 || day <= 3) {
+    const [y, mo] = today.split("-").map(Number);
+    const per = day >= 28 ? today.slice(0, 7) : `${mo === 1 ? y - 1 : y}-${String(mo === 1 ? 12 : mo - 1).padStart(2, "0")}`;
+    const open = payrollAll(d, per, { today }).filter((x) => !x.r.closed && x.r.gross > 0);
+    if (open.length) add("👷", `${per.slice(5)}.${per.slice(0, 4)} maaşı: ${open.length} kişi kapatılmadı · ödenecek ~${fmt(open.reduce((n, x) => n + Math.max(0, x.r.remaining), 0))} ₺`, "#/puantaj?ay=" + per, "warn");
+  }
   // 5) Kendi depo stoku
   if (yard && yard.total >= (yard.alert || 15)) add("🏗", `Kendi depoda ~${fmt(yard.total)} kamyonet yükü birikti — döküm sahasına gönderme zamanı`, "#/kendi-depo", "warn");
   // 6) Bu ay

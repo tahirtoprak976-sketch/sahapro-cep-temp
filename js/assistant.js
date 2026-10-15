@@ -943,7 +943,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const { markDone } = await import("./wa-bulk-core.js");
         await db.metaSet("wa_bulk_done", markDone((await db.metaGet("wa_bulk_done")) || {}, wa.keys.map((key) => ({ key })), todayStr()));
         await db.metaSet("wa_bulk_pending", null);
-        waNext = '<button class="btn primary block" style="margin-top:8px" data-go="#/whatsapp-toplu">💬 Bu parça işlendi — WhatsApp listesine dön ›</button>';
+        waNext = '<button class="btn primary block" style="margin-top:8px" data-go="#/whatsapp-toplu?next=1">💬 Bu parça işlendi — sonraki güne geç ›</button><button class="btn block" style="margin-top:6px" data-go="#/whatsapp-toplu">Listeye dön</button>';
       }
     }
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +

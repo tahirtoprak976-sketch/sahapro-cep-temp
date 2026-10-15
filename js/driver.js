@@ -70,6 +70,21 @@ export async function screen(ctx) {
   const opt = (rows, val, empty) => (empty != null ? `<option value="">${esc(empty)}</option>` : "") + rows.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(val) ? "selected" : ""}>${esc(t)}</option>`).join("");
   const big = "min-height:52px;font-size:17px";
 
+  // Bu hafta (pazartesiden): gün gün sefer / saat ve mazot — şoför kendi işini görür
+  const weekHtml = () => {
+    const t = new Date(today + "T12:00:00"), mon = new Date(t); mon.setDate(t.getDate() - ((t.getDay() + 6) % 7));
+    const from = mon.toISOString().slice(0, 10);
+    const ws = entries.filter((e) => e.date >= from && e.date <= today);
+    if (!ws.length) return "";
+    const days = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+    const per = {};
+    for (const e of ws) { const k = (new Date(e.date + "T12:00:00").getDay() + 6) % 7; const x = (per[k] ||= {}); if (e.k === "f") x.L = (x.L || 0) + Number(e.L); else x[e.u] = (x[e.u] || 0) + Number(e.q); }
+    const tot = {};
+    for (const x of Object.values(per)) for (const [u, n] of Object.entries(x)) tot[u] = (tot[u] || 0) + n;
+    const fmtU = (x) => Object.entries(x).filter(([u]) => u !== "L").map(([u, n]) => `${n} ${u.toLocaleLowerCase("tr-TR")}`).join(", ");
+    return `<div class="card"><div class="row between"><b class="small">Bu hafta</b><span class="small">${esc(fmtU(tot) || "—")}${tot.L ? ` · ⛽ ${tot.L} L` : ""}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px;text-align:center">${days.map((d, i) => `<div style="border-radius:8px;padding:4px 0;background:${per[i] ? "#2e9e6b22" : "var(--bg2)"}"><div class="tiny muted">${d}</div><div class="tiny" style="font-weight:700">${per[i] ? esc(fmtU(per[i]).replace(/ sefer/g, "s").replace(/ saat/g, "sa").replace(/ ton/g, "t").replace(/ yevmiye/g, "y") || "⛽") : "·"}</div></div>`).join("")}</div></div>`;
+  };
   const draw = () => {
     const unsent = entries.filter((e) => !e.sent), sent = entries.filter((e) => e.sent).slice(-15).reverse();
     const sites = (cfg.S || []).filter((s) => s[2] === st.cid);
@@ -78,6 +93,7 @@ export async function screen(ctx) {
         <div class="row between"><div><div style="font-size:20px;font-weight:800">👷 ${esc(cfg.p[1])}</div><div class="small" style="opacity:.8">${esc(cfg.co || "")} · şoför ekranı</div></div><div style="font-size:28px">🚚</div></div>
         <select data-vid style="margin-top:8px;width:100%;${big};border-radius:10px;padding:6px 10px">${opt(cfg.V || [], st.vid, "— araç seçin —")}</select>
       </div>
+      ${weekHtml()}
       <div class="row" style="gap:6px;margin:8px 0"><button class="btn grow ${tab === "is" ? "primary" : ""}" data-tab="is" style="${big}">🚚 İş</button><button class="btn grow ${tab === "yakit" ? "primary" : ""}" data-tab="yakit" style="${big}">⛽ Mazot</button></div>
       ${tab === "is" ? `<div class="card">
         <div class="field"><label>Tarih</label><input type="date" data-k="date" value="${esc(st.date || today)}" max="${today}"></div>

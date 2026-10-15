@@ -141,5 +141,10 @@ export async function screen(ctx) {
   const last = await loadSource().catch(() => null);
   if (last) await load(last.file, false, last.media);
   if (ctx.query?.shared && last) toast("WhatsApp sohbeti alındı", "ok");
+  // Asistandan "sonraki parça": sıradaki gün doğrudan açılır
+  if (ctx.query?.next && src) {
+    const nxt = qs("[data-go-ai]", root);
+    if (nxt) nxt.click(); else toast("Tüm günler işlendi 👍", "ok");
+  }
   return true;
 }
