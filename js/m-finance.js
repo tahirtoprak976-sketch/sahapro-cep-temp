@@ -1034,25 +1034,27 @@ async function cari(ctx) {
   const sub = ctx.parts[1];
   const { root, db, names } = ctx;
   if (sub) return cariDetail(ctx, sub);
-  const [customers, movements] = await Promise.all([
-    db.listActive("customers"),
-    db.getAll("cari_movements"),
-  ]);
-  const bal = {};
-  for (const m of movements.filter(isActive))
-    bal[m.customer_id] = (bal[m.customer_id] || 0) + (Number(m.amount) || 0);
+  const d = await db.dumpAll();
+  const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
+  const { customerBalances } = await import("./collect-core.js");
+  const { bal, unbilled } = customerBalances(d);
+  const rows = customers.map((c) => ({ c, b: bal[c.id] || 0, u: unbilled[c.id] || 0 })).sort((a, b) => b.b - a.b || a.c.name.localeCompare(b.c.name, "tr"));
+  const total = rows.reduce((n, r) => n + Math.max(0, r.b), 0);
   root.innerHTML =
     appbar("Cari", "Müşteri bakiyeleri") +
     `
-    <div style="height:10px"></div><div data-list></div>`;
-  const rows = customers.map((c) => ({ c, b: bal[c.id] || 0 }));
+    <div style="height:10px"></div>
+    <div class="card tap" data-go="#/tahsilat"><div class="row between"><span class="muted small">Toplam alacak</span><span class="strong">${fmtTL(total)} ₺ ›</span></div>
+      <div class="muted tiny">Bakiye = hakedişler + hakedişe girmemiş fiyatlı işler − tahsilatlar. Gün gün takip ve hatırlatma için dokunun.</div></div>
+    <div data-list></div>`;
   qs("[data-list]", root).innerHTML = rows.length
     ? rows
-        .map(({ c, b }) =>
+        .map(({ c, b, u }) =>
           li({
             ic: "🏢",
             href: "#/cari/" + c.id,
             t1: esc(c.name),
+            t2: u > 0 ? esc(`${fmtTL(u)} ₺ hakedişe girmemiş iş`) : "",
             end: `<span class="amt ${b > 0 ? "" : "muted"}">${b > 0 ? "+" : ""}${fmtTL(b)} ₺</span>`,
           }),
         )
@@ -1063,33 +1065,33 @@ async function cari(ctx) {
 async function cariDetail(ctx, cid) {
   const { root, db, names } = ctx;
   const c = await db.get("customers", cid);
-  const movements = (await db.getAll("cari_movements"))
-    .filter((m) => isActive(m) && m.customer_id === cid)
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const { customerLedgerMovements } = await import("./collect-core.js");
+  const movements = customerLedgerMovements(await db.dumpAll(), cid)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const hak = movements
-    .filter((m) => m.type === "Hakedis")
-    .reduce((s, m) => s + Number(m.amount) || 0, 0);
+    .filter((m) => m.type === "Hakedis" || m.type === "Is")
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const tah = -movements
     .filter((m) => m.type === "Tahsilat")
-    .reduce((s, m) => s + Number(m.amount) || 0, 0);
-  const balance = cariBalance(movements);
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
+  const balance = Math.round(movements.reduce((s, m) => s + (Number(m.amount) || 0), 0) * 100) / 100;
   root.innerHTML =
     appbar(c ? c.name : "Cari", "Müşteri cari kartı") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-      ${stat(fmtTL(hak), "Hakediş ₺", "accent")}
+      ${stat(fmtTL(hak), "İş + Hakediş ₺", "accent")}
       ${stat(fmtTL(tah), "Tahsilat ₺", "ok")}
       ${stat((balance > 0 ? "+" : "") + fmtTL(balance), "Bakiye ₺", balance > 0 ? "warn" : "")}
     </div>
     <div class="section-title">Hareketler</div>
-    ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti"><div class="small strong">${trDate(m.date)} · ${esc(m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
+    ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti ${m.type === "Is" ? "tap" : ""}" ${m.type === "Is" ? `data-go="#/isler/${esc(m.ref_id)}"` : ""}><div class="small strong">${trDate(m.date)} · ${esc({ Is: "İş", Hakedis: "Hakediş", Duzeltme: "Düzeltme" }[m.type] || m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.type === "Is" ? " · hakedişe girmedi" : m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
     <div class="section-title">Ekstre Gönder</div>
     <div class="card">
       <div class="field"><label>Dönem</label><select data-stper><option value="all">Tüm hareketler</option><option value="month">Bu ay</option><option value="q">Son 3 ay</option></select></div>
       <div class="row" style="gap:8px"><button class="btn primary grow" data-stwa>📤 WhatsApp / Paylaş</button><button class="btn grow" data-stcsv>📊 Excel (CSV)</button></div>
       <div class="muted tiny" style="margin-top:6px">Müşteriye giden metinde iç notlar ve düzeltme nedenleri yer almaz.</div>
     </div>
-    <div class="actionbar"><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
+    <div class="actionbar"><button class="btn" data-go="#/tahsilat/${esc(cid)}">💰 Tahsilat / hatırlat</button><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
   const stPeriod = () => {
     const t = todayStr(), v = qs("[data-stper]", root).value;
     if (v === "month") return { from: t.slice(0, 7) + "-01", to: t };

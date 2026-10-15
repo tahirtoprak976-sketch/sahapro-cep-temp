@@ -50,7 +50,7 @@ assert.equal(k.dropped.length, 1); assert.ok(/6 sefer/.test(k.text) && !/35/.tes
 let r = runAskTool(data, "work_totals", { customer: "mahir bey" }, today);
 assert.equal(r.musteri, "Hisar Polat"); assert.equal(r.sefer, 6); assert.equal(r.is_degeri_TL, 9000);
 r = runAskTool(data, "customer_balance", { customer: "Hisar" }, today);
-assert.equal(r.cari_bakiye_TL, 45000); assert.equal(r.son_tahsilat.TL, 20000);
+assert.equal(r.cari_bakiye_TL, 54000); assert.equal(r.son_tahsilat.TL, 20000); // 45.000 cari + 9.000 hakedişe girmemiş iş
 r = runAskTool(data, "customer_balance", { customer: "Yok Böyle" }, today);
 assert.ok(r.error);
 r = runAskTool(data, "esnaf_debt", {}, today);

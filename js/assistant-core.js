@@ -7,6 +7,7 @@ import { foldTr } from "./parser.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates, fuelRulesOf } from "./assistant-rules.js";
 import { yardSite, yardCustomer, yardHint } from "./yard-core.js";
+import { customerLedgerMovements } from "./collect-core.js";
 
 export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -646,7 +647,7 @@ export async function businessFacts(d, today = todayStr()) {
   const customers = live(d, "customers").map((c) => {
     const works = live(d, "work_records").filter((w) => w.customer_id === c.id && String(w.date).startsWith(month));
     const sum = (u) => works.filter((w) => w.unit === u).reduce((n, w) => n + (Number(w.quantity) || 0), 0);
-    return { musteri: c.name, cari_bakiye_TL: cariBalance(live(d, "cari_movements").filter((m) => m.customer_id === c.id)),
+    return { musteri: c.name, cari_bakiye_TL: Math.round(customerLedgerMovements(d, c.id).reduce((n, m) => n + (Number(m.amount) || 0), 0) * 100) / 100,
       bu_ay_sefer: sum("Sefer"), bu_ay_saat: sum("Saat"), bu_ay_yevmiye: sum("Yevmiye"), bu_ay_is_sayisi: works.length };
   }).filter((x) => x.cari_bakiye_TL || x.bu_ay_is_sayisi);
   const esnaf = live(d, "suppliers").map((s) => ({ esnaf: s.name, kalan_borc_TL: ledgerOf(d, s.id).remaining / 100 })).filter((x) => x.kalan_borc_TL);
