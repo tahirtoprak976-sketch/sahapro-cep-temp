@@ -144,9 +144,12 @@ export async function screen(ctx) {
         ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
         ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
       ];
+      const imgParts = [];
       for (const f of images) {
         const img = await shrink(f);
-        parts.push({ inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } });
+        const part = { inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } };
+        imgParts.push(part);
+        parts.push(part);
       }
       for (const f of audios) {
         const a = await audioToWav(f);
@@ -183,6 +186,8 @@ export async function screen(ctx) {
       v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
+      // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
+      try { await rereadSlips(db, v, imgParts, d, today); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
@@ -916,4 +921,37 @@ function bindUndo(ctx, box) {
         toast(e.message || String(e), "err");
       }
     });
+}
+
+// İşe bağlanan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, malzeme) eksikse ayrı ve daha dikkatli bir okuma
+export async function rereadSlips(db, v, imgParts, d, today) {
+  const need = (v.works || []).filter((w) => (w.photos || []).length && (!w.slip_no || !w.tonnage));
+  if (!need.length) return;
+  const idx = [...new Set(need.flatMap((w) => w.photos))].filter((i) => imgParts[i]).slice(0, 6);
+  if (!idx.length) return;
+  const { SLIP_PROMPT, slipSchema, validateSlips } = await import("./slip-read.js");
+  const { geminiJson, withModelFallback } = await import("./ai-gemini.js");
+  const raw = await withModelFallback(db, (o) => geminiJson([{ text: SLIP_PROMPT }, ...idx.map((i) => imgParts[i]), { text: `Fotoğraf sayısı: ${idx.length} (sıra 0'dan)` }], { ...o, schema: slipSchema() }));
+  const res = validateSlips(raw, { d, today, count: idx.length });
+  for (const w of need) {
+    const rows = res.rows.filter((r) => w.photos.includes(idx[r.photo]));
+    if (!rows.length) continue;
+    const tons = rows.filter((r) => r.net_ton != null);
+    const nos = rows.map((r) => r.slip_no).filter(Boolean);
+    const got = [];
+    if (!w.tonnage && tons.length) { w.tonnage = Math.round(tons.reduce((n, r) => n + r.net_ton, 0) * 100) / 100; got.push(w.tonnage + " ton"); }
+    if (!w.slip_no && nos.length) { w.slip_no = nos.join(", ").slice(0, 120); got.push("fiş no " + w.slip_no); }
+    const dates = [...new Set(rows.map((r) => r.date).filter(Boolean))];
+    if (w.dateUnsure && dates.length === 1) {
+      w.date = dates[0];
+      w.dateUnsure = false;
+      w.issues = w.issues.filter((x) => !/İş tarihi mesajda yazmıyor|Tarih fişten alındı/.test(x));
+      got.push("tarih " + dates[0].split("-").reverse().join("."));
+    }
+    const mat = rows.map((r) => r.material).find(Boolean);
+    if (mat && !w.material) w.material = mat;
+    if (got.length) w.issues.push("Fişten okundu: " + got.join(", "));
+    if ("ok" in w)
+      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess);
+  }
 }

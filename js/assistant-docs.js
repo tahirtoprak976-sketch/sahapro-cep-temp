@@ -62,8 +62,8 @@ export function validateTickets(plan, { d, today = todayStr(), photoTexts = [], 
     // Tarih: fişte yazan tarih
     const dates = datesInText(text);
     const dt = isoOk(t.date);
-    if (dt && dates.has(dt) && dt <= addDays(today, 1)) r.date = dt;
-    else { r.date = today; issues.push(dt ? `Tarih ${dt} fişte yok, kontrol edin` : "Fiş tarihi okunamadı, bugün yazıldı"); }
+    if (dt && dates.has(dt) && dt <= addDays(today, 1)) { r.date = dt; r.dateRead = true; }
+    else { r.date = today; r.dateRead = false; issues.push(dt ? `Tarih ${dt} fişte yok, kontrol edin` : "Fiş tarihi okunamadı, bugün yazıldı"); }
     // Tonaj (net)
     if (t.tonnage != null && t.tonnage !== "") {
       const n = Math.round(Number(String(t.tonnage).replace(",", ".")) * 100) / 100;
@@ -212,7 +212,9 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
   };
   const sameVeh = (a, b) => !a || !b || a === b || (pk(a).length >= 5 && pk(a) === pk(b));
   // Mesajda tarih yoksa iş tarihi tahmindir: fişin tarihi geçerli
-  const sameDay = (w, t) => !t.date || w.date === t.date || w.dateUnsure;
+  // Fişin tarihi okunamadıysa (bugün yazıldıysa) tarih karşılaştırması yapılmaz ve işe tarih aktarılmaz
+  const tDate = (t) => (t.dateRead === false ? null : t.date);
+  const sameDay = (w, t) => !tDate(t) || w.date === tDate(t) || w.dateUnsure;
   const keep = [];
   for (const t of v.tickets || []) {
     let cands = works.filter((w) => sameVeh(w.vehicle_id, t.vehicle_id) && sameDay(w, t));
@@ -231,15 +233,15 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
     if (mk && !w.work_type && MATERIAL_WORK_TYPE[mk]) w.work_type = MATERIAL_WORK_TYPE[mk];
     if (t.vehicle_id && w.vehicle_id && t.vehicle_id !== w.vehicle_id)
       w.issues.push(sameVeh(t.vehicle_id, w.vehicle_id) ? "Aynı plaka iki ayrı araç kartında kayıtlı — Ayarlar → Kartları birleştir → Araç ile birleştirin" : "Fişteki plaka işteki araçla aynı değil — kontrol edin");
-    if (t.date && w.date !== t.date) {
-      if (w.dateUnsure) w.date = t.date;
-      else w.issues.push(`Fiş tarihi ${t.date.split("-").reverse().join(".")}, iş tarihi farklı`);
+    if (tDate(t) && w.date !== tDate(t)) {
+      if (w.dateUnsure) w.date = tDate(t);
+      else w.issues.push(`Fiş tarihi ${tDate(t).split("-").reverse().join(".")}, iş tarihi farklı`);
     }
     // Fiş, mesajda yazmayan tarihi ve aracı teyit eder (fişteki plaka / tarih okunmuş ve doğrulanmış)
-    if (w.dateUnsure && t.date && w.date === t.date) {
+    if (w.dateUnsure && tDate(t) && w.date === tDate(t)) {
       w.dateUnsure = false;
       w.issues = w.issues.filter((x) => !/İş tarihi mesajda yazmıyor/.test(x));
-      w.issues.push(`Tarih fişten alındı (${t.date.split("-").reverse().join(".")})`);
+      w.issues.push(`Tarih fişten alındı (${tDate(t).split("-").reverse().join(".")})`);
     }
     if (w.vehicleGuess && t.vehicle_id && sameVeh(w.vehicle_id, t.vehicle_id)) {
       w.vehicleGuess = false;

@@ -132,6 +132,10 @@ console.log("assistant-docs PASS");
   vv = { works: [{ ...w(), date: "2026-10-15", issues: [] }], tickets: [{ photo: 0, ticket_no: "X9", date: "2026-10-12", vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
   mergeTicketsIntoWorks(vv, { photoCount: 1, message: "bugün 1 sefer mıcır" });
   assert.equal(vv.tickets.length, 1);
+  // Fiş tarihi okunamadıysa (bugün yazıldı) işe "fişten alındı" diye aktarılmaz
+  vv = { works: [{ ...w(), date: "2026-10-15", dateUnsure: true, issues: ["İş tarihi mesajda yazmıyor — teyit edin"] }], tickets: [{ photo: 0, ticket_no: "", date: "2026-10-15", dateRead: false, vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1, message: "1 sefer" });
+  assert.equal(vv.tickets.length, 0); assert.ok(!vv.works[0].issues.some((x) => /Tarih fişten alındı/.test(x))); assert.equal(vv.works[0].dateUnsure, true);
   console.log("is-fis-birlesik PASS");
 }
 // malzeme: fişten okunur, işle çelişirse uyarı, boş iş türü doldurulur
