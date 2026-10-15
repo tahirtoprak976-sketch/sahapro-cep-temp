@@ -72,3 +72,23 @@ console.log("driver ok");
   assert.equal(x2.maintenance[0].cost, 1200); assert.equal(x2.maintenance[0].ok, true);
   console.log("driver expense/maint ok");
 }
+{
+  const { slipNo, siteContact, driverSlipSpec, slipShareText, payloadsToPlan: p2p, extractPayloads: ex, driverMessage: dm } = await import("../js/driver-core.js");
+  const d3 = { ...d, sites: [{ id: "S", name: "Göktürk Şantiye", customer_id: "C", contact: "Ahmet Şef", phone: "05321112233", created_at: n }] };
+  const cfg3 = driverConfig(d3, { personnel_id: "A", company: "Muratoğlu" });
+  assert.equal(slipNo(cfg3, 12), "ASA-0012", "Ali Şoför → AS + kimlik sonu A");
+  assert.match(slipNo(cfg3, 12), /^[A-Z]{1,2}[A-Z0-9]{0,2}-0012$/);
+  assert.deepEqual(siteContact(cfg3, "S"), { name: "Ahmet Şef", phone: "05321112233" });
+  const e = { id: "e9", date: "2026-10-16", vid: "T", cid: "C", sid: "S", wt: "Hafriyat Nakliye", q: 3, u: "Sefer", ds: "B", ton: 27.5, dfs: "AS-0012", rcv: "Ahmet Şef", sgt: "2026-10-16T08:30:00.000Z" };
+  const spec = driverSlipSpec(e, cfg3, { no: "AS-0012", receiver: "Ahmet Şef", signedAt: e.sgt, sigBlob: { fake: 1 } });
+  assert.equal(spec.number, "AS-0012"); assert.equal(spec.signatures, null);
+  assert.deepEqual(spec.sections[1].pairs.slice(0, 2), [["Yapılan iş", "Hafriyat Nakliye"], ["Miktar", "3 sefer"]]);
+  assert.match(slipShareText(e, cfg3, "AS-0012", "Ahmet Şef"), /dijital iş fişi AS-0012\n16\.10\.2026 · 34GAM627 · Kılıç Hafriyat \/ Göktürk Şantiye/);
+  const msg = await dm([e], cfg3);
+  assert.match(msg, /🧾 dijital fiş AS-0012 \(imzalayan: Ahmet Şef\)/);
+  const { plan } = p2p(await ex(msg), d3);
+  assert.equal(plan.works[0].slip_no, "AS-0012"); assert.match(plan.works[0].description, /Dijital fiş AS-0012 · imzalayan Ahmet Şef/);
+  const v = validatePlan(plan, { message: msg, d: d3, today: "2026-10-16" });
+  assert.equal(v.works[0].slip_no, "AS-0012");
+  console.log("driver slip ok");
+}
