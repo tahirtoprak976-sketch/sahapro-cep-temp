@@ -70,6 +70,7 @@ async function loadAll(db) {
     "suppliers",
     "payables",
     "supplier_payments",
+    "instruments",
   ];
   const data = {};
   for (const s of stores) data[s] = (await db.getAll(s)) || [];
@@ -84,7 +85,7 @@ async function dashboard(ctx) {
   const sum = daySummary(today, data);
   const lastBackup = await db.metaGet("last_backup_at");
   const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup });
-  const board = todayBoard(data, { today, lastBackupAt: lastBackup, yardSettings: (await db.metaGet("yard_settings")) || {} });
+  const board = todayBoard(data, { today, lastBackupAt: lastBackup, yardSettings: (await db.metaGet("yard_settings")) || {}, collectNotes: (await db.metaGet("collect_notes")) || {} });
   const months = monthlySeries(data, { today, months: 6, fuelRefPrice: await db.metaGet("fuel_ref_price") });
   const vsr = vehicleSeries(data, { today, days: 30 }).slice(0, 5);
   const mMax = Math.max(1, ...months.flatMap((m) => [m.work + m.fuelPay, m.collected, m.cost]));
@@ -95,6 +96,8 @@ async function dashboard(ctx) {
       return bar(m.work + m.fuelPay, 0, "İş değeri (mazot karşılığı dahil)", "#f5a623") + bar(m.collected, 15, "Tahsilat", "#2e9e6b") + bar(m.cost, 30, "Maliyet", "#d9534f") + `<text x="${x + 21}" y="100" text-anchor="middle" style="font-size:9px;fill:#93a4b5">${m.label}</text>`;
     }).join("")}
   </svg>`;
+  const { receivables } = await import("./collect-core.js");
+  const recv = receivables(data, { today, notes: (await db.metaGet("collect_notes")) || {} });
   const cur = months[months.length - 1];
   const tank = calcTankBalance(data.fuel_tank_movements);
   const monthFuel = { depo: 0, other: 0 };
@@ -226,6 +229,8 @@ async function dashboard(ctx) {
     }
 
     <div class="card" style="margin-top:12px">
+      <div class="row between tap" data-go="#/tahsilat"><span class="muted small">💰 Müşteriden alacak${recv.buckets.b90 ? ` <span class="badge danger">90+ gün ${fmtTL(recv.buckets.b90)} ₺</span>` : recv.buckets.b60 ? ` <span class="badge warn">60+ gün ${fmtTL(recv.buckets.b60)} ₺</span>` : ""}</span><span class="strong">${fmtTL(recv.total)} ₺ ›</span></div>
+      <div class="divider"></div>
       <div class="row between"><span class="muted small">Kasada/Personelde Bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${fmtTL(pendingSum)} ₺</span></div>
       <div class="divider"></div>
       <div class="row between tap" data-go="#/yakit"><span class="muted small">Bu ay verilen yakıt</span><span class="strong">${fmtNum(monthFuel.depo + monthFuel.other)} Lt${monthFuel.depo && monthFuel.other ? ` <span class="muted small">(depodan ${fmtNum(monthFuel.depo)})</span>` : ""}</span></div>
@@ -745,7 +750,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.41")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.42")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

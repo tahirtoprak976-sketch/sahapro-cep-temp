@@ -14,6 +14,7 @@ import { ticketReconcile } from "./assistant-docs.js";
 import { fuelFlags } from "./fuel-rules.js";
 import { fuelLedgers } from "./assistant-rules.js";
 import { yardSite, yardStock } from "./yard-core.js";
+import { collectBoardItems } from "./collect-core.js";
 
 const DAY = 86400000;
 const daysBetween = (a, b) =>
@@ -173,6 +174,9 @@ export function todayBoard(data, opts = {}) {
     if (st.total >= (Number(ys.alert) || 15))
       items.push({ kind: "warn", group: "Depo", ic: "🏗", text: `Kendi depoda ~${st.total} kamyonet yükü birikti`, sub: st.rows.filter((r) => r.stock > 0).map((r) => `${r.mat} ${r.stock}`).join(", ") + " — döküm sahasına gönderin", href: "#/kendi-depo", sort: 40 });
   }
+
+  // 3b5) Tahsilat: geçen ödeme sözü, 60+ gündür bekleyen alacak, vadesi gelen çek/senet
+  for (const i of collectBoardItems(data, { today, notes: opts.collectNotes || {} })) items.push(i);
 
   // 3c) Yakıt kuralları (tutar, depo, işsiz gün, tüketim)
   for (const f of fuelFlags(data, { today }))

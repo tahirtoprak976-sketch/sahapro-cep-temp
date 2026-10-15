@@ -1181,7 +1181,7 @@ async function cash(ctx) {
 }
 
 async function cashForm(ctx) {
-  const { root, db } = ctx;
+  const { root, db, query = {} } = ctx;
   const [customers, personnel, banks] = await Promise.all([
     db.listActive("customers"),
     db.listActive("personnel"),
@@ -1196,7 +1196,7 @@ async function cashForm(ctx) {
     <form data-form novalidate>
       ${fDate("Tarih", "date", todayStr())}
       ${fSelect("İşlem Türü", "cash_type", CASH_TYPES, "Müşteriden Para Alındı", { empty: false })}
-      ${fNum("Tutar (₺)", "amount", "", { req: true, step: "any" })}
+      ${fNum("Tutar (₺)", "amount", query.amount || "", { req: true, step: "any" })}
       <div class="formgrid2">
         ${fSelect(
           "Personel",
@@ -1208,7 +1208,7 @@ async function cashForm(ctx) {
           "Müşteri",
           "customer_id",
           customers.map((c) => ({ v: c.id, t: c.name })),
-          "",
+          query.customer_id || "",
         )}
       </div>
       ${fSelect("Ödeme Şekli", "payment_method", PAYMENT_METHODS, "Nakit", { empty: false })}
