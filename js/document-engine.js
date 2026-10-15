@@ -229,7 +229,7 @@ export async function buildDocument(input) {
   }
   for(const section of spec.sections){
     if(section.image){
-      const img=await imageData(section.image),iw=Math.min(section.image_width||190,contentWidth,100*img.width/img.height),ih=iw*img.height/img.width;
+      const img=await imageData(section.image),iw=Math.min(section.image_width||190,contentWidth,(section.max_h||100)*img.width/img.height),ih=iw*img.height/img.width;
       ensure(ih+50);if(section.title)heading(section.title,ih+12);
       if(section.text)paragraph(section.text,8,muted);
       ensure(ih+12);placeImage(img,M,y,iw,ih);y+=ih+15;

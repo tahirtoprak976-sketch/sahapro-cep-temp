@@ -1410,6 +1410,7 @@ export async function augment(ctx) {
   if (["new", "edit"].some((p) => parts.includes(p))) return;
   // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
   if (route === "musteriler" && id) {
+    try { await customerDashboard(ctx, id); } catch (e) { console.error(e); }
     try { await customerWorks(ctx, id); } catch (e) {}
   }
   // Müşteri kartı: mazotla ödeme kuralları ve mazot hesabı (ör. Kılıç Hafriyat: 75 L/sefer, ücret yalnız mazot)
@@ -1745,6 +1746,70 @@ async function customerWorks(ctx, id) {
     sec.querySelector("[data-subs]")?.addEventListener("click", () => { subs = !subs; draw(); });
     sec.querySelector("[data-more]")?.addEventListener("click", () => { limit += 60; draw(); });
     sec.querySelector("[data-wshare]").onclick = async () => ui.shareText(customerWorksText(me.name, res, PER[per][0]));
+  };
+  draw();
+}
+
+// ---- Müşteri panosu + ayrıntılı PDF ----
+async function customerDashboard(ctx, id) {
+  const { root, db } = ctx;
+  const CR = await import("./customer-report.js");
+  const d = await db.dumpAll();
+  const me = (d.customers || []).find((c) => c.id === id);
+  if (!me) return;
+  const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);
+  const sec = document.createElement("section");
+  sec.className = "card";
+  sec.dataset.custdash = "1";
+  const tabs = root.querySelector("[data-tabs]");
+  if (tabs) tabs.before(sec); else root.append(sec);
+  let per = "year", subs = false;
+  const fmt = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 0 });
+  const tile = (v, l, cls = "") => ui.stat(v, l, cls);
+  const draw = () => {
+    const rg = CR.periodRange(per);
+    const R = CR.customerReportData(d, id, { from: rg.from, to: rg.to, subs });
+    const a = R.aging, aSum = a.b0 + a.b30 + a.b60 + a.b90 || 1;
+    sec.innerHTML = `<h2 style="margin:0 0 6px">📊 Müşteri panosu</h2>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${Object.entries(CR.PERIODS).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-dper="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-dsubs>Taşeronlar dahil</button>` : ""}</div>
+      <div class="statgrid" style="grid-template-columns:repeat(2,1fr)">
+        ${tile(fmt(R.totals.workTotal) + " ₺", "İş tutarı · " + rg.label, "accent")}${tile(fmt(R.totals.collected) + " ₺", "Tahsilat · " + rg.label, "ok")}
+        ${tile(fmt(R.balanceNow) + " ₺", "Güncel bakiye", R.balanceNow > 0 ? "warn" : "")}${tile(R.totals.oldestDays ? R.totals.oldestDays + " gün" : "—", "En eski açık alacak", R.totals.oldestDays > 60 ? "danger" : "")}
+        ${tile(String(R.totals.works), "İş · " + (Object.entries(R.units).map(([u, q]) => fmt(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "—"))}${tile(R.totals.tonnage ? fmt(R.totals.tonnage) + " ton" : R.totals.fuelL ? fmt(R.totals.fuelL) + " L" : "—", R.totals.tonnage ? "Fişlerdeki ton" : "Mazot karşılığı")}
+      </div>
+      ${R.totals.unpriced ? `<div class="small" style="margin:6px 0"><span class="badge warn">${R.totals.unpriced} işin fiyatı yok</span> tutarlara katılmadı</div>` : ""}
+      <div class="small strong" style="margin-top:10px">Son 12 ay</div>${CR.monthsSvg(R.months)}
+      <div class="small strong" style="margin-top:10px">İş türüne göre</div>${CR.barsHtml(R.byType)}
+      <div class="small strong" style="margin-top:10px">Araca göre</div>${CR.barsHtml(R.byVehicle)}
+      ${R.open.length ? `<div class="small strong" style="margin-top:10px">Açık alacak yaşı</div><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:4px 0">${[["b0", "#2e9e6b"], ["b30", "#f5a623"], ["b60", "#e67e22"], ["b90", "#d9534f"]].map(([k, c]) => a[k] ? `<div title="${k}" style="width:${(a[k] / aSum) * 100}%;background:${c}"></div>` : "").join("")}</div><div class="tiny muted">0–30: ${fmt(a.b0)} · 31–60: ${fmt(a.b30)} · 61–90: ${fmt(a.b60)} · 90+: ${fmt(a.b90)} ₺</div>` : ""}
+      <div class="section-title" style="margin-top:12px">📄 Ayrıntılı PDF rapor (${esc(rg.label)})</div>
+      <label class="history-check small"><input type="checkbox" data-dphotos> Fiş fotoğraflarını ekle</label>
+      <div class="row" style="gap:6px;margin-top:6px"><button class="btn primary grow" data-dpdf="customer">📤 Müşteriye PDF</button><button class="btn grow" data-dpdf="internal">📄 İç rapor (yaşlandırmalı)</button></div>
+      <div class="muted tiny" style="margin-top:4px">PDF: müşteri ve dönem, özet, 12 aylık grafik, iş dökümü (tarih, araç, operatör, iş, miktar, nereden→nereye, malzeme, ton, fiş no, birim fiyat, tutar), iş türü ve araç toplamları, tahsilatlar, cari ekstre, açık kalemler${R.fuel ? ", mazot hesabı" : ""}${R.cheques.length ? ", çek/senet" : ""}.</div>`;
+    for (const b of sec.querySelectorAll("[data-dper]")) b.onclick = () => { per = b.dataset.dper; draw(); };
+    sec.querySelector("[data-dsubs]")?.addEventListener("click", () => { subs = !subs; draw(); });
+    for (const b of sec.querySelectorAll("[data-dpdf]"))
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const photos = [];
+          if (sec.querySelector("[data-dphotos]").checked) {
+            for (const w of R.works) {
+              const atts = [...(await db.attachmentsFor("work", w.id))];
+              for (const doc of (d.documents || []).filter((x) => !x.deleted_at && x.owner_type === "work" && x.owner_id === w.id)) atts.push(...(await db.attachmentsFor("document", doc.id)));
+              for (const a of atts.filter((x) => (x.type || x.blob?.type || "").startsWith("image/")).slice(0, 2))
+                if (photos.length < 30) photos.push({ title: `Fiş · ${core.trDate(w.date)} · ${w.vehicle || ""} · ${w.qty} ${w.unit} ${w.type}${w.slip ? " · No " + w.slip : ""}`, blob: a.blob });
+            }
+          }
+          const chart = await CR.monthsChartBlob(R.months);
+          const spec = CR.customerReportSpec(R, { audience: b.dataset.dpdf, chart, photos, company: core.COMPANY_NAME });
+          const { exportDocument } = await import("./document-engine.js");
+          await exportDocument(spec, "share");
+        } catch (e) {
+          ui.toast(e.message || String(e), "err");
+        }
+        b.disabled = false;
+      };
   };
   draw();
 }
