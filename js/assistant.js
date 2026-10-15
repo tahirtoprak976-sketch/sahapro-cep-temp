@@ -211,6 +211,9 @@ export async function screen(ctx) {
         drvPlan.fuelMeta.forEach((m, i) => tag(v.fuel[i], m));
         drvPlan.expMeta.forEach((m, i) => { tag(v.expenses[i], m); if (v.expenses[i]) Object.assign(v.expenses[i], { driver_pay: m.pay, driver_pid: m.personnel_id }); });
         drvPlan.mainMeta.forEach((m, i) => { tag((v.maintenance || [])[i], m); if (v.maintenance?.[i]) Object.assign(v.maintenance[i], { driver_pay: m.pay, driver_pid: m.personnel_id, km: m.km, machine_hours: m.hours }); });
+        // Şoför fotoğraf gönderdi ama buraya eklenmedi (kopyala-yapıştırda yalnız yazı gelir)
+        const expected = drvPayloads.reduce((n, p) => n + p.e.reduce((k, e) => k + (Number(e.ph) || 0) + (e.sg ? 1 : 0), 0), 0);
+        if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} WhatsApp'ta şoförün fotoğraflarını seçip Paylaş → SAHAPRO deyin, sonra bu yazıyı tekrar yapıştırın — ya da yukarıdaki fotoğraf kutusundan galeriden aynı sırayla ekleyin. Fotoğrafsız da kaydedebilirsiniz.`;
         v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir)`;
       }
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
@@ -283,6 +286,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
+    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
