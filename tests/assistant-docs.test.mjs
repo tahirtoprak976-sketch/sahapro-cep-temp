@@ -94,3 +94,25 @@ console.log("assistant-docs PASS");
   assert.equal(v.tankIn[0].ok, false);
   console.log("assistant-fuel-source PASS");
 }
+// iş + fiş tek satır
+{
+  const { mergeTicketsIntoWorks } = await import("../js/assistant-docs.js");
+  const w = () => ({ date: "2026-10-10", vehicle_id: "V1", unit: "Sefer", quantity: 1, issues: [], slip_no: "" });
+  let vv = { works: [w()], tickets: [{ photo: 0, ticket_no: "T802", date: "2026-10-10", vehicle_id: "V1", tonnage: 26.74 }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 });
+  assert.equal(vv.tickets.length, 0); assert.equal(vv.works[0].slip_no, "T802"); assert.equal(vv.works[0].tonnage, 26.74); assert.deepEqual(vv.works[0].photos, [0]);
+  // farklı gün (mevcut işin fişi) → ayrı kart kalır
+  vv = { works: [{ ...w(), date: "2026-10-14" }], tickets: [{ photo: 0, ticket_no: "A1", date: "2026-10-13", vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 });
+  assert.equal(vv.tickets.length, 1); assert.equal((vv.works[0].photos || []).length, 0);
+  // iki iş aynı gün aynı araç → hangisi belli değil, ayrı kalır
+  vv = { works: [w(), { ...w(), quantity: 2 }], tickets: [{ photo: 0, ticket_no: "X", date: "2026-10-10", vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 }); assert.equal(vv.tickets.length, 1);
+  // fiş kartı çıkmadıysa bile bağlanmamış fotoğraf tek işe eklenir
+  vv = { works: [w()], tickets: [], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 }); assert.deepEqual(vv.works[0].photos, [0]);
+  // ton biriminde fiş tonu farklıysa uyarı
+  vv = { works: [{ ...w(), unit: "Ton", quantity: 20 }], tickets: [{ photo: 0, date: "2026-10-10", vehicle_id: "V1", tonnage: 26.74 }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 }); assert.ok(vv.works[0].issues.some((x) => /26.74 ton/.test(x)));
+  console.log("is-fis-birlesik PASS");
+}
