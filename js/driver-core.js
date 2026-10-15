@@ -2,7 +2,7 @@
 // Patron şoföre bir bağlantı gönderir (içinde şoför, araç, müşteri/şantiye/döküm listesi; sıkıştırılmış). Şoför kayıtlarını girer,
 // "Patrona gönder" okunur bir metin + "SP1:" kodu (kayıtların kendisi) olarak WhatsApp'tan gider. Patronun asistanı kodu çözer:
 // kartlar Gemini'siz, birebir dolar; aynı kayıt (kimlik) ikinci kez gelirse atlanır.
-import { isActive, WORK_TYPES } from "./core.js";
+import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES } from "./core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const b64u = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
@@ -14,6 +14,10 @@ export async function unpack(code) { return JSON.parse(new TextDecoder().decode(
 export const DRIVER_TYPES = ["Hafriyat Nakliye", "Moloz Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Çöp Nakliye", "Makine Çalışması", "Kazı", "Yükleme"].filter((t) => WORK_TYPES.includes(t));
 export const DRIVER_UNITS = ["Sefer", "Saat", "Ton", "Yevmiye"];
 export const FUEL_SOURCES = ["Depo Tankı", "Akaryakıt İstasyonu", "Müşteri Verdi"];
+// Şoförün gideri: ne için (uygulamanın gider kategorileri) ve nasıl ödendi
+export const DRIVER_EXP = [["Yemek", "🍽 Yemek"], ["Otoyol / HGS", "🛣 Otoyol / köprü"], ["Otopark", "🅿 Otopark"], ["Lastik", "🛞 Lastik"], ["Tamir", "🔧 Tamir"], ["Yedek Parça", "⚙ Yedek parça"], ["Yağ / Filtre", "🛢 Yağ / filtre"], ["Servis", "🧽 Yıkama / servis"], ["Malzeme", "📦 Malzeme"], ["Diğer", "… Diğer"]].filter(([c]) => EXPENSE_CATEGORIES.includes(c));
+export const DRIVER_MAINT = [["Arıza", "⚠ Arıza"], ["Lastik", "🛞 Lastik"], ["Bakım", "🔧 Bakım"], ["Yağ", "🛢 Yağ değişimi"], ["Elektrik", "⚡ Elektrik"], ["Hidrolik", "💧 Hidrolik"], ["Motor", "⚙ Motor"], ["Kaporta", "🚚 Kaporta / kasa"], ["Diğer", "… Diğer"]].filter(([c]) => MAINT_TYPES.includes(c));
+export const PAY_WAYS = { cep: "cebimden ödedim", sirket: "şirket parası / kart", veresiye: "veresiye (esnafa borç)" };
 
 // Patronun telefonunda: şoför bağlantısının içeriği
 export function driverConfig(d, { personnel_id, vehicle_id = null, company = "", issued = "" }) {
@@ -28,6 +32,7 @@ export function driverConfig(d, { personnel_id, vehicle_id = null, company = "",
     S: live(d, "sites").filter((s) => cs.has(s.customer_id)).map((s) => [s.id, s.name, s.customer_id]),
     D: live(d, "dump_sites").map((s) => [s.id, s.name]),
     Q: live(d, "quarries").map((s) => [s.id, s.name]),
+    E: live(d, "suppliers").map((s) => [s.id, s.name]).slice(0, 150),
     Y: live(d, "customers").find((c) => c.internal)?.id || null,
   };
 }
@@ -38,6 +43,10 @@ export const newId = () => Date.now().toString(36) + Math.random().toString(36).
 
 // Okunur satır (patron ve grup okusun) — ad ve sayılar burada geçtiği için asistanın doğrulaması da geçer
 export function entryLine(e, cfg) {
+  const who = (e.sup ? nm(cfg.E, e.sup) : "") || e.sn || "";
+  const pay = e.pay ? ` · ${PAY_WAYS[e.pay] || e.pay}` : "";
+  if (e.k === "g") return `💸 ${fmtDate(e.date)} · ${e.cat} · ${e.tl} TL${who ? " · " + who : ""}${e.vid ? " · " + nm(cfg.V, e.vid) : ""}${pay}${e.desc ? " · " + e.desc : ""}${e.ph ? ` · 📷${e.ph}` : ""}`;
+  if (e.k === "m") return `🔧 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${e.mt}: ${e.desc}${e.st === "Tamamlandı" ? " (yapıldı)" : " (arızalı)"}${e.tl ? ` · ${e.tl} TL` : ""}${who ? " · " + who : ""}${e.tl ? pay : ""}${e.km ? ` · km ${e.km}` : ""}${e.hr ? ` · saat ${e.hr}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}`;
   if (e.k === "f") return `⛽ ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${e.L} litre · ${e.src === "Müşteri Verdi" ? (nm(cfg.C, e.cid) || "müşteri") + " verdi" : e.src === "Depo Tankı" ? "depodan" : "istasyondan"}${e.tl ? ` · ${e.tl} TL` : ""}${e.km ? ` · km ${e.km}` : ""}${e.hr ? ` · saat ${e.hr}` : ""}`;
   const cust = e.cid === cfg.Y ? "kendi depodan çıkış" : nm(cfg.C, e.cid) || e.cn || "müşteri ?";
   const dump = nm(cfg.D, e.ds) || e.dn || "";
@@ -57,22 +66,37 @@ export async function extractPayloads(text) {
 }
 // Şoför mesajlarının okunur kısmı ve kod satırı çıkarılınca kalan serbest metin (Gemini'ye yalnız bu gider)
 export function stripDriverBlocks(text) {
-  return String(text || "").split("\n").filter((l) => !/SAHAPRO şoför kaydı|SP1:[A-Za-z0-9_-]{8,}|^(?:\[[^\]]*\]\s*[^:]{1,60}:\s*)?[🚚⛽] \d{2}\.\d{2}\.\d{4} · /u.test(l)).join("\n").trim();
+  return String(text || "").split("\n").filter((l) => !/SAHAPRO şoför kaydı|SP1:[A-Za-z0-9_-]{8,}|^(?:\[[^\]]*\]\s*[^:]{1,60}:\s*)?[🚚⛽💸🔧] \d{2}\.\d{2}\.\d{4} · /u.test(l)).join("\n").trim();
 }
 
 // Kodlardan asistan planı (Gemini'nin döndürdüğü biçimle aynı) + her işin ek bilgisi (kimlik, fotoğraf, ton)
 export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
-  const works = [], fuel = [], meta = [], fuelMeta = [];
+  const works = [], fuel = [], meta = [], fuelMeta = [], expenses = [], expMeta = [], maintenance = [], mainMeta = [];
   let photo = 0;
   const has = (s, id) => !!id && live(d, s).some((x) => x.id === id);
+  // Fotoğraflar şoförün gönderdiği sırayla (kayıt sırası) dağıtılır
+  const takePhotos = (n) => { const out = []; for (let i = 0; i < (Number(n) || 0) && photo < photoCount; i++) out.push(photo++); return out; };
   for (const p of payloads) for (const e of p.e) {
+    const supId = has("suppliers", e.sup) ? e.sup : null;
+    const supName = supId ? live(d, "suppliers").find((x) => x.id === supId).name : e.sn || "";
+    if (e.k === "g") {
+      const ph = takePhotos(e.ph);
+      expenses.push({ date: e.date, amount: Number(e.tl) || null, category: e.cat, company: supName, vehicle_id: has("vehicles", e.vid) ? e.vid : null, supplier_id: e.pay === "veresiye" ? supId : null, credit: e.pay === "veresiye", photo: ph[0] ?? null, note: [e.desc, e.pay === "cep" ? "şoför cebinden ödedi" : ""].filter(Boolean).join(" · ") });
+      expMeta.push({ driver_entry_id: e.id, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null });
+      continue;
+    }
+    if (e.k === "m") {
+      const ph = takePhotos(e.ph);
+      maintenance.push({ date: e.date, vehicle_id: has("vehicles", e.vid) ? e.vid : null, maint_type: e.mt, status: e.st === "Tamamlandı" ? "Tamamlandı" : "Açık", description: e.desc || e.mt, cost: Number(e.tl) || null, service_company: supName, supplier_id: e.pay === "veresiye" ? supId : null, credit: e.pay === "veresiye" && !!Number(e.tl) });
+      mainMeta.push({ driver_entry_id: e.id, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null, photos: ph, km: Number(e.km) || null, hours: Number(e.hr) || null });
+      continue;
+    }
     if (e.k === "f") {
       fuel.push({ date: e.date, vehicle_id: has("vehicles", e.vid) ? e.vid : null, liters: Number(e.L) || null, total: Number(e.tl) || null, km: Number(e.km) || null, machine_hours: Number(e.hr) || null, source: FUEL_SOURCES.includes(e.src) ? e.src : "Depo Tankı", customer_id: has("customers", e.cid) ? e.cid : null, photo: null });
       fuelMeta.push({ driver_entry_id: e.id });
       continue;
     }
-    const photos = [];
-    for (let i = 0; i < (Number(e.ph) || 0) && photo < photoCount; i++) photos.push(photo++);
+    const photos = takePhotos(e.ph);
     works.push({
       date: e.date, customer_id: has("customers", e.cid) ? e.cid : null, new_customer: !has("customers", e.cid) && e.cn ? e.cn : null,
       site_id: has("sites", e.sid) ? e.sid : null, vehicle_id: has("vehicles", e.vid) ? e.vid : null, personnel_id: has("personnel", p.p) ? p.p : null,
@@ -82,12 +106,12 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
     });
     meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null });
   }
-  return { plan: { works, fuel }, meta, fuelMeta };
+  return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta };
 }
 
 // Daha önce alınmış şoför kayıtları
 export function seenDriverIds(d) {
   const s = new Set();
-  for (const st of ["work_records", "fuel_records"]) for (const r of live(d, st)) if (r.driver_entry_id) s.add(r.driver_entry_id);
+  for (const st of ["work_records", "fuel_records", "expense_records", "maintenance_records"]) for (const r of live(d, st)) if (r.driver_entry_id) s.add(r.driver_entry_id);
   return s;
 }

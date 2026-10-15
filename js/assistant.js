@@ -190,12 +190,13 @@ export async function screen(ctx) {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : {};
       const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length }) : null;
-      if (drvPlan) plan = { ...plan, works: [...drvPlan.plan.works, ...(plan.works || [])], fuel: [...drvPlan.plan.fuel, ...(plan.fuel || [])] };
+      if (drvPlan) plan = { ...plan, works: [...drvPlan.plan.works, ...(plan.works || [])], fuel: [...drvPlan.plan.fuel, ...(plan.fuel || [])], expenses: [...drvPlan.plan.expenses, ...(plan.expenses || [])], maintenance: [...drvPlan.plan.maintenance, ...(plan.maintenance || [])] };
       const asked = await askP;
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
       if (drvPlan) {
         const seen = drv.seenDriverIds(d);
         const tag = (row, m) => {
@@ -207,9 +208,10 @@ export async function screen(ctx) {
         };
         drvPlan.meta.forEach((m, i) => tag(v.works[i], m));
         drvPlan.fuelMeta.forEach((m, i) => tag(v.fuel[i], m));
-        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${drvPlan.meta.length} iş, ${drvPlan.fuelMeta.length} yakıt kaydı (Gemini'siz, birebir)`;
+        drvPlan.expMeta.forEach((m, i) => { tag(v.expenses[i], m); if (v.expenses[i]) Object.assign(v.expenses[i], { driver_pay: m.pay, driver_pid: m.personnel_id }); });
+        drvPlan.mainMeta.forEach((m, i) => { tag((v.maintenance || [])[i], m); if (v.maintenance?.[i]) Object.assign(v.maintenance[i], { driver_pay: m.pay, driver_pid: m.personnel_id, km: m.km, machine_hours: m.hours }); });
+        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir)`;
       }
-      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message: vmsg, d });
       v.prices = (await import("./price-rule-core.js")).validatePriceRules(plan, { message: vmsg, d });
@@ -222,7 +224,7 @@ export async function screen(ctx) {
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
       try { await rereadSlips(db, v, imgParts, d, today); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
-      for (const w of [...v.works, ...v.fuel]) if (w.driverDup) w.ok = false;
+      for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])]) if (w.driverDup) w.ok = false;
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
@@ -861,10 +863,12 @@ async function save(ctx, out, v, d, { message, files }) {
           const { findDuplicates } = await import("./esnaf.js");
           const dup = findDuplicates(fresh, { date: f.date, amount: f.amount });
           if ((dup.bills.length || dup.expenses.length) && !(await confirmDialog("Aynı gün aynı tutarda kayıt var", `${f.date} · ${fmtTL(f.amount)} ₺ zaten kayıtlı (gider veya esnaf borcu). Farklı bir harcama mı?`, "Farklı, kaydet"))) continue;
+          if (r.driver_entry_id && fresh.expense_records.some((x) => isActive(x) && x.driver_entry_id === r.driver_entry_id)) { toast("Şoför gideri zaten alınmış, atlandı", "err"); continue; }
+          const cep = r.driver_pay === "cep";
           const rec = await db.saveNew("expense_records", {
-            date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: null, vehicle_id: f.vehicle_id,
-            payment_method: "Şirket Ödedi", receipt: file ? "Evet" : "Hayır", reimbursement_status: null,
-            company: val(c, "company"), description: val(c, "description") || source,
+            date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: cep ? r.driver_pid : null, vehicle_id: f.vehicle_id,
+            payment_method: cep ? "Personel Ödedi" : "Şirket Ödedi", receipt: file ? "Evet" : "Hayır", reimbursement_status: cep ? "Bekliyor" : null,
+            company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
           }, "Asistan");
           if (file) await db.addAttachment("expense", rec.id, file);
           done.expense++;
@@ -888,13 +892,20 @@ async function save(ctx, out, v, d, { message, files }) {
         done.collection++;
       } else if (k === "maintenance") {
         const cost = Number(val(c, "cost")) || null;
-        const files0 = files[0] && v.expenses.every((e) => e.photo !== 0) ? files[0] : null;
+        const mr = (v.maintenance || [])[Number(c.dataset.i)] || {};
+        if (mr.driver_entry_id && (await db.dumpAll()).maintenance_records.some((x) => isActive(x) && x.driver_entry_id === mr.driver_entry_id)) { toast("Şoför arıza kaydı zaten alınmış, atlandı", "err"); continue; }
+        const files0 = mr.driver_entry_id ? null : files[0] && v.expenses.every((e) => e.photo !== 0) ? files[0] : null;
+        const cepM = mr.driver_pay === "cep" && cost;
         const rec = await db.saveNew("maintenance_records", {
-          date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, severity: "Normal", part: "",
+          date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: mr.driver_pid || null, severity: "Normal", part: "",
           maint_type: val(c, "maint_type") || "Arıza", status: val(c, "status") || "Açık", description: val(c, "description"),
-          cost, kdv_rate: null, service_company: val(c, "service_company"), km_hours: "",
+          cost, kdv_rate: null, service_company: val(c, "service_company"), km_hours: [mr.km ? mr.km + " km" : "", mr.machine_hours ? mr.machine_hours + " saat" : ""].filter(Boolean).join(" · "),
+          ...(mr.km ? { km: mr.km } : {}), ...(mr.machine_hours ? { machine_hours: mr.machine_hours } : {}),
+          ...(cepM ? { paid_by_personnel_id: mr.driver_pid, reimbursement_status: "Bekliyor" } : {}),
+          ...(mr.driver_entry_id ? { driver_entry_id: mr.driver_entry_id, source: "şoför" } : {}),
         }, "Asistan arıza/bakım");
         if (files0) await db.addAttachment("maintenance", rec.id, files0);
+        for (const pi of mr.photos || []) if (files[pi]) await db.addAttachment("maintenance", rec.id, files[pi]);
         const supId = val(c, "supplier");
         if (supId && cost) {
           const { createCreditBill } = await import("./esnaf.js");

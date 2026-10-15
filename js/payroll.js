@@ -65,6 +65,7 @@ export async function screen(ctx) {
       ${r.advItems.map((a) => row(`− Avans ${trDate(a.date)}`, fmtTL(a.amount) + " ₺", esc(a.note.slice(0, 60)))).join("")}
       ${r.deductions ? row("− Kesinti", fmtTL(r.deductions) + " ₺") : ""}
       ${r.paid ? row("− Ödenen", fmtTL(r.paid) + " ₺") : ""}
+      ${r.reimbItems.map((x) => row(`+ Masraf iadesi ${trDate(x.date)}`, fmtTL(x.amount) + " ₺", esc(x.note) + " · cebinden ödedi")).join("")}
       <div class="divider"></div>
       <div class="row between"><span class="strong">Kalan</span><span class="strong" style="font-size:22px;color:${r.remaining < 0 ? "#d9534f" : "var(--text)"}">${fmtTL(r.remaining)} ₺</span></div>
       ${r.remaining < 0 ? '<div class="tiny" style="color:#d9534f">Fazla ödenmiş / avans maaşı aşmış: gelecek aya devreder.</div>' : ""}
@@ -120,7 +121,11 @@ export async function screen(ctx) {
     try {
       const { savePayroll } = await ent();
       if (!r.closed) await savePayroll({ date: lastDay(per), period: per, personnel_id: pid, kind: "Ücret Tahakkuku", amount: r.gross, note: `Puantaj: ${r.basis}${r.overtime ? ` + mesai ${r.otHours} sa` : ""}` });
-      if (amt > 0) await savePayroll({ date: today, period: per, personnel_id: pid, kind: "Ücret Ödemesi", amount: amt, method: "Nakit", note: `${label(per)} maaş ödemesi` });
+      // Ödeme kalanı karşılıyorsa cebinden ödediği masraflar da iade edilmiş olur: o kısım maaş ödemesi sayılmaz
+      const reimbPay = r.reimb && amt >= r.remaining - 0.5 ? r.reimb : 0;
+      const salaryPay = Math.round((amt - reimbPay) * 100) / 100;
+      if (salaryPay > 0) await savePayroll({ date: today, period: per, personnel_id: pid, kind: "Ücret Ödemesi", amount: salaryPay, method: "Nakit", note: `${label(per)} maaş ödemesi` });
+      if (reimbPay) for (const x of r.reimbItems) { const rec = await db.get(x.store, x.id); if (rec) await db.saveExisting(x.store, rec, { reimbursement_status: "Ödendi" }, "Maaşla iade edildi"); }
       toast(r.closed ? "Ödeme kaydedildi" : "Ay kapatıldı" + (amt > 0 ? " ve ödeme kaydedildi" : ""), "ok");
       ctx.reload();
     } catch (e) { toast(e.message || String(e), "err"); }

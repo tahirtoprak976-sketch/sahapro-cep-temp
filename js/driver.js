@@ -78,12 +78,36 @@ export async function screen(ctx) {
     if (!ws.length) return "";
     const days = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
     const per = {};
-    for (const e of ws) { const k = (new Date(e.date + "T12:00:00").getDay() + 6) % 7; const x = (per[k] ||= {}); if (e.k === "f") x.L = (x.L || 0) + Number(e.L); else x[e.u] = (x[e.u] || 0) + Number(e.q); }
+    for (const e of ws) { const k = (new Date(e.date + "T12:00:00").getDay() + 6) % 7; const x = (per[k] ||= {}); if (e.k === "f") x.L = (x.L || 0) + Number(e.L); else if (e.k === "g" || e.k === "m") { if (Number(e.tl) > 0) x.TL = (x.TL || 0) + Number(e.tl); } else if (e.u) x[e.u] = (x[e.u] || 0) + Number(e.q); }
     const tot = {};
     for (const x of Object.values(per)) for (const [u, n] of Object.entries(x)) tot[u] = (tot[u] || 0) + n;
-    const fmtU = (x) => Object.entries(x).filter(([u]) => u !== "L").map(([u, n]) => `${n} ${u.toLocaleLowerCase("tr-TR")}`).join(", ");
-    return `<div class="card"><div class="row between"><b class="small">Bu hafta</b><span class="small">${esc(fmtU(tot) || "—")}${tot.L ? ` · ⛽ ${tot.L} L` : ""}</span></div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px;text-align:center">${days.map((d, i) => `<div style="border-radius:8px;padding:4px 0;background:${per[i] ? "#2e9e6b22" : "var(--bg2)"}"><div class="tiny muted">${d}</div><div class="tiny" style="font-weight:700">${per[i] ? esc(fmtU(per[i]).replace(/ sefer/g, "s").replace(/ saat/g, "sa").replace(/ ton/g, "t").replace(/ yevmiye/g, "y") || "⛽") : "·"}</div></div>`).join("")}</div></div>`;
+    const fmtU = (x) => Object.entries(x).filter(([u]) => u !== "L" && u !== "TL").map(([u, n]) => `${n} ${u.toLocaleLowerCase("tr-TR")}`).join(", ");
+    return `<div class="card"><div class="row between"><b class="small">Bu hafta</b><span class="small">${esc([fmtU(tot), tot.L ? `⛽ ${tot.L} L` : "", tot.TL ? `💸 ${tot.TL} TL` : ""].filter(Boolean).join(" · "))}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:6px;text-align:center">${days.map((d, i) => `<div style="border-radius:8px;padding:4px 0;background:${per[i] ? "#2e9e6b22" : "var(--bg2)"}"><div class="tiny muted">${d}</div><div class="tiny" style="font-weight:700">${per[i] ? esc(fmtU(per[i]).replace(/ sefer/g, "s").replace(/ saat/g, "sa").replace(/ ton/g, "t").replace(/ yevmiye/g, "y") || (per[i].L ? "⛽" : "💸")) : "·"}</div></div>`).join("")}</div></div>`;
+  };
+  // Arıza / bakım ve gider formu (ortak alanlar: tutar, esnaf/usta, nasıl ödendi, fotoğraf)
+  const x = (st.x ||= {});
+  const xForm = () => {
+    const isM = tab === "ariza";
+    const kinds = isM ? core.DRIVER_MAINT : core.DRIVER_EXP;
+    const kind = isM ? x.mt : x.cat;
+    const chip = (key, val, label, on) => `<button class="chip ${on ? "on" : ""}" data-x-${key}="${esc(val)}">${esc(label)}</button>`;
+    return `<div class="card">
+      <div class="field"><label>Tarih</label><input type="date" data-k="date" value="${esc(st.date || today)}" max="${today}"></div>
+      <div class="field"><label>${isM ? "Ne oldu?" : "Ne için?"}</label><div class="row" style="gap:6px;flex-wrap:wrap">${kinds.map(([v, t]) => chip("kind", v, t, kind === v)).join("")}</div></div>
+      ${isM ? `<div class="field"><label>Açıklama</label><input data-x="desc" value="${esc(x.desc || "")}" placeholder="ör. sol arka lastik patladı, hidrolik hortum kaçırıyor"></div>
+        <div class="field"><label>Durum</label><div class="row" style="gap:6px">${chip("st", "Açık", "⚠ Hâlâ arızalı", x.st !== "Tamamlandı")}${chip("st", "Tamamlandı", "✓ Yapıldı / tamir edildi", x.st === "Tamamlandı")}</div></div>` : ""}
+      <div class="field"><label>Tutar (TL)${isM ? " — ödendiyse" : ""}</label><input type="number" inputmode="decimal" data-x="tl" value="${esc(x.tl ?? "")}" style="${big};font-size:22px;font-weight:800"></div>
+      <div class="field"><label>${isM ? "Usta / servis / lastikçi" : "Nerede / kime"}</label><select data-x-sup style="${big}">${opt([...(cfg.E || []), ["__new", "➕ Listede yok — yaz"]], x.sup || "", "— seçin (isteğe bağlı) —")}</select></div>
+      ${x.sup === "__new" ? `<div class="field"><label>Adı</label><input data-x="sn" value="${esc(x.sn || "")}" placeholder="ör. Yıldız Oto Lastik"></div>` : ""}
+      <div class="field"><label>Nasıl ödendi?</label><div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(core.PAY_WAYS).map(([k, t]) => chip("pay", k, t, x.pay === k)).join("")}</div>
+        ${x.pay === "cep" ? '<div class="tiny muted" style="margin-top:4px">Patron maaşınla birlikte geri öder.</div>' : x.pay === "veresiye" ? '<div class="tiny muted" style="margin-top:4px">Esnafa borç yazılır; esnafı listeden seçin.</div>' : ""}</div>
+      ${!isM ? `<label class="row small" style="gap:8px;margin:4px 0"><input type="checkbox" data-x-veh ${x.noVeh ? "" : "checked"}> Araçla ilgili (${esc(nm(cfg.V, st.vid) || "araç")})</label>` : `<div class="formgrid2"><div class="field"><label>Km</label><input type="number" inputmode="numeric" data-x="km" value="${esc(x.km ?? "")}"></div><div class="field"><label>Makine saati</label><input type="number" inputmode="decimal" data-x="hr" value="${esc(x.hr ?? "")}"></div></div>`}
+      <div class="field"><label>Not</label><input data-x="desc2" value="${esc(x.desc2 || "")}"></div>
+      <div class="field"><label>📷 ${isM ? "Fotoğraf / fiş" : "Fiş fotoğrafı"}</label><input type="file" accept="image/*" capture="environment" multiple data-photo></div>
+      <div class="small muted" data-phc>${photos.length ? photos.length + " fotoğraf eklendi" : ""}</div>
+      <button class="btn primary block" data-addx style="${big};margin-top:8px">✓ Kaydet</button>
+    </div>`;
   };
   const draw = () => {
     const unsent = entries.filter((e) => !e.sent), sent = entries.filter((e) => e.sent).slice(-15).reverse();
@@ -94,7 +118,7 @@ export async function screen(ctx) {
         <select data-vid style="margin-top:8px;width:100%;${big};border-radius:10px;padding:6px 10px">${opt(cfg.V || [], st.vid, "— araç seçin —")}</select>
       </div>
       ${weekHtml()}
-      <div class="row" style="gap:6px;margin:8px 0"><button class="btn grow ${tab === "is" ? "primary" : ""}" data-tab="is" style="${big}">🚚 İş</button><button class="btn grow ${tab === "yakit" ? "primary" : ""}" data-tab="yakit" style="${big}">⛽ Mazot</button></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">${[["is", "🚚 İş"], ["yakit", "⛽ Mazot"], ["ariza", "🔧 Arıza / Bakım"], ["gider", "💸 Gider"]].map(([k, t]) => `<button class="btn ${tab === k ? "primary" : ""}" data-tab="${k}" style="${big}">${t}</button>`).join("")}</div>
       ${tab === "is" ? `<div class="card">
         <div class="field"><label>Tarih</label><input type="date" data-k="date" value="${esc(st.date || today)}" max="${today}"></div>
         <div class="field"><label>Müşteri</label><select data-cid style="${big}">${opt([...(cfg.Y ? [[cfg.Y, "📦 Kendi depodan çıkış"]] : []), ...(cfg.C || []), ["__new", "➕ Listede yok — yaz"]], st.cid, "— müşteri seçin —")}</select></div>
@@ -115,7 +139,7 @@ export async function screen(ctx) {
         <div class="field"><label>📷 Fiş fotoğrafı</label><input type="file" accept="image/*" capture="environment" multiple data-photo></div>
         <div class="small muted" data-phc>${photos.length ? photos.length + " fotoğraf eklendi" : ""}</div>
         <button class="btn primary block" data-add style="${big};margin-top:8px">✓ Kaydet</button>
-      </div>` : `<div class="card">
+      </div>` : tab === "ariza" || tab === "gider" ? xForm() : `<div class="card">
         <div class="field"><label>Tarih</label><input type="date" data-k="date" value="${esc(st.date || today)}" max="${today}"></div>
         <div class="field"><label>Litre</label><input type="number" inputmode="decimal" data-f="L" value="${esc(st.f.L ?? "")}" style="${big};font-size:22px;font-weight:800"></div>
         <div class="field"><label>Nereden?</label><div class="row" style="gap:6px;flex-wrap:wrap">${[["Depo Tankı", "Depodan"], ["Akaryakıt İstasyonu", "İstasyondan"], ["Müşteri Verdi", "Müşteri verdi"]].map(([v, t]) => `<button class="chip ${st.src === v ? "on" : ""}" data-src="${v}">${t}</button>`).join("")}</div></div>
@@ -132,7 +156,12 @@ export async function screen(ctx) {
       <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
     bind();
   };
-  const readForm = () => { for (const el of qsa("[data-k]", root)) st[el.dataset.k] = el.value; for (const el of qsa("[data-f]", root)) st.f[el.dataset.f] = el.value; };
+  const readForm = () => {
+    for (const el of qsa("[data-k]", root)) st[el.dataset.k] = el.value;
+    for (const el of qsa("[data-f]", root)) st.f[el.dataset.f] = el.value;
+    for (const el of qsa("[data-x]", root)) x[el.dataset.x] = el.value;
+    const vb = qs("[data-x-veh]", root); if (vb) x.noVeh = !vb.checked;
+  };
   const save = () => ls.set(K_ENT, entries);
   const bind = () => {
     qs("[data-vid]", root).addEventListener("change", (e) => { st.vid = e.target.value; ls.set("sp_driver_vid", st.vid); });
@@ -159,6 +188,31 @@ export async function screen(ctx) {
       if (!e.ph) delete e.ph;
       entries.push(e); save();
       photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" });
+      toast("Kaydedildi", "ok"); draw();
+    });
+    for (const b of qsa("[data-x-kind]", root)) b.addEventListener("click", () => { readForm(); if (tab === "ariza") x.mt = b.dataset.xKind; else { x.cat = b.dataset.xKind; if (x.cat === "Yemek") x.noVeh = true; } draw(); });
+    for (const b of qsa("[data-x-st]", root)) b.addEventListener("click", () => { readForm(); x.st = b.dataset.xSt; draw(); });
+    for (const b of qsa("[data-x-pay]", root)) b.addEventListener("click", () => { readForm(); x.pay = b.dataset.xPay; draw(); });
+    qs("[data-x-sup]", root)?.addEventListener("change", (e) => { readForm(); x.sup = e.target.value; draw(); });
+    qs("[data-addx]", root)?.addEventListener("click", async () => {
+      readForm();
+      const isM = tab === "ariza";
+      const tl = Number(String(x.tl || "").replace(",", "."));
+      if (isM ? !x.mt : !x.cat) return toast(isM ? "Ne olduğunu seçin" : "Ne için olduğunu seçin", "err");
+      if (isM && !st.vid) return toast("Araç seçin", "err");
+      if (isM && !String(x.desc || "").trim()) return toast("Kısaca ne olduğunu yazın", "err");
+      if (!isM && !(tl > 0)) return toast("Tutarı yazın", "err");
+      if (tl > 0 && !x.pay) return toast("Nasıl ödendiğini seçin", "err");
+      if (x.pay === "veresiye" && (!x.sup || x.sup === "__new")) return toast("Veresiye için esnafı listeden seçin", "err");
+      const sup = x.sup && x.sup !== "__new" ? { sup: x.sup } : x.sup === "__new" && String(x.sn || "").trim() ? { sn: String(x.sn).trim() } : {};
+      const note = String(x.desc2 || "").trim();
+      const e = isM
+        ? { id: core.newId(), k: "m", date: st.date || today, vid: st.vid, mt: x.mt, desc: [String(x.desc).trim(), note].filter(Boolean).join(" · "), st: x.st === "Tamamlandı" ? "Tamamlandı" : "Açık", ...(tl > 0 ? { tl, pay: x.pay } : {}), ...sup, ...(Number(x.km) > 0 ? { km: Number(x.km) } : {}), ...(Number(x.hr) > 0 ? { hr: Number(x.hr) } : {}) }
+        : { id: core.newId(), k: "g", date: st.date || today, cat: x.cat, tl, pay: x.pay, ...sup, ...(x.noVeh || !st.vid ? {} : { vid: st.vid }), ...(note ? { desc: note } : {}) };
+      e.ph = await putPhotos(e.id, photos);
+      if (!e.ph) delete e.ph;
+      entries.push(e); save();
+      photos = []; Object.keys(x).forEach((k) => delete x[k]);
       toast("Kaydedildi", "ok"); draw();
     });
     qs("[data-addf]", root)?.addEventListener("click", () => {

@@ -74,3 +74,13 @@ const r = runAskTool(d, "payroll_status", { personnel: "Bekir" }, today);
 assert.equal(r.personeller.length, 1); assert.equal(r.personeller[0].kalan_TL, 6750);
 assert.equal(runAskTool(d, "payroll_status", {}, today).personeller.length, 2);
 console.log("payroll ok");
+{
+  const { payrollFor } = await import("../js/payroll-core.js");
+  const dd = { personnel: [{ id: "A", name: "Ali", salary: 30000, created_at: "x" }], vehicles: [], work_records: [], personnel_events: [], payroll_entries: [],
+    expense_records: [{ id: "x1", date: "2026-10-05", personnel_id: "A", payment_method: "Personel Ödedi", reimbursement_status: "Bekliyor", amount: 450, category: "Yemek", created_at: "x" },
+      { id: "x2", date: "2026-10-06", personnel_id: "A", payment_method: "Personel Ödedi", reimbursement_status: "Ödendi", amount: 999, created_at: "x" }],
+    maintenance_records: [{ id: "m1", date: "2026-10-07", paid_by_personnel_id: "A", reimbursement_status: "Bekliyor", cost: 1200, maint_type: "Lastik", created_at: "x" }] };
+  const r = payrollFor(dd, dd.personnel[0], "2026-10", { today: "2026-10-31" });
+  assert.equal(r.reimb, 1650); assert.equal(r.reimbItems.length, 2); assert.equal(r.remaining, 31650);
+  console.log("payroll reimb ok");
+}
