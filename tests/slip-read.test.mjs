@@ -11,12 +11,12 @@ let res = validateSlips({ slips: [
 assert.equal(res.read, 2); assert.equal(res.total_ton, 36.06);
 assert.equal(res.rows[0].vehicle_id, "VT"); assert.equal(res.rows[0].date, "2026-10-13");
 // birim Ton → miktar = toplam ton; Sefer → miktar boşsa fiş sayısı, tonaj ayrı
-let f = slipFill(res, { unit: "Ton", date: today }, { d });
+let f = slipFill(res, { unit: "Ton", date: today }, { d, today });
 assert.equal(f.quantity, 36.06); assert.equal(f.tonnage, 36.06); assert.equal(f.slip_no, "55812, 55813"); assert.equal(f.date, "2026-10-13"); assert.equal(f.vehicle_id, "VT"); assert.equal(f.quarry_id, "QD"); assert.equal(f.slip_status, "Fiş Var");
-f = slipFill(res, { unit: "Sefer", quantity: "", date: today }, { d });
+f = slipFill(res, { unit: "Sefer", quantity: "", date: today }, { d, today });
 assert.equal(f.quantity, 2); assert.equal(f.tonnage, 36.06);
 // dolu alanlar ezilmez
-f = slipFill(res, { unit: "Sefer", quantity: "3", slip_no: "X", vehicle_id: "VB", date: "2026-10-12" }, { d });
+f = slipFill(res, { unit: "Sefer", quantity: "3", slip_no: "X", vehicle_id: "VB", date: "2026-10-12" }, { d, today });
 assert.equal(f.quantity, undefined); assert.equal(f.slip_no, undefined); assert.equal(f.vehicle_id, undefined); assert.equal(f.date, undefined);
 // uydurma ton / fiş no / tarih alınmaz
 res = validateSlips({ slips: [{ photo: 0, text: t2, net_ton: 25, slip_no: "99999", date: "2026-10-12", plate: "34ABC123" }] }, { d, today, count: 1 });
