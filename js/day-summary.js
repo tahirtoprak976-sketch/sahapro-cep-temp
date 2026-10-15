@@ -13,6 +13,7 @@ import { costRows, costTotals } from "./costs-core.js";
 import { vehicleKpis, customerKpis, priceCheck, businessReview, EXPERT_KNOWLEDGE } from "./expert-core.js";
 import { quoteFor, quoteSummary } from "./quote-core.js";
 import { payrollFor, payrollSummary } from "./payroll-core.js";
+import { maintenanceBoard, maintSummary } from "./maint-core.js";
 import { WORK_TYPES } from "./core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -149,6 +150,8 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { customer: { type: "string" }, work_type: { type: "string", description: "İş türü: " + WORK_TYPES.join(", ") }, unit: { type: "string", description: "Sefer | Ton | Saat | Yevmiye" }, quantity: { type: "number" }, vehicle: { type: "string", description: "araç adı/plakası" }, dump_site: { type: "string", description: "döküm yeri adı" }, dump_included: { type: "boolean", description: "döküm ücreti fiyata dahil mi (varsayılan evet)" } } } },
   { name: "payroll_status", description: "Personel puantajı ve maaşı: çalışılan gün, izin/rapor/devamsızlık, mesai, hak edilen, avans, ödenen, kalan. 'Ali'nin bu ay maaşı ne kadar kaldı', 'kime ne ödeyeceğim', 'kaç gün çalıştı' için. Personel adı yoksa herkes.",
     parameters: { type: "object", properties: { personnel: { type: "string" }, period: { type: "string", description: "YYYY-AA; yoksa bu ay" } } } },
+  { name: "maintenance_due", description: "Bakım takvimi: araç/makine bakımlarının durumu (gecikti / yaklaşıyor / planlı), kalan km/saat/gün, tahmini gün, son bakım, güncel km/saat. 'Hangi aracın bakımı geldi', 'JCB yağ bakımına kaç saat kaldı' için.",
+    parameters: { type: "object", properties: { vehicle: { type: "string" } } } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
@@ -263,6 +266,12 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const unit = ["Sefer", "Ton", "Saat", "Yevmiye"].find((u) => norm(u) === norm(a.unit || "")) || "Sefer";
     const q = quoteFor(d, { customer_id: c.id, vehicle_id: v.id, dump_site_id: s.id, work_type: wt, unit, quantity: Number(a.quantity) || 0, dump_included: a.dump_included !== false }, { today, settings: extra.quoteSettings || {}, fuelRefPrice: extra.fuelRefPrice });
     return quoteSummary(d, q);
+  }
+  if (name === "maintenance_due") {
+    const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
+    if (v.error) return v;
+    const rows = maintenanceBoard(d, { today }).filter((r) => !v.id || r.v.id === v.id);
+    return rows.length ? { bakimlar: maintSummary(rows).slice(0, 20) } : { not: "Bakım kuralı tanımlı değil. Bakım Takvimi ekranından araç başına kural eklenmeli (ör. motor yağı 500 saatte bir)." };
   }
   if (name === "payroll_status") {
     const p = resolve(d, a, "personnel", "personnel", "personnel");

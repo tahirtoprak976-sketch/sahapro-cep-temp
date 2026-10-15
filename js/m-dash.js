@@ -160,6 +160,7 @@ async function dashboard(ctx) {
       v.next_maintenance_date <= addDays(today, 14),
   );
 
+  const maintDue = (await import("./maint-core.js")).maintenanceBoard(data, { today }).filter((r) => r.state === "late" || r.state === "soon").slice(0, 5);
   root.innerHTML = `
     <div class="appbar" style="align-items:flex-start">
       <div class="title">
@@ -254,7 +255,7 @@ async function dashboard(ctx) {
       <div class="row between tap" data-go="#/depo"><span class="muted small">Depo Yakıt (tahmini)</span><span class="strong">${fmtNum(tank.remaining)} Lt</span></div>
     </div>
 
-    ${upcomingMaint.length ? `<div class="section-title">Bakım Uyarıları</div>` + upcomingMaint.map((v) => li({ ic: "🛠", href: "#/filo/" + v.id, t1: esc(v.name), t2: `Sonraki bakım: ${trDate(v.next_maintenance_date)}` })).join("") : ""}
+    ${upcomingMaint.length || maintDue.length ? `<div class="section-title">Bakım Uyarıları</div>` + maintDue.map((r) => li({ ic: r.state === "late" ? "🔴" : "🟠", href: "#/bakim-takvimi/" + r.v.id, t1: esc(r.v.name + " · " + r.rule.title), t2: esc(r.text) })).join("") + upcomingMaint.map((v) => li({ ic: "🛠", href: "#/filo/" + v.id, t1: esc(v.name), t2: `Sonraki bakım: ${trDate(v.next_maintenance_date)}` })).join("") : ""}
 
     <div class="section-title">Aylık Özet — son 6 ay</div>
     <div class="card">${mChart}
@@ -751,6 +752,7 @@ async function more(ctx) {
     ["#/depo", "🛢", "Depo Tankı"],
     ["#/filo", "🚜", "Filo"],
     ["#/bakim", "🔧", "Bakım"],
+    ["#/bakim-takvimi", "🗓", "Bakım Takvimi"],
     ["#/personel", "👷", "Personel"],
     ["#/puantaj", "📅", "Puantaj / Maaş"],
     ["#/taseron", "🤝", "Taşeron"],
@@ -773,7 +775,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.68")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.69")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
