@@ -34,6 +34,29 @@ export async function screen(ctx) {
   const alert = Number(settings.alert) || 15;
   const monthIn = st.ins.filter((x) => x.w.date.startsWith(month)).reduce((n, x) => n + x.loads, 0);
   const monthOut = st.outs.filter((x) => x.w.date.startsWith(month)).reduce((n, x) => n + x.loads, 0);
+  // Depo kâr–zarar: depoya döküm yapılan müşteri işlerinin tutarı − depodan çıkan seferlerin döküm ücreti ve sefer maliyeti
+  const { dumpFee } = await import("./dump-fees.js");
+  const { workAmount } = await import("./collect-core.js");
+  const tripCost = Number(settings.trip_cost) || 0;
+  const pl = (pred) => {
+    const ins = st.ins.filter((x) => pred(x.w.date)), outs = st.outs.filter((x) => pred(x.w.date));
+    const income = ins.reduce((n, x) => n + workAmount(x.w), 0);
+    const fees = outs.map((x) => dumpFee(d, x.w));
+    const dump = fees.reduce((n, f) => n + (f?.amount || 0), 0);
+    const trips = outs.reduce((n, x) => n + (x.w.unit === "Sefer" ? Number(x.w.quantity) || 0 : 1), 0);
+    const noFee = fees.filter((f) => !f || f.missing).length;
+    const est = fees.filter((f) => f?.estimated).length;
+    const cost = dump + trips * tripCost;
+    return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee, est, ins: ins.length, outs: outs.length };
+  };
+  const plM = pl((x) => x.startsWith(month)), plA = pl(() => true);
+  const tl = (n) => Math.round(n).toLocaleString("tr-TR") + " ₺";
+  const plCard = (t, p) => `<div class="card"><div class="strong small">${t}</div>
+    <div class="row between small"><span>📥 Depoya döküm yapılan işler (${p.ins})</span><b>${tl(p.income)}</b></div>
+    <div class="row between small"><span>📤 Depodan çıkan seferlerin döküm ücreti (${p.outs} kayıt, ${fmtNum(p.trips)} sefer)</span><b>− ${tl(p.dump)}</b></div>
+    ${tripCost ? `<div class="row between small"><span>Sefer maliyeti (${fmtNum(p.trips)} × ${tl(tripCost)})</span><b>− ${tl(p.extra)}</b></div>` : ""}
+    <div class="divider"></div><div class="row between"><span class="strong">Sonuç</span><span class="strong" style="color:${p.result < 0 ? "#d9534f" : "#2e9e6b"}">${tl(p.result)}</span></div>
+    ${p.noFee ? `<div class="tiny muted">⚠ ${p.noFee} çıkışta döküm ücreti hesaplanamadı (döküm sahası seçilmemiş, sahanın ücreti girilmemiş ya da ton bilinmiyor).</div>` : ""}${p.est ? `<div class="tiny muted">${p.est} çıkışta fiş yok; ton aracın ortalama yükünden tahmin edildi.</div>` : ""}</div>`;
   root.innerHTML =
     appbar("Kendi Depo / Stok Sahası", esc(site.name)) +
     `<div style="height:10px"></div>
@@ -46,10 +69,13 @@ export async function screen(ctx) {
     <div class="card">${st.rows.length ? st.rows.map((r) => `<div class="row between"><span>${esc(r.mat)}</span><span class="small">${r.opening ? `açılış ${fmtNum(r.opening)} + ` : ""}giren ${fmtNum(r.in)} − çıkan ${fmtNum(r.out)} = <b>${fmtNum(r.stock)}</b></span></div>`).join("") : '<div class="muted small">Henüz giriş/çıkış yok.</div>'}
       <div class="muted tiny" style="margin-top:6px">Tahmini: her aracın bir seferi aşağıdaki katsayı kadar kamyonet yükü sayılır.</div></div>
     ${st.unknownVehicles.length ? notice("warn", "Yük katsayısı bilinmeyen araç: " + st.unknownVehicles.map((v) => esc(vName(v))).join(", ") + " — aşağıdan girin (şimdilik 1 sayıldı).") : ""}
+    <div class="section-title">Depo kâr–zarar</div>
+    ${plCard("Bu ay", plM)}${plCard("Tüm zamanlar", plA)}
+    <div class="muted tiny" style="margin:-4px 2px 8px">Döküm ücretleri döküm sahası kartlarından (Bolluca 160, Cebeci 210, İSTAÇ 235 ₺/ton, KDV dahil). Ton fişten; fiş yoksa aracın kartındaki "ortalama yük". Mazot ve şoför için sefer başı bir maliyet girebilirsiniz (aşağıda).</div>
     <div class="section-title">Nasıl kaydedilir?</div>
     <div class="card small">
       • <b>Depoya giriş:</b> kamyonetin müşteri işini normal kaydedin, <b>Döküm Sahası = ${esc(site.name)}</b> seçin. Asistan "depoya döküldü / şantiyeye döktük" ifadesini anlar.<br>
-      • <b>Depodan çıkış:</b> Müşteri = <b>${esc(cust.name)}</b>, Döküm Sahası = gittiği yer (Boluca, İBB…). Asistan "şantiyeden / depodan 2 sefer çöp İBB'ye" ifadesini anlar. Bu seferler hakedişe para yazmaz.
+      • <b>Depodan çıkış:</b> iş formunda müşteri yerine en alttaki <b>📦 Kendi depodan çıkış</b> seçeneği, Döküm Sahası = gittiği yer (Bolluca, Cebeci, İSTAÇ…), fiş varsa tonaj. Asistan "depodaki stoktan 1 sefer moloz Bolluca'ya" ifadesini anlar. Bu seferler kimseye borç yazmaz; maliyet olarak sayılır.
     </div>
     <div class="section-title">Araç yük katsayıları (1 sefer = kaç kamyonet yükü)</div>
     <div class="card" data-factors>
@@ -58,6 +84,7 @@ export async function screen(ctx) {
         <div class="field"><label>Kamyon</label><input type="number" step="any" data-def="kamyon" value="${settings.defaults?.kamyon ?? DEFAULT_FACTORS.kamyon}"></div>
         <div class="field"><label>Tır</label><input type="number" step="any" data-def="tir" value="${settings.defaults?.tir ?? DEFAULT_FACTORS.tir}"></div>
         <div class="field"><label>Uyarı sınırı (kamyonet yükü)</label><input type="number" step="any" data-alert value="${alert}"></div>
+        <div class="field"><label>Depodan çıkış: sefer başı ek maliyet (mazot + şoför, ₺)</label><input type="number" step="any" data-tripcost value="${esc(settings.trip_cost ?? "")}" placeholder="boş = sayılmaz"></div>
       </div>
       ${usedVehicles.map((v) => { const f = vehicleFactor(v, settings); return `<div class="field"><label>${esc(vName(v))} ${f.known ? "" : "⚠"}</label><input type="number" step="any" data-veh="${esc(v.id)}" value="${settings.byVehicle?.[v.id] ?? ""}" placeholder="${f.f}"></div>`; }).join("")}
       <div class="section-title" style="margin-top:6px">Açılış stoku (bugün depoda ne var?)</div>
@@ -74,6 +101,7 @@ export async function screen(ctx) {
     for (const el of qsa("[data-open]", root)) if (el.value !== "") s.opening[el.dataset.open] = Number(el.value);
     s.opening_date = qs("[data-opendate]", root).value || "";
     s.alert = Number(qs("[data-alert]", root).value) || 15;
+    s.trip_cost = Number(qs("[data-tripcost]", root).value) || null;
     await db.metaSet("yard_settings", s);
     toast("Kaydedildi", "ok");
     ctx.reload();

@@ -2,6 +2,7 @@
 // Gelir = fiyatı girilmiş işlerin değeri (KDV durumu kayıttan bilinmediği için "iş değeri" denir),
 // tahsilat = "Müşteriden Para Alındı" kasa kayıtları. Fiyatsız işler ayrıca sayılır; gizlenmez.
 import { isActive, toKurus, fromKurus, todayStr, tankUnitCost } from "./core.js";
+import { dumpFeeRows } from "./dump-fees.js";
 
 // Mazotla ödenen işlerin ve müşterinin verdiği mazotun TL değeri: o tarihe kadarki depo alış ortalaması
 // (yoksa Ayarlar'daki referans litre fiyatı). Fiyat bilinmiyorsa 0 sayılır ve ayrıca işaretlenir.
@@ -26,7 +27,7 @@ export function monthlySeries(data, opts = {}) {
   const today = opts.today || todayStr();
   const keys = lastMonths(today, opts.months || 6);
   const rows = new Map(
-    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0 }]),
+    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0 }]),
   );
   for (const w of data.work_records || []) {
     if (!isActive(w)) continue;
@@ -77,19 +78,24 @@ export function monthlySeries(data, opts = {}) {
     const r = rows.get(monthKey(b.date));
     if (r) r.esnaf += toKurus(Number(b.gross_total) || 0);
   }
+  for (const f of dumpFeeRows(data)) {
+    const r = rows.get(monthKey(f.w.date));
+    if (r && f.amount > 0) r.dump += toKurus(f.amount);
+  }
   return [...rows.values()].map((r) => ({
     ...r,
     work: fromKurus(r.work),
+    dump: fromKurus(r.dump),
     maint: fromKurus(r.maint),
     esnaf: fromKurus(r.esnaf),
     collected: fromKurus(r.collected),
     expense: fromKurus(r.expense),
     fuel: fromKurus(r.fuel),
-    cost: fromKurus(r.expense + r.fuel + r.maint + r.esnaf),
+    cost: fromKurus(r.expense + r.fuel + r.maint + r.esnaf + r.dump),
     fuelPay: fromKurus(r.fuelPay),
     fuelPayL: Math.round(r.fuelPayL * 10) / 10,
     // tahmini kâr = fiyatlı iş değeri + mazotla ödenen işlerin değeri − (gider + yakıt); fiyatsız iş ayrıca işaretlenir
-    profit: fromKurus(r.work + r.fuelPay - r.expense - r.fuel - r.maint - r.esnaf),
+    profit: fromKurus(r.work + r.fuelPay - r.expense - r.fuel - r.maint - r.esnaf - r.dump),
   }));
 }
 

@@ -71,6 +71,7 @@ async function loadAll(db) {
     "payables",
     "supplier_payments",
     "instruments",
+    "dump_sites",
   ];
   const data = {};
   for (const s of stores) data[s] = (await db.getAll(s)) || [];
@@ -409,6 +410,7 @@ async function manager(ctx) {
       ${kv("Gider", fmtTL(curM.expense) + " ₺")}
       ${kv("Bakım/Arıza", fmtTL(curM.maint) + " ₺")}
       ${kv("Esnaf alışı", fmtTL(curM.esnaf) + " ₺")}
+      ${curM.dump ? kv("Döküm ücreti", fmtTL(curM.dump) + " ₺") : ""}
       <div class="divider"></div>
       ${kv("TAHMİNİ SONUÇ", fmtTL(curM.profit) + " ₺")}
       ${curM.unpriced ? `<div class="muted tiny">⚠ ${curM.unpriced} işin fiyatı yok; sonuç eksik olabilir.</div>` : ""}
@@ -750,7 +752,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.56")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.57")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

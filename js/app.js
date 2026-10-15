@@ -349,6 +349,7 @@ document.addEventListener("click", (ev) => {
     registerSW();
     bindOnline();
     if (!(await pinGate())) return;
+    try { await (await import("./dump-fees.js")).seedOfficialDumps(db); } catch (e) { console.warn(e); }
     window.addEventListener("hashchange", renderCurrent);
     await renderCurrent();
   } catch (e) {
