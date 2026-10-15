@@ -107,3 +107,12 @@ console.log("driver ok");
   assert.ok(!spec.sections[1].pairs.some(([k]) => k === "Döküm fişi no"), "dijital fiş no kâğıt fiş gibi tekrar yazılmaz");
   console.log("driver slip to owner ok");
 }
+{
+  const { driverMessage: dm, extractPayloads: ex, payloadsToPlan: p2p } = await import("../js/driver-core.js");
+  const cfg5 = driverConfig(d, { personnel_id: "A" });
+  const sig = Buffer.from("PNGDATA".repeat(300)).toString("base64");
+  const msg = await dm([{ id: "s1", date: "2026-10-16", vid: "T", cid: "C", wt: "Hafriyat Nakliye", q: 1, u: "Sefer", dfs: "ASA-0002", rcv: "Ahmet", sig }], cfg5);
+  const { meta } = p2p(await ex(msg), d, { photoCount: 0 });
+  assert.equal(meta[0].digital.sigData, sig, "imza kodun içinden gelir"); assert.equal(meta[0].digital.sigPhoto, null);
+  console.log("driver embedded sig ok");
+}

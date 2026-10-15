@@ -828,7 +828,12 @@ async function save(ctx, out, v, d, { message, files }) {
         const savedWork = await db.saveNew("work_records", fields, "Asistan");
         batchWorks[c.dataset.i] = savedWork;
         for (const p of v.works[Number(c.dataset.i)].photos || []) if (files[p]) await db.addAttachment("work", savedWork.id, files[p], { kind: "slip_photo" });
-        { const dg = v.works[Number(c.dataset.i)].digital; if (dg?.sigPhoto != null && files[dg.sigPhoto]) await db.addAttachment("work", savedWork.id, files[dg.sigPhoto], { kind: "signature" }); }
+        {
+          const dg = v.works[Number(c.dataset.i)].digital;
+          // İmza: mesajın kodunun içinden (kopyala-yapıştırla da gelir) ya da ayrı resim olarak
+          if (dg?.sigData) { try { const bin = atob(dg.sigData); const u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); await db.addAttachment("work", savedWork.id, new File([u], `imza-${dg.no}.png`, { type: "image/png" }), { kind: "signature" }); } catch (e) { /* bozuk imza: atla */ } }
+          else if (dg?.sigPhoto != null && files[dg.sigPhoto]) await db.addAttachment("work", savedWork.id, files[dg.sigPhoto], { kind: "signature" });
+        }
         done.work++;
         const wr = v.works[Number(c.dataset.i)];
         const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";

@@ -301,18 +301,45 @@ export async function screen(ctx) {
       await dropPhotos(e); entries = entries.filter((x) => x !== e); save(); draw();
     });
     const send = async (list) => {
-      const files = [];
+      // İmzalı fişin imzası mesajın KODUNUN İÇİNE gömülür (küçültülmüş PNG): patron mesajı kopyala-yapıştır yapsa da imza gelir.
+      // Mesaj WhatsApp sınırını aşacaksa imza eskisi gibi ayrı resim olarak gider.
+      const sigOf = async (e) => {
+        if (!e.sg || !("caches" in self)) return null;
+        const r = await (await caches.open(PHOTO_CACHE)).match(`./__drv/sig-${e.id}`);
+        return r ? r.blob() : null;
+      };
+      const smallB64 = async (blob) => {
+        const bmp = await createImageBitmap(blob);
+        const s = Math.min(1, 280 / bmp.width), cv = document.createElement("canvas");
+        cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
+        const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height);
+        // Siyah-beyaz (2 renk): PNG çok daha küçük olur, imza okunur kalır
+        const im = g.getImageData(0, 0, cv.width, cv.height), px = im.data;
+        for (let i = 0; i < px.length; i += 4) { const v = (px[i] + px[i + 1] + px[i + 2]) / 3 < 170 && px[i + 3] > 40 ? 0 : 255; px[i] = px[i + 1] = px[i + 2] = v; px[i + 3] = 255; }
+        g.putImageData(im, 0, 0);
+        const b = await new Promise((r) => cv.toBlob(r, "image/png"));
+        const u = new Uint8Array(await b.arrayBuffer()); let str = ""; for (let i = 0; i < u.length; i += 0x8000) str += String.fromCharCode(...u.subarray(i, i + 0x8000));
+        return btoa(str);
+      };
+      const out = [];
       for (const e of list) {
-        files.push(...(await getPhotos(e)));
-        // İmzalı fişin imzası da patrona gider (iş kaydına eklenir, patron aynı PDF'i oluşturabilir)
-        if (e.sg && "caches" in self) {
-          const r = await (await caches.open(PHOTO_CACHE)).match(`./__drv/sig-${e.id}`);
-          if (r) files.push(new File([await r.blob()], `imza-${e.dfs || e.id}.png`, { type: "image/png" }));
-          else delete e.sg;
-        }
+        const c = { ...e };
+        if (c.sg) { const sb = await sigOf(e); delete c.sg; if (sb) { try { c.sig = await smallB64(sb); } catch (err) { c._sigBlob = sb; } } }
+        out.push(c);
       }
-      // Metin dosyalardan sonra: imzası bulunamayan fişin işareti düştüyse kodda da yer almaz (fotoğraf sırası kaymasın)
-      const text = await core.driverMessage(list, cfg);
+      let text = await core.driverMessage(out.map(({ _sigBlob, ...c }) => c), cfg);
+      let embedded = true;
+      if (text.length > 60000 || out.some((c) => c._sigBlob)) {
+        // Çok uzun: imzalar resim olarak (eski yol)
+        embedded = false;
+        for (const c of out) { if (c.sig || c._sigBlob) { c.sg = 1; c._file = c._sigBlob || new Blob([Uint8Array.from(atob(c.sig), (ch) => ch.charCodeAt(0))], { type: "image/png" }); delete c.sig; } }
+        text = await core.driverMessage(out.map(({ _sigBlob, _file, ...c }) => c), cfg);
+      }
+      const files = [];
+      for (const c of out) {
+        files.push(...(await getPhotos(c)));
+        if (!embedded && c.sg && c._file) files.push(new File([c._file], `imza-${c.dfs || c.id}.png`, { type: "image/png" }));
+      }
       let ok = false;
       try {
         if (files.length && navigator.canShare?.({ files, text })) { await navigator.share({ text, files }); ok = true; }

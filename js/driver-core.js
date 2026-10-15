@@ -109,7 +109,7 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
     });
     meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
-      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto } } : {}) });
+      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null } } : {}) });
   }
   return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta };
 }
