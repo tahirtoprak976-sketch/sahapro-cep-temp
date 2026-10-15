@@ -350,6 +350,7 @@ document.addEventListener("click", (ev) => {
     bindOnline();
     if (!(await pinGate())) return;
     try { await (await import("./dump-fees.js")).seedOfficialDumps(db); } catch (e) { console.warn(e); }
+    try { await (await import("./yard-core.js")).seedVehicleTypes(db); } catch (e) { console.warn(e); }
     window.addEventListener("hashchange", renderCurrent);
     await renderCurrent();
   } catch (e) {

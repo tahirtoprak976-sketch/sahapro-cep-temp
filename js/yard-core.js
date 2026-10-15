@@ -99,3 +99,29 @@ export function mentionsYard(text) {
   const h = yardHint(text);
   return h.in || h.out;
 }
+
+// Depo kâr–zarar: depoya döküm yapılan müşteri işlerinin tutarı − depodan çıkan seferlerin döküm ücreti (− sefer başı ek maliyet)
+export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workAmount } = {}) {
+  const tripCost = Number(settings.trip_cost) || 0;
+  const ins = st.ins.filter((x) => pred(x.w.date)), outs = st.outs.filter((x) => pred(x.w.date));
+  const income = ins.reduce((n, x) => n + workAmount(x.w), 0);
+  const fees = outs.map((x) => dumpFee(d, x.w));
+  const dump = fees.reduce((n, f) => n + (f?.amount || 0), 0);
+  const trips = outs.reduce((n, x) => n + (x.w.unit === "Sefer" ? Number(x.w.quantity) || 0 : 1), 0);
+  const cost = dump + trips * tripCost;
+  return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee: fees.filter((f) => !f || f.missing).length, est: fees.filter((f) => f?.estimated).length, ins: ins.length, outs: outs.length, tripCost };
+}
+
+// Bilinen araç türleri (işletme sahibinden): tır / kamyon — boş ya da genel türü olan karta bir kez yazılır
+export const KNOWN_VEHICLE_TYPES = { "34GAM627": "Tır", "34FY2482": "Tır", "34GA2261": "Kamyon", "34UL9492": "Kamyon" };
+export async function seedVehicleTypes(db) {
+  if (await db.metaGet("vehicle_types_v1")) return 0;
+  const key = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let n = 0;
+  for (const v of (await db.getAll("vehicles")).filter(isActive)) {
+    const t = KNOWN_VEHICLE_TYPES[key(v.plate)] || KNOWN_VEHICLE_TYPES[key(v.name)];
+    if (t && (!v.type || /^ara[cç]\/makine$/i.test(v.type))) { await db.saveExisting("vehicles", v, { type: t }, "Araç türü (işletme sahibi)"); n++; }
+  }
+  await db.metaSet("vehicle_types_v1", true);
+  return n;
+}

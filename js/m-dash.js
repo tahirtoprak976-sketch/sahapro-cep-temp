@@ -97,7 +97,19 @@ async function dashboard(ctx) {
       return bar(m.work + m.fuelPay, 0, "İş değeri (mazot karşılığı dahil)", "#f5a623") + bar(m.collected, 15, "Tahsilat", "#2e9e6b") + bar(m.cost, 30, "Maliyet", "#d9534f") + `<text x="${x + 21}" y="100" text-anchor="middle" style="font-size:9px;fill:#93a4b5">${m.label}</text>`;
     }).join("")}
   </svg>`;
-  const { receivables } = await import("./collect-core.js");
+  const { receivables, workAmount } = await import("./collect-core.js");
+  // Kendi depo kısayolu: stok + bu ayın kâr–zararı
+  let yardCard = "";
+  {
+    const yc = await import("./yard-core.js");
+    if (yc.yardSite(data) && yc.yardCustomer(data)) {
+      const ys = (await db.metaGet("yard_settings")) || {};
+      const st = yc.yardStock(data, { settings: ys, today });
+      const { dumpFee } = await import("./dump-fees.js");
+      const p = yc.yardPL(data, st, { settings: ys, pred: (x) => x.startsWith(today.slice(0, 7)), dumpFee, workAmount });
+      yardCard = `<div class="row between tap" data-go="#/kendi-depo"><span class="muted small">🏗 Kendi depo · stok ~${fmtNum(st.total)} kamyonet yükü</span><span class="strong" style="color:${p.result < 0 ? "#d9534f" : "#2e9e6b"}">${p.ins || p.outs ? (p.result < 0 ? "" : "+") + fmtTL(p.result) + " ₺ bu ay" : "aç ›"}</span></div><div class="divider"></div>`;
+    } else yardCard = `<div class="row between tap" data-go="#/kendi-depo"><span class="muted small">🏗 Kendi depo / stok sahası</span><span class="muted small">kur ›</span></div><div class="divider"></div>`;
+  }
   const recv = receivables(data, { today, notes: (await db.metaGet("collect_notes")) || {} });
   const cur = months[months.length - 1];
   const tank = calcTankBalance(data.fuel_tank_movements);
@@ -234,6 +246,7 @@ async function dashboard(ctx) {
       <div class="divider"></div>
       <div class="row between"><span class="muted small">Kasada/Personelde Bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${fmtTL(pendingSum)} ₺</span></div>
       <div class="divider"></div>
+      ${yardCard}
       <div class="row between tap" data-go="#/yakit"><span class="muted small">Bu ay verilen yakıt</span><span class="strong">${fmtNum(monthFuel.depo + monthFuel.other)} Lt${monthFuel.depo && monthFuel.other ? ` <span class="muted small">(depodan ${fmtNum(monthFuel.depo)})</span>` : ""}</span></div>
       <div class="divider"></div>
       <div class="row between tap" data-go="#/depo"><span class="muted small">Depo Yakıt (tahmini)</span><span class="strong">${fmtNum(tank.remaining)} Lt</span></div>
@@ -752,7 +765,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.58")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.59")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

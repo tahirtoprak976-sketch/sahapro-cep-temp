@@ -52,3 +52,13 @@ console.log("yard PASS");
   assert.ok(!yardHint("1 seferi göktürk son durak dolguya döküldü").in);
   console.log("yard hint ok");
 }
+{
+  const { seedVehicleTypes } = await import("../js/yard-core.js");
+  const vs = [{ id: "1", name: "34GAM627", created_at: "x" }, { id: "2", name: "Kamyon", plate: "34 UL 9492", type: "Araç/Makine", created_at: "x" }, { id: "3", name: "34FY2482", type: "Kamyonet", created_at: "x" }];
+  const meta = {};
+  const db = { metaGet: async (k) => meta[k], metaSet: async (k, v) => { meta[k] = v; }, getAll: async () => vs, saveExisting: async (s, r, f) => Object.assign(r, f) };
+  assert.equal(await seedVehicleTypes(db), 2);
+  assert.deepEqual(vs.map((v) => v.type), ["Tır", "Kamyon", "Kamyonet"], "elle girilmiş tür değişmez");
+  assert.equal(await seedVehicleTypes(db), 0);
+  console.log("vehicle types ok");
+}
