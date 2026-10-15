@@ -10,6 +10,7 @@ import { fuelLedgers } from "./assistant-rules.js";
 import { yardSite, yardStock } from "./yard-core.js";
 import { receivables, customerLedgerMovements } from "./collect-core.js";
 import { costRows, costTotals } from "./costs-core.js";
+import { vehicleKpis, customerKpis, priceCheck, businessReview, EXPERT_KNOWLEDGE } from "./expert-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -133,6 +134,14 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: {} } },
   { name: "receivables", description: "Müşterilerden alacaklar (tahsilat takibi): toplam, 0-30/31-60/61-90/90+ gün dağılımı, en riskli müşteriler, en eski açık kalemin yaşı, son ödeme, ödeme sözü, vadesi yaklaşan çek/senet. Müşteri adıyla tek müşteri.",
     parameters: { type: "object", properties: { customer: { type: "string" } } } },
+  { name: "vehicle_profit", description: "Araç/makine bazında kârlılık ve verim: gelir, yakıt, bakım, döküm ücreti, kâr, çalışılan gün, doluluk %, günlük getiri, L/sefer, L/saat, kaç gündür boşta. 'Hangi araç kazandırıyor', 'hangi makine boş', 'mazot yakıyor mu' soruları için.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, vehicle: { type: "string" } } } },
+  { name: "customer_profit", description: "Müşteri bazında: gelir, döküm ücreti sonrası net, tahsilat, açık alacak, en eski alacak günü, sefer başı net, fiyatsız iş. 'En iyi/kötü müşteri', 'kime çalışmak kârlı' soruları için.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" }, customer: { type: "string" } } } },
+  { name: "price_check", description: "Aynı iş türü ve birimde birim fiyatlar: orta fiyat, en düşük/yüksek, ortalamanın %15 altında kalan müşteriler. 'Ucuza mı çalışıyoruz', 'fiyatlarım tutarlı mı' için.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } } },
+  { name: "business_review", description: "İşletmenin dönem özeti ve uyarı bulguları (boş makine, düşük doluluk, zarar eden araç, düşük fiyat, geciken alacak). 'İşler nasıl gidiyor', 'ne yapmalıyım', 'durum değerlendirmesi' için.",
+    parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
@@ -221,6 +230,23 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
       alacakli_musteri_sayisi: res.rows.length, en_riskli: res.rows.slice(0, 8).map(row),
       yaklasan_cek_senet: res.cheques.filter((q) => q.days_left <= 30).slice(0, 8).map((q) => ({ tur: q.kind, yon: q.direction, no: q.document_no, vade: q.due_date, TL: q.amount, durum: q.status })) };
   }
+  if (name === "vehicle_profit") {
+    const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
+    if (v.error) return v;
+    const rows = vehicleKpis(d, { from, to, fuelRefPrice: extra.fuelRefPrice }).filter((x) => !v.id || x.id === v.id).map(({ id, ...x }) => x);
+    return { from, to, araclar: rows.slice(0, 15) };
+  }
+  if (name === "customer_profit") {
+    const c = resolve(d, a, "customer", "customers", "customer");
+    if (c.error) return c;
+    const rows = customerKpis(d, { from, to, today, notes: extra.collectNotes || {} }).filter((x) => !c.id || x.id === c.id).map(({ id, ...x }) => x);
+    return { from, to, musteriler: rows.slice(0, 15) };
+  }
+  if (name === "price_check") return { from, to, gruplar: priceCheck(d, { from, to }).slice(0, 12) };
+  if (name === "business_review") {
+    const r = businessReview(d, { from, to, today, notes: extra.collectNotes || {}, fuelRefPrice: extra.fuelRefPrice });
+    return { from, to, ozet: r.ozet, bulgular: r.bulgular.slice(0, 15).map((b) => b.text), en_karli_araclar: r.araclar.slice(0, 3).map((x) => [x.arac, x.kar_TL]), en_buyuk_musteriler: r.musteriler.slice(0, 3).map((x) => [x.musteri, x.gelir_TL]) };
+  }
   if (name === "esnaf_debt") {
     const s = resolve(d, a, "supplier", "suppliers", "supplier");
     if (s.error) return s;
@@ -235,5 +261,6 @@ export const ASK_SYSTEM = [
   "Rakamları ASLA tahmin etme; yalnız araç sonuçlarındaki rakamları kullan. Toplama/bölme yapma; araç ne döndürdüyse onu söyle.",
   "Tarih belirtilmezse bu ay; 'geçen ay', 'bu hafta' gibi ifadeleri bugüne göre YYYY-MM-DD aralığına çevir.",
   "Araç hata döndürürse (bulunamadı / birden fazla) kullanıcıya adayları söyleyip netleştirmesini iste.",
-  "Kısa, net Türkçe cevap ver (en çok 5 cümle).",
+  "Kısa, net Türkçe cevap ver (en çok 5 cümle). Yönetim sorusunda (kârlılık, verim, ne yapmalı) bir yönetim danışmanı gibi somut öneri ekle.",
+  EXPERT_KNOWLEDGE,
 ].join("\n");

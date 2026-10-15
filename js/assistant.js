@@ -25,6 +25,7 @@ export async function screen(ctx) {
     `<div style="height:10px"></div>
     ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Önce Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
+    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/danisman">🎓 Yönetim Danışmanı — araç / müşteri karnesi ve öneriler</button>
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
       <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>

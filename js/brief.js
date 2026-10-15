@@ -94,8 +94,9 @@ export async function briefCard(ctx, host, data) {
       try {
         const { withModelFallback, geminiText } = await import("./ai-gemini.js");
         const { keepVerified } = await import("./day-summary.js");
+        const knowledge = (await import("./expert-core.js")).EXPERT_KNOWLEDGE;
         const out = await withModelFallback(db, (o) => geminiText("Bugünün brifingi:\n" + B.text + "\n\nRakamlar (JSON): " + JSON.stringify(B.facts), { ...o, maxTokens: 600,
-          system: "Bir hafriyat/nakliye işletmesinin sahibine bugün yapması gerekenleri öner. En çok 3 kısa madde, Türkçe, sade. Yalnız brifingde geçen rakam ve adları kullan; rakam uydurma. Önce parayı (tahsilat, söz, gecikme), sonra yakıt/belge, sonra iş. Her madde bir eylem: 'X'i ara', 'Y'ye hatırlatma gönder', 'depoya mazot söyle'." }));
+          system: knowledge + "\nBir hafriyat/nakliye işletmesinin sahibine bugün yapması gerekenleri öner. En çok 3 kısa madde, Türkçe, sade. Yalnız brifingde geçen rakam ve adları kullan; rakam uydurma. Önce parayı (tahsilat, söz, gecikme), sonra yakıt/belge, sonra iş. Her madde bir eylem: 'X'i ara', 'Y'ye hatırlatma gönder', 'depoya mazot söyle'." }));
         const v = keepVerified(String(out || ""), [B.text, B.facts]);
         v.text = v.text.replace(/\s+\d+\.\s*(?=\d+\.|$)/g, " ").replace(/\s(\d+\.)\s/g, "\n$1 ").trim();
         box.innerHTML = v.text ? `<div class="notice info" style="margin-top:6px"><span>🤖</span><span style="white-space:pre-wrap">${esc(v.text)}</span></div>` : '<div class="muted small">Öneri çıkmadı.</div>';

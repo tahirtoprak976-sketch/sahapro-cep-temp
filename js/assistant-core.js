@@ -8,6 +8,7 @@ import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates, fuelRulesOf } from "./assistant-rules.js";
 import { yardSite, yardCustomer, yardHint } from "./yard-core.js";
 import { customerLedgerMovements } from "./collect-core.js";
+import { EXPERT_KNOWLEDGE } from "./expert-core.js";
 
 export const ASSIST_UNITS = ["Sefer", "Saat", "Yevmiye", "Ton", "m³", "Adet"];
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -293,6 +294,7 @@ export function assistantSystem(rules = "") {
     "\"photo_texts\":[string],\"questions\":[string]}",
     "20 bin = 20000, 1,5 milyon = 1500000. 'havale/EFT yaptı' = Havale.",
     DOCS_PROMPT,
+    EXPERT_KNOWLEDGE,
     ...(extra ? ["İŞLETME KURALLARI (işletme sahibi yazdı; yukarıdaki JSON biçimi ve 'uydurma' yasakları her zaman geçerlidir):", extra] : []),
   ].join("\n");
 }
@@ -668,7 +670,10 @@ export function checkAnswer(answer, facts) {
   const bad = [];
   // Her sayı belirtecinin olası okumalarından (1.234,5 / 1,234.5 / 50.000) biri gerçeklerde olmalı
   for (const m of String(answer).matchAll(/\d[\d.,]*/g)) {
-    const cands = [...numbersInText(m[0])];
+    const tok = m[0].replace(/[.,]$/, "");
+    // "9.320" / "1.250.000" / "12.500,75" Türkçe binlik yazımıdır: tek okuma (9320) — "9,32" ya da 9 gibi yuvarlak okumaya kaçmasın
+    const trThousands = /^\d{1,3}(\.\d{3})+(,\d+)?$/.test(tok);
+    const cands = trThousands ? [Number(tok.replace(/\./g, "").replace(",", "."))] : [...numbersInText(m[0])];
     if (!cands.length) continue;
     if (cands.every((n) => n <= 31 || (n >= 2000 && n <= 2100))) continue; // gün, ay, yıl
     if (cands.some((n) => known.has(n) || known.has(Math.round(n)))) continue;
