@@ -37,18 +37,9 @@ export async function screen(ctx) {
   // Depo kâr–zarar: depoya döküm yapılan müşteri işlerinin tutarı − depodan çıkan seferlerin döküm ücreti ve sefer maliyeti
   const { dumpFee } = await import("./dump-fees.js");
   const { workAmount } = await import("./collect-core.js");
+  const { yardPL } = await import("./yard-core.js");
+  const pl = (pred) => yardPL(d, st, { settings, pred, dumpFee, workAmount });
   const tripCost = Number(settings.trip_cost) || 0;
-  const pl = (pred) => {
-    const ins = st.ins.filter((x) => pred(x.w.date)), outs = st.outs.filter((x) => pred(x.w.date));
-    const income = ins.reduce((n, x) => n + workAmount(x.w), 0);
-    const fees = outs.map((x) => dumpFee(d, x.w));
-    const dump = fees.reduce((n, f) => n + (f?.amount || 0), 0);
-    const trips = outs.reduce((n, x) => n + (x.w.unit === "Sefer" ? Number(x.w.quantity) || 0 : 1), 0);
-    const noFee = fees.filter((f) => !f || f.missing).length;
-    const est = fees.filter((f) => f?.estimated).length;
-    const cost = dump + trips * tripCost;
-    return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee, est, ins: ins.length, outs: outs.length };
-  };
   const plM = pl((x) => x.startsWith(month)), plA = pl(() => true);
   const tl = (n) => Math.round(n).toLocaleString("tr-TR") + " ₺";
   const plCard = (t, p) => `<div class="card"><div class="strong small">${t}</div>
