@@ -46,3 +46,29 @@ assert.equal(v.fuel[0].liters, 300); assert.equal(v.fuel[0].km, 245300); assert.
 // Daha önce alınanlar
 assert.deepEqual([...seenDriverIds({ work_records: [{ id: "w", driver_entry_id: "e1", created_at: n }], fuel_records: [] })], ["e1"]);
 console.log("driver ok");
+{
+  // Şoför gideri ve arıza/bakım
+  const d2 = { ...d, suppliers: [{ id: "L", name: "Yıldız Lastik", created_at: n }], expense_records: [], maintenance_records: [] };
+  const cfg2 = driverConfig(d2, { personnel_id: "A" });
+  assert.deepEqual(cfg2.E, [["L", "Yıldız Lastik"]]);
+  const ents = [
+    { id: "g1", k: "g", date: "2026-10-16", cat: "Yemek", tl: 450, pay: "cep", ph: 1 },
+    { id: "m1", k: "m", date: "2026-10-16", vid: "T", mt: "Lastik", desc: "sol arka lastik patladı", st: "Tamamlandı", tl: 1200, pay: "veresiye", sup: "L", km: 245500, ph: 1 },
+    { id: "g2", k: "g", date: "2026-10-16", cat: "Otoyol / HGS", tl: 180, pay: "sirket", vid: "T" },
+  ];
+  const msg2 = await driverMessage(ents, cfg2);
+  assert.match(msg2, /💸 16\.10\.2026 · Yemek · 450 TL · cebimden ödedim · 📷1/);
+  assert.match(msg2, /🔧 16\.10\.2026 · 34GAM627 · Lastik: sol arka lastik patladı \(yapıldı\) · 1200 TL · Yıldız Lastik · veresiye/);
+  assert.equal(stripDriverBlocks(msg2), "");
+  const { plan: p2, expMeta, mainMeta } = payloadsToPlan(await extractPayloads(msg2), d2, { photoCount: 2 });
+  assert.equal(p2.expenses.length, 2); assert.equal(p2.maintenance.length, 1);
+  assert.equal(p2.expenses[0].photo, 0, "ilk foto gidere"); assert.deepEqual(mainMeta[0].photos, [1], "ikinci foto arızaya");
+  assert.equal(p2.maintenance[0].supplier_id, "L"); assert.equal(p2.maintenance[0].credit, true); assert.equal(p2.maintenance[0].status, "Tamamlandı");
+  assert.equal(expMeta[0].pay, "cep"); assert.equal(expMeta[0].personnel_id, "A");
+  const v2 = validatePlan(p2, { message: msg2, d: d2, today: "2026-10-16", photoCount: 2 });
+  assert.equal(v2.expenses[0].amount, 450); assert.equal(v2.expenses[0].category, "Yemek"); assert.equal(v2.expenses[1].category, "Otoyol / HGS"); assert.equal(v2.expenses[1].vehicle_id, "T");
+  const { validateExtras } = await import("../js/assistant-core.js");
+  const x2 = validateExtras(p2, { message: msg2, d: d2, today: "2026-10-16", photoTexts: [] });
+  assert.equal(x2.maintenance[0].cost, 1200); assert.equal(x2.maintenance[0].ok, true);
+  console.log("driver expense/maint ok");
+}

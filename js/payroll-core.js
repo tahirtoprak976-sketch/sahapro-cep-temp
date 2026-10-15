@@ -76,7 +76,16 @@ export function payrollFor(d, p, period, { today = todayStr() } = {}) {
   const deductions = r2(pays.filter((e) => e.kind === "Kesinti").reduce((n, e) => n + Number(e.amount), 0));
   const paid = r2(pays.filter((e) => e.kind === "Ücret Ödemesi").reduce((n, e) => n + Number(e.amount), 0));
   const accrual = pays.find((e) => e.kind === "Ücret Tahakkuku") || null;
-  const remaining = r2((accrual ? Number(accrual.amount) : gross) - advances - deductions - paid);
+  // Personelin cebinden ödediği masraflar (gider / arıza): iade bekleyenler, dönem sonuna kadar olanlar
+  const end = monthDays(period).at(-1);
+  const reimbItems = [
+    ...live(d, "expense_records").filter((e) => e.personnel_id === p.id && e.payment_method === "Personel Ödedi" && e.reimbursement_status === "Bekliyor" && e.date <= end && Number(e.amount) > 0)
+      .map((e) => ({ store: "expense_records", id: e.id, date: e.date, amount: Number(e.amount), note: [e.category, e.company].filter(Boolean).join(" · ") })),
+    ...live(d, "maintenance_records").filter((m) => m.paid_by_personnel_id === p.id && m.reimbursement_status === "Bekliyor" && m.date <= end && Number(m.cost) > 0)
+      .map((m) => ({ store: "maintenance_records", id: m.id, date: m.date, amount: Number(m.cost), note: [m.maint_type, m.service_company].filter(Boolean).join(" · ") })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const reimb = r2(reimbItems.reduce((n, x) => n + x.amount, 0));
+  const remaining = r2((accrual ? Number(accrual.amount) : gross) - advances - deductions - paid + reimb);
   const warns = [];
   if (type === "Aylık" ? !salary : !daily) warns.push(`Ücret girilmemiş (${type === "Aylık" ? "aylık maaş" : "yevmiye"}) — aşağıdan girin`);
   if (cnt["?"]) warns.push(`${cnt["?"]} gün boş (iş kaydı da işaret de yok): çalıştı mı, izinli mi? Güne dokunup işaretleyin`);
@@ -85,7 +94,7 @@ export function payrollFor(d, p, period, { today = todayStr() } = {}) {
   return {
     period, type, grid, cnt, salary, daily, otRate, otHours, base, basis, overtime, gross,
     advances, advItems: [...advFieldItems, ...advBookItems].sort((a, b) => a.date.localeCompare(b.date)),
-    deductions, paid, accrual, remaining, closed: !!accrual, warns,
+    deductions, paid, accrual, remaining, closed: !!accrual, warns, reimb, reimbItems,
   };
 }
 
@@ -108,6 +117,7 @@ export function payslipText(p, r, { company = "" } = {}) {
     r.advances ? `Avans: − ${tl(r.advances)}` : "",
     r.deductions ? `Kesinti: − ${tl(r.deductions)}` : "",
     r.paid ? `Ödenen: − ${tl(r.paid)}` : "",
+    r.reimb ? `Masraf iadesi (cebinden ödediği): + ${tl(r.reimb)}` : "",
     `Kalan: ${tl(r.remaining)}`,
   ];
   return lines.filter(Boolean).join("\n");
@@ -116,5 +126,5 @@ export function payslipText(p, r, { company = "" } = {}) {
 // Sohbet aracı için kısa özet
 export function payrollSummary(p, r) {
   return { personel: p.name, donem: r.period, ucret_turu: r.type, calisilan_gun: r.cnt.C, yarim_gun: r.cnt.Y, izin: r.cnt.I, rapor: r.cnt.R, devamsizlik: r.cnt.D, bos_gun: r.cnt["?"],
-    mesai_saat: r.otHours, ucret_TL: r.base, mesai_TL: r.overtime, hak_edilen_TL: r.accrual ? Number(r.accrual.amount) : r.gross, avans_TL: r.advances, kesinti_TL: r.deductions, odenen_TL: r.paid, kalan_TL: r.remaining, ay_kapandi: r.closed, uyarilar: r.warns };
+    mesai_saat: r.otHours, ucret_TL: r.base, mesai_TL: r.overtime, hak_edilen_TL: r.accrual ? Number(r.accrual.amount) : r.gross, avans_TL: r.advances, masraf_iadesi_TL: r.reimb, kesinti_TL: r.deductions, odenen_TL: r.paid, kalan_TL: r.remaining, ay_kapandi: r.closed, uyarilar: r.warns };
 }
