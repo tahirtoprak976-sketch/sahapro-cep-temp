@@ -189,6 +189,17 @@ function renderBrandShell(first) {
 function renderNav(first) {
   const nav = qs("#bottomnav");
   nav.hidden = false;
+  // Her ekranda Akıllı Asistan: dokun → konuş → kartlar gelir
+  let fab = qs("#ai-fab");
+  if (!fab) {
+    fab = document.createElement("div");
+    fab.id = "ai-fab";
+    fab.className = "ai-fab";
+    fab.innerHTML = '<button data-go="#/akilli-asistan?mic=1" aria-label="Sesle asistana söyle">🎤</button><button data-go="#/akilli-asistan" aria-label="Akıllı asistan">🤖</button>';
+    document.body.appendChild(fab);
+  }
+  // Form ekranlarında Kaydet düğmesini örtmesin
+  fab.hidden = first === "akilli-asistan" || /\/(new|edit|duzenle)(\b|\?|$)/.test(location.hash);
   const cur = SECTION[first] || "daha";
   nav.innerHTML = NAV.map(
     (n) =>
@@ -211,6 +222,7 @@ async function pinGate() {
   return new Promise((resolve) => {
     const root = qs("#screen");
     qs("#bottomnav").hidden = true;
+    if (qs("#ai-fab")) qs("#ai-fab").hidden = true;
     root.innerHTML = `
       <div style="padding:22vh 20px 0;text-align:center">
         <div style="font-size:44px;margin-bottom:6px">🔒</div>

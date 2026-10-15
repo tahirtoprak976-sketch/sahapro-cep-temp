@@ -50,7 +50,7 @@ export async function screen(ctx) {
     showThumbs();
   });
   // Sesli not: telefonun mikrofonu ile kayıt (en çok 3 dakika)
-  let rec = null, recT = null;
+  let rec = null, recT = null, autoSend = false;
   qs("[data-rec]", root).addEventListener("click", async (ev) => {
     const b = ev.currentTarget;
     if (rec) return rec.stop();
@@ -72,6 +72,7 @@ export async function screen(ctx) {
         f._rec = true;
         files = [...files, f].slice(0, 10);
         showThumbs();
+        if (autoSend) { autoSend = false; qs("[data-ask]", root).click(); }
       };
       rec.start();
       b.textContent = "⏹ Kaydı bitir";
@@ -178,6 +179,12 @@ export async function screen(ctx) {
     }
     btn.disabled = false;
   });
+  // Her ekrandaki 🎤 düğmesi: kayıt hemen başlar, bitince kendiliğinden asistana gider
+  if (ctx.query?.mic) {
+    autoSend = true;
+    qs("[data-rec]", root).scrollIntoView({ block: "center" });
+    qs("[data-rec]", root).click();
+  }
   return true;
 }
 
