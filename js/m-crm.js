@@ -164,6 +164,7 @@ async function customerDetail(ctx, id) {
       ${stat(fmtTL(hakSum), "İş + Hakediş ₺")}${stat(fmtTL(tahSum), "Tahsilat ₺")}${stat(fmtTL(bakiye), "Bakiye ₺", bakiye > 0 ? "warn" : "ok")}
     </div>
     <div class="card tap" data-go="#/tahsilat/${esc(id)}"><div class="row between"><span>💰 Tahsilat takibi · WhatsApp hatırlatma · ödeme sözü</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/teklif-hesap?customer_id=${esc(id)}"><div class="row between"><span>🧮 Bu müşteriye teklif / fiyat hesapla</span><span class="muted small">›</span></div></div>
     ${c.phone || c.note || parent ? `<div class="card">${parent ? `<div class="kv"><span class="k">Ana firma</span><span class="v"><a href="#/musteriler/${parent.id}">${esc(parent.name)}</a> (taşeronu)</span></div>` : ""}${c.phone ? kv("Telefon", c.phone) : ""}${c.note ? kv("Not", c.note) : ""}</div>` : ""}
     ${subs.length ? `<div class="section-title">Taşeronları (${subs.length})</div>` + subs.map((x) => li({ ic: "🏗", href: "#/musteriler/" + x.c.id, t1: esc(x.c.name), t2: `Bu ay ${x.month} iş · toplam ${x.all} iş` })).join("") : ""}
     <div class="section-title">Şantiyeler (${mSites.length})</div>

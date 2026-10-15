@@ -38,7 +38,7 @@ export const FIELD_TR = { name: "Ad", phone: "Telefon", note: "Not", parent_cust
 // Açılabilecek ekranlar (yalnız bunlar)
 export const SCREENS = {
   ana_sayfa: ["#/", "Ana sayfa"], isler: ["#/isler", "İşler"], yeni_is: ["#/isler/new", "Yeni iş kaydı"], yakit: ["#/yakit", "Yakıt"], depo: ["#/depo", "Depo tankı"],
-  gider: ["#/gider", "Giderler"], kasa: ["#/finans/kasa", "Kasa"], tahsilat: ["#/tahsilat", "Tahsilat takibi"], tahsilat_musteri: ["#/tahsilat/{id}", "Müşteri tahsilatı"],
+  gider: ["#/gider", "Giderler"], kasa: ["#/finans/kasa", "Kasa"], tahsilat: ["#/tahsilat", "Tahsilat takibi"], teklif_asistani: ["#/teklif-hesap", "Teklif asistanı (fiyat hesapla)"], tahsilat_musteri: ["#/tahsilat/{id}", "Müşteri tahsilatı"],
   cari: ["#/cari/{id}", "Cari ekstre"], musteri: ["#/musteriler/{id}", "Müşteri kartı"], musteriler: ["#/musteriler", "Müşteriler"], filo: ["#/filo", "Araçlar"],
   arac: ["#/filo/{id}", "Araç kartı"], belgeler: ["#/belgeler", "Belgeler"], fiyat: ["#/fiyat", "Fiyat listesi"], ceksenet: ["#/ceksenet", "Çek / senet"],
   mazot_hesaplari: ["#/mazot-hesaplari", "Mazotla ödeme hesapları"], kendi_depo: ["#/kendi-depo", "Kendi depo"], esnaf: ["#/esnaf", "Esnaf borçları"],

@@ -11,6 +11,8 @@ import { yardSite, yardStock } from "./yard-core.js";
 import { receivables, customerLedgerMovements } from "./collect-core.js";
 import { costRows, costTotals } from "./costs-core.js";
 import { vehicleKpis, customerKpis, priceCheck, businessReview, EXPERT_KNOWLEDGE } from "./expert-core.js";
+import { quoteFor, quoteSummary } from "./quote-core.js";
+import { WORK_TYPES } from "./core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -142,6 +144,8 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } } },
   { name: "business_review", description: "İşletmenin dönem özeti ve uyarı bulguları (boş makine, düşük doluluk, zarar eden araç, düşük fiyat, geciken alacak). 'İşler nasıl gidiyor', 'ne yapmalıyım', 'durum değerlendirmesi' için.",
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } } },
+  { name: "quote_price", description: "Teklif / fiyat hesabı: bir iş için birim maliyet (döküm ücreti, mazot, şoför/yıpranma), zarar sınırı, önerilen fiyat (KDV dahil ve hariç), bu müşteriye son fiyat ve herkese orta fiyat. 'X'e 20 sefer Bolluca hafriyat kaça veririm', 'saatlik JCB kaça vermeliyim', 'bu fiyat zarar mı' için.",
+    parameters: { type: "object", properties: { customer: { type: "string" }, work_type: { type: "string", description: "İş türü: " + WORK_TYPES.join(", ") }, unit: { type: "string", description: "Sefer | Ton | Saat | Yevmiye" }, quantity: { type: "number" }, vehicle: { type: "string", description: "araç adı/plakası" }, dump_site: { type: "string", description: "döküm yeri adı" }, dump_included: { type: "boolean", description: "döküm ücreti fiyata dahil mi (varsayılan evet)" } } } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
@@ -247,6 +251,16 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const r = businessReview(d, { from, to, today, notes: extra.collectNotes || {}, fuelRefPrice: extra.fuelRefPrice });
     return { from, to, ozet: r.ozet, bulgular: r.bulgular.slice(0, 15).map((b) => b.text), en_karli_araclar: r.araclar.slice(0, 3).map((x) => [x.arac, x.kar_TL]), en_buyuk_musteriler: r.musteriler.slice(0, 3).map((x) => [x.musteri, x.gelir_TL]) };
   }
+  if (name === "quote_price") {
+    const c = resolve(d, a, "customer", "customers", "customer");
+    const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
+    const s = resolve(d, a, "dump_site", "dump_sites", "dump_site");
+    for (const x of [c, v, s]) if (x.error) return x;
+    const wt = WORK_TYPES.find((t) => norm(t) === norm(a.work_type || "")) || WORK_TYPES.find((t) => a.work_type && norm(t).startsWith(norm(a.work_type).split(" ")[0])) || "";
+    const unit = ["Sefer", "Ton", "Saat", "Yevmiye"].find((u) => norm(u) === norm(a.unit || "")) || "Sefer";
+    const q = quoteFor(d, { customer_id: c.id, vehicle_id: v.id, dump_site_id: s.id, work_type: wt, unit, quantity: Number(a.quantity) || 0, dump_included: a.dump_included !== false }, { today, settings: extra.quoteSettings || {}, fuelRefPrice: extra.fuelRefPrice });
+    return quoteSummary(d, q);
+  }
   if (name === "esnaf_debt") {
     const s = resolve(d, a, "supplier", "suppliers", "supplier");
     if (s.error) return s;
@@ -261,6 +275,7 @@ export const ASK_SYSTEM = [
   "Rakamları ASLA tahmin etme; yalnız araç sonuçlarındaki rakamları kullan. Toplama/bölme yapma; araç ne döndürdüyse onu söyle.",
   "Tarih belirtilmezse bu ay; 'geçen ay', 'bu hafta' gibi ifadeleri bugüne göre YYYY-MM-DD aralığına çevir.",
   "Araç hata döndürürse (bulunamadı / birden fazla) kullanıcıya adayları söyleyip netleştirmesini iste.",
+  "Fiyat/teklif sorusunda ('kaça vereyim', 'bu fiyat zarar mı') quote_price çağır; önerilen fiyatı, zarar sınırını ve bu müşteriye son fiyatı söyle; eksik maliyet uyarısını atlama. Sonunda 'Teklif Asistanı ekranından PDF teklif hazırlayabilirsiniz' de.",
   "Kısa, net Türkçe cevap ver (en çok 5 cümle). Yönetim sorusunda (kârlılık, verim, ne yapmalı) bir yönetim danışmanı gibi somut öneri ekle.",
   EXPERT_KNOWLEDGE,
 ].join("\n");

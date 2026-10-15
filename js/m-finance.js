@@ -85,6 +85,7 @@ async function hub(ctx) {
   const monthG = cur.cost;
   const items = [
     ["#/sozlesmeler", "▤", "Sözleşmeler", "şablonlar + imzalar"],
+    ["#/teklif-hesap", "🧮", "Teklif Asistanı", "Kaça vermeliyim? Maliyet + geçmiş fiyat"],
     ["#/teklif", "📄", "Teklif", "4 teklif türü + PDF"],
     ["#/hakedis", "📑", "Hakediş", "snapshot + kesinleştirme"],
     ["#/cari", "🏦", "Cari", "müşteri bakiyeleri"],
@@ -122,7 +123,7 @@ async function quotes(ctx) {
     appbar("Teklifler", `${rows.length} teklif`) +
     `
     <div style="height:10px"></div><div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/teklif/new">+ Yeni Teklif</button></div>`;
+    <div class="actionbar"><button class="btn primary" data-go="#/teklif-hesap">🧮 Teklif Asistanı</button><button class="btn" data-go="#/teklif/new">+ Boş Teklif</button></div>`;
   const listEl = qs("[data-list]", root);
   if (!rows.length)
     listEl.innerHTML = emptyState(
