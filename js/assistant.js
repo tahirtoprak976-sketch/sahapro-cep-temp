@@ -144,9 +144,13 @@ export async function screen(ctx) {
       const system = assistantSystem(effectiveRules(await db.metaGet("assistant_rules"))) + "\n" + ACTIONS_PROMPT;
       const baseSchema = assistantSchema();
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
+      // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
+      const tools = await import("./assistant-tools.js");
+      const askP = message && tools.isQuestion(message) ? tools.askWithTools(db, message).catch(() => null) : Promise.resolve(null);
       const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       });
+      const asked = await askP;
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
@@ -166,6 +170,8 @@ export async function screen(ctx) {
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
       v.answerBad = checkAnswer(v.answer, facts);
+      v.asked = asked && asked.answer ? asked : null;
+      if (v.asked) v.askedHtml = tools.answerHtml(v.asked);
       render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
     } catch (e) {
       out.innerHTML = notice("warn", e.message || String(e));
@@ -202,7 +208,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   out.innerHTML =
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     summaryHtml(v, d) +
-    (v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
+    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
@@ -401,7 +407,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
       .join("") +
-    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
+    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
   // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
   for (const b of qsa("[data-pickcust]", out))
     b.addEventListener("click", () => {

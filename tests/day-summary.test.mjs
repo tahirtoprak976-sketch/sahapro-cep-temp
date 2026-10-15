@@ -57,7 +57,7 @@ r = runAskTool(data, "esnaf_debt", {}, today);
 assert.equal(r.toplam_TL, 1500);
 r = runAskTool(data, "fuel_totals", { from: today, to: today }, today);
 assert.equal(r.litre, 100); assert.equal(r.TL, 5000);
-assert.equal(ASK_TOOLS.length, 9);
+assert.equal(ASK_TOOLS.length, 10);
 
 // ---- fonksiyon çağrısı döngüsü (sahte Gemini) ----
 const sent = [];
@@ -86,3 +86,16 @@ const loopFetch = async (url, opts) => { const b = JSON.parse(opts.body); sent.p
 const res2 = await geminiAsk("?", { key: "k", model: "m", tools: ASK_TOOLS, runTool: (nm, a) => runAskTool(data, nm, a, today), fetchFn: loopFetch, maxRounds: 3 });
 assert.equal(res2.answer, "Bitti"); assert.equal(sent.length, 4); assert.equal(res2.trace.length, 3);
 console.log("day-summary PASS");
+{
+  const { isQuestion } = await import("../js/assistant-tools.js").catch(() => ({}));
+  if (isQuestion) {
+    assert.ok(isQuestion("Leda'dan ne kadar alacağım var"));
+    assert.ok(isQuestion("bu ay kaç sefer yaptık?"));
+    assert.ok(!isQuestion("Kaya İnşaat 3 sefer moloz"));
+  }
+  const rr = runAskTool({ customers: [{ id: "C", name: "Leda", created_at: "x" }], work_records: [{ id: "W", customer_id: "C", date: "2026-07-01", quantity: 2, unit: "Sefer", price_snapshot: { amount: 5000 }, created_at: "x" }] }, "receivables", {}, "2026-10-15");
+  assert.equal(rr.toplam_alacak_TL, 5000); assert.equal(rr.gun_90_ustu_TL, 5000); assert.equal(rr.en_riskli[0].en_eski_gun, 106);
+  const r1 = runAskTool({ customers: [{ id: "C", name: "Leda", created_at: "x" }], work_records: [] }, "receivables", { customer: "Leda" }, "2026-10-15");
+  assert.equal(r1.alacak_TL, 0);
+  console.log("receivables tool ok");
+}
