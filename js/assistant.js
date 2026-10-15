@@ -6,6 +6,7 @@ import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EV
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
+import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
@@ -122,7 +123,7 @@ export async function screen(ctx) {
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
       const parts = [
-        { text: "İşletme kartları (JSON):\n" + JSON.stringify(assistantContext(d, today, message)) },
+        { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(d, today, message), ...actionsContext(d, message) }) },
         { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
         ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
         ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
@@ -140,8 +141,10 @@ export async function screen(ctx) {
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
       const { effectiveRules } = await import("./assistant-rules.js");
-      const system = assistantSystem(effectiveRules(await db.metaGet("assistant_rules")));
-      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema: assistantSchema() }), {
+      const system = assistantSystem(effectiveRules(await db.metaGet("assistant_rules"))) + "\n" + ACTIONS_PROMPT;
+      const baseSchema = assistantSchema();
+      const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
+      const plan = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       });
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
@@ -152,6 +155,9 @@ export async function screen(ctx) {
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message: vmsg, d });
       v.prices = (await import("./price-rule-core.js")).validatePriceRules(plan, { message: vmsg, d });
+      v.actions = validateActions(plan, { message: vmsg, d });
+      v.settings = validateSettings(plan, { message: vmsg, d, today });
+      v.open = validateOpen(plan, { d });
       v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
@@ -186,7 +192,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length + (v.prices || []).length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length + (v.prices || []).length + (v.actions || []).length + (v.settings || []).length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi", quarries: "Malzeme ocağı", dump_sites: "Döküm / dolgu sahası" };
   const quarries = live("quarries").map((x) => [x.id, x.name]);
   const personnel = live("personnel").map((p) => [p.id, p.name]);
@@ -369,6 +375,18 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${r.remove ? `<div class="small">Neden: ${esc(r.reason)}</div>` : ""}${issues(r)}</div>`;
       })
       .join("") +
+    (v.open ? `<div class="card"><div class="row between"><span>📂 <b>${esc(v.open.label)}</b></span><button class="btn sm primary" data-go="${esc(v.open.href)}">Aç ›</button></div></div>` : "") +
+    (v.actions || [])
+      .map((r, i) => `<div class="card" data-kind="action" data-i="${i}" ${r.op && r.issues.every((x) => !/bulunamadı|yapılamıyor|eklenemez/.test(x)) ? "" : 'data-disabled="1"'}>
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""} ${r.op && !r.issues.some((x) => /bulunamadı|yapılamıyor|eklenemez/.test(x)) ? "" : "disabled"}> <b>${r.op === "create" ? "➕ Yeni" : r.op === "delete" ? "🗑 Sil" : "✏ Düzelt"}: ${esc(r.label)}</b>${r.rec ? " — " + esc(r.rec.name || r.rec.category || r.rec.unit || "") : ""}</label>
+        ${r.shown.map(([k, a, b]) => `<div class="small">• ${esc(k)}: ${a != null ? `<s>${esc(String(a))}</s> → ` : ""}<b>${esc(String(b))}</b></div>`).join("")}
+        ${r.op === "delete" ? `<div class="small">Neden: ${esc(r.reason)}</div>` : ""}${issues(r)}</div>`)
+      .join("") +
+    (v.settings || [])
+      .map((r, i) => `<div class="card" data-kind="setting" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""} ${r.issues.some((x) => /değiştirilemez/.test(x)) ? "disabled" : ""}> <b>⚙ ${esc(r.title)}</b></label>
+        <div class="small">${esc(r.key === "rule" ? r.value : r.key === "promise" ? `${r.customer?.name || "—"} · ${r.date ? r.date.split("-").reverse().join(".") : "tarih yok"}${r.amount ? " · " + fmtTL(r.amount) + " ₺" : ""}` : r.key === "fuel_rule" ? `${r.customer?.name || "—"} · ${r.per ?? "?"} L / ${r.unit}${r.match ? " (" + r.match + ")" : ""} · ${r.only_pay ? "ücret yalnız mazot" : "para + mazot"}` : String(r.value ?? "—"))}</div>${issues(r)}</div>`)
+      .join("") +
     (v.prices || [])
       .map((r, i) => `<div class="card" data-kind="price" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>💲 Fiyat kuralı</b> (fiyat listesine)</label>
@@ -383,7 +401,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
       .join("") +
-    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
+    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
   // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
   for (const b of qsa("[data-pickcust]", out))
     b.addEventListener("click", () => {
@@ -423,7 +441,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const { db } = ctx;
   const cards = qsa(".card[data-kind]", out)
     .filter((c) => qs("[data-pick]", c).checked)
-    .sort((a, b) => (["card", "memory", "tank", "price"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price"].includes(b.dataset.kind) ? 0 : 1));
+    .sort((a, b) => (["card", "memory", "tank", "price", "action", "setting"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price", "action", "setting"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
@@ -457,7 +475,7 @@ async function save(ctx, out, v, d, { message, files }) {
   }
   const btn = qs("[data-save]", out);
   btn.disabled = true;
-  const done = { price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
+  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -498,6 +516,43 @@ async function save(ctx, out, v, d, { message, files }) {
       if (k === "memory") {
         const r = v.memory[Number(c.dataset.i)];
         await learn(r.alias, r.target_type, r.target_id, r.target_name);
+        continue;
+      }
+      if (k === "action") {
+        const r = v.actions[Number(c.dataset.i)];
+        const why = "Asistan: " + (r.reason || message.slice(0, 120));
+        if (r.op === "create") {
+          const rec = await db.saveNew(r.store, { ...r.changes, note: r.changes.note || "Asistan ile açıldı" }, why);
+          if (r.store === "customers") newIds.set("c:" + rec.name, rec.id);
+        } else {
+          const cur = await db.get(r.store, r.id);
+          if (!cur || cur.deleted_at) continue;
+          if (r.op === "delete") await db.softDelete(r.store, r.id, why);
+          else await db.saveExisting(r.store, cur, r.changes, why);
+        }
+        done.action++;
+        continue;
+      }
+      if (k === "setting") {
+        const r = v.settings[Number(c.dataset.i)];
+        if (r.key === "rule") {
+          const { effectiveRules } = await import("./assistant-rules.js");
+          const cur = effectiveRules(await db.metaGet("assistant_rules"));
+          await db.metaSet("assistant_rules", (cur.trimEnd() + "\n- " + r.value).slice(-6000));
+        } else if (r.key === "promise") {
+          const all = (await db.metaGet("collect_notes")) || {};
+          all[r.customer.id] = { ...(all[r.customer.id] || {}), promise_date: r.date, ...(r.amount ? { promise_amount: r.amount } : {}), note: "Asistan: " + message.slice(0, 80) };
+          await db.metaSet("collect_notes", all);
+        } else if (r.key === "iban") await db.metaSet("collect_iban", r.value);
+        else if (r.key === "fuel_ref_price") await db.metaSet("fuel_ref_price", r.value);
+        else if (r.key === "fuel_rule") {
+          const { fuelRulesOf } = await import("./assistant-rules.js");
+          const cur = await db.get("customers", r.customer.id);
+          const rules = [...fuelRulesOf(cur)];
+          rules.push({ id: ctx.core.uuid(), per: r.per, unit: r.unit, match: r.match, only_pay: r.only_pay });
+          await db.saveExisting("customers", cur, { fuel_rules: rules }, "Asistan: mazotla ödeme kuralı");
+        }
+        done.setting++;
         continue;
       }
       if (k === "price") {
@@ -780,7 +835,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>';
     qs("[data-msg]", ctx.root).value = "";
