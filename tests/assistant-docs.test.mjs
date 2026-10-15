@@ -114,6 +114,16 @@ console.log("assistant-docs PASS");
   // ton biriminde fiş tonu farklıysa uyarı
   vv = { works: [{ ...w(), unit: "Ton", quantity: 20 }], tickets: [{ photo: 0, date: "2026-10-10", vehicle_id: "V1", tonnage: 26.74 }], docs: [], expenses: [], fuel: [] };
   mergeTicketsIntoWorks(vv, { photoCount: 1 }); assert.ok(vv.works[0].issues.some((x) => /26.74 ton/.test(x)));
+  // Aynı plaka iki kartta (V1 "34GAM627", V9 "Bayram Tır" plaka 34 GAM 627) → yine birleşir, uyarı verir
+  const dd = { vehicles: [{ id: "V1", name: "34GAM627" }, { id: "V9", name: "Bayram Tır", plate: "34 GAM 627" }] };
+  vv = { works: [{ ...w(), vehicle_id: "V9" }], tickets: [{ photo: 0, ticket_no: "777843", date: "2026-10-10", vehicle_id: "V1", tonnage: 27.22 }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1, d: dd });
+  assert.equal(vv.tickets.length, 0); assert.equal(vv.works[0].tonnage, 27.22); assert.ok(vv.works[0].issues.some((x) => /iki ayrı araç kartında/.test(x)));
+  // Mesajda tarih yoksa fişin tarihi alınır
+  vv = { works: [{ ...w(), date: "2026-10-15", customer_id: "C1", work_type: "Mıcır Nakliye", ok: false, dateUnsure: true, vehicleGuess: true, issues: ['Araç "34GAM627" mesajda yazmıyor — kontrol edin', "İş tarihi mesajda yazmıyor — teyit edin"] }], tickets: [{ photo: 0, ticket_no: "B2", date: "2026-10-12", vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
+  mergeTicketsIntoWorks(vv, { photoCount: 1 });
+  assert.equal(vv.tickets.length, 0); assert.equal(vv.works[0].date, "2026-10-12"); assert.ok(vv.works[0].issues.some((x) => /Tarih fişten alındı/.test(x)));
+  assert.equal(vv.works[0].ok, true, "fiş aracı ve tarihi teyit etti: kart işaretli gelir " + vv.works[0].issues.join());
   console.log("is-fis-birlesik PASS");
 }
 // malzeme: fişten okunur, işle çelişirse uyarı, boş iş türü doldurulur

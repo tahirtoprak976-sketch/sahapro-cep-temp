@@ -166,7 +166,7 @@ export async function screen(ctx) {
       v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
-      mergeTicketsIntoWorks(v, { photoCount: images.length });
+      mergeTicketsIntoWorks(v, { photoCount: images.length, d });
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
