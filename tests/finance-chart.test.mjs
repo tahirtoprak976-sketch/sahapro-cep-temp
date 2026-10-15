@@ -25,3 +25,17 @@ assert.equal(sep.work, 300);
 const v = vehicleSeries(data, { today: "2026-10-14", days: 30 });
 assert.equal(v[0].name, "34 ABC 123"); assert.equal(v[0].cost, 300.3); assert.equal(v[0].liters, 20);
 console.log("finance-chart PASS");
+// mazotla ödenen iş gelir, müşterinin verdiği mazot maliyet (aynı fiyatla)
+{
+  const { monthlySeries, vehicleSeries } = await import("../js/finance-chart.js");
+  const dd = { fuel_tank_movements: [{ id: "m", date: "2026-09-01", move_type: "GİRİŞ", liters: 1000, unit_price: 40 }],
+    work_records: [{ id: "w", date: "2026-10-10", vehicle_id: "V", customer_fuel_allowance_l: 300, price_snapshot: { amount: 0, price_source: "Mazot karşılığı" } }],
+    fuel_records: [{ id: "f", date: "2026-10-11", vehicle_id: "V", liters: 100, fuel_source: "Müşteri Verdi", total: null }], expense_records: [], cash_records: [] };
+  const m = monthlySeries(dd, { today: "2026-10-15", months: 1 })[0];
+  assert.equal(m.fuelPay, 12000); assert.equal(m.fuelPayL, 300); assert.equal(m.fuel, 4000); assert.equal(m.profit, 8000);
+  assert.equal(vehicleSeries(dd, { today: "2026-10-15", days: 30 })[0].cost, 4000);
+  const m2 = monthlySeries({ ...dd, fuel_tank_movements: [] }, { today: "2026-10-15", months: 1 })[0];
+  assert.equal(m2.fuelPay, 0); assert.equal(m2.fuelPayUnvalued, 300);
+  assert.equal(monthlySeries({ ...dd, fuel_tank_movements: [] }, { today: "2026-10-15", months: 1, fuelRefPrice: 45 })[0].fuelPay, 13500);
+  console.log("mazot-deger PASS");
+}
