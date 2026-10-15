@@ -124,3 +124,12 @@ console.log("assistant-rules PASS");
   assert.equal(fuelRulesOf({ fuel_per_trip: 75, fuel_rule_match: "gravak" })[0].per, 75);
   console.log("mazot-iskelet PASS");
 }
+{
+  const { fuelStatementText } = await import("../js/assistant-rules.js");
+  const dd = { ...d, work_records: [{ id: "w1", date: "2026-10-10", customer_id: "KL", vehicle_id: "VT", unit: "Sefer", quantity: 3, material: "gravak", customer_fuel_allowance_l: 225, dump_area: "Binkılıç" }],
+    fuel_records: [{ id: "f1", date: "2026-10-11", fuel_source: "Müşteri Verdi", customer_id: "KL", vehicle_id: "VT", liters: 150 }], fuel_tank_movements: [] };
+  const t = fuelStatementText(dd, "KL");
+  assert.ok(/10\.10\.2026  \+225 L  3 sefer gravak 34FY2482 → Binkılıç/.test(t), t);
+  assert.ok(/−150 L  mazot alındı/.test(t)); assert.ok(/Kalan: 75 L/.test(t));
+  console.log("mazot-ekstre PASS");
+}

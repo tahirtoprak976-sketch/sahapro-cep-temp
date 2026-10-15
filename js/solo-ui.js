@@ -1423,10 +1423,16 @@ export async function augment(ctx) {
           <p><b>${esc(unitTxt)}</b> → <b>${L.earned} L</b> hak edildi · <b>${L.received} L</b> alındı</p>
           <p style="font-size:17px">${L.balance > 0 ? `Kalan mazot alacağı: <b>${L.balance} L</b>` : L.balance < 0 ? `Fazla alınan: <b>${-L.balance} L</b>` : "Hesap kapalı ✓"}</p>
           <p class="muted small">Mazot alınca: Yakıt → kaynak "Müşteri Verdi" (araca) ya da Depo Tankı → GİRİŞ "Müşteriden" (depoya). Asistana "${esc(me.name)}'tan 300 litre mazot aldık" yazabilirsiniz.</p>
-          ${rules.length ? '<button class="btn block" data-fuelapply>Eski işlere uygula (kurala uyanları hesapla)</button><div data-fuelapply-out class="small" style="margin-top:6px"></div>' : ""}</section>`;
+          <button class="btn block" data-fuelshare>📤 Mazot ekstresini paylaş (WhatsApp)</button>
+          ${rules.length ? '<button class="btn block" style="margin-top:6px" data-fuelapply>Eski işlere uygula (kurala uyanları hesapla)</button><div data-fuelapply-out class="small" style="margin-top:6px"></div>' : ""}</section>`;
         const tabs = root.querySelector("[data-tabs]");
         if (tabs) tabs.insertAdjacentHTML("beforebegin", html);
         else root.insertAdjacentHTML("beforeend", html);
+        root.querySelector("[data-fuelshare]")?.addEventListener("click", async () => {
+          const t = R.fuelStatementText(await db.dumpAll(), id);
+          if (navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e.name === "AbortError") return; } }
+          location.href = "https://wa.me/?text=" + encodeURIComponent(t);
+        });
         root.querySelector("[data-fuelapply]")?.addEventListener("click", async () => {
           const d = await db.dumpAll();
           const mine = (d.work_records || []).filter((x) => !x.deleted_at && x.customer_id === id);

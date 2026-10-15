@@ -141,6 +141,25 @@ export function customerFuelLedger(d, customerId) {
   for (const w of works) units[w.unit] = Math.round(((units[w.unit] || 0) + (Number(w.quantity) || 0)) * 100) / 100;
   return { earned, received, balance: r1(earned - received), trips, units, works: works.length, receipts: fuel.length + tank.length };
 }
+// Müşteriye gönderilecek mazot ekstresi (düz metin): tarih sırasıyla hak edilen seferler ve alınan mazot
+export function fuelStatementText(d, customerId, { from = "", to = "9999-12-31" } = {}) {
+  const c = live(d, "customers").find((x) => x.id === customerId);
+  if (!c) return "";
+  const inR = (x) => x.date >= from && x.date <= to;
+  const vName = (id) => { const v = live(d, "vehicles").find((x) => x.id === id); return v?.plate || v?.name || ""; };
+  const tr = (s) => String(s || "").split("-").reverse().join(".");
+  const rows = [
+    ...live(d, "work_records").filter((w) => w.customer_id === customerId && Number(w.customer_fuel_allowance_l) > 0 && inR(w))
+      .map((w) => ({ date: w.date, plus: Number(w.customer_fuel_allowance_l), text: `${w.quantity} ${String(w.unit || "").toLocaleLowerCase("tr-TR")} ${w.material || w.work_type || ""} ${vName(w.vehicle_id)}${w.dump_area ? " → " + w.dump_area : ""}`.replace(/\s+/g, " ").trim() })),
+    ...live(d, "fuel_records").filter((f) => f.fuel_source === "Müşteri Verdi" && f.customer_id === customerId && inR(f))
+      .map((f) => ({ date: f.date, minus: Number(f.liters) || 0, text: `mazot alındı (${vName(f.vehicle_id)})` })),
+    ...live(d, "fuel_tank_movements").filter((m) => m.move_type === "GİRİŞ" && m.customer_id === customerId && inR(m))
+      .map((m) => ({ date: m.date, minus: Number(m.liters) || 0, text: "mazot alındı (depoya)" })),
+  ].sort((a, b) => a.date.localeCompare(b.date));
+  const L = customerFuelLedger(d, customerId);
+  const lines = rows.map((r) => `${tr(r.date)}  ${r.plus ? "+" + r.plus : "−" + r.minus} L  ${r.text}`);
+  return [`${c.name} — mazot hesabı${from ? " (" + tr(from) + " – " + tr(to === "9999-12-31" ? "" : to) + ")" : ""}`, ...lines, "", `Hak edilen: ${L.earned} L · Alınan: ${L.received} L · Kalan: ${L.balance} L`].join("\n");
+}
 export function fuelLedgers(d) {
   return live(d, "customers").filter((c) => hasFuelRules(c) || live(d, "work_records").some((w) => w.customer_id === c.id && Number(w.customer_fuel_allowance_l) > 0))
     .map((c) => ({ id: c.id, name: c.name, ...customerFuelLedger(d, c.id) }));
