@@ -71,3 +71,17 @@ assert.deepEqual(v.fill, { customer_id: "A", vehicle_id: "T", dump_site_id: "BL"
 const v2 = validateQuoteFill({ customer_id: "B", quantity: 30, dump_site_id: "SF" }, { d, message: msg, numbers: new Set([20]), named });
 assert.deepEqual(v2.fill, {}); assert.equal(v2.issues.length, 3);
 console.log("quote ok");
+{
+  const { quoteRules, staleQuotes } = await import("../js/quote-core.js");
+  const q = { customer_id: "A", site_id: null, date: "2026-10-10", kdv_rate: 20, items: [
+    { label: "Hafriyat Nakliye (döküm: Bolluca)", unit: "Sefer", quantity: 20, unit_price: 7916.67 },
+    { label: "JCB çalışma", unit: "Saat", unit_price: 2500, work_type: "JCB Çalışması" },
+    { label: "Boş", unit: "Sefer", unit_price: 0 } ] };
+  const r = quoteRules(q);
+  assert.equal(r.length, 2); assert.equal(r[0].work_type, "Hafriyat Nakliye"); assert.equal(r[0].price, 7916.67); assert.equal(r[0].kdv_included, false);
+  assert.equal(r[1].work_type, "JCB Çalışması");
+  assert.deepEqual(quoteRules({ ...q, customer_id: null }), []);
+  const sq = staleQuotes({ quotes: [{ id: "1", status: "Gönderildi", sent_at: "2026-10-10T09:00:00Z", created_at: "x" }, { id: "2", status: "Gönderildi", sent_at: "2026-10-14T09:00:00Z", created_at: "x" }, { id: "3", status: "Kabul", date: "2026-09-01", created_at: "x" }] }, { today: "2026-10-16" });
+  assert.deepEqual(sq.map((x) => [x.q.id, x.age]), [["1", 6]]);
+  console.log("quote rules ok");
+}

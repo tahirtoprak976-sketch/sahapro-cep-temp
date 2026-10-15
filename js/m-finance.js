@@ -370,7 +370,29 @@ async function quoteDetail(ctx, id) {
       ${t.status === "Taslak" ? `<button class="btn" data-go="#/teklif/${id}/edit">Düzenle</button>` : ""}
       <button class="btn" data-status>Durum</button><button class="btn" data-revision>Teklif Revizyonu</button><button class="btn" data-go="#/teklif-karsilastir?customer_id=${t.customer_id}">Karşılaştır</button>
       ${t.status === "Kabul" ? '<button class="btn primary" data-contract>Sözleşme Oluştur</button>' : ""}
+      ${t.status === "Kabul" || t.status === "Gönderildi" ? '<button class="btn" data-qrules>🏷 Fiyat listesine yaz</button>' : ""}
     </div>`;
+  // Kabul edilen teklifin fiyatları fiyat listesine: o müşterinin yeni işleri kendiliğinden fiyatlanır
+  const writeRules = async () => {
+    const { quoteRules } = await import("./quote-core.js");
+    const pr = await import("./price-rule-core.js");
+    const rules = quoteRules(t);
+    if (!rules.length) return toast("Yazılacak birim fiyat yok (müşteri, birim ve fiyat gerekli)", "err");
+    const d0 = await db.dumpAll();
+    let n = 0;
+    for (const r of rules) {
+      const { label, ...rule } = r;
+      const old = pr.sameRule(d0, rule);
+      if (old) await db.saveExisting("price_book", old, { price: rule.price, kdv_rate: rule.kdv_rate, kdv_included: false }, "Teklif #" + t.quote_no + " kabul");
+      else await db.saveNew("price_book", { ...rule, active: true, note: "Teklif #" + t.quote_no + ": " + label }, "Teklif #" + t.quote_no + " kabul");
+      n++;
+    }
+    await db.saveExisting("quotes", await db.get("quotes", t.id), { rules_written_at: new Date().toISOString() }, "Fiyat listesine yazıldı");
+    toast(n + " fiyat kuralı yazıldı — yeni işler bu fiyatla gelir", "ok");
+  };
+  qs("[data-qrules]", root)?.addEventListener("click", async () => {
+    if (await confirmDialog("Fiyat listesine yazılsın mı?", `${names.customers[t.customer_id] || "Müşteri"} için teklifteki birim fiyatlar (KDV hariç) fiyat listesine yazılır; aynı kural varsa güncellenir.`, "Yaz")) await writeRules();
+  });
   qs("[data-pdf]", root).addEventListener("click", async () => {
     const pdf = await import("./pdf.js");
     await pdf.quotePdf(t, names, tot);
@@ -417,10 +439,11 @@ async function quoteDetail(ctx, id) {
       await db.saveExisting(
         "quotes",
         t,
-        { status: b.dataset.s },
+        { status: b.dataset.s, ...(b.dataset.s === "Gönderildi" && !t.sent_at ? { sent_at: new Date().toISOString() } : {}) },
         "Durum: " + b.dataset.s,
       );
       (await import("./ui.js")).sheetClose();
+      if (b.dataset.s === "Kabul" && !t.rules_written_at && (await confirmDialog("Teklif kabul edildi 👍", "Teklifteki fiyatlar fiyat listesine yazılsın mı? Bu müşterinin yeni işleri kendiliğinden bu fiyatla gelir.", "Evet, yaz"))) await writeRules();
       ctx.reload();
     });
   });

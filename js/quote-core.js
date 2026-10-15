@@ -1,7 +1,7 @@
 // Teklif asistanı — SAF hesap katmanı. Telefonda fiyat verirken: bu iş bana kaça mal olur, bu müşteriye daha önce kaça yaptım,
 // başkalarına kaça yapıyorum, en az kaça vermeliyim? Rakamlar kayıtlardan hesaplanır; yapay zekâ yalnız formu doldurur ve yorum yazar.
 // Tüm tutarlar KDV DAHİL düşünülür (döküm ücretleri ve mazot KDV dahil ödenir); teklif kaydına KDV hariç birim fiyat yazılır.
-import { isActive, todayStr, addDays } from "./core.js";
+import { isActive, todayStr, addDays, WORK_TYPES } from "./core.js";
 import { workAmount } from "./collect-core.js";
 import { dumpFee, loadTon } from "./dump-fees.js";
 import { fuelPrice } from "./finance-chart.js";
@@ -155,7 +155,7 @@ export function quoteRecord(d, q, { today = todayStr(), note = "" } = {}) {
   return {
     date: today, customer_id: f.customer_id || null, site_id: f.site_id || null,
     type: Number(f.quantity) > 0 ? "QUANTITY_BASED" : "UNIT_PRICE",
-    items: [{ label, unit: f.unit, quantity: Number(f.quantity) || 0, unit_price: c.suggestNet }],
+    items: [{ label, unit: f.unit, quantity: Number(f.quantity) || 0, unit_price: c.suggestNet, work_type: f.work_type || null }],
     kdv_rate: c.kdv, lump_total: 0, valid_until: addDays(today, 15),
     dump_terms: f.dump_site_id ? (f.dump_included === false ? "Döküm ücreti hariç" : "Döküm ücreti dahil") : "",
     fuel_terms: "Mazot dahil", title: `${f.work_type || "Nakliye"} fiyat teklifi`,
@@ -198,4 +198,24 @@ export function validateQuoteFill(raw, { d, message = "", numbers = new Set(), n
   if (q > 0) { if (numbers.has(q)) out.quantity = q; else issues.push(`Miktar ${q} mesajda yazmıyor`); }
   if (raw?.place) out.place = String(raw.place).slice(0, 80);
   return { fill: out, issues };
+}
+
+// Kabul edilen teklif → fiyat listesi kuralları (müşteri + şantiye + iş türü + birim; KDV hariç birim fiyat)
+const RULE_UNITS = ["Sefer", "Ton", "Saat", "Yevmiye", "m³", "Adet"];
+export function quoteRules(q) {
+  const out = [];
+  for (const it of q?.items || []) {
+    const price = Number(it.unit_price);
+    if (!(price > 0) || !RULE_UNITS.includes(it.unit) || !q.customer_id) continue;
+    const wt = it.work_type && WORK_TYPES.includes(it.work_type) ? it.work_type : WORK_TYPES.find((t) => String(it.label || "").toLocaleLowerCase("tr-TR").startsWith(t.toLocaleLowerCase("tr-TR"))) || null;
+    out.push({ customer_id: q.customer_id, site_id: q.site_id || null, work_type: wt, vehicle_id: null, unit: it.unit, price, kdv_rate: Number(q.kdv_rate) || 0, kdv_included: false, valid_from: q.date || null, label: it.label || "" });
+  }
+  return out;
+}
+
+// Cevap bekleyen teklifler (gönderildi, N günden eski)
+export function staleQuotes(d, { today = todayStr(), days = 3 } = {}) {
+  return live(d, "quotes").filter((q) => q.status === "Gönderildi" && String(q.sent_at || q.updated_at || q.date || "").slice(0, 10) <= addDays(today, -days))
+    .map((q) => ({ q, age: Math.round((Date.parse(today + "T12:00:00Z") - Date.parse(String(q.sent_at || q.updated_at || q.date).slice(0, 10) + "T12:00:00Z")) / 864e5) }))
+    .sort((a, b) => b.age - a.age);
 }

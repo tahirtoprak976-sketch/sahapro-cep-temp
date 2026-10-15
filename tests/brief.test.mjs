@@ -27,3 +27,16 @@ assert.match(t, /34GAM627 · Muayene 20\.10\.2026'de bitiyor/);
 const M = morningBrief({ ...d, work_records: [] }, { today: "2026-10-19" });
 assert.match(M.text, /Hafta sonu hiç iş kaydı yok/);
 console.log("brief ok");
+{
+  const { morningBrief } = await import("../js/brief.js");
+  const dd = { personnel: [{ id: "A", name: "Ali", salary: 30000, created_at: "x" }], customers: [{ id: "C", name: "Kaya", created_at: "x" }],
+    quotes: [{ id: "q1", quote_no: 7, customer_id: "C", status: "Gönderildi", sent_at: "2026-10-20T10:00:00Z", created_at: "x" }],
+    work_records: [], cash_records: [], fuel_tank_movements: [], documents: [], vehicles: [] };
+  const b = morningBrief(dd, { today: "2026-10-29" });
+  assert.ok(b.lines.some((l) => /Teklif #0007 \(Kaya\) 9 gündür cevapsız/.test(l.text)));
+  assert.ok(b.lines.some((l) => /10\.2026 maaşı: 1 kişi kapatılmadı · ödenecek ~30\.000 ₺/.test(l.text)));
+  const b2 = morningBrief(dd, { today: "2026-11-02" });
+  assert.ok(b2.lines.some((l) => /10\.2026 maaşı/.test(l.text)), "ayın başında geçen ay");
+  assert.ok(!morningBrief(dd, { today: "2026-10-15" }).lines.some((l) => /maaşı/.test(l.text)), "ay ortasında yok");
+  console.log("brief quotes/payroll ok");
+}
