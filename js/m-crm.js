@@ -1635,6 +1635,7 @@ async function settings(ctx) {
     appbar("Ayarlar", APP_VERSION + " · şema v" + SCHEMA_VERSION) +
     `
     <div style="height:10px"></div>
+    <div class="card"><div class="row between"><span class="small">Sürüm: <b>${esc(APP_VERSION)}</b></span><button class="btn sm" data-swcheck>🔄 Güncellemeyi denetle</button></div><div class="tiny muted" data-swinfo></div></div>
     <div class="section-title">Yedekleme</div>
     <div class="card">
       ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}
@@ -1694,6 +1695,15 @@ async function settings(ctx) {
     </div>`;
 
   qs("[data-bak]", root).addEventListener("click", () => doBackup(ctx));
+  qs("[data-swcheck]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget, info = qs("[data-swinfo]", root);
+    b.disabled = true; info.textContent = "Denetleniyor…";
+    try {
+      const found = window.__swCheck ? await window.__swCheck() : false;
+      info.textContent = found ? "Yeni sürüm bulundu — alttaki/üstteki \"Güncelle\" düğmesine basın (birkaç saniye sürebilir)." : "Bu telefondaki sürüm en yenisi. Yeni güncelleme birleştirildiyse GitHub'ın yayına alması 10 dakikayı bulabilir; sonra tekrar deneyin.";
+    } catch (e) { info.textContent = "Denetlenemedi: " + (e.message || e) + " (internet?)"; }
+    b.disabled = false;
+  });
   qs("[data-csv]", root).addEventListener("click", () => doCsvZip(ctx));
   qs("[data-zip]", root).addEventListener("click", () => doFullZip(ctx));
   qs("[data-restore]", root).addEventListener("change", (e) => {
