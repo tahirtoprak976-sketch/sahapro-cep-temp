@@ -1340,15 +1340,16 @@ async function expenses(ctx) {
       ${[["month", "Bu ay"], ["3m", "Son 3 ay"], ["all", "Tümü"]].map(([p, t]) => `<button class="chip ${per === p ? "on" : ""}" data-go="${link(kind, p)}">${t}</button>`).join("")}
     </div>
     <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">
-      ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}${tot.dokum ? chip("dokum", "Döküm", tot.dokum) : ""}
+      ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}${tot.dokum ? chip("dokum", "Döküm", tot.dokum) : ""}${tot.personel ? chip("personel", "Maaş", tot.personel) : ""}
     </div>
-    <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti (döküm sahası kartındaki ücret × fişteki ton / sefer). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
+    <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti + personel maaşı (puantajda ay kapatılınca; avans ayrıca sayılmaz). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
     ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Döküm ücreti hem iş kayıtlarından hesaplanıyor hem de \"Döküm\" gideri olarak girilmiş. Aynı parayı iki kez saymamak için birini kullanın (döküm sahası kartındaki ücreti silin ya da gider kaydını silin).") : ""}
+    ${tot.personel && all.some((r) => r.kind === "gider" && /personel|maaş|maas|avans/i.test(r.label)) ? notice("warn", "Maaş puantajdan masrafa yazılıyor; giderlerde de \"Personel\" kaydı var. Aynı maaşı ya da avansı gider olarak da girdiyseniz iki kez sayılır — gider kaydını silin.") : ""}
     ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
     <div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/gider/new">+ Gider</button></div>`;
   const listEl = qs("[data-list]", root);
-  const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾", dokum: "🚛" };
+  const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾", dokum: "🚛", personel: "👷" };
   if (!rows.length) listEl.innerHTML = emptyState("💸", per === "month" ? "Bu ay masraf yok" : "Masraf yok");
   else
     pagedRender(listEl, rows, (r) => {
