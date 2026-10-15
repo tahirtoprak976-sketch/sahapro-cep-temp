@@ -73,7 +73,7 @@ export function validateSlips(obj, { d, today = todayStr(), count = 0 } = {}) {
 }
 
 // Okunan fişlerin forma uygulanacak değerleri (formda dolu alan ezilmez, yalnız boşlar doldurulur; ton/miktar hariç)
-export function slipFill(res, form, { d } = {}) {
+export function slipFill(res, form, { d, today = todayStr() } = {}) {
   const out = {};
   const first = (k) => res.rows.map((r) => r[k]).find(Boolean) || "";
   if (res.read) {
@@ -85,7 +85,7 @@ export function slipFill(res, form, { d } = {}) {
   if (nos.length && !form.slip_no) out.slip_no = nos.join(", ").slice(0, 120);
   if (res.rows.length) out.slip_status = "Fiş Var";
   const dates = [...new Set(res.rows.map((r) => r.date).filter(Boolean))];
-  if (dates.length === 1 && (!form.date || form.date === todayStr())) out.date = dates[0];
+  if (dates.length === 1 && (!form.date || form.date === today)) out.date = dates[0];
   const vids = [...new Set(res.rows.map((r) => r.vehicle_id).filter(Boolean))];
   if (vids.length === 1 && !form.vehicle_id) out.vehicle_id = vids[0];
   if (!form.material && first("material")) out.material = first("material");
