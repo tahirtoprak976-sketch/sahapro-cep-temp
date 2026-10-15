@@ -1020,9 +1020,14 @@ async function cari(ctx) {
   if (sub) return cariDetail(ctx, sub);
   const d = await db.dumpAll();
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
-  const { customerBalances } = await import("./collect-core.js");
+  const { customerBalances, unpricedGroups } = await import("./collect-core.js");
+  const { customerFuelLedger, fuelRulesOf } = await import("./assistant-rules.js");
   const { bal, unbilled } = customerBalances(d);
-  const rows = customers.map((c) => ({ c, b: bal[c.id] || 0, u: unbilled[c.id] || 0 })).sort((a, b) => b.b - a.b || a.c.name.localeCompare(b.c.name, "tr"));
+  const rows = customers.map((c) => {
+    const fuel = fuelRulesOf(c).length ? customerFuelLedger(d, c.id) : null;
+    const np = unpricedGroups(d, c.id).reduce((n, g) => n + g.works.length, 0);
+    return { c, b: bal[c.id] || 0, u: unbilled[c.id] || 0, fuel, np };
+  }).sort((a, b) => b.b - a.b || (b.fuel?.balance || 0) - (a.fuel?.balance || 0) || b.np - a.np || a.c.name.localeCompare(b.c.name, "tr"));
   const total = rows.reduce((n, r) => n + Math.max(0, r.b), 0);
   root.innerHTML =
     appbar("Cari", "Müşteri bakiyeleri") +
@@ -1033,12 +1038,12 @@ async function cari(ctx) {
     <div data-list></div>`;
   qs("[data-list]", root).innerHTML = rows.length
     ? rows
-        .map(({ c, b, u }) =>
+        .map(({ c, b, u, fuel, np }) =>
           li({
             ic: "🏢",
             href: "#/cari/" + c.id,
             t1: esc(c.name),
-            t2: u > 0 ? esc(`${fmtTL(u)} ₺ hakedişe girmemiş iş`) : "",
+            t2: esc([u > 0 ? `${fmtTL(u)} ₺ hakedişe girmemiş iş` : "", fuel && fuel.balance ? `⛽ ${fuel.balance > 0 ? fuel.balance + " L mazot alacağı" : -fuel.balance + " L fazla mazot alındı"}` : "", np ? `⚠ ${np} iş fiyatsız (bakiyeye girmedi)` : ""].filter(Boolean).join(" · ")),
             end: `<span class="amt ${b > 0 ? "" : "muted"}">${b > 0 ? "+" : ""}${fmtTL(b)} ₺</span>`,
           }),
         )
@@ -1049,8 +1054,14 @@ async function cari(ctx) {
 async function cariDetail(ctx, cid) {
   const { root, db, names } = ctx;
   const c = await db.get("customers", cid);
-  const { customerLedgerMovements } = await import("./collect-core.js");
-  const movements = customerLedgerMovements(await db.dumpAll(), cid)
+  const { customerLedgerMovements, unpricedGroups } = await import("./collect-core.js");
+  const dAll = await db.dumpAll();
+  const groups = unpricedGroups(dAll, cid);
+  const { customerFuelLedger, fuelRulesOf } = await import("./assistant-rules.js");
+  const fuel = c && fuelRulesOf(c).length ? customerFuelLedger(dAll, cid) : null;
+  const { fuelPrice } = await import("./finance-chart.js");
+  const lp = fuel ? fuelPrice(dAll, todayStr(), await db.metaGet("fuel_ref_price")) : null;
+  const movements = customerLedgerMovements(dAll, cid)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const hak = movements
     .filter((m) => m.type === "Hakedis" || m.type === "Is")
@@ -1067,6 +1078,13 @@ async function cariDetail(ctx, cid) {
       ${stat(fmtTL(tah), "Tahsilat ₺", "ok")}
       ${stat((balance > 0 ? "+" : "") + fmtTL(balance), "Bakiye ₺", balance > 0 ? "warn" : "")}
     </div>
+    ${fuel ? `<div class="card tap" data-go="#/musteriler/${esc(cid)}"><div class="row between"><span>⛽ <b>Mazot hesabı</b> (ücreti mazotla ödüyor)</span><span class="strong">${fuel.balance > 0 ? fuel.balance + " L alacak" : fuel.balance < 0 ? -fuel.balance + " L fazla" : "kapalı"}</span></div><div class="tiny muted">${fuel.earned} L hak edildi · ${fuel.received} L alındı${lp && fuel.balance > 0 ? ` · ≈ ${fmtTL(fuel.balance * lp)} ₺ değerinde` : ""}. Mazotla ödenen işler TL bakiyeye 0 yazar; alacak litre olarak izlenir.</div></div>` : ""}
+    ${groups.length ? `<div class="section-title">⚠ Fiyatı girilmemiş işler (${groups.reduce((n, g) => n + g.works.length, 0)}) — bakiyeye girmedi</div>
+    <div class="card"><div class="tiny muted" style="margin-bottom:6px">Birim fiyatı yazıp "Uygula"ya basın: bu gruptaki tüm işlere fiyat yazılır, bakiye güncellenir. "Fiyat listesine de kaydet" işaretliyse bu müşterinin sonraki işleri de bu fiyatla gelir.</div>
+      ${groups.map((g, i) => `<div class="row between" style="gap:6px;margin:6px 0;flex-wrap:wrap"><span class="small grow"><b>${esc(g.work_type)}</b> · ${g.works.length} iş · ${g.qty} ${esc(String(g.unit).toLocaleLowerCase("tr-TR"))}</span>
+        <input type="number" step="any" data-gp="${i}" placeholder="₺ / ${esc(String(g.unit).toLocaleLowerCase("tr-TR") || "birim")}" style="width:110px">
+        <button class="btn sm primary" data-gapply="${i}">Uygula</button></div>`).join("")}
+      <label class="history-check small"><input type="checkbox" data-gsave checked> Fiyat listesine de kaydet (bu müşteri + iş türü)</label></div>` : ""}
     <div class="section-title">Hareketler</div>
     ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti ${m.type === "Is" ? "tap" : ""}" ${m.type === "Is" ? `data-go="#/isler/${esc(m.ref_id)}"` : ""}><div class="small strong">${trDate(m.date)} · ${esc({ Is: "İş", Hakedis: "Hakediş", Duzeltme: "Düzeltme" }[m.type] || m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.type === "Is" ? " · hakedişe girmedi" : m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
     <div class="section-title">Ekstre Gönder</div>
@@ -1076,6 +1094,26 @@ async function cariDetail(ctx, cid) {
       <div class="muted tiny" style="margin-top:6px">Müşteriye giden metinde iç notlar ve düzeltme nedenleri yer almaz.</div>
     </div>
     <div class="actionbar"><button class="btn" data-go="#/tahsilat/${esc(cid)}">💰 Tahsilat / hatırlat</button><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
+  for (const b of root.querySelectorAll("[data-gapply]"))
+    b.addEventListener("click", async () => {
+      const g = groups[Number(b.dataset.gapply)];
+      const price = Number(qs(`[data-gp="${b.dataset.gapply}"]`, root).value);
+      if (!(price > 0)) return toast("Birim fiyat yazın", "err");
+      const pr = await import("./price-rule-core.js");
+      const rule = { customer_id: cid, site_id: null, work_type: g.work_type === "Diğer" ? null : g.work_type, vehicle_id: null, unit: g.unit, price, kdv_rate: 20, kdv_included: false, valid_from: null };
+      let ruleId = null;
+      if (qs("[data-gsave]", root)?.checked && rule.unit) {
+        const old = pr.sameRule(await db.dumpAll(), rule);
+        const rec = old ? await db.saveExisting("price_book", old, { price }, "Cari: fiyat güncellendi") : await db.saveNew("price_book", { ...rule, active: true, note: "Cari ekranından" }, "Cari: fiyat kuralı");
+        ruleId = rec?.id || old?.id || null;
+      }
+      let n = 0;
+      for (const w of g.works) {
+        try { await db.saveExisting("work_records", await db.get("work_records", w.id), { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Cari: fiyatsız işe fiyat yazıldı"); n++; } catch (e) { /* kilitli */ }
+      }
+      toast(`${n} işe fiyat yazıldı`, "ok");
+      ctx.reload();
+    });
   const stPeriod = () => {
     const t = todayStr(), v = qs("[data-stper]", root).value;
     if (v === "month") return { from: t.slice(0, 7) + "-01", to: t };
