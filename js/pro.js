@@ -889,7 +889,7 @@ async function master(ctx) {
               : k === "fee_unit"
                 ? fSelect("Döküm ücreti nasıl alınıyor?", k, [{ v: "", t: "Ücret yok / anlaşmalı (işte ayrıca)" }, { v: "Ton", t: "Ton başına" }, { v: "Sefer", t: "Sefer başına" }], r[k] || "", { empty: false })
               : k === "fee" || k === "load_ton"
-                ? fNum(k === "fee" ? "Döküm ücreti (₺, KDV dahil)" : "Ortalama yük (ton) — fiş yoksa döküm ücreti buna göre", k, r[k] ?? "", { step: "any" })
+                ? fNum(k === "fee" ? "Döküm ücreti (₺, KDV dahil)" : "Ortalama yük (ton) — fiş yoksa döküm ücreti buna göre (boşsa tır 27, kamyon 22)", k, r[k] ?? "", { step: "any" })
               : k === "ownership"
                 ? fSelect(
                     "Mülkiyet",
