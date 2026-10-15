@@ -17,7 +17,7 @@ const d = {
 };
 const rows = costRows(d, { from: "2026-10-01", to: "2026-10-31" });
 const t = costTotals(rows);
-assert.deepEqual(t, { gider: 1000, yakit: 4500, bakim: 3000, esnaf: 2400, dokum: 0, total: 10900 }, "bakıma bağlı ve depo alışı esnaf faturası iki kez sayılmaz");
+assert.deepEqual(t, { gider: 1000, yakit: 4500, bakim: 3000, esnaf: 2400, dokum: 0, personel: 0, total: 10900 }, "bakıma bağlı ve depo alışı esnaf faturası iki kez sayılmaz");
 const m = monthlySeries(d, { today: "2026-10-15", months: 1 })[0];
 assert.equal(m.cost, 10900, "grafik ve Giderler aynı");
 assert.equal(m.profit, 20000 - 10900);

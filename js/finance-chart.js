@@ -27,7 +27,7 @@ export function monthlySeries(data, opts = {}) {
   const today = opts.today || todayStr();
   const keys = lastMonths(today, opts.months || 6);
   const rows = new Map(
-    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0, fuelGotL: 0 }]),
+    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, pay: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0, fuelGotL: 0 }]),
   );
   for (const w of data.work_records || []) {
     if (!isActive(w)) continue;
@@ -72,6 +72,11 @@ export function monthlySeries(data, opts = {}) {
     const r = rows.get(monthKey(b.date));
     if (r) r.esnaf += toKurus(Number(b.gross_total) || 0);
   }
+  for (const p of data.payroll_entries || []) {
+    if (!isActive(p) || p.kind !== "Ücret Tahakkuku" || !(Number(p.amount) > 0)) continue;
+    const r = rows.get(monthKey(p.date));
+    if (r) r.pay += toKurus(p.amount);
+  }
   for (const f of dumpFeeRows(data)) {
     const r = rows.get(monthKey(f.w.date));
     if (r && f.amount > 0) r.dump += toKurus(f.amount);
@@ -80,17 +85,18 @@ export function monthlySeries(data, opts = {}) {
     ...r,
     work: fromKurus(r.work),
     dump: fromKurus(r.dump),
+    pay: fromKurus(r.pay),
     maint: fromKurus(r.maint),
     esnaf: fromKurus(r.esnaf),
     collected: fromKurus(r.collected),
     expense: fromKurus(r.expense),
     fuel: fromKurus(r.fuel),
-    cost: fromKurus(r.expense + r.fuel + r.maint + r.esnaf + r.dump),
+    cost: fromKurus(r.expense + r.fuel + r.maint + r.esnaf + r.dump + r.pay),
     fuelPay: fromKurus(r.fuelPay),
     fuelPayL: Math.round(r.fuelPayL * 10) / 10,
     fuelGotL: Math.round(r.fuelGotL * 10) / 10,
     // tahmini kâr = fiyatlı (parayla) iş değeri − masraflar; mazotla ödenen işler litre olarak ayrı (fuelPayL / fuelGotL)
-    profit: fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump),
+    profit: fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump - r.pay),
   }));
 }
 

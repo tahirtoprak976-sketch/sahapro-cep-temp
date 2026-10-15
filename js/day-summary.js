@@ -12,6 +12,7 @@ import { receivables, customerLedgerMovements } from "./collect-core.js";
 import { costRows, costTotals } from "./costs-core.js";
 import { vehicleKpis, customerKpis, priceCheck, businessReview, EXPERT_KNOWLEDGE } from "./expert-core.js";
 import { quoteFor, quoteSummary } from "./quote-core.js";
+import { payrollFor, payrollSummary } from "./payroll-core.js";
 import { WORK_TYPES } from "./core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -146,6 +147,8 @@ export const ASK_TOOLS = [
     parameters: { type: "object", properties: { from: { type: "string" }, to: { type: "string" } } } },
   { name: "quote_price", description: "Teklif / fiyat hesabı: bir iş için birim maliyet (döküm ücreti, mazot, şoför/yıpranma), zarar sınırı, önerilen fiyat (KDV dahil ve hariç), bu müşteriye son fiyat ve herkese orta fiyat. 'X'e 20 sefer Bolluca hafriyat kaça veririm', 'saatlik JCB kaça vermeliyim', 'bu fiyat zarar mı' için.",
     parameters: { type: "object", properties: { customer: { type: "string" }, work_type: { type: "string", description: "İş türü: " + WORK_TYPES.join(", ") }, unit: { type: "string", description: "Sefer | Ton | Saat | Yevmiye" }, quantity: { type: "number" }, vehicle: { type: "string", description: "araç adı/plakası" }, dump_site: { type: "string", description: "döküm yeri adı" }, dump_included: { type: "boolean", description: "döküm ücreti fiyata dahil mi (varsayılan evet)" } } } },
+  { name: "payroll_status", description: "Personel puantajı ve maaşı: çalışılan gün, izin/rapor/devamsızlık, mesai, hak edilen, avans, ödenen, kalan. 'Ali'nin bu ay maaşı ne kadar kaldı', 'kime ne ödeyeceğim', 'kaç gün çalıştı' için. Personel adı yoksa herkes.",
+    parameters: { type: "object", properties: { personnel: { type: "string" }, period: { type: "string", description: "YYYY-AA; yoksa bu ay" } } } },
   { name: "esnaf_debt", description: "Esnafa (lastikçi, tamirci, petrolcü…) kalan veresiye borçlar.",
     parameters: { type: "object", properties: { supplier: { type: "string" } } } },
 ];
@@ -260,6 +263,13 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const unit = ["Sefer", "Ton", "Saat", "Yevmiye"].find((u) => norm(u) === norm(a.unit || "")) || "Sefer";
     const q = quoteFor(d, { customer_id: c.id, vehicle_id: v.id, dump_site_id: s.id, work_type: wt, unit, quantity: Number(a.quantity) || 0, dump_included: a.dump_included !== false }, { today, settings: extra.quoteSettings || {}, fuelRefPrice: extra.fuelRefPrice });
     return quoteSummary(d, q);
+  }
+  if (name === "payroll_status") {
+    const p = resolve(d, a, "personnel", "personnel", "personnel");
+    if (p.error) return p;
+    const period = /^\d{4}-\d{2}$/.test(a.period || "") ? a.period : today.slice(0, 7);
+    const rows = live(d, "personnel").filter((x) => x.active !== false && (!p.id || x.id === p.id)).map((x) => payrollSummary(x, payrollFor(d, x, period, { today })));
+    return { donem: period, personeller: rows, toplam_kalan_TL: r2(rows.reduce((n, x) => n + Math.max(0, x.kalan_TL), 0)) };
   }
   if (name === "esnaf_debt") {
     const s = resolve(d, a, "supplier", "suppliers", "supplier");

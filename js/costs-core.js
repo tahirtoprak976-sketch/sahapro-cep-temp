@@ -7,7 +7,7 @@ import { fuelPrice } from "./finance-chart.js";
 import { dumpFeeRows } from "./dump-fees.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
-export const COST_KINDS = { gider: "Gider", yakit: "Yakıt", bakim: "Bakım / Arıza", esnaf: "Esnaf alışı", dokum: "Döküm ücreti" };
+export const COST_KINDS = { gider: "Gider", yakit: "Yakıt", bakim: "Bakım / Arıza", esnaf: "Esnaf alışı", dokum: "Döküm ücreti", personel: "Personel maaşı" };
 
 export function billTotal(b) {
   if (Number(b.gross_total) > 0) return Number(b.gross_total);
@@ -42,13 +42,17 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
   for (const f of dumpFeeRows(d, { from, to }))
     if (f.amount > 0)
       rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, label: `${f.site} · ${f.manual ? "elle yazılan" : f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺" : f.trips + " sefer × " + f.fee + " ₺"}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
+  // Personel maaşı: puantajda ay kapatılınca yazılan "Ücret Tahakkuku" (avans ve ödemeler ayrıca sayılmaz → çift sayım yok)
+  for (const p of live(d, "payroll_entries"))
+    if (p.kind === "Ücret Tahakkuku" && inR(p.date) && Number(p.amount) > 0)
+      rows.push({ kind: "personel", id: p.id, date: p.date, amount: Number(p.amount), label: `${name("personnel", p.personnel_id) || "Personel"} · ${p.period} maaşı`, sub: p.note || "", vehicle_id: null, href: "#/puantaj/" + p.personnel_id + "?ay=" + p.period });
   rows.sort((a, b) => b.date.localeCompare(a.date));
   return rows;
 }
 
 export function costTotals(rows) {
-  const t = { gider: 0, yakit: 0, bakim: 0, esnaf: 0, dokum: 0 };
+  const t = { gider: 0, yakit: 0, bakim: 0, esnaf: 0, dokum: 0, personel: 0 };
   for (const r of rows) t[r.kind] += toKurus(r.amount);
-  const total = t.gider + t.yakit + t.bakim + t.esnaf + t.dokum;
-  return { gider: fromKurus(t.gider), yakit: fromKurus(t.yakit), bakim: fromKurus(t.bakim), esnaf: fromKurus(t.esnaf), dokum: fromKurus(t.dokum), total: fromKurus(total) };
+  const total = t.gider + t.yakit + t.bakim + t.esnaf + t.dokum + t.personel;
+  return { gider: fromKurus(t.gider), yakit: fromKurus(t.yakit), bakim: fromKurus(t.bakim), esnaf: fromKurus(t.esnaf), dokum: fromKurus(t.dokum), personel: fromKurus(t.personel), total: fromKurus(total) };
 }
