@@ -106,7 +106,10 @@ async function dashboard(ctx) {
       const ys = (await db.metaGet("yard_settings")) || {};
       const st = yc.yardStock(data, { settings: ys, today });
       const { dumpFee } = await import("./dump-fees.js");
-      const p = yc.yardPL(data, st, { settings: ys, pred: (x) => x.startsWith(today.slice(0, 7)), dumpFee, workAmount });
+      const { fuelPrice } = await import("./finance-chart.js");
+      const ref = await db.metaGet("fuel_ref_price");
+      const fuelValue = (w) => (Number(w.customer_fuel_allowance_l) || 0) * (fuelPrice(data, w.date, ref) || 0);
+      const p = yc.yardPL(data, st, { settings: ys, pred: (x) => x.startsWith(today.slice(0, 7)), dumpFee, workAmount, fuelValue });
       yardCard = `<div class="row between tap" data-go="#/kendi-depo"><span class="muted small">🏗 Kendi depo · stok ~${fmtNum(st.total)} kamyonet yükü</span><span class="strong" style="color:${p.result < 0 ? "#d9534f" : "#2e9e6b"}">${p.ins || p.outs ? (p.result < 0 ? "" : "+") + fmtTL(p.result) + " ₺ bu ay" : "aç ›"}</span></div><div class="divider"></div>`;
     } else yardCard = `<div class="row between tap" data-go="#/kendi-depo"><span class="muted small">🏗 Kendi depo / stok sahası</span><span class="muted small">kur ›</span></div><div class="divider"></div>`;
   }
@@ -770,7 +773,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.62")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.63")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
