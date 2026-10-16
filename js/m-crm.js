@@ -1631,11 +1631,16 @@ async function settings(ctx) {
     persisted = false;
   }
 
+  const company = (await db.metaGet("company_profile")) || {};
+  const CO = { title: "Ticari ünvan", tax_no: "Vergi no", tax_office: "Vergi dairesi", mersis_no: "MERSİS no", trade_reg_no: "Ticaret sicil no", nace: "Faaliyet kodu (NACE)", address: "Adres" };
   root.innerHTML =
     appbar("Ayarlar", APP_VERSION + " · şema v" + SCHEMA_VERSION) +
     `
     <div style="height:10px"></div>
     <div class="card"><div class="row between"><span class="small">Sürüm: <b>${esc(APP_VERSION)}</b></span><button class="btn sm" data-swcheck>🔄 Güncellemeyi denetle</button></div><div class="tiny muted" data-swinfo></div></div>
+    <div class="section-title">🏢 Şirket bilgileri</div>
+    <div class="card"><div class="tiny muted" style="margin-bottom:6px">Vergi levhası, faaliyet belgesi, sicil gazetesi gibi şirket evrakını Akıllı Asistan'a fotoğrafla gönderin; buradaki bilgiler belgeden doldurulur. Elle de düzeltebilirsiniz.</div>
+      <form data-coform>${Object.entries(CO).map(([k, t]) => `<div class="field"><label>${esc(t)}</label><input name="${k}" value="${esc(company[k] || "")}"></div>`).join("")}<button type="submit" class="btn block">Şirket bilgilerini kaydet</button></form></div>
     <div class="section-title">Yedekleme</div>
     <div class="card">
       ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}
@@ -1695,6 +1700,13 @@ async function settings(ctx) {
     </div>`;
 
   qs("[data-bak]", root).addEventListener("click", () => doBackup(ctx));
+  qs("[data-coform]", root)?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(ev.currentTarget), upd = {};
+    for (const k of Object.keys(CO)) upd[k] = String(fd.get(k) || "").trim() || null;
+    await db.metaSet("company_profile", { ...((await db.metaGet("company_profile")) || {}), ...upd });
+    toast("Şirket bilgileri kaydedildi", "ok");
+  });
   qs("[data-swcheck]", root)?.addEventListener("click", async (ev) => {
     const b = ev.currentTarget, info = qs("[data-swinfo]", root);
     b.disabled = true; info.textContent = "Denetleniyor…";

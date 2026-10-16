@@ -1,14 +1,14 @@
 // Asistan — fotoğraftan döküm/kantar fişi ve araç/personel belgesi (bitiş tarihi) okuma. SAF katman.
 // Kural aynı: fiş numarası, tonaj, tarih ve plaka FOTOĞRAFIN YAZISINDA geçmeli; geçmeyen satır işaretsiz gelir.
-import { isActive, todayStr, addDays } from "./core.js";
+import { isActive, todayStr, addDays, COMPANY_NAME } from "./core.js";
 import { numbersInText } from "./ai-assist.js";
-import { VEHICLE_DOCS, PERSONNEL_DOCS, documentOwner } from "./business.js";
+import { VEHICLE_DOCS, PERSONNEL_DOCS, COMPANY_DOCS, COMPANY_OWNER_ID, documentOwner } from "./business.js";
 import { foldTr } from "./parser.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const alnum = (s) => foldTr(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
-export const NO_EXPIRY = ["Ruhsat", "Kimlik / Kimlik Bilgisi", "SGK / İşe Giriş Evrakı", "Makine Tescil Belgesi"];
+export const NO_EXPIRY = ["Ruhsat", "Kimlik / Kimlik Bilgisi", "SGK / İşe Giriş Evrakı", "Makine Tescil Belgesi", "Vergi Levhası", "Ticaret Sicil Gazetesi", "İmza Sirküleri", "SGK İşyeri Tescili", "Şirket Evrakı"];
 const MONTHS = ["ocak", "subat", "mart", "nisan", "mayis", "haziran", "temmuz", "agustos", "eylul", "ekim", "kasim", "aralik"];
 const pad = (n) => String(n).padStart(2, "0");
 
@@ -126,7 +126,7 @@ export function ticketReconcile(data, { today = todayStr(), days = 7 } = {}) {
 }
 
 // ---- Araç / personel belgesi (muayene, sigorta, ehliyet, SRC…) → bitiş tarihi ----
-export const ASSIST_DOC_TYPES = [...VEHICLE_DOCS, ...PERSONNEL_DOCS];
+export const ASSIST_DOC_TYPES = [...VEHICLE_DOCS, ...PERSONNEL_DOCS, ...COMPANY_DOCS];
 // Plaka anahtarı: "34 ABC 123" → "34ABC123" (Türk plakası biçiminde değilse boş)
 export const plateKey = (s) => { const k = alnum(s); return /^(0[1-9]|[1-7]\d|8[01])[A-Z]{1,3}\d{2,5}$/.test(k) ? k : ""; };
 // Belgeden araç bilgisi: her değer belgenin yazısında gerçekten geçmeli (uydurma bilgi karta yazılmaz)
@@ -177,46 +177,62 @@ export function vehicleKind(s) {
   if (/ekskavat|kaz[ıi]c[ıi]|y[üu]kleyici|loder|greyder|silindir|forklift|i[şs] makine/.test(t)) return "İş Makinesi";
   return "Araç/Makine";
 }
-export function validateDocuments(plan, { d, today = todayStr(), photoTexts = [], photoCount = 0 } = {}) {
+export function validateDocuments(plan, { d, today = todayStr(), photoTexts = [], photoCount = 0, company = null } = {}) {
   const out = [];
+  const companyOwner = { id: COMPANY_OWNER_ID, name: COMPANY_NAME, ...(company || {}) };
   for (const x of (Array.isArray(plan?.documents) ? plan.documents : []).slice(0, 10)) {
     const issues = [];
-    let r_upd = [];
+    let upd = [];
     const photo = photoIdx(x.photo, photoCount);
     const text = photo != null ? String(photoTexts[photo] || "") : "";
     if (photo == null) issues.push("Hangi fotoğraf olduğu belli değil");
     const category = ASSIST_DOC_TYPES.includes(x.category) ? x.category : null;
     if (!category) issues.push("Belge türü seçilmeli");
-    const owner_type = category ? documentOwner(category) : x.owner_type === "personnel" ? "personnel" : "vehicle";
-    const store = owner_type === "personnel" ? "personnel" : "vehicles";
-    const list = live(d, store);
-    let owner = list.find((o) => o.id === x.owner_id) || null;
-    if (!owner && owner_type === "vehicle") owner = list.find((v) => vehicleInText(v, text)) || null;
-    // Kayıtlı olmayan araç: belgedeki plaka (belgede gerçekten yazıyorsa) ile yeni araç kartı önerilir
-    let newVehicle = null;
-    if (!owner && owner_type === "vehicle") {
+    const owner_type = category ? documentOwner(category) : ["personnel", "company"].includes(x.owner_type) ? x.owner_type : "vehicle";
+    const list = owner_type === "personnel" ? live(d, "personnel") : owner_type === "vehicle" ? live(d, "vehicles") : [];
+    let owner = owner_type === "company" ? companyOwner : list.find((o) => o.id === x.owner_id) || null;
+    let newVehicle = null, newPerson = null;
+    if (owner_type === "vehicle") {
+      if (!owner) owner = list.find((v) => vehicleInText(v, text)) || null;
+      // Kayıtlı olmayan araç: belgedeki plaka (belgede gerçekten yazıyorsa) ile yeni araç kartı önerilir
       const pl = plateKey(x.plate);
-      if (pl && alnum(text).includes(pl)) {
+      if (!owner && pl && alnum(text).includes(pl)) {
         owner = list.find((v) => plateKey(v.plate) === pl || plateKey(v.name) === pl) || null;
         if (!owner) { const info = vehicleInfo(x, text); newVehicle = { plate: pl, ...info, type: info.type || vehicleKind(x.vehicle_kind || text) }; }
       }
-    }
-    if (!owner && owner_type === "personnel") owner = list.find((p) => norm(p.name).length >= 5 && (` ${norm(text)} `).includes(` ${norm(p.name)} `)) || null;
-    if (owner && owner_type === "vehicle") {
-      const pk = plateKey(owner.plate) || plateKey(owner.name);
-      if (pk && alnum(text).includes(pk)) {
-        r_upd = vehicleUpdate(owner, vehicleInfo(x, text));
-        if (!plateKey(owner.plate)) r_upd.unshift({ k: "plate", from: owner.plate || null, to: pk, on: true });
+      if (owner) {
+        const pk = plateKey(owner.plate) || plateKey(owner.name);
+        if (pk && alnum(text).includes(pk)) {
+          upd = vehicleUpdate(owner, vehicleInfo(x, text));
+          if (!plateKey(owner.plate)) upd.unshift({ k: "plate", from: owner.plate || null, to: pk, on: true });
+        }
       }
+    } else if (owner_type === "personnel") {
+      const info = personInfo(x, text, datesInText(text));
+      if (!owner && info.identity_number) owner = list.find((p) => p.identity_number === info.identity_number) || null;
+      if (!owner) owner = list.find((p) => norm(p.name).length >= 5 && (` ${norm(text)} `).includes(` ${norm(p.name)} `)) || null;
+      if (!owner && info.name) owner = list.find((p) => norm(p.name) === norm(info.name)) || null;
+      if (!owner && info.name) newPerson = info;
+      if (owner && (!owner.identity_number || !info.identity_number || owner.identity_number === info.identity_number) && nameMatches(owner.name, text)) upd = personUpdate(owner, info);
+      // Kartta yalnız ad varsa (ör. "Soner") ve belgede tam ad yazıyorsa: aynı kişi varsayılır ama "Yeni personel" seçeneği de sunulur
+      if (owner && info.name && !owner.identity_number && norm(owner.name).split(" ").length === 1 && norm(info.name) !== norm(owner.name)) {
+        newPerson = info;
+        issues.push(`Kartta "${owner.name}" yazıyor; belgede "${info.name}". Aynı kişi değilse sahibini "➕ Yeni personel" yapın`);
+      }
+    } else if (owner_type === "company") {
+      upd = infoUpdate(owner, companyInfo(x, text), Object.keys(COMPANY_INFO_LABELS));
     }
     if (newVehicle) issues.push(`${newVehicle.plate} kayıtlı değil — yeni araç kartı açılacak (${newVehicle.type}${newVehicle.brand ? " · " + newVehicle.brand : ""}${newVehicle.model_year ? " · " + newVehicle.model_year : ""})`);
+    else if (newPerson && !owner) issues.push(`${newPerson.name} kayıtlı değil — yeni personel kartı açılacak`);
     else if (!owner) issues.push(owner_type === "personnel" ? "Personel seçilmeli" : "Araç seçilmeli");
     else if (owner_type === "vehicle" && owner.plate && !vehicleInText(owner, text)) issues.push(`${owner.plate} plakası belgede görünmüyor`);
-    else if (owner_type === "personnel" && !norm(text).includes(norm(owner.name).split(" ")[0])) issues.push(`${owner.name} adı belgede görünmüyor`);
+    else if (owner_type === "personnel" && !nameMatches(owner.name, text)) issues.push(`${owner.name} adı belgede görünmüyor`);
     const dates = datesInText(text);
-    const r = { photo, category, owner_type, owner_id: owner?.id || null, new_vehicle: newVehicle, vehicle_update: r_upd, doc_no: "", date: null, expiry_date: null };
+    const r = { photo, category, owner_type, owner_id: owner?.id || null, new_vehicle: newVehicle, new_person: newPerson, card_update: upd, doc_no: "", date: null, expiry_date: null };
     const no = String(x.doc_no || "").trim();
     if (no && alnum(no).length >= 3 && alnum(text).includes(alnum(no))) r.doc_no = no.slice(0, 40);
+    else if (owner_type === "company" && upd.find((u) => u.k === "tax_no")) r.doc_no = upd.find((u) => u.k === "tax_no").to;
+    else if (owner_type === "company" && owner.tax_no && alnum(text).includes(owner.tax_no)) r.doc_no = owner.tax_no;
     else issues.push(no ? `Belge no "${no}" belgede yok` : "Belge numarası okunamadı");
     const ex = isoOk(x.expiry_date);
     if (ex && dates.has(ex)) r.expiry_date = ex;
@@ -227,8 +243,70 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
     if (r.expiry_date && r.date > r.expiry_date) r.date = r.expiry_date;
     if (r.expiry_date && r.expiry_date < today) issues.push("Bu belgenin süresi dolmuş");
     r.issues = issues;
-    r.ok = !!(photo != null && category && (r.owner_id || r.new_vehicle) && r.doc_no && (r.expiry_date || NO_EXPIRY.includes(category)) && !issues.some((i) => /görünmüyor|belgede yok/.test(i)));
+    r.ok = !!(photo != null && category && (r.owner_id || r.new_vehicle || r.new_person) && r.doc_no && (r.expiry_date || NO_EXPIRY.includes(category)) && !issues.some((i) => /görünmüyor|belgede yok/.test(i)));
     out.push(r);
+  }
+  return out;
+}
+
+// ---- Personel belgesi (ehliyet, SRC, kimlik…) → personel kartı ----
+const titleTr = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/(^|\s)(\S)/g, (m, a, b) => a + b.toLocaleUpperCase("tr-TR")).trim();
+const nameMatches = (name, text) => { const w = norm(name).split(" ").filter((x) => x.length >= 2); const t = ` ${norm(text)} `; return w.length > 0 && w.every((x) => t.includes(` ${x} `)); };
+export function tcValid(s) {
+  const t = String(s || "");
+  if (!/^[1-9]\d{10}$/.test(t)) return false;
+  const n = [...t].map(Number);
+  const d10 = ((n[0] + n[2] + n[4] + n[6] + n[8]) * 7 - (n[1] + n[3] + n[5] + n[7])) % 10;
+  return (d10 + 10) % 10 === n[9] && n.slice(0, 10).reduce((a, b) => a + b, 0) % 10 === n[10];
+}
+const LICENSE = ["A1", "A2", "A", "B1", "B", "BE", "C1", "C1E", "C", "CE", "D1", "D1E", "D", "DE", "F", "G", "M"];
+export const PERSON_INFO_LABELS = { name: "Ad soyad", identity_number: "TC kimlik no", birth_date: "Doğum tarihi", license_class: "Ehliyet sınıfı", blood_type: "Kan grubu" };
+export function personInfo(x, text, dates = datesInText(text)) {
+  const nt = ` ${norm(text)} `, at = alnum(text);
+  const nm = String(x.person_name || "").trim();
+  const name = nm.split(/\s+/).length >= 2 && nameMatches(nm, text) ? titleTr(nm).slice(0, 60) : "";
+  const tc = String(x.tc_no || "").replace(/\D/g, "");
+  // Doğum tarihi 1990 öncesi olabilir: belgede GG.AA.YYYY (ya da / -) olarak geçmeli
+  const bm = /^(19[2-9]\d|20[0-2]\d)-(\d{2})-(\d{2})$/.exec(String(x.birth_date || ""));
+  const bd = bm && new RegExp(`(^|\\D)${bm[3]}[./-]${bm[2]}[./-]${bm[1]}(\\D|$)`).test(text) ? bm[0] : null;
+  const words = new Set(String(text).toUpperCase().split(/[^A-Z0-9]+/));
+  const lic = String(x.license_class || "").toUpperCase().split(/[^A-Z0-9]+/).filter((c) => LICENSE.includes(c) && words.has(c));
+  const blood = String(x.blood_type || "").toUpperCase().replace(/\s+/g, " ").trim();
+  const bk = alnum(blood.replace(/\+/g, "POZ").replace(/-/g, "NEG"));
+  return {
+    name, identity_number: tcValid(tc) && at.includes(tc) ? tc : "",
+    birth_date: bd,
+    license_class: [...new Set(lic)].join(", "),
+    blood_type: /^(0|A|B|AB)\s?RH\s?[+-]$/.test(blood) && (at.includes(alnum(blood)) || alnum(text.replace(/\+/g, "POZ").replace(/-/g, "NEG")).includes(bk)) ? blood.replace(/\s?RH\s?/, " Rh") : "",
+  };
+}
+export function personUpdate(p, info) {
+  const out = infoUpdate(p, info, ["identity_number", "birth_date", "license_class", "blood_type"]);
+  // İsim: karttaki kısa ad (ör. "Soner") belgedeki tam adın içindeyse tamamlanır
+  if (info.name && norm(info.name) !== norm(p.name) && nameMatches(p.name, info.name)) out.unshift({ k: "name", from: p.name || null, to: info.name, on: true });
+  return out;
+}
+
+// ---- Şirket evrakı (vergi levhası, faaliyet belgesi, sicil gazetesi…) → şirket bilgileri ----
+export const COMPANY_INFO_LABELS = { title: "Ticari ünvan", tax_no: "Vergi no", tax_office: "Vergi dairesi", mersis_no: "MERSİS no", trade_reg_no: "Ticaret sicil no", nace: "Faaliyet kodu (NACE)", address: "Adres" };
+export function companyInfo(x, text) {
+  const nt = ` ${norm(text)} `, at = alnum(text);
+  const words = (v, max) => { const s = String(v || "").replace(/\s+/g, " ").trim(); return s.length >= 3 && nt.includes(` ${norm(s)} `) ? s.slice(0, max) : ""; };
+  const digits = (v, re) => { const k = String(v || "").replace(/\D/g, ""); return re.test(k) && at.includes(k) ? k : ""; };
+  const nace = String(x.nace || "").trim();
+  return {
+    title: words(x.company_title, 120), tax_no: digits(x.tax_no, /^\d{10,11}$/), tax_office: words(x.tax_office, 60),
+    mersis_no: digits(x.mersis_no, /^\d{16}$/), trade_reg_no: digits(x.trade_reg_no, /^\d{3,10}$/),
+    nace: /^\d{2}\.\d{2}(\.\d{2})?$/.test(nace) && String(text).includes(nace) ? nace : "", address: words(x.address, 200),
+  };
+}
+// Düz alanlar: belgedeki değer karttakinden farklıysa (boş değilse) güncellenir
+export function infoUpdate(cur, info, keys) {
+  const out = [];
+  for (const k of keys) {
+    const to = info[k], from = cur?.[k];
+    if (to == null || to === "" || norm(from) === norm(to)) continue;
+    out.push({ k, from: from || null, to, on: true });
   }
   return out;
 }
@@ -241,7 +319,7 @@ export function heardText(plan) {
 
 export const DOCS_PROMPT = [
   "Fotoğraf bir DÖKÜM / KANTAR fişiyse \"tickets\" dizisine yaz: {\"photo\":fotoğraf sırası,\"ticket_no\",\"date\":YYYY-MM-DD,\"plate\",\"vehicle_id\",\"tonnage\":net ton,\"dump_site_id\",\"dump_site_name\",\"material\",\"customer_id\",\"site_id\"}. Fiş no, tarih, plaka ve tonajı fişte yazdığı gibi oku; yoksa null.",
-  "Fotoğraf bir ARAÇ veya PERSONEL BELGESİYSE (muayene, sigorta, kasko, ehliyet, SRC, psikoteknik…) \"documents\" dizisine yaz: {\"photo\",\"category\" (" + [...VEHICLE_DOCS, ...PERSONNEL_DOCS].join(", ") + "),\"owner_id\" (araç ya da personel ID),\"doc_no\",\"date\":düzenleme YYYY-MM-DD,\"expiry_date\":bitiş/geçerlilik YYYY-MM-DD,\"plate\" (araç belgesindeki plaka, yazdığı gibi),\"vehicle_kind\" (belgedeki CİNSİ/SINIFI: Çekici, Yarı Römork, Römork, Kamyon, Kamyonet, Otomobil/Binek, İş Makinesi…),\"brand\" (MARKASI),\"model\" (TİPİ / ticari adı),\"model_year\" (MODEL YILI),\"chassis_no\" (ŞASİ NO),\"engine_no\" (MOTOR NO),\"color\" (RENGİ),\"fuel_type\" (YAKIT CİNSİ),\"km\" (muayenedeki KİLOMETRE)}. Araç bilgilerini kayıtlı araçlarda da doldur (kart güncellenir). Plaka kayıtlı araçlarda yoksa owner_id null bırak ama plate ve vehicle_kind'ı MUTLAKA doldur (yeni araç kartı açılır). Belge fişi gider değildir; expenses'e yazma.",
+  "Fotoğraf bir ARAÇ, PERSONEL veya ŞİRKET BELGESİYSE (muayene, sigorta, kasko, ehliyet, SRC, psikoteknik, kimlik, vergi levhası, faaliyet belgesi, sicil gazetesi…) \"documents\" dizisine yaz: {\"photo\",\"category\" (" + [...VEHICLE_DOCS, ...PERSONNEL_DOCS, ...COMPANY_DOCS].join(", ") + "),\"owner_id\" (araç ya da personel ID),\"doc_no\",\"date\":düzenleme YYYY-MM-DD,\"expiry_date\":bitiş/geçerlilik YYYY-MM-DD,\"plate\" (araç belgesindeki plaka, yazdığı gibi),\"vehicle_kind\" (belgedeki CİNSİ/SINIFI: Çekici, Yarı Römork, Römork, Kamyon, Kamyonet, Otomobil/Binek, İş Makinesi…),\"brand\" (MARKASI),\"model\" (TİPİ / ticari adı),\"model_year\" (MODEL YILI),\"chassis_no\" (ŞASİ NO),\"engine_no\" (MOTOR NO),\"color\" (RENGİ),\"fuel_type\" (YAKIT CİNSİ),\"km\" (muayenedeki KİLOMETRE)}. Araç bilgilerini kayıtlı araçlarda da doldur (kart güncellenir). Personel belgesinde ayrıca \"person_name\" (AD SOYAD, belgede yazdığı gibi),\"tc_no\",\"birth_date\" YYYY-MM-DD,\"license_class\" (ehliyet sınıfları, ör. \"B, C, CE\"),\"blood_type\" (ör. \"A Rh+\"); kişi kayıtlı değilse owner_id null bırak (yeni personel kartı açılır). Şirket belgesinde \"company_title\" (ünvan),\"tax_no\" (VKN/TCKN),\"tax_office\",\"mersis_no\",\"trade_reg_no\",\"nace\" (faaliyet kodu ör. 43.12.01),\"address\". Plaka kayıtlı araçlarda yoksa owner_id null bırak ama plate ve vehicle_kind'ı MUTLAKA doldur (yeni araç kartı açılır). Belge fişi gider değildir; expenses'e yazma.",
   "Ses kaydı varsa söylenenleri \"heard_text\" alanına AYNEN yaz (rakamları rakamla), sonra ses kaydını mesaj gibi işle; quote değerlerini heard_text'ten kopyala.",
 ].join("\n");
 
@@ -249,7 +327,7 @@ export function docsSchemaProps() {
   const NS = { type: ["string", "null"] }, NN = { type: ["number", "null"] }, NI = { type: ["integer", "null"] };
   return {
     tickets: { type: "array", items: { type: "object", properties: { photo: NI, ticket_no: NS, date: NS, plate: NS, vehicle_id: NS, tonnage: NN, dump_site_id: NS, dump_site_name: NS, material: NS, customer_id: NS, site_id: NS } } },
-    documents: { type: "array", items: { type: "object", properties: { photo: NI, category: NS, owner_id: NS, doc_no: NS, date: NS, expiry_date: NS, plate: NS, vehicle_kind: NS, brand: NS, model: NS, model_year: NN, chassis_no: NS, engine_no: NS, color: NS, fuel_type: NS, km: NN } } },
+    documents: { type: "array", items: { type: "object", properties: { photo: NI, category: NS, owner_id: NS, doc_no: NS, date: NS, expiry_date: NS, plate: NS, vehicle_kind: NS, brand: NS, model: NS, model_year: NN, chassis_no: NS, engine_no: NS, color: NS, fuel_type: NS, km: NN, person_name: NS, tc_no: NS, birth_date: NS, license_class: NS, blood_type: NS, company_title: NS, tax_no: NS, tax_office: NS, mersis_no: NS, trade_reg_no: NS, nace: NS, address: NS } } },
     heard_text: NS,
   };
 }

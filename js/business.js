@@ -36,9 +36,24 @@ export const PERSONNEL_DOCS = [
   "Sertifika",
   "Personel Evrakı",
 ];
+// Şirkete ait evrak (sahibi: şirket bilgileri kaydı)
+export const COMPANY_DOCS = [
+  "Vergi Levhası",
+  "Faaliyet Belgesi",
+  "Ticaret Sicil Gazetesi",
+  "İmza Sirküleri",
+  "Oda Kayıt Belgesi",
+  "SGK İşyeri Tescili",
+  "K Belgesi",
+  "İSG / Risk Değerlendirmesi",
+  "Şirket Sigortası",
+  "Şirket Evrakı",
+];
+export const COMPANY_OWNER_ID = "company_profile";
 export const DOCUMENT_TYPES = [
   ...VEHICLE_DOCS,
   ...PERSONNEL_DOCS,
+  ...COMPANY_DOCS,
   "Sözleşme",
   "Hakediş Eki",
   "Akaryakıt Fişi",
@@ -60,8 +75,10 @@ export const OWNER_STORES = {
   hakedis: "hakedis",
   work: "work_records",
   contract: "contracts",
+  company: "meta",
 };
 export function documentOwner(category) {
+  if (COMPANY_DOCS.includes(category)) return "company";
   return VEHICLE_DOCS.includes(category)
     ? "vehicle"
     : PERSONNEL_DOCS.includes(category)
@@ -159,7 +176,9 @@ export function normalizedDocument(fields) {
         ? fields.personnel_id
         : owner === "customer"
           ? fields.customer_id
-          : fields.owner_id;
+          : owner === "company"
+            ? COMPANY_OWNER_ID
+            : fields.owner_id;
   if (!id) throw Error("Belge sahibi zorunlu");
   const out = {
     ...fields,

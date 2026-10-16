@@ -98,6 +98,7 @@ const OWNER_LABELS = {
   hakedis: "Hakediş",
   work: "İş kaydı",
   contract: "Sözleşme",
+  company: "Şirket",
 };
 const ROUTE = Object.fromEntries(
   Object.entries(STORES).map(([route, store]) => [store, route]),
@@ -114,6 +115,10 @@ export const FIELD_LABELS = {
   model: "Model",
   model_year: "Model yılı",
   chassis_no: "Şasi no",
+  identity_number: "TC kimlik no",
+  birth_date: "Doğum tarihi",
+  license_class: "Ehliyet sınıfı",
+  blood_type: "Kan grubu",
   engine_no: "Motor no",
   color: "Renk",
   ownership: "Mülkiyet",
@@ -227,6 +232,7 @@ async function maps(db) {
         )),
     ),
   );
+  names.meta = { company_profile: (await db.metaGet("company_profile"))?.title || core.COMPANY_NAME };
   return names;
 }
 function value(key, v, names) {
@@ -416,7 +422,7 @@ async function documentScreen(ctx) {
       qs("[name=owner_type]", form).closest(".field").hidden =
         !!documentOwner(category);
       const store = OWNER_STORES[type],
-        records = await db.listActive(store),
+        records = type === "company" ? [{ id: "company_profile", name: core.COMPANY_NAME }] : await db.listActive(store),
         key =
           type === "vehicle"
             ? "vehicle_id"
@@ -436,7 +442,7 @@ async function documentScreen(ctx) {
               r.doc_no ||
               `${r.date || ""} ${r.work_type || r.category || ""} ${r.liters ? core.fmtNum(r.liters) + " Lt" : ""} ${r.hakedis_no ? "#" + r.hakedis_no : ""}`,
           })),
-          query.owner_id || "",
+          type === "company" ? "company_profile" : query.owner_id || "",
           { req: true },
         ) +
         (type === "customer"
@@ -837,7 +843,7 @@ async function master(ctx) {
             "load_ton",
           ]
         : store === "personnel"
-          ? ["name", "role", "phone", "employment_date", "vehicle_id"]
+          ? ["name", "role", "phone", "employment_date", "vehicle_id", "identity_number", "birth_date", "license_class", "blood_type"]
           : store === "sites"
             ? ["name", "customer_id", "address", "location", "contact", "phone"]
             : store === "contractors"

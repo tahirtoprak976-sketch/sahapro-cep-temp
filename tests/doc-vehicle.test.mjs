@@ -42,6 +42,6 @@ assert.ok(isRoadVehicle({ type: "Binek" })); assert.equal(templatesFor({ type: "
   assert.deepEqual(vehicleUpdate({ type: "Kamyon" }, { type: "Yarı Römork" }), [{ k: "type", from: "Kamyon", to: "Yarı Römork", on: false }], "farklı tür önerilir ama işaretsiz");
   assert.deepEqual(vehicleUpdate({ km: 700000 }, { km: 612345 }), [], "km geri gitmez");
   const [r] = validateDocuments({ documents: [X] }, { d: { vehicles: [v], personnel: [] }, today, photoTexts: [T], photoCount: 1 });
-  assert.equal(r.owner_id, "V1"); assert.equal(r.vehicle_update.length, 7); assert.equal(r.ok, true);
+  assert.equal(r.owner_id, "V1"); assert.equal(r.card_update.length, 7); assert.equal(r.ok, true);
 }
 console.log("doc-vehicle ok");

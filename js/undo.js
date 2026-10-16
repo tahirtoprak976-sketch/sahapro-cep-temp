@@ -3,7 +3,7 @@
 // yapıldıysa (aynı kayıt sonradan düzenlendiyse) geri alma reddedilir — hiçbir şey yarım kalmaz.
 import { ENTITY_STORES, nowISO, uuid } from "./core.js";
 
-export const UNDO_META = ["collect_notes", "collect_iban", "fuel_ref_price", "assistant_rules"];
+export const UNDO_META = ["collect_notes", "collect_iban", "fuel_ref_price", "assistant_rules", "company_profile"];
 const SKIP = new Set(["audit_log"]);
 
 export async function snapshot(db) {

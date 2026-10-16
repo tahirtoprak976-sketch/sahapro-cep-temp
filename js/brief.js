@@ -47,7 +47,7 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   if (tank.in || tank.out) add("🛢", `Depoda ${fmt(tank.remaining)} L mazot${tank.daysLeft != null ? ` · günde ~${fmt(tank.daily)} L → ${tank.daysLeft} gün yeter` : ""}`, "#/depo", tank.daysLeft != null && tank.daysLeft <= 3 ? "alert" : "");
   // 4) Belgeler (14 gün)
   const docs = latestDocuments(live(d, "documents")).filter((x) => x.expiry_date && x.expiry_date <= addDays(today, 14)).sort((a, b) => a.expiry_date.localeCompare(b.expiry_date));
-  for (const x of docs.slice(0, 3)) add("📄", `${nm(d, "vehicles", x.vehicle_id || x.owner_id) || nm(d, "personnel", x.personnel_id || x.owner_id) || "Belge"} · ${x.category || "belge"} ${x.expiry_date < today ? "süresi doldu" : trDate(x.expiry_date) + "'de bitiyor"}`, "#/belgeler", x.expiry_date < today ? "alert" : "warn");
+  for (const x of docs.slice(0, 3)) add("📄", `${nm(d, "vehicles", x.vehicle_id || x.owner_id) || nm(d, "personnel", x.personnel_id || x.owner_id) || (x.owner_type === "company" ? "Şirket" : "Belge")} · ${x.category || "belge"} ${x.expiry_date < today ? "süresi doldu" : trDate(x.expiry_date) + "'de bitiyor"}`, "#/belgeler", x.expiry_date < today ? "alert" : "warn");
   // 4b) Bakım takvimi
   for (const r of maintDue.slice(0, 3)) add("🔧", `${r.v.name} · ${r.rule.title}: ${r.text}`, "#/bakim-takvimi/" + r.v.id, r.state === "late" ? "alert" : "warn");
   // 4c) Cevap bekleyen teklifler
