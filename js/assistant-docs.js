@@ -129,6 +129,40 @@ export function ticketReconcile(data, { today = todayStr(), days = 7 } = {}) {
 export const ASSIST_DOC_TYPES = [...VEHICLE_DOCS, ...PERSONNEL_DOCS];
 // Plaka anahtarı: "34 ABC 123" → "34ABC123" (Türk plakası biçiminde değilse boş)
 export const plateKey = (s) => { const k = alnum(s); return /^(0[1-9]|[1-7]\d|8[01])[A-Z]{1,3}\d{2,5}$/.test(k) ? k : ""; };
+// Belgeden araç bilgisi: her değer belgenin yazısında gerçekten geçmeli (uydurma bilgi karta yazılmaz)
+const FUELS = [["Dizel", /dizel|diesel|motorin/], ["Benzin", /benzin/], ["LPG", /lpg/], ["Elektrik", /elektrik/]];
+export function vehicleInfo(x, text) {
+  const nt = ` ${norm(text)} `, at = alnum(text), nums = numbersInText(text);
+  const word = (v, max) => { const s = String(v || "").trim(); return s.length >= 2 && nt.includes(` ${norm(s)} `) ? s.slice(0, max) : ""; };
+  const code = (v) => { const k = alnum(v); return k.length >= 6 && at.includes(k) ? k.slice(0, 30) : ""; };
+  const yr = Number(x.model_year), km = Math.round(Number(x.km));
+  const kind = String(x.vehicle_kind || "").trim();
+  const fuel = FUELS.find(([, re]) => re.test(foldTr(x.fuel_type || "").toLowerCase()) && re.test(foldTr(text).toLowerCase()));
+  return {
+    type: kind && nt.includes(` ${norm(kind)}`) && vehicleKind(kind) !== "Araç/Makine" ? vehicleKind(kind) : "",
+    brand: word(x.brand, 40), model: word(x.model, 60),
+    model_year: yr >= 1950 && yr <= 2100 && String(text).includes(String(yr)) ? yr : null,
+    chassis_no: code(x.chassis_no), engine_no: code(x.engine_no), color: word(x.color, 30),
+    fuel_type: fuel ? fuel[0] : "",
+    km: km > 0 && km < 5e6 && nums.has(km) ? km : null,
+  };
+}
+export const VEHICLE_INFO_LABELS = { plate: "Plaka", type: "Tür", brand: "Marka", model: "Model", model_year: "Model yılı", chassis_no: "Şasi no", engine_no: "Motor no", color: "Renk", fuel_type: "Yakıt tipi", km: "Km" };
+const sameType = (a, b) => { const g = (t) => (/^(tır|çekici)$/i.test(t) ? "TIR" : t); return g(a) === g(b); };
+// Kayıtlı araç kartı ile belge arasındaki farklar. on: varsayılan işaretli mi
+export function vehicleUpdate(v, info) {
+  const out = [];
+  for (const k of Object.keys(VEHICLE_INFO_LABELS)) {
+    if (k === "plate") continue;
+    const to = info[k], from = v[k];
+    if (to == null || to === "") continue;
+    if (k === "km") { if (to > Number(from || 0)) out.push({ k, from: from || null, to, on: true }); continue; }
+    if (k === "type") { if (!sameType(from || "", to)) out.push({ k, from: from || null, to, on: !from || from === "Araç/Makine" }); continue; }
+    if (k === "model_year" ? Number(from) === to : norm(from) === norm(to) || alnum(from) === alnum(to) && /_no$/.test(k)) continue;
+    out.push({ k, from: from || null, to, on: true });
+  }
+  return out;
+}
 // Belgedeki cins → uygulamanın araç türü
 export const VEHICLE_KINDS = ["Çekici", "Yarı Römork", "Römork", "Tır", "Kamyon", "Kamyonet", "Binek", "İş Makinesi", "Araç/Makine"];
 export function vehicleKind(s) {
@@ -147,6 +181,7 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
   const out = [];
   for (const x of (Array.isArray(plan?.documents) ? plan.documents : []).slice(0, 10)) {
     const issues = [];
+    let r_upd = [];
     const photo = photoIdx(x.photo, photoCount);
     const text = photo != null ? String(photoTexts[photo] || "") : "";
     if (photo == null) issues.push("Hangi fotoğraf olduğu belli değil");
@@ -163,19 +198,23 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
       const pl = plateKey(x.plate);
       if (pl && alnum(text).includes(pl)) {
         owner = list.find((v) => plateKey(v.plate) === pl || plateKey(v.name) === pl) || null;
-        if (!owner) {
-          const yr = Number(x.model_year);
-          newVehicle = { plate: pl, type: vehicleKind(x.vehicle_kind || text), brand: String(x.brand || "").trim().slice(0, 40), model: String(x.model || "").trim().slice(0, 60), model_year: yr >= 1950 && yr <= 2100 && String(text).includes(String(yr)) ? yr : null };
-        }
+        if (!owner) { const info = vehicleInfo(x, text); newVehicle = { plate: pl, ...info, type: info.type || vehicleKind(x.vehicle_kind || text) }; }
       }
     }
     if (!owner && owner_type === "personnel") owner = list.find((p) => norm(p.name).length >= 5 && (` ${norm(text)} `).includes(` ${norm(p.name)} `)) || null;
+    if (owner && owner_type === "vehicle") {
+      const pk = plateKey(owner.plate) || plateKey(owner.name);
+      if (pk && alnum(text).includes(pk)) {
+        r_upd = vehicleUpdate(owner, vehicleInfo(x, text));
+        if (!plateKey(owner.plate)) r_upd.unshift({ k: "plate", from: owner.plate || null, to: pk, on: true });
+      }
+    }
     if (newVehicle) issues.push(`${newVehicle.plate} kayıtlı değil — yeni araç kartı açılacak (${newVehicle.type}${newVehicle.brand ? " · " + newVehicle.brand : ""}${newVehicle.model_year ? " · " + newVehicle.model_year : ""})`);
     else if (!owner) issues.push(owner_type === "personnel" ? "Personel seçilmeli" : "Araç seçilmeli");
     else if (owner_type === "vehicle" && owner.plate && !vehicleInText(owner, text)) issues.push(`${owner.plate} plakası belgede görünmüyor`);
     else if (owner_type === "personnel" && !norm(text).includes(norm(owner.name).split(" ")[0])) issues.push(`${owner.name} adı belgede görünmüyor`);
     const dates = datesInText(text);
-    const r = { photo, category, owner_type, owner_id: owner?.id || null, new_vehicle: newVehicle, doc_no: "", date: null, expiry_date: null };
+    const r = { photo, category, owner_type, owner_id: owner?.id || null, new_vehicle: newVehicle, vehicle_update: r_upd, doc_no: "", date: null, expiry_date: null };
     const no = String(x.doc_no || "").trim();
     if (no && alnum(no).length >= 3 && alnum(text).includes(alnum(no))) r.doc_no = no.slice(0, 40);
     else issues.push(no ? `Belge no "${no}" belgede yok` : "Belge numarası okunamadı");
@@ -202,7 +241,7 @@ export function heardText(plan) {
 
 export const DOCS_PROMPT = [
   "Fotoğraf bir DÖKÜM / KANTAR fişiyse \"tickets\" dizisine yaz: {\"photo\":fotoğraf sırası,\"ticket_no\",\"date\":YYYY-MM-DD,\"plate\",\"vehicle_id\",\"tonnage\":net ton,\"dump_site_id\",\"dump_site_name\",\"material\",\"customer_id\",\"site_id\"}. Fiş no, tarih, plaka ve tonajı fişte yazdığı gibi oku; yoksa null.",
-  "Fotoğraf bir ARAÇ veya PERSONEL BELGESİYSE (muayene, sigorta, kasko, ehliyet, SRC, psikoteknik…) \"documents\" dizisine yaz: {\"photo\",\"category\" (" + [...VEHICLE_DOCS, ...PERSONNEL_DOCS].join(", ") + "),\"owner_id\" (araç ya da personel ID),\"doc_no\",\"date\":düzenleme YYYY-MM-DD,\"expiry_date\":bitiş/geçerlilik YYYY-MM-DD,\"plate\" (araç belgesindeki plaka, yazdığı gibi),\"vehicle_kind\" (belgedeki CİNSİ/SINIFI: Çekici, Yarı Römork, Römork, Kamyon, Kamyonet, Otomobil/Binek, İş Makinesi…),\"brand\" (MARKASI),\"model\" (TİPİ / ticari adı),\"model_year\" (MODEL YILI)}. Plaka kayıtlı araçlarda yoksa owner_id null bırak ama plate ve vehicle_kind'ı MUTLAKA doldur (yeni araç kartı açılır). Belge fişi gider değildir; expenses'e yazma.",
+  "Fotoğraf bir ARAÇ veya PERSONEL BELGESİYSE (muayene, sigorta, kasko, ehliyet, SRC, psikoteknik…) \"documents\" dizisine yaz: {\"photo\",\"category\" (" + [...VEHICLE_DOCS, ...PERSONNEL_DOCS].join(", ") + "),\"owner_id\" (araç ya da personel ID),\"doc_no\",\"date\":düzenleme YYYY-MM-DD,\"expiry_date\":bitiş/geçerlilik YYYY-MM-DD,\"plate\" (araç belgesindeki plaka, yazdığı gibi),\"vehicle_kind\" (belgedeki CİNSİ/SINIFI: Çekici, Yarı Römork, Römork, Kamyon, Kamyonet, Otomobil/Binek, İş Makinesi…),\"brand\" (MARKASI),\"model\" (TİPİ / ticari adı),\"model_year\" (MODEL YILI),\"chassis_no\" (ŞASİ NO),\"engine_no\" (MOTOR NO),\"color\" (RENGİ),\"fuel_type\" (YAKIT CİNSİ),\"km\" (muayenedeki KİLOMETRE)}. Araç bilgilerini kayıtlı araçlarda da doldur (kart güncellenir). Plaka kayıtlı araçlarda yoksa owner_id null bırak ama plate ve vehicle_kind'ı MUTLAKA doldur (yeni araç kartı açılır). Belge fişi gider değildir; expenses'e yazma.",
   "Ses kaydı varsa söylenenleri \"heard_text\" alanına AYNEN yaz (rakamları rakamla), sonra ses kaydını mesaj gibi işle; quote değerlerini heard_text'ten kopyala.",
 ].join("\n");
 
@@ -210,7 +249,7 @@ export function docsSchemaProps() {
   const NS = { type: ["string", "null"] }, NN = { type: ["number", "null"] }, NI = { type: ["integer", "null"] };
   return {
     tickets: { type: "array", items: { type: "object", properties: { photo: NI, ticket_no: NS, date: NS, plate: NS, vehicle_id: NS, tonnage: NN, dump_site_id: NS, dump_site_name: NS, material: NS, customer_id: NS, site_id: NS } } },
-    documents: { type: "array", items: { type: "object", properties: { photo: NI, category: NS, owner_id: NS, doc_no: NS, date: NS, expiry_date: NS, plate: NS, vehicle_kind: NS, brand: NS, model: NS, model_year: NN } } },
+    documents: { type: "array", items: { type: "object", properties: { photo: NI, category: NS, owner_id: NS, doc_no: NS, date: NS, expiry_date: NS, plate: NS, vehicle_kind: NS, brand: NS, model: NS, model_year: NN, chassis_no: NS, engine_no: NS, color: NS, fuel_type: NS, km: NN } } },
     heard_text: NS,
   };
 }

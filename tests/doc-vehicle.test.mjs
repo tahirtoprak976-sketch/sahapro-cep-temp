@@ -16,7 +16,7 @@ const plan = { documents: [
   { photo: 0, category: "TÜVTÜRK / Periyodik Muayene", owner_id: null, doc_no: "MR-55821", expiry_date: "2027-10-10", plate: "06 ZZ 999" }, // belgede yok
 ] };
 const [a, b, c] = validateDocuments(plan, { d, today, photoTexts: [muayene, binek], photoCount: 2 });
-assert.deepEqual(a.new_vehicle, { plate: "34ABC123", type: "Yarı Römork", brand: "TIRSAN", model: "", model_year: 2018 });
+assert.deepEqual(a.new_vehicle, { plate: "34ABC123", type: "Yarı Römork", brand: "TIRSAN", model: "", model_year: 2018, chassis_no: "", engine_no: "", color: "", fuel_type: "", km: null });
 assert.equal(a.ok, true); assert.ok(a.issues.some((x) => /kayıtlı değil/.test(x)));
 assert.equal(b.new_vehicle.type, "Binek"); assert.equal(b.ok, true);
 assert.equal(c.new_vehicle, null, "uydurma plaka"); assert.equal(c.ok, false);
@@ -26,4 +26,22 @@ assert.equal(e.owner_id, "V1"); assert.equal(e.new_vehicle, null);
 // Bakım şablonları
 assert.equal(templatesFor({ type: "Yarı Römork" })[0].title, "Fren / balata kontrolü");
 assert.ok(isRoadVehicle({ type: "Binek" })); assert.equal(templatesFor({ type: "Binek" })[0].every_km, 20000);
+// Kayıtlı araç: muayene raporundaki gerçek bilgilerle kart güncellemesi
+{
+  const { vehicleInfo, vehicleUpdate } = await import("../js/assistant-docs.js");
+  const T = "TÜVTÜRK ARAÇ MUAYENE RAPORU Rapor No: 2026-778812 Plaka: 34 GAM 627 Markası: MERCEDES-BENZ Tipi: ACTROS 1845 LS Model Yılı: 2019 Cinsi: ÇEKİCİ Rengi: BEYAZ Şasi No: WDB9634031L123456 Motor No: 47197001234567 Yakıt Cinsi: DİZEL Kilometre: 612.345 Muayene Tarihi: 12.10.2026 Geçerlilik Tarihi: 12.10.2027";
+  const X = { photo: 0, category: "TÜVTÜRK / Periyodik Muayene", doc_no: "2026-778812", date: "2026-10-12", expiry_date: "2027-10-12", plate: "34 GAM 627", vehicle_kind: "Çekici", brand: "MERCEDES-BENZ", model: "ACTROS 1845 LS", model_year: 2019, color: "BEYAZ", chassis_no: "WDB9634031L123456", engine_no: "47197001234567", fuel_type: "Dizel", km: 612345 };
+  const info = vehicleInfo(X, T);
+  assert.deepEqual(info, { type: "Çekici", brand: "MERCEDES-BENZ", model: "ACTROS 1845 LS", model_year: 2019, chassis_no: "WDB9634031L123456", engine_no: "47197001234567", color: "BEYAZ", fuel_type: "Dizel", km: 612345 });
+  assert.equal(vehicleInfo({ ...X, model_year: 2021, km: 700000, chassis_no: "XXXXXXXX99", brand: "VOLVO" }, T).model_year, null, "belgede olmayan yıl");
+  assert.equal(vehicleInfo({ ...X, km: 700000 }, T).km, null); assert.equal(vehicleInfo({ ...X, brand: "VOLVO" }, T).brand, "");
+  const v = { id: "V1", name: "34GAM627", plate: "34 GAM 627", type: "Tır", model_year: 2017, km: 600000, brand: "Mercedes-Benz" };
+  const u = vehicleUpdate(v, info);
+  assert.deepEqual(u.map((x) => x.k), ["model", "model_year", "chassis_no", "engine_no", "color", "fuel_type", "km"], "Tır=Çekici, marka aynı");
+  assert.ok(u.every((x) => x.on));
+  assert.deepEqual(vehicleUpdate({ type: "Kamyon" }, { type: "Yarı Römork" }), [{ k: "type", from: "Kamyon", to: "Yarı Römork", on: false }], "farklı tür önerilir ama işaretsiz");
+  assert.deepEqual(vehicleUpdate({ km: 700000 }, { km: 612345 }), [], "km geri gitmez");
+  const [r] = validateDocuments({ documents: [X] }, { d: { vehicles: [v], personnel: [] }, today, photoTexts: [T], photoCount: 1 });
+  assert.equal(r.owner_id, "V1"); assert.equal(r.vehicle_update.length, 7); assert.equal(r.ok, true);
+}
 console.log("doc-vehicle ok");
