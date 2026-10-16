@@ -261,7 +261,8 @@ export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens
         return await call(url, key, body(useSchema, tokens, extra), fetchFn);
       } catch (e) {
         // Şablonu desteklemeyen model/sürüm: şablonsuz (doğrulama zaten telefonda)
-        if (useSchema && schema && /schema|responseJsonSchema|response_json_schema|Invalid JSON payload/i.test(e.message)) { useSchema = false; continue; }
+        // "Request contains an invalid argument": şablon Gemini'nin sınırını aşmış olabilir → bir kez şablonsuz dene
+        if (useSchema && schema && /schema|responseJsonSchema|response_json_schema|Invalid JSON payload|invalid argument|too many states|INVALID_ARGUMENT/i.test(e.message)) { useSchema = false; continue; }
         // Eski modellerde çıktı sınırı küçük (8192): sınırı düşür
         if (tokens > 8192 && /max_?output_?tokens|maxOutputTokens|output token/i.test(e.message)) { tokens = 8192; continue; }
         throw e;
