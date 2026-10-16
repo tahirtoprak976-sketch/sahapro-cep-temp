@@ -1024,6 +1024,7 @@ async function card(ctx) {
     appbar(r.name, LABELS[store] + " / ilişkisel kart") +
     exportBar() +
     (DETAIL_KIND[store] ? `<button class="btn primary block" style="margin:8px 0" data-go="#/detayli-rapor?k=${DETAIL_KIND[store]}&id=${encodeURIComponent(id)}&p=all">📑 Detaylı rapor — tüm kayıtlar (PDF)</button>` : "") +
+    (store === "dump_sites" && !r.own_yard ? `<button class="btn block" style="margin:0 0 8px" data-go="#/dokum-hesap/${encodeURIComponent(id)}">💳 Döküm hesabı — yatırılan para / kalan</button>` : "") +
     `<div class="row"><button class="btn" data-go="#/${parts[0]}/${id}/edit">Kartı Düzenle</button>${["vehicles", "personnel", "customers"].includes(store) ? `<button class="btn" data-go="#/belgeler/new?owner_type=${store === "vehicles" ? "vehicle" : store === "personnel" ? "personnel" : "customer"}&owner_id=${id}&category=${encodeURIComponent(store === "vehicles" ? "Muayene Belgesi" : store === "personnel" ? "SRC" : "Sözleşme")}">Belge Ekle</button>` : ""}</div><div class="tabs" data-tabs><button class="chip on" data-tab="general">GENEL</button>${relations.map((s) => `<button class="chip" data-tab="${s}">${LABELS[s]}</button>`).join("")}${store === "vehicles" ? '<button class="chip" data-tab="cost">MALİYET</button>' : ""}<button class="chip" data-tab="report">RAPOR</button></div><div data-card-content></div>`;
   async function tab(s) {
     const el = qs("[data-card-content]", root);

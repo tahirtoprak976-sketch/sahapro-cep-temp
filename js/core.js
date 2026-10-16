@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.91";
+export const APP_VERSION = "SAHAPRO SOLO v3.7.92";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -822,7 +822,7 @@ export function profitability(data, filter = {}) {
   }
   let gider = 0;
   for (const e of (data.expense_records || []).filter(
-    (r) => isActive(r) && matchCtx(r) && inRange(r.date),
+    (r) => isActive(r) && !r.dump_deposit && matchCtx(r) && inRange(r.date),
   ))
     gider += Number(e.amount) || 0;
   let bakim = 0;

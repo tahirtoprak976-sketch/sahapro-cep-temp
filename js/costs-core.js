@@ -21,7 +21,7 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
   const rows = [];
   const name = (s, id) => (id ? live(d, s).find((x) => x.id === id)?.name || "" : "");
   for (const e of live(d, "expense_records"))
-    if (inR(e.date) && Number(e.amount) > 0)
+    if (inR(e.date) && Number(e.amount) > 0 && !e.dump_deposit) // döküm hesabına yükleme gider değil (döküm ücreti ayrıca yazılır)
       rows.push({ kind: "gider", id: e.id, date: e.date, amount: Number(e.amount), label: e.category || "Gider", sub: [e.company, e.description].filter(Boolean).join(" · "), vehicle_id: e.vehicle_id || null, href: null });
   for (const f of live(d, "fuel_records")) {
     if (!inR(f.date)) continue;
