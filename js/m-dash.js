@@ -644,6 +644,7 @@ async function reports(ctx) {
     appbar("Rapor Merkezi", "Filtrele · PDF · CSV · Paylaş") +
     `
     <div style="height:10px"></div>
+    <div class="card tap" data-go="#/detayli-rapor" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📑 Detaylı Raporlar</b><br><span class="small muted">Döküm sahası, ocak, müşteri, şantiye, araç, personel, esnaf, yakıt, gider, bakım… seçin; her kaydı ayrıntısıyla görün, kurumsal PDF alın</span></span><span class="muted">›</span></div></div>
     ${segBar(REPORTS, type, (v) => `#/raporlar?type=${v}`)}
     <div class="card">
       <div class="formgrid2">
@@ -760,6 +761,7 @@ async function more(ctx) {
     ["#/musteriler", "🏢", "Müşteriler"],
     ["#/santiyeler", "📍", "Şantiyeler"],
     ["#/raporlar", "📊", "Raporlar"],
+    ["#/detayli-rapor", "📑", "Detaylı Raporlar"],
     ["#/yonetici", "📈", "Yönetici"],
     ["#/belgeler", "🗂", "Belgeler"],
     ["#/tara", "📷", "Belge Tara"],
@@ -776,7 +778,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.88")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.89")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
