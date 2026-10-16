@@ -4,7 +4,7 @@
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
-import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS } from "./assistant-docs.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
@@ -377,8 +377,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : nv ? "newveh" : np ? "newper" : "")}</select></div>
           ${np ? `<div class="field" data-np ${r.owner_id ? "hidden" : ""}><label>Yeni personel adı</label><input name="np_name" value="${esc(np.name)}"></div>
           <div class="field" data-np ${r.owner_id ? "hidden" : ""}><label>Görevi</label><input name="np_role" value="${esc(/ehliyet|src|psikoteknik/i.test(r.category || "") ? "Şoför" : /operat/i.test(r.category || "") ? "Operatör" : "")}"></div>` : ""}
-          ${nv ? `<div class="field"><label>Yeni araç plakası</label><input name="nv_plate" value="${esc(nv.plate)}"></div>
-          <div class="field"><label>Yeni araç türü</label><select name="nv_type">${opt([...new Set([...VEHICLE_KINDS, nv.type])].map((x) => [x, x]), nv.type)}</select></div>
+          ${nv ? `<div class="tiny muted" style="grid-column:1/-1;margin:-4px 2px 2px">Araç listede başka adla kayıtlıysa (ör. "Mobil Vinç") sahibi olarak onu seçin: aşağıdaki plaka ve bilgiler o karta yazılır.</div><div class="field"><label>Plaka (belgeden)</label><input name="nv_plate" value="${esc(nv.plate)}"></div>
+          <div class="field"><label>Araç türü (belgeden)</label><select name="nv_type">${opt([...new Set([...VEHICLE_KINDS, nv.type])].map((x) => [x, x]), nv.type)}</select></div>
           <div class="field"><label>Marka</label><input name="nv_brand" value="${esc(nv.brand || "")}"></div>
           <div class="field"><label>Model yılı</label><input type="number" name="nv_year" value="${nv.model_year ?? ""}"></div>` : ""}
           <div class="field"><label>Belge no</label><input name="doc_no" value="${esc(r.doc_no)}"></div>
@@ -810,6 +810,20 @@ async function save(ctx, out, v, d, { message, files }) {
             }
           }
           otype = "personnel"; oid = newVehByPlate.get("p:" + key);
+        } else if (otype === "vehicle" && r.new_vehicle && oid !== r.owner_id) {
+          // Belgedeki araç "kayıtlı değil" sanıldı ama kullanıcı mevcut bir kartı seçti (ör. plakasız "Mobil Vinç"):
+          // belgedeki plaka ve bilgiler seçilen karta yazılır
+          const cur = await db.get("vehicles", oid);
+          if (cur) {
+            const nv = r.new_vehicle;
+            const info = { ...nv, brand: val(c, "nv_brand").trim() || nv.brand, model_year: Number(val(c, "nv_year")) || nv.model_year, type: val(c, "nv_type") || nv.type };
+            const upd = Object.fromEntries(vehicleUpdate(cur, info).filter((u) => u.on).map((u) => [u.k, u.to]));
+            const pl = plateKey(val(c, "nv_plate"));
+            if (pl && !plateKey(cur.plate)) upd.plate = pl;
+            else if (pl && plateKey(cur.plate) !== pl) toast(`${cur.name} kartında başka plaka var (${cur.plate}); plaka değiştirilmedi`, "err");
+            if (upd.km) upd.meter_date = val(c, "date") || todayStr();
+            if (Object.keys(upd).length) { await db.saveExisting("vehicles", cur, upd, "Asistan: " + category + " belgesinden güncellendi"); done.vupd++; }
+          }
         } else if (oid === r.owner_id && otype === r.owner_type && r.card_update?.length) {
           // Kayıtlı araç / personel / şirket: işaretli alanları belgedeki gerçek bilgiyle düzelt
           const on = new Set(qsa("[data-vu]", c).filter((x) => x.checked).map((x) => x.dataset.vu));

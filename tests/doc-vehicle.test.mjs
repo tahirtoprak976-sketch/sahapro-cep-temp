@@ -45,3 +45,15 @@ assert.ok(isRoadVehicle({ type: "Binek" })); assert.equal(templatesFor({ type: "
   assert.equal(r.owner_id, "V1"); assert.equal(r.card_update.length, 7); assert.equal(r.ok, true);
 }
 console.log("doc-vehicle ok");
+// Plakasız kartla daha önce kaydedilmiş belge: aynı belge no → o araç, plaka ve bilgiler eklenir
+{
+  const { validateDocuments } = await import("../js/assistant-docs.js");
+  const T = "MUAYENE Rapor No: 3415087327201 Plaka: 34 ZDD 92 Markası: MERCEDES-BENZ Model Yılı: 2006 22.02.2025 23.02.2026";
+  const d2 = { vehicles: [{ id: "MV", name: "Mobil Vinç", type: "Araç/Makine", created_at: "x" }], personnel: [],
+    documents: [{ id: "DD", category: "Muayene Belgesi", doc_no: "3415087327201", owner_type: "vehicle", owner_id: "MV", vehicle_id: "MV", date: "2025-02-22", expiry_date: "2026-02-23", created_at: "x" }] };
+  const [r] = validateDocuments({ documents: [{ photo: 0, category: "Muayene Belgesi", doc_no: "3415087327201", date: "2025-02-22", expiry_date: "2026-02-23", plate: "34 ZDD 92", brand: "MERCEDES-BENZ", model_year: 2006 }] }, { d: d2, today: "2026-10-16", photoTexts: [T], photoCount: 1 });
+  assert.equal(r.owner_id, "MV"); assert.equal(r.new_vehicle, null);
+  assert.deepEqual(r.card_update.map((u) => [u.k, u.to]), [["plate", "34ZDD92"], ["brand", "MERCEDES-BENZ"], ["model_year", 2006]]);
+  assert.equal(r.existing_doc_id, "DD"); assert.equal(r.ok, true, "belge eklenmez, kart güncellenir");
+  console.log("doc-vehicle mobil vinç ok");
+}
