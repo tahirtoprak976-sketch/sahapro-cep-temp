@@ -58,6 +58,38 @@ export async function driverMessage(entries, cfg) {
   return [`📋 SAHAPRO şoför kaydı — ${cfg.p[1]}`, ...entries.map((e) => entryLine(e, cfg)), `SP1:${code}`].join("\n");
 }
 
+// WhatsApp'a paylaşılan / kopyalanan metin yaklaşık 4 KB'ta kesilebiliyor (kesilen kod açılmaz).
+// Mesaj bu sınırın altında tutulur; fazlası sonraki mesaja kalır.
+export const MSG_LIMIT = 3600;
+export const msgBytes = (s) => new TextEncoder().encode(String(s || "")).length;
+// İmza çizgileri (600×220 tuvalde): yakın noktalar atılır, yarı çözünürlükte ilk nokta + farklar olarak saklanır.
+// Tipik imza ~1 KB tutar; resim yerine bu gönderilir, patron tarafında yeniden çizilir.
+export function encodeStrokes(strokes, minDist = 4) {
+  const out = [];
+  for (const st of strokes || []) {
+    const pts = [];
+    for (let i = 0; i < st.length; i += 2) {
+      const x = st[i], y = st[i + 1], L = pts.length;
+      if (L && Math.hypot(x - pts[L - 2], y - pts[L - 1]) < minDist && i < st.length - 2) continue;
+      pts.push(x, y);
+    }
+    if (!pts.length) continue;
+    const q = pts.map((v) => Math.round(v / 2));
+    const enc = [q[0], q[1]];
+    for (let i = 2; i < q.length; i += 2) enc.push(q[i] - q[i - 2], q[i + 1] - q[i - 1]);
+    out.push(enc);
+  }
+  return out;
+}
+export function decodeStrokes(sv) {
+  if (!Array.isArray(sv)) return [];
+  return sv.filter((s) => Array.isArray(s) && s.length >= 2 && s.every(Number.isFinite)).slice(0, 200).map((s) => {
+    const pts = [s[0] * 2, s[1] * 2];
+    for (let i = 2; i + 1 < s.length; i += 2) pts.push(pts[i - 2] + s[i] * 2, pts[i - 1] + s[i + 1] * 2);
+    return pts;
+  });
+}
+
 // Patronun tarafı: metindeki kodlar
 const CODE = /SP1:([A-Za-z0-9_-]{8,})/g;
 export async function extractPayloads(text) {
@@ -109,7 +141,7 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
     });
     meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
-      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null } } : {}) });
+      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null, sigStrokes: Array.isArray(e.sv) && e.sv.length ? e.sv : null } } : {}) });
   }
   return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta };
 }

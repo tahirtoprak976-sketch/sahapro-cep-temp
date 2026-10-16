@@ -153,6 +153,8 @@ export async function screen(ctx) {
       const drv = await import("./driver-core.js");
       const drvPayloads = await drv.extractPayloads(message);
       const drvRest = drvPayloads.length ? drv.stripDriverBlocks(message) : message;
+      // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
+      if (!drvPayloads.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
       const useGemini = !drvPayloads.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0;
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
@@ -911,7 +913,8 @@ async function save(ctx, out, v, d, { message, files }) {
         {
           const dg = v.works[Number(c.dataset.i)].digital;
           // İmza: mesajın kodunun içinden (kopyala-yapıştırla da gelir) ya da ayrı resim olarak
-          if (dg?.sigData) { try { const bin = atob(dg.sigData); const u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); await db.addAttachment("work", savedWork.id, new File([u], `imza-${dg.no}.png`, { type: "image/png" }), { kind: "signature" }); } catch (e) { /* bozuk imza: atla */ } }
+          if (dg?.sigStrokes) { try { const blob = await strokesPng(dg.sigStrokes); if (blob) await db.addAttachment("work", savedWork.id, new File([blob], `imza-${dg.no}.png`, { type: "image/png" }), { kind: "signature" }); } catch (e) { /* bozuk imza: atla */ } }
+          else if (dg?.sigData) { try { const bin = atob(dg.sigData); const u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); await db.addAttachment("work", savedWork.id, new File([u], `imza-${dg.no}.png`, { type: "image/png" }), { kind: "signature" }); } catch (e) { /* bozuk imza: atla */ } }
           else if (dg?.sigPhoto != null && files[dg.sigPhoto]) await db.addAttachment("work", savedWork.id, files[dg.sigPhoto], { kind: "signature" });
         }
         done.work++;
@@ -1081,6 +1084,23 @@ function bindUndo(ctx, box) {
         toast(e.message || String(e), "err");
       }
     });
+}
+
+// Şoförün imza çizgilerinden (kodun içinde gelir) beyaz zeminli PNG
+async function strokesPng(sv) {
+  const { decodeStrokes } = await import("./driver-core.js");
+  const strokes = decodeStrokes(sv);
+  if (!strokes.length) return null;
+  const cv = document.createElement("canvas"); cv.width = 600; cv.height = 220;
+  const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, 600, 220);
+  g.lineWidth = 3.2; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = "#0b2340";
+  for (const p of strokes) {
+    g.beginPath(); g.moveTo(p[0], p[1]);
+    if (p.length === 2) g.lineTo(p[0] + 0.5, p[1] + 0.5);
+    for (let i = 2; i + 1 < p.length; i += 2) g.lineTo(p[i], p[i + 1]);
+    g.stroke();
+  }
+  return new Promise((r) => cv.toBlob(r, "image/png"));
 }
 
 // İşe bağlanan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, malzeme) eksikse ayrı ve daha dikkatli bir okuma
