@@ -1619,6 +1619,7 @@ async function settings(ctx) {
     recCount += (data[s] || []).filter(isActive).length;
   const atts = await db.getAll("attachments");
   const attBytes = atts.reduce((s, a) => s + (a.size || 0), 0);
+  const bigAtts = atts.filter((a) => a.kind !== "signature" && /^image\//.test(a.type || "") && (a.size || 0) >= 350 * 1024).length;
   let est = null;
   try {
     est = await (navigator.storage && navigator.storage.estimate
@@ -1701,12 +1702,24 @@ async function settings(ctx) {
     <div class="card">
       ${kv("Kayıt (aktif)", fmtNum(recCount))}
       ${kv("Ek / Fotoğraf", `${atts.length} adet · ${mb(attBytes)}`)}
+      ${bigAtts ? `<button class="btn block" style="margin:6px 0" data-shrink>🗜 ${bigAtts} büyük fotoğrafı küçült (yer açar, yedek küçülür)</button><div class="tiny muted" data-shrinkinfo>Yeni fotoğraflar zaten küçültülerek kaydediliyor. Fiş yazısı okunur kalır; imza ve PDF'lere dokunulmaz.</div>` : ""}
       ${kv("Cihaz Depolama", est ? `${mb(est.usage || 0)} / ${est.quota ? mb(est.quota) : "—"}` : "—")}
       ${kv("Sürüm", APP_VERSION + " · şema v" + SCHEMA_VERSION)}
       <button class="btn ghost block" style="margin-top:8px" data-go="#/cop">🗑 Çöp Kutusu</button>
     </div>`;
 
   qs("[data-bak]", root).addEventListener("click", () => doBackup(ctx));
+  qs("[data-shrink]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    if (!(await confirmDialog("Fotoğraflar küçültülsün mü?", "Büyük fotoğraflar 1600 piksele (belgeler 2000) küçültülür. Fiş yazısı okunur kalır ama orijinal büyük hali geri gelmez. İsterseniz önce yedek alın.", "Küçült"))) return;
+    const info = qs("[data-shrinkinfo]", root);
+    b.disabled = true;
+    try {
+      const r = await db.shrinkAllAttachments((i, n) => { info.textContent = `${i} / ${n} fotoğraf…`; });
+      toast(`${r.count} fotoğraf küçültüldü · ${mb(r.before - r.after)} yer açıldı`, "ok");
+      ctx.reload();
+    } catch (e) { toast("Küçültülemedi: " + (e.message || e), "err"); b.disabled = false; }
+  });
   qs("[data-bakpw]", root)?.addEventListener("click", async () => {
     const pw = await promptDialog(backupPw ? "Yedek şifresi" : "Yedeğe şifre koy", backupPw ? "Yeni şifre (boş bırakıp Tamam = şifreyi kaldır)" : "Şifre (en az 6 karakter)", "", { type: "password", hint: "ÖNEMLİ: Bu şifreyi bir yere yazın. Telefon kaybolursa yedeği ancak bu şifreyle açabilirsiniz; şifre unutulursa yedek AÇILAMAZ." });
     if (pw === null && backupPw) {

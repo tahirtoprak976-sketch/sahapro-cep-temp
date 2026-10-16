@@ -86,7 +86,14 @@ async function dashboard(ctx) {
   const sum = daySummary(today, data);
   const lastBackup = await db.metaGet("last_backup_at");
   const alerts = smartAlerts(data, { today, lastBackupAt: lastBackup });
-  const board = todayBoard(data, { today, lastBackupAt: lastBackup, yardSettings: (await db.metaGet("yard_settings")) || {}, collectNotes: (await db.metaGet("collect_notes")) || {} });
+  // Akşam (17:00 sonrası) gün kapatılmadıysa: eksik sayısı ana sayfada
+  let dayCloseOpen = null;
+  if (new Date().getHours() >= 17 && (await db.metaGet("day_closed"))?.date !== today) {
+    const attCount = {};
+    for (const a of await db.getAll("attachments")) attCount[a.record_type + ":" + a.record_id] = (attCount[a.record_type + ":" + a.record_id] || 0) + 1;
+    dayCloseOpen = (await import("./day-close-core.js")).dayCloseChecks(data, { date: today, attCount }).warns;
+  }
+  const board = todayBoard(data, { today, lastBackupAt: lastBackup, dayCloseOpen, yardSettings: (await db.metaGet("yard_settings")) || {}, collectNotes: (await db.metaGet("collect_notes")) || {} });
   const months = monthlySeries(data, { today, months: 6, fuelRefPrice: await db.metaGet("fuel_ref_price") });
   const vsr = vehicleSeries(data, { today, days: 30 }).slice(0, 5);
   const mMax = Math.max(1, ...months.flatMap((m) => [m.work, m.collected, m.cost]));
@@ -324,21 +331,15 @@ async function dayClose(ctx) {
     today,
     lastBackupAt: await db.metaGet("last_backup_at"),
   });
-  const missing = [];
-  if (sum.work_count === 0) missing.push("Bugün hiç iş kaydı yok");
-  for (const w of data.work_records.filter(
-    (w) => isActive(w) && w.date === today && !w.slip_id,
-  ))
-    missing.push(
-      `Fişsiz iş: ${w.work_type || "İş"} ${w.quantity ?? ""} ${w.unit || ""}`,
-    );
-  const pending = data.cash_records.filter(
-    (c) => isActive(c) && c.cash_status === "PERSONELDE",
-  );
-  for (const c of pending)
-    missing.push(
-      `Teslim edilmemiş tahsilat: ${fmtTL(c.amount)} ₺ (${names.personnel[c.personnel_id] || "—"})`,
-    );
+  // Eksik avcısı: bugün eksik kalanlar + biriken açıklar (her madde ilgili kayda gider)
+  const attCount = {};
+  for (const a of await db.getAll("attachments")) attCount[a.record_type + ":" + a.record_id] = (attCount[a.record_type + ":" + a.record_id] || 0) + 1;
+  const { dayCloseChecks } = await import("./day-close-core.js");
+  const chk = dayCloseChecks(data, { date: today, attCount });
+  const closed = await db.metaGet("day_closed");
+  const KIND = { alert: "#d9534f", warn: "#e0a030", info: "#9aa4b2" };
+  const itemHtml = (i) => `<div class="card${i.href ? " tap" : ""}" ${i.href ? `data-go="${esc(i.href)}"` : ""} style="border-left:4px solid ${KIND[i.kind]};padding:10px 12px"><div class="row between"><b class="small">${esc(i.text)}</b>${i.href ? '<span class="muted">›</span>' : ""}</div>${i.sub ? `<div class="tiny muted" style="margin-top:2px">${esc(i.sub)}</div>` : ""}</div>`;
+  const groups = ["Bugün", "Biriken"].map((g) => [g, chk.items.filter((i) => i.group === g)]).filter(([, xs]) => xs.length);
 
   root.innerHTML =
     appbar("Günü Kapat", trDate(today)) +
@@ -348,13 +349,20 @@ async function dayClose(ctx) {
       ${stat(fmtNum(sum.fuel_liters), "Yakıt L")}${stat(fmtTL(sum.expense_total), "Gider ₺")}${stat(fmtTL(sum.tahsilat_total), "Tahsilat ₺")}${stat(fmtNum(sum.personnel_active), "Personel")}
     </div>
     ${sum.slip_count ? `<div class="row" style="margin-bottom:8px">${badge(sum.slip_count + " dijital fiş", "ok")}</div>` : ""}
-    ${missing.length ? `<div class="section-title">Eksik Olabilecekler</div>` + missing.map((m) => notice("warn", m)).join("") : notice("ok", "Gün için eksik bulunamadı.")}
+    ${closed?.date === today ? notice("ok", `Gün kapatıldı (${new Date(closed.at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}${closed.open ? ` · ${closed.open} madde açık bırakıldı` : ""})`) : ""}
+    ${groups.length ? groups.map(([g, xs]) => `<div class="section-title">${g === "Bugün" ? "Bugün eksik kalanlar" : "Biriken açıklar"} (${xs.length})</div>` + xs.map(itemHtml).join("")).join("") : notice("ok", "Eksik bulunamadı — gün temiz.")}
+    <button class="btn primary block" data-close style="margin:10px 0">🌙 ${chk.warns ? `Günü kapat (${chk.warns} madde açık kalacak)` : "Günü kapat"}</button>
+    <div style="height:60px"></div>
     <div class="actionbar">
       <button class="btn" data-wa>📱 WhatsApp</button>
       <button class="btn" data-pdf>🖨 PDF</button>
       <button class="btn primary" data-backup>💾 Yedekle</button>
     </div>`;
 
+  qs("[data-close]", root).addEventListener("click", async () => {
+    await db.metaSet("day_closed", { date: today, at: new Date().toISOString(), open: chk.warns });
+    toast("Gün kapatıldı", "ok"); ctx.reload();
+  });
   qs("[data-wa]", root).addEventListener("click", async () => {
     const txt = buildWhatsAppText(today, data, names);
     await shareText(txt);
@@ -778,7 +786,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.7.89")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.7.90")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
