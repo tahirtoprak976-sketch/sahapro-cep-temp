@@ -590,7 +590,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       const m = dumpInvoiceMatch(d, { company: r.company, seller_tax_no: r.detail.seller_tax_no, text: ptext, items: r.detail.items });
       if (m) {
         const place = String(e.place || "").trim();
-        r.dumpInv = { ...m, place: place.length >= 4 && ptext.toLocaleLowerCase("tr-TR").includes(place.toLocaleLowerCase("tr-TR")) ? place.slice(0, 80) : "" };
+        r.dumpInv = { ...m, hasDeposits: live(d, "expense_records").some((x) => x.dump_deposit && !x.invoice_paid && (!m.site_id || x.dump_site_id === m.site_id)), place: place.length >= 4 && ptext.toLocaleLowerCase("tr-TR").includes(place.toLocaleLowerCase("tr-TR")) ? place.slice(0, 80) : "" };
         if (r.detail.no && live(d, "documents").some((x) => x.category === DUMP_INVOICE && x.doc_no === r.detail.no)) issues.push(`Bu döküm faturası (${r.detail.no}) zaten kayıtlı`);
         r.credit = false; r.supplier_id = null;
       }

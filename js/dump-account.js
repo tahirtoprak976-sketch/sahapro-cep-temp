@@ -71,28 +71,33 @@ export function dumpAccounts(d, { today = todayStr(), siteId = null } = {}) {
     if (!deposits.length && !dumpInvoices(d, s.id).length && siteId == null) continue;
     const first = deposits[0]?.date || "";
     // Hesaptan düşen: ilk yüklemeden sonraki bu sahaya yapılan dökümler (elle yazılan döküm maliyeti dahil)
-    const uses = works.filter((w) => w.date >= first && (w.dump_site_id === s.id || (!w.dump_site_id && w.dump_area && fold(w.dump_area) === fold(s.name))))
+    const allUses = works.filter((w) => w.dump_site_id === s.id || (!w.dump_site_id && w.dump_area && fold(w.dump_area) === fold(s.name)))
       .map((w) => ({ w, f: dumpFee(d, w) })).filter((x) => x.f && x.f.amount > 0)
       .sort((a, b) => String(a.w.date).localeCompare(String(b.w.date)));
+    const invDocs = dumpInvoices(d, s.id);
+    // Fatura varsa hesap ilk faturanın döneminden başlar (geçmiş dönem faturası "ödenmiş" sayılabilir)
+    const start = invDocs.length ? [first, addDays(invDocs[0].date, -31)].filter(Boolean).sort()[0] : first;
+    const uses = allUses.filter((x) => x.w.date >= start);
     const dep = r2(deposits.reduce((n, e) => n + (Number(e.amount) || 0), 0));
     const used = r2(uses.reduce((n, x) => n + x.f.amount, 0));
     const usedEst = r2(uses.filter((x) => x.f.estimated).reduce((n, x) => n + x.f.amount, 0));
     const recent = uses.filter((x) => x.w.date > addDays(today, -14));
     const perDay = r2(recent.reduce((n, x) => n + x.f.amount, 0) / 14);
-    const balance = r2(dep - used);
+    const balanceCalc = r2(dep - used);
     // Faturaya göre: faturalanan tutar sahanın gerçekten düştüğüdür; son faturadan sonraki dökümler tahminle eklenir
-    const invoices = dumpInvoices(d, s.id).map((x, i, arr) => {
+    const invoices = invDocs.map((x, i, arr) => {
       const prev = arr[i - 1]?.date || addDays(x.date, -31);
-      const ours = uses.filter((u) => u.w.date > prev && u.w.date <= x.date);
+      const ours = allUses.filter((u) => u.w.date > prev && u.w.date <= x.date);
       return { doc: x, from: prev, ton: Number(x.ton) || 0, amount: Number(x.amount) || 0, ourTon: r2(ours.reduce((n, u) => n + (Number(u.f.ton) || 0), 0)), ourAmount: r2(ours.reduce((n, u) => n + u.f.amount, 0)), ourTrips: ours.length, ourEst: ours.filter((u) => u.f.estimated).length,
         perTon: Number(x.ton) > 0 ? r2(Number(x.amount) / Number(x.ton)) : null };
     });
     const lastInv = invoices.at(-1)?.doc.date || null;
     const invTotal = r2(invoices.reduce((n, x) => n + x.amount, 0));
-    const after = r2(uses.filter((u) => lastInv && u.w.date > lastInv).reduce((n, u) => n + u.f.amount, 0));
+    const after = r2(allUses.filter((u) => lastInv && u.w.date > lastInv).reduce((n, u) => n + u.f.amount, 0));
     const balanceInv = invoices.length ? r2(dep - invTotal - after) : null;
+    const balance = balanceInv ?? balanceCalc; // fatura varsa saha faturası esas alınır
     out.push({ site: s, deposits, uses, dep, used, usedEst, balance, perDay, daysLeft: perDay > 0 ? Math.floor(Math.max(0, balance) / perDay) : null,
-      invoices, invTotal, lastInv, balanceInv, trips: uses.length, missingTon: uses.filter((x) => x.f.estimated).length, reported: s.account_reported || null });
+      invoices, invTotal, lastInv, balanceInv, balanceCalc, afterInv: after, trips: uses.length, missingTon: uses.filter((x) => x.f.estimated).length, reported: s.account_reported || null });
   }
   return out.sort((a, b) => a.balance - b.balance);
 }
