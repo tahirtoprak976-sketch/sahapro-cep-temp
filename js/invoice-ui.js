@@ -17,11 +17,14 @@ export async function screen(ctx) {
     const cn = (id) => (d.customers || []).find((c) => c.id === id)?.name || "";
     root.innerHTML = appbar("Faturalanacaklar", "Faturası kesilmemiş işler · eLogo'ya hazır") + `
       <div style="height:10px"></div>
+      <button class="btn primary block" data-import style="margin-bottom:8px">📥 eLogo'da kestiğim faturayı yükle (XML / PDF)</button>
       ${Q.length ? Q.map((q) => `<div class="card tap" data-go="#/fatura/${esc(q.customer.id)}" style="border-left:4px solid ${q.oldestDays > 7 ? "#e0a030" : "#2e9e6b"}">
         <div class="row between"><b>${esc(q.customer.name)}</b><b>${tl(q.net)}</b></div>
         <div class="tiny muted">${q.n} iş · en eski ${trDate(q.oldest)} (${q.oldestDays} gün) · KDV hariç${q.missing.length ? ` · <span style="color:#d9534f">eksik: ${esc(q.missing.join(", "))}</span>` : ""}</div></div>`).join("") : notice("ok", "Faturası kesilmemiş fiyatlı iş yok.")}
       ${done.length ? `<div class="section-title">Son kesilen faturalar</div>` + done.map((x) => `<div class="card" style="padding:8px 12px"><div class="row between small"><span>${trDate(x.date)} · ${esc(cn(x.customer_id || x.owner_id))}</span><b>${tl(x.amount)}</b></div><div class="tiny muted">${esc(x.doc_no || "")}</div></div>`).join("") : ""}
+      <div class="tiny muted" style="margin:8px 4px 0">eLogo'da faturayı kestikten sonra XML ya da PDF'ini buraya yükleyin: numara, tarih, tutar okunur, müşteri ve işler bulunur, "faturalandı" işaretlenir.</div>
       <div class="tiny muted" style="margin:8px 4px 80px">Mal satışında (malzeme) fatura teslimden itibaren en geç 7 gün içinde kesilmelidir. Hizmet faturalarının zamanlamasını ve tevkifat oranlarını mali müşavirinize teyit ettirin. Uygulama faturayı kesmez; bilgileri eLogo'ya girmeniz için hazırlar.</div>`;
+    qs("[data-import]", root).addEventListener("click", async () => (await import("./invoice-import-ui.js")).openImport(ctx));
     return true;
   }
 
