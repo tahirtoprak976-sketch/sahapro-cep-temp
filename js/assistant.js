@@ -406,15 +406,18 @@ function render(ctx, out, v, d, { message, files, ms }) {
       .join("") +
     v.tankIn
       .map((r, i) => `<div class="card" data-kind="tank" data-i="${i}">
-        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🛢 Depoya yakıt girişi</b></label>
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🛢 Depoya yakıt girişi</b>${r.detail ? " · fatura" : ""}</label>
+        ${r.photo != null && files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="📄 fatura (önizleme açılamadı, yine de eklenecek)" data-imgfb style="width:100%;max-height:180px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Litre</label><input type="number" step="any" name="liters" value="${r.liters ?? ""}"></div>
           <div class="field"><label>Litre fiyatı (₺)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ""}"></div>
           <div class="field"><label>Toplam (₺, ops.)</label><input type="number" step="any" name="total" value="${r.total ?? ""}"></div>
-          <div class="field"><label>Veresiye petrolcü</label><select name="supplier">${opt(suppliers, r.supplier_id, "— peşin / yok —")}</select></div>
+          <div class="field"><label>Petrolcü</label><select name="supplier">${opt([...(r.newSupplier ? [["new", "➕ Yeni: " + r.newSupplier.name.slice(0, 40)]] : []), ...suppliers], r.supplier_id || (r.newSupplier ? "new" : ""), "— yok —")}</select></div>
+          <div class="field"><label>Ödeme</label><select name="tank_pay">${opt([["credit", "Veresiye (petrolcüye borç)"], ["paid", "Peşin ödendi"]], r.credit ? "credit" : "paid")}</select></div>
           <div class="field"><label>Müşteriden (sefer karşılığı)</label><select name="tank_customer">${opt(customers, r.customer_id, "— yok —")}</select></div>
-        </div>${issues(r)}</div>`)
+          ${r.irsaliye_no ? `<div class="field"><label>İrsaliye no</label><input name="irsaliye_no" value="${esc(r.irsaliye_no)}"></div>` : ""}
+        </div>${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
     v.fuel
       .map((r, i) => `<div class="card" data-kind="fuel" data-i="${i}">
@@ -722,16 +725,29 @@ async function save(ctx, out, v, d, { message, files }) {
         let total = Number(val(c, "total")) || null, unit_price = Number(val(c, "unit_price")) || null;
         if (unit_price && !total) total = Math.round(unit_price * liters * 100) / 100;
         if (total && !unit_price) unit_price = Math.round((total / liters) * 100) / 100;
-        const supId = val(c, "supplier") || null;
+        const rT = v.tankIn[Number(c.dataset.i)];
+        let supId = val(c, "supplier") || null;
+        // Yeni petrolcü kartı (faturadaki satıcı)
+        if (supId === "new" && rT.newSupplier) {
+          const ex = (await db.listActive("suppliers")).find((s) => rT.newSupplier.tax_no && String(s.tax_no || "").replace(/\D/g, "") === rT.newSupplier.tax_no);
+          const byName = (await db.listActive("suppliers")).find((s) => s.name.trim().toLocaleLowerCase("tr") === rT.newSupplier.name.trim().toLocaleLowerCase("tr"));
+          supId = ex ? ex.id : byName ? byName.id : (await (await import("./enterprise-db.js")).saveSupplier({ name: rT.newSupplier.name, type: "Petrolcü", tax_no: rT.newSupplier.tax_no || "", note: "Faturadan otomatik açıldı" })).id;
+          if (!ex && !byName) done.cards++;
+        }
+        const D = rT.detail;
         const mv = await db.saveNew("fuel_tank_movements", {
           date: val(c, "date") || todayStr(), move_type: "GİRİŞ", liters, vehicle_id: null, personnel_id: null,
           pump_no: "", signature_name: "", unit_price, total, supplier_id: supId, customer_id: val(c, "tank_customer") || null, description: source,
+          ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, items: D.items.length ? D.items : null } : {}),
+          ...(val(c, "irsaliye_no") ? { irsaliye_no: val(c, "irsaliye_no").trim() } : {}),
+          ...(rT.company ? { company: rT.company } : {}),
         }, "Asistan: depo girişi");
-        if (supId && total) {
+        if (rT.photo != null && files[rT.photo]) await db.addAttachment("tank", mv.id, files[rT.photo], { kind: "invoice" });
+        if (supId && total && val(c, "tank_pay") !== "paid") {
           const { createCreditBill } = await import("./esnaf.js");
           const fresh = await db.dumpAll();
           await createCreditBill(ctx, fresh, fresh.suppliers.find((x) => x.id === supId),
-            { date: mv.date, amount: total, description: `Depoya yakıt ${liters} L`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
+            { date: mv.date, amount: total, description: `Depoya yakıt ${liters} L${D?.no ? " · fatura " + D.no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
             { source: { store: "fuel_tank_movements", id: mv.id } });
         }
         done.tank++;
