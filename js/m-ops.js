@@ -246,6 +246,11 @@ async function fuelForm(ctx) {
 // ============ DEPO TANKI ============
 async function tank(ctx) {
   const { root, db, names } = ctx;
+  // Litre fiyatı toplamla tutmayan girişleri (KDV hariç yazılmış) ve onunla maliyetlenen yakıtları düzelt
+  try {
+    const fx = await db.repairTankPrices();
+    if (fx.moves || fx.fuels) toast(`Litre fiyatı düzeltildi (KDV dahil): ${fx.moves} giriş${fx.fuels ? `, ${fx.fuels} yakıt kaydının maliyeti` : ""}`, "ok");
+  } catch {}
   const all = await db.getAll("fuel_tank_movements");
   const rows = all.filter(isActive).sort((a, b) => (b.date < a.date ? -1 : 1));
   const bal = calcTankBalance(rows);

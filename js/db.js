@@ -1105,6 +1105,46 @@ export async function fillTankFuelCosts() {
     t.onabort = t.onerror = () => reject(t.error);
   });
 }
+// Depo girişlerinde litre fiyatı toplamla tutmuyorsa (ör. faturadaki KDV hariç birim fiyat yazılmış) toplam ÷ litre yapılır;
+// ortalamayla otomatik maliyetlenmiş depo yakıtları yeni ortalamayla yeniden hesaplanır. Tek işlem; ne değiştiğini döner.
+export async function repairTankPrices() {
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["fuel_records", "fuel_tank_movements", "audit_log"], "readwrite");
+    const out = { moves: 0, fuels: 0 };
+    let fuels, moves;
+    const run = () => {
+      if (!fuels || !moves) return;
+      const now = nowISO();
+      for (const m of moves) {
+        if (!isActive(m) || m.move_type !== "GİRİŞ" || m.count_id || !(Number(m.total) > 0) || !(Number(m.liters) > 0)) continue;
+        const up = Math.round((Number(m.total) / Number(m.liters)) * 100) / 100;
+        if (Math.abs((Number(m.unit_price) || 0) - up) <= Math.max(0.05, up * 0.005)) continue;
+        const old = m.unit_price ?? null;
+        const upd = { ...m, unit_price: up, updated_at: now };
+        Object.assign(m, upd);
+        t.objectStore("fuel_tank_movements").put(upd);
+        t.objectStore("audit_log").put({ id: uuid(), entity: "fuel_tank_movements", entity_id: m.id, action: "update", old: { unit_price: old }, new: { unit_price: up }, reason: "Litre fiyatı = toplam ÷ litre (KDV dahil)", at: now });
+        out.moves++;
+      }
+      for (const f of fuels) {
+        if (!isActive(f) || f.fuel_source !== "Depo Tankı" || f.cost_source !== "Depo ortalaması" || !(Number(f.liters) > 0)) continue;
+        const up = tankUnitCost(moves, f.date) ?? tankUnitCost(moves);
+        if (!up) continue;
+        const total = Math.round(up * Number(f.liters) * 100) / 100;
+        if (Math.abs((Number(f.total) || 0) - total) < 0.5) continue;
+        t.objectStore("fuel_records").put({ ...f, unit_price: up, total, updated_at: now });
+        t.objectStore("audit_log").put({ id: uuid(), entity: "fuel_records", entity_id: f.id, action: "update", old: { total: f.total ?? null }, new: { total }, reason: "Depo ortalama maliyeti düzeltildi", at: now });
+        out.fuels++;
+      }
+    };
+    const a = t.objectStore("fuel_records").getAll(), b = t.objectStore("fuel_tank_movements").getAll();
+    a.onsuccess = () => { fuels = a.result; run(); };
+    b.onsuccess = () => { moves = b.result; run(); };
+    t.oncomplete = () => resolve(out);
+    t.onabort = t.onerror = () => reject(t.error);
+  });
+}
 export async function createHakedis(fields) {
   const d = await openDB();
   return new Promise((resolve, reject) => {

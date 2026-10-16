@@ -728,7 +728,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const liters = Number(val(c, "liters"));
         let total = Number(val(c, "total")) || null, unit_price = Number(val(c, "unit_price")) || null;
         if (unit_price && !total) total = Math.round(unit_price * liters * 100) / 100;
-        if (total && !unit_price) unit_price = Math.round((total / liters) * 100) / 100;
+        if (total && liters) unit_price = Math.round((total / liters) * 100) / 100; // KDV dahil litre fiyatı
         const rT = v.tankIn[Number(c.dataset.i)];
         let supId = val(c, "supplier") || null;
         // Yeni petrolcü kartı (faturadaki satıcı)

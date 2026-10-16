@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.8.03";
+export const APP_VERSION = "SAHAPRO SOLO v3.8.04";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -580,7 +580,8 @@ export function tankUnitCost(movements, date = "9999-12-31") {
   let L = 0, tl = 0;
   for (const m of (movements || []).filter(isActive)) {
     if (m.move_type !== "GİRİŞ" || (date && m.date > date)) continue;
-    const up = Number(m.unit_price) || (Number(m.total) > 0 && Number(m.liters) > 0 ? Number(m.total) / Number(m.liters) : 0);
+    // Toplam (KDV dahil, ödenen) esastır; litre fiyatı yanlış (ör. KDV hariç) yazılmış olsa da maliyet toplamdan hesaplanır
+    const up = Number(m.total) > 0 && Number(m.liters) > 0 ? Number(m.total) / Number(m.liters) : Number(m.unit_price) || 0;
     if (!(up > 0)) continue;
     L += Number(m.liters) || 0;
     tl += up * (Number(m.liters) || 0);

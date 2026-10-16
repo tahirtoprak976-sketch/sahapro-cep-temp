@@ -566,7 +566,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
 
   for (const e of (Array.isArray(plan.expenses) ? plan.expenses : []).slice(0, 10)) {
     const issues = [];
-    const photo = Number.isInteger(e.photo) && e.photo >= 0 && e.photo < photoCount ? e.photo : null;
+    const photo = Number.isInteger(e.photo) && e.photo >= 0 && e.photo < photoCount ? e.photo : (photoCount === 1 && (plan.expenses || []).length === 1 && !(plan.tank_in || []).length && !(plan.fuel || []).length && !(plan.works || []).length ? 0 : null);
     const r = { date: validDate(e.date, today) || today, amount: null, category: EXPENSE_CATEGORIES.includes(e.category) ? e.category : "Diğer",
       company: String(e.company || "").slice(0, 80), vehicle_id: byId(vehicles, e.vehicle_id)?.id || null,
       supplier_id: byId(suppliers, e.supplier_id)?.id || null, credit: !!e.credit, photo, note: String(e.note || "").slice(0, 200),
@@ -612,6 +612,8 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (r.customer_id) { r.credit = false; r.supplier_id = null; }
     // Fatura (fotoğraf): ayrıntı, irsaliye no, satıcı; satıcı kayıtlı değilse yeni petrolcü kartı önerilir
     r.photo = Number.isInteger(t.photo) && t.photo >= 0 && t.photo < photoCount ? t.photo : null;
+    // Tek fotoğraf gönderildiyse ve Gemini sırasını yazmadıysa: fatura odur (yoksa fatura kayda eklenmiyordu)
+    if (r.photo == null && photoCount === 1 && (plan.tank_in || []).length === 1) r.photo = 0;
     const ttext = r.photo != null ? photoTexts[r.photo] : photoTexts.join("\n");
     // Şablonu küçük tutmak için depo faturası düz alanlarla gelir (eski biçim t.invoice de kabul)
     const tinv = t.invoice || (t.invoice_no || t.ettn || t.seller_tax_no ? { no: t.invoice_no, ettn: t.ettn, seller_tax_no: t.seller_tax_no, net: t.net, kdv: t.kdv,
@@ -628,7 +630,8 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (r.detail) r.credit = t.credit !== false; // faturalı toplu alım çoğunlukla vadeli
     }
     if (liters && r.unit_price && !r.total) r.total = Math.round(liters * r.unit_price * 100) / 100;
-    if (liters && r.total && !r.unit_price) r.unit_price = Math.round((r.total / liters) * 100) / 100;
+    // Litre fiyatı = KDV dahil toplam ÷ litre (faturadaki birim fiyat KDV hariçtir; ör. 75,16 yerine 90,19)
+    if (liters && r.total) r.unit_price = Math.round((r.total / liters) * 100) / 100;
     r.issues = liters ? [] : ["Litre mesajda yok"];
     if (t.unit_price && !r.unit_price) r.issues.push(`Litre fiyatı ${t.unit_price} mesajda yok`);
     if (r.credit && !r.supplier_id && !r.newSupplier) r.issues.push("Veresiye için petrolcü seçilmeli");
