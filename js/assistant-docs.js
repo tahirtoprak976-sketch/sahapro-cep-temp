@@ -164,7 +164,7 @@ export function vehicleUpdate(v, info) {
   return out;
 }
 // Belgedeki cins → uygulamanın araç türü
-export const VEHICLE_KINDS = ["Çekici", "Yarı Römork", "Römork", "Tır", "Kamyon", "Kamyonet", "Binek", "İş Makinesi", "Araç/Makine"];
+export const VEHICLE_KINDS = ["Çekici", "Yarı Römork", "Römork", "Tır", "Kamyon", "Kamyonet", "Binek", "Vinç", "İş Makinesi", "Araç/Makine"];
 export function vehicleKind(s) {
   const t = String(s || "").toLocaleLowerCase("tr-TR");
   if (/yar[ıi]\s*r[öo]mork|semi/.test(t)) return "Yarı Römork";
@@ -194,6 +194,12 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
     let newVehicle = null, newPerson = null;
     if (owner_type === "vehicle") {
       if (!owner) owner = list.find((v) => vehicleInText(v, text)) || null;
+      // Aynı belge daha önce bir araca kaydedildiyse (ör. plakasız "Mobil Vinç") o araç
+      const dno = alnum(x.doc_no);
+      if (!owner && dno.length >= 5 && alnum(text).includes(dno)) {
+        const prev = live(d, "documents").find((y) => alnum(y.doc_no) === dno && (y.vehicle_id || (y.owner_type === "vehicle" && y.owner_id)));
+        if (prev) owner = list.find((v) => v.id === (prev.vehicle_id || prev.owner_id)) || null;
+      }
       // Kayıtlı olmayan araç: belgedeki plaka (belgede gerçekten yazıyorsa) ile yeni araç kartı önerilir
       const pl = plateKey(x.plate);
       if (!owner && pl && alnum(text).includes(pl)) {
@@ -201,7 +207,7 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
         if (!owner) { const info = vehicleInfo(x, text); newVehicle = { plate: pl, ...info, type: info.type || vehicleKind(x.vehicle_kind || text) }; }
       }
       if (owner) {
-        const pk = plateKey(owner.plate) || plateKey(owner.name);
+        const pk = plateKey(owner.plate) || plateKey(owner.name) || (plateKey(x.plate) && alnum(text).includes(plateKey(x.plate)) && !list.some((v) => v.id !== owner.id && (plateKey(v.plate) === plateKey(x.plate) || plateKey(v.name) === plateKey(x.plate))) ? plateKey(x.plate) : "");
         if (pk && alnum(text).includes(pk)) {
           upd = vehicleUpdate(owner, vehicleInfo(x, text));
           if (!plateKey(owner.plate)) upd.unshift({ k: "plate", from: owner.plate || null, to: pk, on: true });
