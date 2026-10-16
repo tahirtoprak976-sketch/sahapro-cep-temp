@@ -88,6 +88,7 @@ export async function screen(ctx) {
       const feeOff = x.perTon && site.fee_unit === "Ton" && Number(site.fee) > 0 && Math.abs(x.perTon - Number(site.fee)) / Number(site.fee) > 0.01;
       return `<div class="card" style="padding:10px 12px">
         <div class="row between small"><span>${trDate(x.doc.date)} · ${esc(x.doc.doc_no || "no yok")}</span><b>${tl(x.amount)}</b></div>
+        <button class="btn sm" data-go="#/belgeler/${esc(x.doc.id)}" style="margin:4px 0">📄 Faturayı aç</button>
         <div class="tiny muted">${x.ton ? `${num(x.ton)} ton` : "ton yok"}${x.perTon ? ` · ton başı ${num(x.perTon)} ₺ (KDV dahil)` : ""}${x.doc.place ? ` · ${esc(x.doc.place)}` : ""}</div>
         <div class="small" style="margin-top:4px">Kayıtlarımız (${trDate(addDay(x.from))} – ${trDate(x.doc.date)}): ${x.ourTrips} döküm${x.ourTon ? `, ${x.ourEst ? "~" : ""}${num(x.ourTon)} ton` : ""}, ${tl(x.ourAmount)}</div>
         ${x.ourTrips && dt != null && x.ton && Math.abs(dt) > Math.max(1, x.ton * 0.03) ? notice(dt > 0 ? "warn" : "info", dt > 0 ? `Saha ${num(dt)} ton fazla faturalamış ya da bizim kayıtlarda eksik döküm/ton var. Fişleri kontrol edin (fatura dönemi farklıysa fark normaldir).` : `Kayıtlarımızda ${num(-dt)} ton fazla var; ton tahmini yüksek ya da fatura dönemi farklı olabilir.`) : ""}

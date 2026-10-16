@@ -15,6 +15,7 @@ import {
   segBar,
   searchBar,
   sheet,
+  sheetClose,
   toast,
   confirmDialog,
   promptDialog,
@@ -328,18 +329,21 @@ async function tank(ctx) {
   UP.addEventListener("input", () => { if (Number(L.value) > 0 && Number(UP.value) > 0) TT.value = Math.round(L.value * UP.value * 100) / 100; });
   TT.addEventListener("input", () => { if (Number(L.value) > 0 && Number(TT.value) > 0) UP.value = Math.round((TT.value / L.value) * 100) / 100; });
   const listEl = qs("[data-list]", root);
+  const attN = await db.attachmentsCountMap();
   listEl.innerHTML = rows.length
     ? rows
-        .map((m) =>
+        .map((m) => (m.move_type === "GİRİŞ" ? `<div data-tk="${esc(m.id)}" style="cursor:pointer">` : "<div>") +
           li({
             ic: m.move_type === "GİRİŞ" ? "📥" : "📤",
-            t1: `${m.move_type} · ${fmtNum(m.liters)} Lt${m.move_type === "GİRİŞ" && Number(m.total) > 0 ? " · " + fmtTL(m.total) + " ₺" : ""}`,
-            t2: `${trDate(m.date)} · ${esc(names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.unit_price ? " · " + fmtTL(m.unit_price) + " ₺/L" : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
-          }),
+            t1: `${m.move_type} · ${fmtNum(m.liters)} Lt${m.move_type === "GİRİŞ" && Number(m.total) > 0 ? " · " + fmtTL(m.total) + " ₺" : ""}${m.invoice_no || attN[m.id] ? " · 📄" : ""}`,
+            t2: `${trDate(m.date)} · ${esc(m.company || names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.unit_price ? " · " + fmtTL(m.unit_price) + " ₺/L" : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
+          }) + "</div>",
         )
         .join("")
     : emptyState("🛢", "Hareket yok");
 
+  for (const el of qsa("[data-tk]", listEl))
+    el.addEventListener("click", (ev) => { ev.preventDefault(); tankInSheet(ctx, rows.find((m) => m.id === el.dataset.tk)); });
   for (const b of qsa("[data-merge]", root))
     b.addEventListener("click", async () => {
       const p = dupPairs[Number(b.dataset.merge)];
@@ -1046,4 +1050,32 @@ async function mergeTankDup(db, ctx, { keep, drop }) {
       { date: keep.date, amount: Number(bDrop.gross_total), description: `Depoya yakıt ${keep.liters} L${drop.invoice_no ? " · fatura " + drop.invoice_no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
       { source: { store: "fuel_tank_movements", id: keep.id } });
   }
+}
+
+// Depo girişi ayrıntısı: fatura bilgisi + fatura fotoğrafı/PDF (aç, ekle)
+async function tankInSheet(ctx, m) {
+  const { db } = ctx;
+  if (!m) return;
+  const sup = m.supplier_id ? (await db.get("suppliers", m.supplier_id))?.name : "";
+  const atts = await db.attachmentsFor("tank", m.id);
+  const row = (k, v) => (v || v === 0 ? `<div class="row between small" style="padding:3px 0;border-bottom:1px solid var(--border)"><span class="muted">${k}</span><b style="text-align:right">${esc(String(v))}</b></div>` : "");
+  const sh = sheet(`<h3>📥 Depo girişi · ${trDate(m.date)}</h3>
+    ${row("Litre", fmtNum(m.liters) + " L")}${row("Litre fiyatı", m.unit_price ? fmtTL(m.unit_price) + " ₺" : "")}${row("Toplam (KDV dahil)", m.total ? fmtTL(m.total) + " ₺" : "")}
+    ${row("KDV hariç", m.net_amount != null ? fmtTL(m.net_amount) + " ₺" : "")}${row("KDV", m.kdv_amount != null ? fmtTL(m.kdv_amount) + " ₺" : "")}
+    ${row("Petrolcü", sup || m.company)}${row("Fatura no", m.invoice_no)}${row("İrsaliye no", m.irsaliye_no)}${row("ETTN", m.ettn)}${row("Satıcı VKN", m.seller_tax_no)}
+    ${(m.items || []).length ? `<div class="tiny muted" style="margin-top:6px">Kalemler: ${m.items.map((i) => esc(`${i.desc || ""} ${i.qty ?? ""} ${i.unit || ""}`.trim())).join(" · ")}</div>` : ""}
+    <div class="section-title">Fatura / fotoğraf (${atts.length})</div>
+    <div data-att>${atts.map((a) => String(a.type).startsWith("image/")
+      ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="fatura" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:6px"></a>`
+      : `<a class="btn block" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name || "Dosya")} — aç</a>`).join("") || '<div class="muted small">Fatura eklenmemiş.</div>'}</div>
+    <div class="field" style="margin-top:8px"><label>Fatura fotoğrafı / PDF ekle</label><input type="file" accept="image/*,application/pdf" data-addf></div>
+    <button class="btn block" data-x>Kapat</button>`, { modal: true });
+  qs("[data-x]", sh).onclick = () => sheetClose();
+  qs("[data-addf]", sh).addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    await db.addAttachment("tank", m.id, f, { kind: "invoice" });
+    toast("Eklendi", "ok");
+    tankInSheet(ctx, m);
+  });
 }
