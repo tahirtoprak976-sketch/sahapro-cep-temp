@@ -288,6 +288,7 @@ export async function draftClear(form) {
 
 // ---- attachments (Blob ayrı store; JSON'a GÖMÜLMEZ; orijinal immutable, türev derived_of) ----
 export async function addAttachment(recordType, recordId, file, extra = {}) {
+  file = await (await import("./image-shrink.js")).shrinkImage(file, { kind: extra.kind });
   const rec = {
     id: uuid(),
     record_type: recordType,
@@ -1208,6 +1209,22 @@ export async function byRelation(store, key, value) {
       .getAll(value),
   );
 }
+// Eski fotoğrafları küçült (Ayarlar): imza ve PDF'ler hariç. Dönen: { count, before, after } bayt
+export async function shrinkAllAttachments(onProgress) {
+  const { shrinkImage, SHRINK_MIN } = await import("./image-shrink.js");
+  const list = (await getAll("attachments")).filter((a) => a.blob && a.kind !== "signature" && /^image\//.test(a.type || "") && (a.size || a.blob.size || 0) >= SHRINK_MIN);
+  let count = 0, before = 0, after = 0, i = 0;
+  for (const a of list) {
+    i++;
+    const small = await shrinkImage(a.blob instanceof File ? a.blob : new File([a.blob], a.name || "foto", { type: a.type }), { maxEdge: a.record_type === "document" ? 2000 : 1600, quality: a.record_type === "document" ? 0.85 : 0.82 });
+    if (small.size < (a.blob.size || 0)) {
+      before += a.blob.size; after += small.size; count++;
+      await put("attachments", { ...a, blob: small, size: small.size, type: small.type, name: small.name, shrunk_at: nowISO() });
+    }
+    onProgress?.(i, list.length);
+  }
+  return { count, before, after, total: list.length };
+}
 // Aynı belge iki kez kaydedildiyse (aynı sahip + tür ailesi + numara/tarih): ilki tutulur, en geç bitiş tarihi ona yazılır,
 // fotoğrafı yoksa diğerinin fotoğrafı ona taşınır, fazlalar çöp kutusuna gider (geri alınabilir).
 export async function dedupeDocuments() {
@@ -1250,6 +1267,7 @@ export async function saveDocument(fields, file) {
     );
   if (!owner || owner.deleted_at) throw Error("Belge sahibi geçersiz");
   await assertNotDuplicateDoc(f);
+  file = await (await import("./image-shrink.js")).shrinkImage(file, { maxEdge: 2000, quality: 0.85 });
   const rec = newRecord(f),
     attachment = {
       id: uuid(),

@@ -195,6 +195,10 @@ export function todayBoard(data, opts = {}) {
       sort: -1000,
     });
 
+  // 5) Akşam: gün kapatılmadı
+  if (opts.dayCloseOpen != null)
+    items.push({ kind: opts.dayCloseOpen ? "warn" : "info", group: "Gün sonu", ic: "🌙", text: opts.dayCloseOpen ? `Günü kapat: ${opts.dayCloseOpen} eksik` : "Günü kapat", sub: "Fiyatsız iş, fişsiz sefer, kaydı olmayan şoför, alınmayan mazot…", href: "#/gunsonu", sort: -500 });
+
   const rank = { alert: 0, warn: 1, info: 2 };
   items.sort((a, b) => rank[a.kind] - rank[b.kind] || a.sort - b.sort);
   return {

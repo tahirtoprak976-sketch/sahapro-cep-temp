@@ -82,6 +82,11 @@ async function workList(ctx) {
     rows = rows.filter((r) => r.date >= fs);
   }
   if (filter === "noslip") rows = rows.filter((r) => !r.slip_id);
+  if (filter === "fiyatsiz") {
+    const { workAmount } = await import("./collect-core.js");
+    const internal = new Set((await db.listActive("customers")).filter((c) => c.internal).map((c) => c.id));
+    rows = rows.filter((r) => !internal.has(r.customer_id) && !workAmount(r) && !(Number(r.customer_fuel_allowance_l) > 0));
+  }
   rows = rows.filter((r) =>
     matchSearch(
       `${names.customers[r.customer_id] || ""} ${names.sites[r.site_id] || ""} ${names.vehicles[r.vehicle_id] || ""} ${names.personnel[r.personnel_id] || ""} ${r.work_type} ${r.description || ""} ${r.material || ""}`,
@@ -104,6 +109,7 @@ async function workList(ctx) {
         { v: "today", t: "Bugün" },
         { v: "week", t: "7 Gün" },
         { v: "noslip", t: "Fişsiz" },
+        { v: "fiyatsiz", t: "Fiyatsız" },
       ],
       filter,
       (v) => `#/isler?f=${v}${q ? "&q=" + encodeURIComponent(q) : ""}`,
