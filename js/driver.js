@@ -133,10 +133,12 @@ export async function screen(ctx) {
     ctx2.lineWidth = 3.2; ctx2.lineCap = "round"; ctx2.strokeStyle = "#0b2340";
     let down = false, drawn = false;
     const pt = (ev) => { const r = cv.getBoundingClientRect(); return [(ev.clientX - r.left) * (cv.width / r.width), (ev.clientY - r.top) * (cv.height / r.height)]; };
-    cv.onpointerdown = (ev) => { down = true; cv.setPointerCapture?.(ev.pointerId); ctx2.beginPath(); ctx2.moveTo(...pt(ev)); };
-    cv.onpointermove = (ev) => { if (!down) return; ctx2.lineTo(...pt(ev)); ctx2.stroke(); drawn = true; };
+    // Çizgiler ayrıca kaydedilir: patrona giden mesajda imza resmi yerine bu küçük veri gider
+    let strokes = [];
+    cv.onpointerdown = (ev) => { down = true; cv.setPointerCapture?.(ev.pointerId); ctx2.beginPath(); const p = pt(ev); ctx2.moveTo(...p); strokes.push([Math.round(p[0]), Math.round(p[1])]); };
+    cv.onpointermove = (ev) => { if (!down) return; const p = pt(ev); ctx2.lineTo(...p); ctx2.stroke(); drawn = true; strokes.at(-1)?.push(Math.round(p[0]), Math.round(p[1])); };
     cv.onpointerup = cv.onpointercancel = () => (down = false);
-    qs("[data-sigclear]", root).onclick = () => { ctx2.clearRect(0, 0, cv.width, cv.height); drawn = false; };
+    qs("[data-sigclear]", root).onclick = () => { ctx2.clearRect(0, 0, cv.width, cv.height); drawn = false; strokes = []; };
     qs("[data-slipback]", root).onclick = () => { slipFor = null; draw(); };
     const sigKey = `./__drv/sig-${e.id}`;
     const send = async (sigBlob, no, receiver, signedAt) => {
@@ -161,7 +163,7 @@ export async function screen(ctx) {
         if (!e.dfs) ls.set("sp_driver_slip_seq", (ls.get("sp_driver_slip_seq", 0) || 0) + 1);
         const signedAt = sigBlob ? new Date().toISOString() : "";
         if (sigBlob && "caches" in self) await (await caches.open(PHOTO_CACHE)).put(sigKey, new Response(sigBlob, { headers: { "content-type": "image/png" } }));
-        Object.assign(e, { dfs: no, rcv: receiver, ...(signedAt ? { sgt: signedAt, sg: 1 } : {}) });
+        Object.assign(e, { dfs: no, rcv: receiver, ...(signedAt ? { sgt: signedAt, sg: 1, sv: core.encodeStrokes(strokes) } : {}) });
         save();
         await send(sigBlob, no, receiver, signedAt);
         toast(`Fiş ${no} hazır`, "ok"); slipFor = null; draw();
@@ -301,16 +303,16 @@ export async function screen(ctx) {
       await dropPhotos(e); entries = entries.filter((x) => x !== e); save(); draw();
     });
     const send = async (list) => {
-      // İmzalı fişin imzası mesajın KODUNUN İÇİNE gömülür (küçültülmüş PNG): patron mesajı kopyala-yapıştır yapsa da imza gelir.
-      // Mesaj WhatsApp sınırını aşacaksa imza eskisi gibi ayrı resim olarak gider.
+      // İmza mesajın KODUNUN İÇİNDE gider (çizgi verisi; eski kayıtlarda küçültülmüş PNG): patron kopyala-yapıştır yapsa da imza gelir.
+      // WhatsApp ~4 KB'tan uzun metni kesebildiği için mesaj MSG_LIMIT altında tutulur; sığmayan kayıtlar sonraki gönderime kalır.
       const sigOf = async (e) => {
         if (!e.sg || !("caches" in self)) return null;
         const r = await (await caches.open(PHOTO_CACHE)).match(`./__drv/sig-${e.id}`);
         return r ? r.blob() : null;
       };
-      const smallB64 = async (blob) => {
+      const smallB64 = async (blob, maxW) => {
         const bmp = await createImageBitmap(blob);
-        const s = Math.min(1, 280 / bmp.width), cv = document.createElement("canvas");
+        const s = Math.min(1, maxW / bmp.width), cv = document.createElement("canvas");
         cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
         const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(bmp, 0, 0, cv.width, cv.height);
         // Siyah-beyaz (2 renk): PNG çok daha küçük olur, imza okunur kalır
@@ -321,24 +323,28 @@ export async function screen(ctx) {
         const u = new Uint8Array(await b.arrayBuffer()); let str = ""; for (let i = 0; i < u.length; i += 0x8000) str += String.fromCharCode(...u.subarray(i, i + 0x8000));
         return btoa(str);
       };
-      const out = [];
-      for (const e of list) {
-        const c = { ...e };
-        if (c.sg) { const sb = await sigOf(e); delete c.sg; if (sb) { try { c.sig = await smallB64(sb); } catch (err) { c._sigBlob = sb; } } }
-        out.push(c);
-      }
-      let text = await core.driverMessage(out.map(({ _sigBlob, ...c }) => c), cfg);
-      let embedded = true;
-      if (text.length > 60000 || out.some((c) => c._sigBlob)) {
-        // Çok uzun: imzalar resim olarak (eski yol)
-        embedded = false;
-        for (const c of out) { if (c.sig || c._sigBlob) { c.sg = 1; c._file = c._sigBlob || new Blob([Uint8Array.from(atob(c.sig), (ch) => ch.charCodeAt(0))], { type: "image/png" }); delete c.sig; } }
-        text = await core.driverMessage(out.map(({ _sigBlob, _file, ...c }) => c), cfg);
+      // Bir kaydın gönderilecek hali: çizgi verisi varsa o; yoksa imza resmi (genişlik w) ya da ayrı dosya
+      const prep = async (e, w) => {
+        const c = { ...e, _e: e };
+        if (c.sv?.length) { delete c.sg; return c; }
+        if (c.sg) { const sb = await sigOf(e); delete c.sg; if (sb) { if (w) { try { c.sig = await smallB64(sb, w); } catch (err) { c._file = sb; c.sg = 1; } } else { c._file = sb; c.sg = 1; } } }
+        return c;
+      };
+      const msg = (arr) => core.driverMessage(arr.map(({ _e, _file, ...c }) => c), cfg);
+      let out = [], text = "";
+      // Önce tüm kayıtlar; sığmazsa imza resmi küçültülür, yine sığmazsa son kayıtlar sonraki mesaja bırakılır
+      for (let n = list.length; n >= 1; n--) {
+        for (const w of [280, 200, 140, 0]) {
+          out = []; for (const e of list.slice(0, n)) out.push(await prep(e, w));
+          text = await msg(out);
+          if (core.msgBytes(text) <= core.MSG_LIMIT) break;
+        }
+        if (core.msgBytes(text) <= core.MSG_LIMIT || n === 1) break;
       }
       const files = [];
       for (const c of out) {
         files.push(...(await getPhotos(c)));
-        if (!embedded && c.sg && c._file) files.push(new File([c._file], `imza-${c.dfs || c.id}.png`, { type: "image/png" }));
+        if (c.sg && c._file) files.push(new File([c._file], `imza-${c.dfs || c.id}.png`, { type: "image/png" }));
       }
       let ok = false;
       try {
@@ -346,21 +352,27 @@ export async function screen(ctx) {
         else if (navigator.share) { await navigator.share({ text }); ok = true; if (files.length) toast("Fotoğraflar eklenemedi; fişleri ayrıca gönderin", "err"); }
         else { location.href = "https://wa.me/?text=" + encodeURIComponent(text); ok = true; }
       } catch (e) { if (e?.name !== "AbortError") toast("Paylaşılamadı: " + (e.message || e), "err"); }
-      return ok;
+      return ok ? out.map((c) => c._e) : null;
     };
     qs("[data-send]", root)?.addEventListener("click", async () => {
       const list = entries.filter((e) => !e.sent);
-      if (await send(list)) {
+      const done = await send(list);
+      if (done) {
         const at = new Date().toISOString();
-        for (const e of list) { e.sent = at; }
+        for (const e of done) { e.sent = at; }
         save();
-        for (const e of list) await dropPhotos(e).catch(() => {});
-        toast("Gönderildi ✓", "ok"); draw();
+        for (const e of done) await dropPhotos(e).catch(() => {});
+        const left = list.length - done.length;
+        if (left > 0) toast(`${done.length} kayıt gönderildi. Mesaj uzun olmasın diye ${left} kayıt kaldı — "Gönder"e tekrar basın`, "ok");
+        else toast("Gönderildi ✓", "ok");
+        draw();
       }
     });
     qs("[data-resend]", root)?.addEventListener("click", async () => {
       const last = entries.filter((e) => e.sent).map((e) => e.sent).sort().at(-1);
-      await send(entries.filter((e) => e.sent === last));
+      const batch = entries.filter((e) => e.sent === last);
+      const done = await send(batch);
+      if (done && done.length < batch.length) toast(`${done.length}/${batch.length} kayıt gönderildi (mesaj uzun olmasın diye)`, "ok");
     });
     qs("[data-exit]", root)?.addEventListener("click", async () => {
       if (!(await confirmDialog("Şoför modundan çıkılsın mı?", "Bu telefon patron telefonu olarak açılır. Gönderilmemiş kayıtlar telefonda kalır.", "Çık"))) return;
