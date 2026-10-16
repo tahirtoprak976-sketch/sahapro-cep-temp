@@ -336,8 +336,8 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.info = [["Gider", id || K.all]];
     const T = r2(exps.reduce((n, e) => n + (Number(e.amount) || 0), 0));
     R.kpis = [["Gider kaydı", String(exps.length)], ["Toplam", tl(T)]];
-    R.tables.push({ title: "Gider kayıtları", headers: ["Tarih", ...(id ? [] : ["Kategori"]), "Firma", "Açıklama", "Araç", "Personel", "Ödeme", "Tutar"], widths: [9, ...(id ? [] : [11]), 13, 25, 10, 10, 11, 11],
-      rows: exps.map((e) => [trDate(e.date), ...(id ? [] : [e.category || ""]), e.company || nm("suppliers", e.supplier_id), e.description || "", nm("vehicles", e.vehicle_id), nm("personnel", e.personnel_id), e.payment_method || "", tl(e.amount)]),
+    R.tables.push({ title: "Gider kayıtları", headers: ["Tarih", ...(id ? [] : ["Kategori"]), "Firma", "Fatura No", "Açıklama / kalemler", "Araç", "Personel", "Ödeme", "Tutar"], widths: [9, ...(id ? [] : [10]), 12, 10, 24, 9, 9, 9, 10],
+      rows: exps.map((e) => [trDate(e.date), ...(id ? [] : [e.category || ""]), e.company || nm("suppliers", e.supplier_id), e.invoice_no || "", [e.description, Array.isArray(e.items) && e.items.length ? e.items.map((i) => i.desc).join(", ") : ""].filter(Boolean).join(" — ").slice(0, 300), nm("vehicles", e.vehicle_id), nm("personnel", e.personnel_id), e.payment_method || "", tl(e.amount)]),
       link: exps.map((e) => "#/gider/" + e.id) });
     const grp = (keyFn, label) => { const g = new Map(); for (const e of exps) { const kk = keyFn(e) || "—"; const o = g.get(kk) || { n: 0, T: 0 }; o.n++; o.T += Number(e.amount) || 0; g.set(kk, o); } return { title: label + "e göre", headers: [label, "Kayıt", "Tutar", "Pay"], widths: [45, 15, 25, 15], rows: [...g.entries()].sort((a, b) => b[1].T - a[1].T).map(([kk, o]) => [kk, String(o.n), tl(r2(o.T)), T ? "%" + num(r2((o.T / T) * 100)) : ""]) }; };
     if (!id) R.tables.push(grp((e) => e.category, "Kategori"));

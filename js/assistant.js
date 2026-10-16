@@ -402,7 +402,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
             r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : r.payment_method === "Personel Ödedi" && r.paid_by ? "p:" + r.paid_by : r.payment_method || "Şirket Ödedi")}</select></div>
           <div class="field"><label>Veresiye esnaf</label><select name="supplier">${opt(suppliers, r.credit ? r.supplier_id : "", "— peşin —")}</select></div>
         </div>
-        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${r.issues_pay ? `<div class="muted tiny">⚠ ${esc(r.issues_pay)}</div>` : ""}${issues(r)}</div>`)
+        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${r.issues_pay ? `<div class="muted tiny">⚠ ${esc(r.issues_pay)}</div>` : ""}${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
     v.tankIn
       .map((r, i) => `<div class="card" data-kind="tank" data-i="${i}">
@@ -975,13 +975,26 @@ async function save(ctx, out, v, d, { message, files }) {
           // "Bolluca'ya 50.000 yatırdım" → döküm sahası ön ödemeli hesabına yükleme (gider sayılmaz, dökümde düşer)
           const dsite = (await import("./dump-account.js")).depositSiteOf(fresh, { category: f.category, company: val(c, "company"), description: val(c, "description") || source });
           if (dsite) done.dumpdep++;
+          // Fatura ayrıntısı: aynı satıcının aynı fatura numarası daha önce girildiyse sor
+          const D = r.detail;
+          if (D?.no && fresh.expense_records.some((x) => isActive(x) && x.invoice_no === D.no && (!D.seller_tax_no || !x.seller_tax_no || x.seller_tax_no === D.seller_tax_no))
+            && !(await confirmDialog("Bu fatura zaten girilmiş", `${D.no} numaralı fatura gider olarak kayıtlı. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
           const rec = await db.saveNew("expense_records", {
+            ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
             ...(dsite ? { dump_site_id: dsite.id, dump_deposit: true } : {}),
             date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: payer, vehicle_id: f.vehicle_id,
             payment_method: payer ? "Personel Ödedi" : pay, receipt: file ? "Evet" : "Hayır", reimbursement_status: payer ? "Bekliyor" : null,
             company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
           }, "Asistan");
           if (file) await db.addAttachment("expense", rec.id, file);
+          // Kalemlerde filtre/yağ/balata… varsa ve araç seçiliyse: bakım kaydı (maliyet giderde; bakım takvimi için)
+          if (D?.items?.length && f.vehicle_id && qs("[data-mhint]", c)?.checked) {
+            const { maintenanceHint } = await import("./receipt-detail.js");
+            const h = maintenanceHint(D.items);
+            await db.saveNew("maintenance_records", { date: f.date, vehicle_id: f.vehicle_id, maint_type: MAINT_TYPES.includes("Periyodik Bakım") ? "Periyodik Bakım" : MAINT_TYPES[0], status: MAINT_STATUS.includes("Tamamlandı") ? "Tamamlandı" : MAINT_STATUS.at(-1),
+              description: h.title + ": " + D.items.map((i) => i.desc).join(", ").slice(0, 400), cost: 0, service_company: val(c, "company") || null, expense_id: rec.id, note: "Maliyet gider kaydında (" + (D.no || "fiş") + ")" }, "Asistan: faturadan bakım");
+            done.maintenance++;
+          }
           done.expense++;
         }
       } else if (k === "collection") {
@@ -1103,6 +1116,24 @@ function bindUndo(ctx, box) {
       }
     });
 }
+
+// Fatura / fiş ayrıntısı (kalemler, no, ETTN, KDV) + bakım kaydı önerisi
+function detailHtml(r) {
+  const D = r.detail;
+  if (!D) return "";
+  const n = (x) => Number(x || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const hint = D.items.length ? maintHint(D.items) : null;
+  return `<details class="card" style="margin:8px 0 0;padding:8px 10px;background:var(--bg2,transparent)" open><summary class="small"><b>🧾 Fatura ayrıntısı</b>${D.no ? " · " + esc(D.no) : ""}${D.items.length ? ` · ${D.items.length} kalem` : ""}</summary>
+    <div class="tiny muted" style="margin:4px 0">${D.seller_tax_no ? "Satıcı VKN " + esc(D.seller_tax_no) : ""}${D.ettn ? " · ETTN " + esc(D.ettn.slice(0, 8)) + "…" : ""}</div>
+    ${D.items.map((i) => `<div class="row between tiny" style="padding:3px 0;border-top:1px solid var(--border)"><span>${i.code ? `<span class="muted">${esc(i.code)}</span> ` : ""}${esc(i.desc)} <span class="muted">× ${n(i.qty).replace(/,00$/, "")}</span></span><b style="white-space:nowrap">${n(i.amount)} ₺</b></div>`).join("")}
+    ${D.net != null ? `<div class="row between tiny" style="border-top:1px solid var(--border);padding-top:3px"><span>KDV hariç</span><b>${n(D.net)} ₺</b></div>` : ""}
+    ${D.kdv != null ? `<div class="row between tiny"><span>KDV${D.kdv_rate != null ? " %" + D.kdv_rate : ""}</span><b>${n(D.kdv)} ₺</b></div>` : ""}
+    ${D.issues.map((x) => `<div class="tiny" style="color:#b7791f">⚠ ${esc(x)}</div>`).join("")}
+    ${hint ? `<label class="history-check small" style="margin-top:6px"><input type="checkbox" data-mhint ${/filtre/i.test(hint.title) ? "checked" : ""}> 🔧 Seçili araca bakım kaydı da aç: <b>${esc(hint.title)}</b> <span class="tiny muted">(bakım takvimine işlenir; maliyet bu giderde, iki kez sayılmaz)</span></label>` : ""}
+  </details>`;
+}
+let maintHint = () => null;
+import("./receipt-detail.js").then((m) => { maintHint = m.maintenanceHint; });
 
 // Şoförün imza çizgilerinden (kodun içinde gelir) beyaz zeminli PNG
 async function strokesPng(sv) {
