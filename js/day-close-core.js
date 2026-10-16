@@ -3,6 +3,7 @@
 import { isActive, addDays } from "./core.js";
 import { workAmount } from "./collect-core.js";
 import { isRoadVehicle } from "./maint-core.js";
+import { loadTon } from "./dump-fees.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const num = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
@@ -29,6 +30,17 @@ export function dayCloseChecks(d, { date, attCount = {} } = {}) {
     if (!internal.has(w.customer_id) && !workAmount(w) && !(Number(w.customer_fuel_allowance_l) > 0)) miss.push("fiyat");
     if (w.unit === "Sefer" && (w.dump_site_id || w.dump_area) && !w.slip_no && !w.digital_slip_no && !attCount["work:" + w.id]) miss.push("döküm fişi");
     if (miss.length) push("warn", "Bugün", `Eksik: ${miss.join(", ")}`, label, "#/isler/" + w.id);
+  }
+  // Tonaj: aracın taşıyabileceğinden fazla (yanlış fiş ya da aşırı yük) ve aynı fiş no iki kez
+  for (const w of today.filter((w) => Number(w.tonnage) > 0)) {
+    const v = live(d, "vehicles").find((x) => x.id === w.vehicle_id);
+    const cap = loadTon(v), trips = w.unit === "Sefer" ? Number(w.quantity) || 1 : 1;
+    if (cap > 0 && Number(w.tonnage) / trips > cap * 1.15) push("warn", "Bugün", `Tonaj yüksek: ${num(Number(w.tonnage) / trips)} ton/sefer`, `${v?.name || "Araç"} ~${cap} ton taşır — fiş yanlış okunmuş ya da aşırı yük olabilir`, "#/isler/" + w.id);
+  }
+  const slipKey = (w) => String(w.slip_no || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  for (const w of today.filter((w) => slipKey(w).length >= 3)) {
+    const other = works.find((x) => x.id !== w.id && slipKey(x) === slipKey(w) && (x.dump_site_id || "") === (w.dump_site_id || "") && x.date >= addDays(date, -60));
+    if (other && (other.date !== date || w.id < other.id)) push("warn", "Bugün", `Aynı fiş no iki işte: ${w.slip_no}`, `${other.date === date ? "bugün" : other.date} tarihli başka bir işte de var — iki kez işlenmiş olabilir`, "#/isler/" + w.id);
   }
   for (const f of live(d, "fuel_records").filter((f) => f.date === date)) {
     const v = live(d, "vehicles").find((x) => x.id === f.vehicle_id);
