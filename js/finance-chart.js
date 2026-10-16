@@ -48,7 +48,7 @@ export function monthlySeries(data, opts = {}) {
     if (r) r.collected += toKurus(c.amount);
   }
   for (const e of data.expense_records || []) {
-    if (!isActive(e)) continue;
+    if (!isActive(e) || e.dump_deposit) continue; // döküm hesabına yükleme: ön ödeme, maliyet dökümde yazılır
     const r = rows.get(monthKey(e.date));
     if (r) r.expense += toKurus(e.amount);
   }

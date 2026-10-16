@@ -1,5 +1,6 @@
 // "Bugün" panosu: bugün dikkat edilmesi gerekenleri tek listede toplayan saf fonksiyon.
 // Ekrana dokunmaz; m-dash.js sonucu çizer. Testlenebilir olması için veri parametre olarak gelir.
+import { dumpAccountAlerts } from "./dump-account.js";
 import {
   isActive,
   addDays,
@@ -194,6 +195,9 @@ export function todayBoard(data, opts = {}) {
       href: "#/ayarlar?tab=yedek",
       sort: -1000,
     });
+
+  // 4c) Döküm sahası ön ödemeli hesap: bakiye azaldı / eksiye düştü
+  for (const a of dumpAccountAlerts(data, { today })) items.push({ ...a, group: "Döküm hesabı", ic: "💳", sort: 8 });
 
   // 5) Akşam: gün kapatılmadı
   if (opts.dayCloseOpen != null)
