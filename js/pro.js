@@ -99,6 +99,7 @@ const OWNER_LABELS = {
   work: "İş kaydı",
   contract: "Sözleşme",
   company: "Şirket",
+  dump_site: "Döküm sahası",
 };
 const ROUTE = Object.fromEntries(
   Object.entries(STORES).map(([route, store]) => [store, route]),
@@ -553,9 +554,11 @@ async function documentScreen(ctx) {
       const url = URL.createObjectURL(a.blob);
       qs("[data-files]", root).insertAdjacentHTML(
         "beforeend",
-        `<a class="btn block" href="${url}" target="_blank" rel="noopener">${esc(a.name)}</a>`,
+        (String(a.type).startsWith("image/") ? `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:6px"></a>` : "") +
+          `<a class="btn block" href="${url}" target="_blank" rel="noopener">${String(a.type).startsWith("image/") ? "🔍 Büyük aç" : "📄 " + esc(a.name) + " — aç"}</a>`,
       );
     }
+    if (!atts.length) qs("[data-files]", root).innerHTML = '<div class="muted small" style="margin:4px">Dosya yok</div>';
     bindExports(
       root,
       () => spec,

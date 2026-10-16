@@ -99,13 +99,15 @@ const NAV = [
 
 // ---- İsim haritaları (her ekran render'ında taze) ----
 export async function buildNames() {
-  const [c, s, v, p] = await Promise.all([
+  const [c, s, v, p, ds] = await Promise.all([
     db.listActive("customers"),
     db.listActive("sites"),
     db.listActive("vehicles"),
     db.listActive("personnel"),
+    db.listActive("dump_sites"),
   ]);
-  const m = { customers: {}, sites: {}, vehicles: {}, personnel: {} };
+  const m = { customers: {}, sites: {}, vehicles: {}, personnel: {}, dump_sites: {} };
+  for (const r of ds) m.dump_sites[r.id] = r.name;
   for (const r of c) m.customers[r.id] = r.name;
   for (const r of s) m.sites[r.id] = r.name;
   for (const r of v) m.vehicles[r.id] = r.name;
