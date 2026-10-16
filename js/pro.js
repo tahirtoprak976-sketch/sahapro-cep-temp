@@ -1673,7 +1673,7 @@ async function backupPanel(ctx) {
   const anchor = qs("[data-bak]", root)?.closest(".card") || qs(".appbar", root);
   (anchor || root).insertAdjacentHTML(
     anchor ? "afterend" : "afterbegin",
-    '<div class="card"><h3>Tam Yedek ve Geri Yükleme</h3><p>Veriler, orijinal dosyalar, imzalar ve ayarlar tek JSON dosyasında.</p><button class="btn primary" data-full-backup>Tam Yedeği İndir</button><div class="field"><label>Tam yedeği geri yükle</label><input type="file" data-full-restore accept=".json,application/json"></div><div data-full-preview></div></div>',
+    '<div class="card"><h3>Tam Yedek ve Geri Yükleme</h3><p>Veriler, orijinal dosyalar, imzalar ve ayarlar tek dosyada (.sahapro; eski .json yedekler de geri yüklenir).</p><button class="btn primary" data-full-backup>Tam Yedeği İndir</button><div class="field"><label>Tam yedeği geri yükle</label><input type="file" data-full-restore></div><div data-full-preview></div></div>',
   );
   qs("[data-full-backup]", root).onclick = async () => {
     try {
@@ -1687,8 +1687,8 @@ async function backupPanel(ctx) {
     try {
       const file = e.target.files[0];
       if (!file) return;
-      const obj = JSON.parse(await file.text()),
-        { previewBackup, restoreBackup } = await import("./backup.js"),
+      const { previewBackup, restoreBackup, readBackupFile } = await import("./backup.js"),
+        obj = await readBackupFile(file),
         p = await previewBackup(db, obj),
         el = qs("[data-full-preview]", root);
       el.innerHTML =

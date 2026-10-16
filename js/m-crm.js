@@ -1505,9 +1505,13 @@ function tsName() {
 export async function doBackup(ctx) {
   const { fullBackup } = await import("./backup.js");
   const backup = await fullBackup(ctx.db);
-  const name = `SAHAPRO_TAM_YEDEK_${tsName()}.json`;
+  // Sıkıştırılmış (çok daha küçük) ve şifre konduysa şifreli: WhatsApp/Drive'daki dosyayı başkası açamaz
+  const pw = (await ctx.db.metaGet("backup_pw")) || "";
+  const { encodeBackup } = await import("./backup-crypt.js");
+  const bytes = await encodeBackup(backup, pw);
+  const name = `SAHAPRO_YEDEK_${tsName()}${pw ? "_SIFRELI" : ""}.sahapro`;
   const how = await shareOrDownload(
-    new Blob([JSON.stringify(backup)], { type: "application/json" }),
+    new Blob([bytes], { type: "application/octet-stream" }),
     name,
     "SAHAPRO yedek",
   );
@@ -1632,6 +1636,7 @@ async function settings(ctx) {
   }
 
   const company = (await db.metaGet("company_profile")) || {};
+  const backupPw = !!(await db.metaGet("backup_pw"));
   const CO = { title: "Ticari ünvan", tax_no: "Vergi no", tax_office: "Vergi dairesi", mersis_no: "MERSİS no", trade_reg_no: "Ticaret sicil no", nace: "Faaliyet kodu (NACE)", address: "Adres" };
   root.innerHTML =
     appbar("Ayarlar", APP_VERSION + " · şema v" + SCHEMA_VERSION) +
@@ -1644,9 +1649,11 @@ async function settings(ctx) {
     <div class="section-title">Yedekleme</div>
     <div class="card">
       ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}
+      ${kv("Yedek şifresi", backupPw ? "🔒 Açık — yedek dosyası şifreli" : "Kapalı — dosyayı bulan açabilir")}
+      <button class="btn sm block" data-bakpw style="margin:6px 0">${backupPw ? "🔒 Yedek şifresini değiştir / kaldır" : "🔒 Yedeğe şifre koy"}</button>
       ${kv("Kalıcı depolama", persisted ? "Korumalı ✓" : "Korumasız — tarayıcı yer açarken silebilir; düzenli yedek alın")}
       <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn primary grow" data-bak>💾 JSON Yedek</button>
+        <button class="btn primary grow" data-bak>💾 Yedek al</button>
         <button class="btn grow" data-csv>📑 CSV Paket</button>
         <button class="btn grow" data-zip>📦 Tam ZIP</button>
       </div>
@@ -1662,7 +1669,7 @@ async function settings(ctx) {
     <div class="card tap" data-go="#/yapay-zeka"><div class="row between"><span>🤖 Telefonda çalışan ücretsiz model — indir ve dene</span><span class="muted small">›</span></div></div>
     <div class="section-title">Geri Yükleme</div>
     <div class="card">
-      <div class="field"><label>Yedek dosyası (.json)</label><input type="file" accept="application/json,.json" data-restore></div>
+      <div class="field"><label>Yedek dosyası (.sahapro ya da eski .json)</label><input type="file" data-restore></div>
       <div data-restoreview></div>
     </div>
     <div class="section-title">Alias Listesi (WhatsApp/sesli komut)</div>
@@ -1700,6 +1707,19 @@ async function settings(ctx) {
     </div>`;
 
   qs("[data-bak]", root).addEventListener("click", () => doBackup(ctx));
+  qs("[data-bakpw]", root)?.addEventListener("click", async () => {
+    const pw = await promptDialog(backupPw ? "Yedek şifresi" : "Yedeğe şifre koy", backupPw ? "Yeni şifre (boş bırakıp Tamam = şifreyi kaldır)" : "Şifre (en az 6 karakter)", "", { type: "password", hint: "ÖNEMLİ: Bu şifreyi bir yere yazın. Telefon kaybolursa yedeği ancak bu şifreyle açabilirsiniz; şifre unutulursa yedek AÇILAMAZ." });
+    if (pw === null && backupPw) {
+      if (await confirmDialog("Şifre kaldırılsın mı?", "Bundan sonraki yedekler şifresiz (yalnız sıkıştırılmış) olur.", "Kaldır", true)) { await db.metaSet("backup_pw", null); toast("Yedek şifresi kaldırıldı", "ok"); ctx.reload(); }
+      return;
+    }
+    if (!pw) return;
+    if (pw.length < 6) return toast("Şifre en az 6 karakter olmalı", "err");
+    const again = await promptDialog("Şifreyi tekrar yazın", "Şifre (tekrar)", "", { type: "password" });
+    if (again !== pw) return toast("Şifreler aynı değil", "err");
+    await db.metaSet("backup_pw", pw);
+    toast("Yedek şifresi kondu — sonraki yedekler şifreli", "ok"); ctx.reload();
+  });
   qs("[data-coform]", root)?.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const fd = new FormData(ev.currentTarget), upd = {};
@@ -1807,8 +1827,8 @@ async function settings(ctx) {
 async function restorePreview(ctx, file) {
   const view = qs("[data-restoreview]", ctx.root);
   try {
-    const obj = JSON.parse(await file.text()),
-      { previewBackup, restoreBackup } = await import("./backup.js"),
+    const { previewBackup, restoreBackup, readBackupFile } = await import("./backup.js"),
+      obj = await readBackupFile(file),
       p = await previewBackup(ctx.db, obj);
     view.innerHTML =
       notice(

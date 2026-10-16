@@ -12,7 +12,13 @@ import {
   mergePreview,
   isValidBackup,
 } from "./core.js";
-const SECRET_META = ["gemini_key"];
+const SECRET_META = ["gemini_key", "backup_pw"];
+// Yedek dosyasını oku: eski .json, sıkıştırılmış ya da şifreli .sahapro (şifre sorulur)
+export async function readBackupFile(file) {
+  const { decodeBackup } = await import("./backup-crypt.js");
+  const { promptDialog } = await import("./ui.js");
+  return decodeBackup(new Uint8Array(await file.arrayBuffer()), () => promptDialog("Şifreli yedek", "Yedek şifresi", "", { type: "password" }));
+}
 export async function fullBackup(db) {
   const data = await db.dumpAll(),
     attachments = [];
