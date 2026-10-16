@@ -1421,6 +1421,11 @@ async function expenseDetail(db, e, names) {
     ${kv("Ödeme", e.payment_method || "—")}
     ${kv("Personel", names.personnel[e.personnel_id] || "—")}
     ${e.description ? kv("Açıklama", e.description) : ""}
+    ${e.company ? kv("Firma", e.company + (e.seller_tax_no ? " · VKN " + e.seller_tax_no : "")) : ""}
+    ${e.invoice_no ? kv("Fatura / fiş no", e.invoice_no) : ""}
+    ${e.ettn ? kv("ETTN", e.ettn) : ""}
+    ${e.net_amount != null ? kv("KDV hariç / KDV", `${fmtTL(e.net_amount)} ₺ / ${e.kdv_amount != null ? fmtTL(e.kdv_amount) + " ₺" : "—"}`) : ""}
+    ${Array.isArray(e.items) && e.items.length ? `<div class="section-title" style="margin-top:8px">Kalemler (${e.items.length})</div>` + e.items.map((i) => `<div class="row between small" style="padding:4px 0;border-bottom:1px solid var(--border)"><span>${i.code ? `<span class="muted tiny">${esc(i.code)}</span> ` : ""}${esc(i.desc)} <span class="muted">× ${Number(i.qty || 1).toLocaleString("tr-TR")}</span></span><b style="white-space:nowrap">${fmtTL(i.amount)} ₺</b></div>`).join("") : ""}
     <div data-photos style="margin-top:10px">${atts.length ? "" : '<span class="muted small">Bu giderde fiş fotoğrafı yok</span>'}</div>
     <button class="btn block" style="margin-top:12px" data-close>Kapat</button>`);
   const box = qs("[data-photos]", sh);

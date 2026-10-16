@@ -1,6 +1,7 @@
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
+import { validateInvoiceDetail } from "./receipt-detail.js";
 import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
@@ -276,10 +277,10 @@ export function assistantSystem(rules = "") {
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
     "Sefer/gidiş/tur=Sefer, saat=Saat, yevmiye/gün=Yevmiye. İş türü listesi: " + WORK_TYPES.join(", ") + ".",
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
-    "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter).",
+    "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter). FATURA / FİŞ ise TÜM kalem satırlarını (stok kodu, açıklama, miktar, birim fiyat, KDV, tutar) ve toplamları eksiksiz yaz (en çok 3500 karakter).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
-    "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
+    "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\",\"invoice\":(fotoğraf fatura/fiş ise) {\"no\":fatura/fiş no,\"ettn\",\"seller_tax_no\":SATICININ VKN/TCKN,\"net\":KDV hariç toplam,\"kdv\":KDV tutarı,\"kdv_rate\",\"items\":[{\"code\":stok kodu,\"desc\":açıklama (yazdığı gibi),\"qty\",\"unit\",\"unit_price\":KDV hariç birim fiyat,\"kdv_rate\",\"amount\":KDV hariç satır tutarı}] (HER satırı ayrı yaz)}; company: satıcının tam ünvanı}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
@@ -578,6 +579,9 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       else issues.push(`Tutar ${a} mesajda/fişte görünmüyor`);
     } else issues.push("Tutar yok");
     if (r.credit && !r.supplier_id) issues.push("Veresiye için esnaf seçilmeli");
+    // Fatura / fiş ayrıntısı (kalemler, fatura no, ETTN, KDV) — fotoğrafın yazısıyla doğrulanır
+    r.detail = validateInvoiceDetail(e.invoice, photo != null ? photoTexts[photo] : photoTexts.join("\n"));
+    if (r.detail?.net != null && r.detail?.kdv != null && r.amount && Math.abs(r.detail.net + r.detail.kdv - r.amount) > 1 && !r.detail.issues.length) r.detail.issues.push("KDV hariç + KDV, tutarla tutmuyor");
     r.issues = issues;
     r.ok = !!(r.amount && (!r.credit || r.supplier_id));
     out.expenses.push(r);
@@ -875,7 +879,8 @@ export function assistantSchema() {
         work_type: { type: ["string", "null"], enum: [...WORK_TYPES, null] }, quantity: NN, unit: { type: ["string", "null"], enum: [...ASSIST_UNITS, null] },
         guessed: NB, customer_guess: NB, reporter: NS, date_source: NS, from_place: NS, quarry_id: NS, to_place: NS, to_is_dump: NB, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, dump_cost: NN, note: NS,
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
-      expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, payment_method: NS, paid_by_personnel_id: NS, photo: { type: ["integer", "null"] }, note: NS }),
+      expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, payment_method: NS, paid_by_personnel_id: NS, photo: { type: ["integer", "null"] }, note: NS,
+        invoice: { type: ["object", "null"], properties: { no: NS, ettn: NS, seller_tax_no: NS, net: NN, kdv: NN, kdv_rate: NN, items: { type: "array", items: { type: "object", properties: { code: NS, desc: NS, qty: NN, unit: NS, unit_price: NN, kdv_rate: NN, amount: NN } } } } } }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, km: NN, machine_hours: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),
