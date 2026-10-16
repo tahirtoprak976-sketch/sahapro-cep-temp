@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.84";
+export const APP_VERSION = "SAHAPRO SOLO v3.7.85";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -742,11 +742,33 @@ export function smartAlerts(data, opts = {}) {
     });
   return alerts;
 }
-// Aynı sahip + kategori için yalnızca en güncel belge (yenilenen eski belge uyarı vermesin)
+// Aynı belgenin farklı adları (ör. "TÜVTÜRK / Periyodik Muayene" = "Muayene Belgesi")
+export const DOC_FAMILY = { "TÜVTÜRK / Periyodik Muayene": "Muayene Belgesi", "Sigorta / Poliçe": "Zorunlu Trafik Sigortası" };
+export const docFamily = (c) => DOC_FAMILY[c] || c || "";
+const docOwnerKey = (d) => `${d.owner_type || ""}|${d.vehicle_id || d.personnel_id || d.owner_id || ""}`;
+const docNoKey = (s) => String(s || "").toLocaleUpperCase("tr-TR").replace(/[^A-Z0-9ÇĞİÖŞÜ]/g, "");
+// Aynı belge mi? Aynı sahip + aynı belge ailesi + (aynı belge no ya da aynı düzenleme ve bitiş tarihi)
+export function sameDocument(a, b) {
+  if (docOwnerKey(a) !== docOwnerKey(b) || docFamily(a.category) !== docFamily(b.category)) return false;
+  const na = docNoKey(a.doc_no), nb = docNoKey(b.doc_no);
+  if (na.length >= 3 && na === nb) return true;
+  return !!(a.expiry_date && a.expiry_date === b.expiry_date && a.date && a.date === b.date);
+}
+// Mükerrer belge grupları (her grupta ilk kayıt tutulur)
+export function duplicateDocuments(docs) {
+  const list = [...(docs || [])].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  const groups = [];
+  for (const d of list) {
+    const g = groups.find((x) => sameDocument(x[0], d));
+    if (g) g.push(d); else groups.push([d]);
+  }
+  return groups.filter((g) => g.length > 1);
+}
+// Aynı sahip + belge ailesi için yalnızca en güncel belge (yenilenen eski belge uyarı vermesin)
 export function latestDocuments(docs) {
   const best = new Map();
   for (const d of docs || []) {
-    const k = `${d.owner_type || ""}|${d.vehicle_id || d.personnel_id || d.owner_id || ""}|${d.category || ""}`;
+    const k = `${docOwnerKey(d)}|${docFamily(d.category)}`;
     const cur = best.get(k);
     if (
       !cur ||

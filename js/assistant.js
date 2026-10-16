@@ -583,8 +583,8 @@ async function save(ctx, out, v, d, { message, files }) {
   const batchWorks = {};
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
-  const newVehByPlate = new Map();
-  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0 };
+  const newVehByPlate = new Map(), savedDocs = [];
+  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -823,7 +823,20 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         const f = { category, owner_type: otype, owner_id: oid, ...(otype === "vehicle" || otype === "personnel" ? { [otype + "_id"]: oid } : {}), date: val(c, "date"), doc_no: val(c, "doc_no").trim(),
           expiry_date: val(c, "expiry_date") || null, title: category, note: "Asistan fotoğraftan okudu" };
+        // Aynı belge zaten kayıtlıysa (ya da bu gönderide ikinci kez geldiyse) yeni belge açılmaz
+        const { sameDocument } = await import("./core.js");
+        if (savedDocs.some((x) => sameDocument(x, f))) { done.docSame++; continue; }
+        const ex = (await db.listActive("documents")).find((x) => sameDocument(x, f));
+        if (ex) {
+          const fix = {};
+          if (f.expiry_date && f.expiry_date > (ex.expiry_date || "")) { fix.expiry_date = f.expiry_date; fix.date = f.date; }
+          if (Object.keys(fix).length) await db.saveExisting("documents", ex, fix, "Asistan: aynı belge yeniden okundu");
+          if (file && !(await db.attachmentsFor("document", ex.id)).length) await db.addAttachment("document", ex.id, file, { kind: "scan_original" });
+          savedDocs.push(ex); done.docSame++;
+          continue;
+        }
         await (file ? db.saveDocument(f, file) : db.saveNew("documents", f, "Asistan: belge"));
+        savedDocs.push(f);
         done.doc++;
         continue;
       }
@@ -1019,7 +1032,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır

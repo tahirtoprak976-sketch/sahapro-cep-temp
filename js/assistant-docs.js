@@ -1,6 +1,6 @@
 // Asistan — fotoğraftan döküm/kantar fişi ve araç/personel belgesi (bitiş tarihi) okuma. SAF katman.
 // Kural aynı: fiş numarası, tonaj, tarih ve plaka FOTOĞRAFIN YAZISINDA geçmeli; geçmeyen satır işaretsiz gelir.
-import { isActive, todayStr, addDays, COMPANY_NAME } from "./core.js";
+import { isActive, todayStr, addDays, COMPANY_NAME, sameDocument } from "./core.js";
 import { numbersInText } from "./ai-assist.js";
 import { VEHICLE_DOCS, PERSONNEL_DOCS, COMPANY_DOCS, COMPANY_OWNER_ID, documentOwner } from "./business.js";
 import { foldTr } from "./parser.js";
@@ -228,7 +228,7 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
     else if (owner_type === "vehicle" && owner.plate && !vehicleInText(owner, text)) issues.push(`${owner.plate} plakası belgede görünmüyor`);
     else if (owner_type === "personnel" && !nameMatches(owner.name, text)) issues.push(`${owner.name} adı belgede görünmüyor`);
     const dates = datesInText(text);
-    const r = { photo, category, owner_type, owner_id: owner?.id || null, new_vehicle: newVehicle, new_person: newPerson, card_update: upd, doc_no: "", date: null, expiry_date: null };
+    const r = { photo, category, owner_type, owner_id: owner?.id || null, existing_doc_id: null, new_vehicle: newVehicle, new_person: newPerson, card_update: upd, doc_no: "", date: null, expiry_date: null };
     const no = String(x.doc_no || "").trim();
     if (no && alnum(no).length >= 3 && alnum(text).includes(alnum(no))) r.doc_no = no.slice(0, 40);
     else if (owner_type === "company" && upd.find((u) => u.k === "tax_no")) r.doc_no = upd.find((u) => u.k === "tax_no").to;
@@ -242,8 +242,13 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
     else { r.date = r.expiry_date && r.expiry_date < today ? r.expiry_date : today; if (st) issues.push(`Düzenleme tarihi ${st} belgede yok, bugün yazıldı`); }
     if (r.expiry_date && r.date > r.expiry_date) r.date = r.expiry_date;
     if (r.expiry_date && r.expiry_date < today) issues.push("Bu belgenin süresi dolmuş");
+    // Aynı belge zaten kayıtlıysa ikinci kez eklenmez; yalnız kart bilgileri (ve daha geç bitiş tarihi) güncellenir
+    if (r.owner_id && category) {
+      const ex = live(d, "documents").find((y) => sameDocument(y, { ...r, doc_no: r.doc_no || no }));
+      if (ex) { r.existing_doc_id = ex.id; issues.push(`Bu belge zaten kayıtlı (${ex.category}) — ikinci kez eklenmez${upd.length ? ", yalnız kart bilgileri güncellenir" : ""}`); }
+    }
     r.issues = issues;
-    r.ok = !!(photo != null && category && (r.owner_id || r.new_vehicle || r.new_person) && r.doc_no && (r.expiry_date || NO_EXPIRY.includes(category)) && !issues.some((i) => /görünmüyor|belgede yok/.test(i)));
+    r.ok = !(r.existing_doc_id && !upd.length) && !!(photo != null && category && (r.owner_id || r.new_vehicle || r.new_person) && r.doc_no && (r.expiry_date || NO_EXPIRY.includes(category)) && !issues.some((i) => /görünmüyor|belgede yok/.test(i)));
     out.push(r);
   }
   return out;
