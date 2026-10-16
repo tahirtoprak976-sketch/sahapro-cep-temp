@@ -282,7 +282,7 @@ export function assistantSystem(rules = "") {
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\",\"invoice\":(fotoğraf fatura/fiş ise) {\"no\":fatura/fiş no,\"ettn\",\"seller_tax_no\":SATICININ VKN/TCKN,\"net\":KDV hariç toplam,\"kdv\":KDV tutarı,\"kdv_rate\",\"items\":[{\"code\":stok kodu,\"desc\":açıklama (yazdığı gibi),\"qty\",\"unit\",\"unit_price\":KDV hariç birim fiyat,\"kdv_rate\",\"amount\":KDV hariç satır tutarı}] (HER satırı ayrı yaz)}; company: satıcının tam ünvanı}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
-    "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
+    "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\",\"photo\":fatura fotoğrafı sırası,\"company\":satıcı (petrol firması) tam ünvanı,\"irsaliye_no\",\"tanker_plate\",\"invoice\":{aynı biçim: no, ettn, seller_tax_no, net, kdv, kdv_rate, items}}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma). AKARYAKIT FATURASI (Motorin/Mazot) toplu alımsa (yüzlerce/binlerce litre, plaka bizim araçlarımızdan değilse — tankerin plakasıdır) bu bir DEPO GİRİŞİDİR: tank_in'e yaz, expenses'e ve fuel'e YAZMA. Toplam = Ödenecek Tutar (KDV dahil), unit_price = toplam ÷ litre.",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
     "\"maintenance\":[{\"date\",\"vehicle_id\",\"maint_type\",\"status\",\"description\",\"cost\",\"service_company\",\"supplier_id\",\"credit\"}] (arıza/bakım; maint_type: " + MAINT_TYPES.join(", ") + "; status: " + MAINT_STATUS.join(", ") + "),",
     "\"personnel\":[{\"date\",\"personnel_id\",\"event_type\",\"amount\",\"hours_days\",\"note\"}] (event_type: " + PERSONNEL_EVENT_TYPES.join(", ") + "),",
@@ -597,13 +597,28 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       unit_price: numOk(Number(t.unit_price)) ? Number(t.unit_price) : null, supplier_id: byId(suppliers, t.supplier_id)?.id || null, credit: !!t.credit,
       customer_id: byId(customers, t.customer_id)?.id || null };
     if (r.customer_id) { r.credit = false; r.supplier_id = null; }
+    // Fatura (fotoğraf): ayrıntı, irsaliye no, satıcı; satıcı kayıtlı değilse yeni petrolcü kartı önerilir
+    r.photo = Number.isInteger(t.photo) && t.photo >= 0 && t.photo < photoCount ? t.photo : null;
+    const ttext = r.photo != null ? photoTexts[r.photo] : photoTexts.join("\n");
+    r.detail = validateInvoiceDetail(t.invoice, ttext);
+    r.company = String(t.company || "").trim().slice(0, 120);
+    const irs = String(t.irsaliye_no || "").trim();
+    r.irsaliye_no = irs.length >= 3 && ttext.replace(/\s+/g, "").includes(irs.replace(/\s+/g, "")) ? irs : "";
+    if (!r.supplier_id && !r.customer_id && r.company) {
+      const vkn = r.detail?.seller_tax_no;
+      const fl = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/[^a-zçğıöşü0-9 ]/g, " ").split(/\s+/).filter((w) => w.length >= 4)[0] || "";
+      const m = suppliers.find((s) => (vkn && String(s.tax_no || "").replace(/\D/g, "") === vkn) || (fl(s.name) && fl(s.name) === fl(r.company)));
+      if (m) r.supplier_id = m.id; else r.newSupplier = { name: r.company, tax_no: vkn || null };
+      if (r.detail) r.credit = t.credit !== false; // faturalı toplu alım çoğunlukla vadeli
+    }
     if (liters && r.unit_price && !r.total) r.total = Math.round(liters * r.unit_price * 100) / 100;
     if (liters && r.total && !r.unit_price) r.unit_price = Math.round((r.total / liters) * 100) / 100;
     r.issues = liters ? [] : ["Litre mesajda yok"];
     if (t.unit_price && !r.unit_price) r.issues.push(`Litre fiyatı ${t.unit_price} mesajda yok`);
-    if (r.credit && !r.supplier_id) r.issues.push("Veresiye için petrolcü seçilmeli");
+    if (r.credit && !r.supplier_id && !r.newSupplier) r.issues.push("Veresiye için petrolcü seçilmeli");
     if (r.credit && !r.total) r.issues.push("Veresiye için tutar gerekli");
-    if (!r.credit) r.supplier_id = null;
+    if (r.detail?.no && (d.fuel_tank_movements || []).some((m) => !m.deleted_at && m.invoice_no === r.detail.no)) r.issues.push(`Bu fatura (${r.detail.no}) depo girişi olarak zaten kayıtlı`);
+    if (!r.credit && !r.detail) r.supplier_id = null;
     r.ok = !!liters && !r.issues.length;
     out.tankIn.push(r);
   }
@@ -882,7 +897,8 @@ export function assistantSchema() {
       expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, payment_method: NS, paid_by_personnel_id: NS, photo: { type: ["integer", "null"] }, note: NS,
         invoice: { type: ["object", "null"], properties: { no: NS, ettn: NS, seller_tax_no: NS, net: NN, kdv: NN, kdv_rate: NN, items: { type: "array", items: { type: "object", properties: { code: NS, desc: NS, qty: NN, unit: NS, unit_price: NN, kdv_rate: NN, amount: NN } } } } } }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, km: NN, machine_hours: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
-      tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS }),
+      tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS, photo: { type: ["integer", "null"] }, company: NS, irsaliye_no: NS, tanker_plate: NS,
+        invoice: { type: ["object", "null"], properties: { no: NS, ettn: NS, seller_tax_no: NS, net: NN, kdv: NN, kdv_rate: NN, items: { type: "array", items: { type: "object", properties: { code: NS, desc: NS, qty: NN, unit: NS, unit_price: NN, kdv_rate: NN, amount: NN } } } } } }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),
       maintenance: row({ date: NS, vehicle_id: NS, maint_type: NS, status: NS, description: NS, cost: NN, service_company: NS, supplier_id: NS, credit: NB }),
       personnel: row({ date: NS, personnel_id: NS, event_type: NS, amount: NN, hours_days: NN, note: NS }),
