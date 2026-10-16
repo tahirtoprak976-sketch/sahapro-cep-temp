@@ -583,7 +583,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const batchWorks = {};
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
-  const newVehByPlate = new Map(), savedDocs = [];
+  const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
   const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
@@ -894,6 +894,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (wr0.driver_entry_id) {
           if (existingWorks.some((w) => w.driver_entry_id === wr0.driver_entry_id)) { toast("Şoför kaydı zaten alınmış, atlandı", "err"); continue; }
           fields.driver_entry_id = wr0.driver_entry_id; fields.source = "şoför";
+          if (wr0.digital) dslipIds.push(wr0.driver_entry_id);
           if (wr0.digital) Object.assign(fields, { digital_slip_no: wr0.digital.no, slip_receiver: wr0.digital.receiver || "", slip_signed_at: wr0.digital.signed_at || null, slip_status: "Fiş Var", slip_no: fields.slip_no || wr0.digital.no });
         }
         const up = Number(val(c, "unit_price"));
@@ -1046,7 +1047,13 @@ async function save(ctx, out, v, d, { message, files }) {
         waNext = '<button class="btn primary block" style="margin-top:8px" data-go="#/whatsapp-toplu?next=1">💬 Bu parça işlendi — sonraki güne geç ›</button><button class="btn block" style="margin-top:6px" data-go="#/whatsapp-toplu">Listeye dön</button>';
       }
     }
-    out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") +
+    // Şoförün dijital fişi: kaydedilen işe doğrudan git (imzalı fiş PDF orada)
+    let dslipBtns = "";
+    if (dslipIds.length) {
+      const ws = (await db.listActive("work_records")).filter((w) => dslipIds.includes(w.driver_entry_id) && w.digital_slip_no);
+      dslipBtns = ws.map((w) => `<button class="btn block" style="margin-top:8px;border-color:#2e9e6b" data-go="#/isler/${esc(w.id)}">🧾 Dijital fişi gör: ${esc(w.digital_slip_no)}${w.slip_receiver ? " · " + esc(w.slip_receiver) : ""}</button>`).join("");
+    }
+    out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + dslipBtns +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
       (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;
     bindUndo(ctx, out);
