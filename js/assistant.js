@@ -4,7 +4,7 @@
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
-import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks } from "./assistant-docs.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
@@ -362,13 +362,18 @@ function render(ctx, out, v, d, { message, files, ms }) {
       .join("") +
     v.docs
       .map((r, i) => {
-        const owners = [...vehicles.map(([id, n]) => ["vehicle:" + id, "🚚 " + n]), ...personnel.map(([id, n]) => ["personnel:" + id, "👤 " + n])];
+        const nv = r.new_vehicle;
+        const owners = [...(nv ? [["newveh", `➕ Yeni araç: ${nv.plate} (${nv.type})`]] : []), ...vehicles.map(([id, n]) => ["vehicle:" + id, "🚚 " + n]), ...personnel.map(([id, n]) => ["personnel:" + id, "👤 " + n])];
         return `<div class="card" data-kind="doc" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>📄 Belge</b> · bitiş tarihi takibe alınır</label>
         ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Belge" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Belge türü</label><select name="category">${opt(ASSIST_DOC_TYPES.map((x) => [x, x]), r.category)}</select></div>
-          <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : "")}</select></div>
+          <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : nv ? "newveh" : "")}</select></div>
+          ${nv ? `<div class="field"><label>Yeni araç plakası</label><input name="nv_plate" value="${esc(nv.plate)}"></div>
+          <div class="field"><label>Yeni araç türü</label><select name="nv_type">${opt([...new Set([...VEHICLE_KINDS, nv.type])].map((x) => [x, x]), nv.type)}</select></div>
+          <div class="field"><label>Marka</label><input name="nv_brand" value="${esc(nv.brand || "")}"></div>
+          <div class="field"><label>Model yılı</label><input type="number" name="nv_year" value="${nv.model_year ?? ""}"></div>` : ""}
           <div class="field"><label>Belge no</label><input name="doc_no" value="${esc(r.doc_no)}"></div>
           <div class="field"><label>Düzenleme tarihi</label><input type="date" name="date" value="${esc(r.date || "")}"></div>
           <div class="field"><label>Bitiş tarihi</label><input type="date" name="expiry_date" value="${esc(r.expiry_date || "")}"></div>
@@ -545,7 +550,7 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
       : k === "personnel" ? !val(c, "personnel")
       : k === "ticket" ? !val(c, "ticket_no").trim() || !val(c, "date") || !val(c, "vehicle") || !val(c, "link") || (val(c, "link") === "new" && (!val(c, "customer") || !val(c, "work_type")))
-      : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== val(c, "owner").split(":")[0] || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
+      : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== (val(c, "owner") === "newveh" ? "vehicle" : val(c, "owner").split(":")[0]) || (val(c, "owner") === "newveh" && !plateKey(val(c, "nv_plate"))) || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
       : k === "price" ? !(Number(val(c, "price")) > 0) || !val(c, "unit")
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
@@ -567,6 +572,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const batchWorks = {};
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
+  const newVehByPlate = new Map();
   const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
@@ -760,7 +766,23 @@ async function save(ctx, out, v, d, { message, files }) {
         const r = v.docs[Number(c.dataset.i)];
         const file = files[r.photo];
         const category = val(c, "category");
-        const [otype, oid] = val(c, "owner").split(":");
+        let [otype, oid] = val(c, "owner").split(":");
+        if (otype === "newveh") {
+          // Kayıtlı olmayan araç: aynı plaka bu kayıtta ya da veritabanında varsa ona bağla, yoksa yeni kart aç
+          const pl = plateKey(val(c, "nv_plate"));
+          if (!newVehByPlate.has(pl)) {
+            const ex = (await db.listActive("vehicles")).find((x) => plateKey(x.plate) === pl || plateKey(x.name) === pl);
+            if (ex) newVehByPlate.set(pl, ex.id);
+            else {
+              const nv = r.new_vehicle || {};
+              const yr = Number(val(c, "nv_year")) || null;
+              const rec = await db.saveNew("vehicles", { name: pl, plate: pl, type: val(c, "nv_type") || nv.type || "Araç/Makine", brand: val(c, "nv_brand").trim() || null, model: nv.model || null, model_year: yr, ownership: "Özmal", active: true, note: category + " belgesinden otomatik açıldı" }, "Asistan: belgeden yeni araç");
+              newVehByPlate.set(pl, rec.id);
+              done.cards++;
+            }
+          }
+          otype = "vehicle"; oid = newVehByPlate.get(pl);
+        }
         const f = { category, owner_type: otype, owner_id: oid, [otype + "_id"]: oid, date: val(c, "date"), doc_no: val(c, "doc_no").trim(),
           expiry_date: val(c, "expiry_date") || null, title: category, note: "Asistan fotoğraftan okudu" };
         await (file ? db.saveDocument(f, file) : db.saveNew("documents", f, "Asistan: belge"));
