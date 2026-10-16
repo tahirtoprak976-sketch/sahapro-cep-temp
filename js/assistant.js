@@ -4,7 +4,7 @@
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
-import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS } from "./assistant-docs.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
@@ -223,7 +223,7 @@ export async function screen(ctx) {
       v.settings = validateSettings(plan, { message: vmsg, d, today });
       v.open = validateOpen(plan, { d });
       v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
-      v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
+      v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length, company: await db.metaGet("company_profile") });
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
@@ -363,13 +363,18 @@ function render(ctx, out, v, d, { message, files, ms }) {
     v.docs
       .map((r, i) => {
         const nv = r.new_vehicle;
-        const owners = [...(nv ? [["newveh", `➕ Yeni araç: ${nv.plate} (${nv.type})`]] : []), ...vehicles.map(([id, n]) => ["vehicle:" + id, "🚚 " + n]), ...personnel.map(([id, n]) => ["personnel:" + id, "👤 " + n])];
+        const np = r.new_person;
+        const owners = [...(nv ? [["newveh", `➕ Yeni araç: ${nv.plate} (${nv.type})`]] : []), ...(np ? [["newper", `➕ Yeni personel: ${np.name}`]] : []), ...vehicles.map(([id, n]) => ["vehicle:" + id, "🚚 " + n]), ...personnel.map(([id, n]) => ["personnel:" + id, "👤 " + n]), ["company:company_profile", "🏢 Şirket"]];
+        const LBL = r.owner_type === "personnel" ? PERSON_INFO_LABELS : r.owner_type === "company" ? COMPANY_INFO_LABELS : VEHICLE_INFO_LABELS;
+        const HEAD = r.owner_type === "personnel" ? "👤 Personel kartı" : r.owner_type === "company" ? "🏢 Şirket bilgileri" : "🚚 Araç kartı";
         return `<div class="card" data-kind="doc" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>📄 Belge</b> · bitiş tarihi takibe alınır</label>
         ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Belge" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Belge türü</label><select name="category">${opt(ASSIST_DOC_TYPES.map((x) => [x, x]), r.category)}</select></div>
-          <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : nv ? "newveh" : "")}</select></div>
+          <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : nv ? "newveh" : np ? "newper" : "")}</select></div>
+          ${np ? `<div class="field" data-np ${r.owner_id ? "hidden" : ""}><label>Yeni personel adı</label><input name="np_name" value="${esc(np.name)}"></div>
+          <div class="field" data-np ${r.owner_id ? "hidden" : ""}><label>Görevi</label><input name="np_role" value="${esc(/ehliyet|src|psikoteknik/i.test(r.category || "") ? "Şoför" : /operat/i.test(r.category || "") ? "Operatör" : "")}"></div>` : ""}
           ${nv ? `<div class="field"><label>Yeni araç plakası</label><input name="nv_plate" value="${esc(nv.plate)}"></div>
           <div class="field"><label>Yeni araç türü</label><select name="nv_type">${opt([...new Set([...VEHICLE_KINDS, nv.type])].map((x) => [x, x]), nv.type)}</select></div>
           <div class="field"><label>Marka</label><input name="nv_brand" value="${esc(nv.brand || "")}"></div>
@@ -377,14 +382,14 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Belge no</label><input name="doc_no" value="${esc(r.doc_no)}"></div>
           <div class="field"><label>Düzenleme tarihi</label><input type="date" name="date" value="${esc(r.date || "")}"></div>
           <div class="field"><label>Bitiş tarihi</label><input type="date" name="expiry_date" value="${esc(r.expiry_date || "")}"></div>
-        </div>${r.vehicle_update?.length ? `<div class="small" style="margin-top:8px"><b>🚚 Araç kartı belgeye göre güncellenecek</b> <span class="muted tiny">(sahibi değiştirilmezse)</span>
-          ${r.vehicle_update.map((u) => `<label class="history-check"><input type="checkbox" data-vu="${esc(u.k)}" ${u.on ? "checked" : ""}> ${esc(VEHICLE_INFO_LABELS[u.k])}: <span class="muted">${esc(u.from ?? "—")}</span> → <b>${esc(u.to)}</b></label>`).join("")}</div>` : ""}${issues(r)}</div>`;
+        </div>${r.card_update?.length ? `<div class="small" style="margin-top:8px"><b>${HEAD} belgeye göre güncellenecek</b> <span class="muted tiny">(sahibi değiştirilmezse)</span>
+          ${r.card_update.map((u) => `<label class="history-check"><input type="checkbox" data-vu="${esc(u.k)}" ${u.on ? "checked" : ""}> ${esc(LBL[u.k] || u.k)}: <span class="muted">${esc(u.from ?? "—")}</span> → <b>${esc(u.to)}</b></label>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
       .join("") +
     v.expenses
       .map((r, i) => `<div class="card" data-kind="expense" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Gider</b>${r.photo != null ? " · fiş fotoğrafı eklenecek" : ""}</label>
-        ${r.photo != null && files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="📷 fiş fotoğrafı (önizleme açılamadı, yine de eklenecek)" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'small muted',textContent:this.alt}))" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
+        ${r.photo != null && files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="📷 fiş fotoğrafı (önizleme açılamadı, yine de eklenecek)" data-imgfb style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="amount" value="${r.amount ?? ""}"></div>
@@ -530,6 +535,11 @@ function render(ctx, out, v, d, { message, files, ms }) {
     show();
   }
   qs("[data-save]", out)?.addEventListener("click", () => save(ctx, out, v, d, { message, files }));
+  // Önizlemesi açılamayan fotoğraf: yerine yazı (CSP satır içi onerror'a izin vermez)
+  for (const img of qsa("img[data-imgfb]", out)) img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("div"), { className: "small muted", textContent: img.alt })));
+  // Belge kartı: "Yeni personel / araç" seçilince ilgili alanlar görünür
+  for (const sel of qsa('[data-kind=doc] select[name="owner"]', out))
+    sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
 }
 
 async function save(ctx, out, v, d, { message, files }) {
@@ -551,7 +561,7 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "maintenance" ? !val(c, "vehicle") || !val(c, "description") || (val(c, "supplier") && !(Number(val(c, "cost")) > 0))
       : k === "personnel" ? !val(c, "personnel")
       : k === "ticket" ? !val(c, "ticket_no").trim() || !val(c, "date") || !val(c, "vehicle") || !val(c, "link") || (val(c, "link") === "new" && (!val(c, "customer") || !val(c, "work_type")))
-      : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== (val(c, "owner") === "newveh" ? "vehicle" : val(c, "owner").split(":")[0]) || (val(c, "owner") === "newveh" && !plateKey(val(c, "nv_plate"))) || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
+      : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== ({ newveh: "vehicle", newper: "personnel" }[val(c, "owner")] || val(c, "owner").split(":")[0]) || (val(c, "owner") === "newveh" && !plateKey(val(c, "nv_plate"))) || (val(c, "owner") === "newper" && val(c, "np_name").trim().split(/\s+/).length < 2) || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
       : k === "price" ? !(Number(val(c, "price")) > 0) || !val(c, "unit")
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
@@ -574,7 +584,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map();
-  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0 };
+  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -783,15 +793,35 @@ async function save(ctx, out, v, d, { message, files }) {
             }
           }
           otype = "vehicle"; oid = newVehByPlate.get(pl);
-        } else if (otype === "vehicle" && oid === r.owner_id && r.vehicle_update?.length) {
-          // Kayıtlı araç: işaretli alanları belgedeki gerçek bilgiyle düzelt
+        } else if (otype === "newper") {
+          // Kayıtlı olmayan personel: aynı TC / ad bu kayıtta ya da veritabanında varsa ona bağla, yoksa yeni kart aç
+          const np = r.new_person || {};
+          const name = val(c, "np_name").trim().replace(/\s+/g, " ");
+          const key = np.identity_number || name.toLocaleLowerCase("tr-TR");
+          if (!newVehByPlate.has("p:" + key)) {
+            const ex = (await db.listActive("personnel")).find((p) => (np.identity_number && p.identity_number === np.identity_number) || String(p.name || "").toLocaleLowerCase("tr-TR").trim() === name.toLocaleLowerCase("tr-TR"));
+            if (ex) newVehByPlate.set("p:" + key, ex.id);
+            else {
+              const rec = await db.saveNew("personnel", { name, role: val(c, "np_role").trim() || null, identity_number: np.identity_number || null, birth_date: np.birth_date || null, license_class: np.license_class || null, blood_type: np.blood_type || null, active: true, note: category + " belgesinden otomatik açıldı" }, "Asistan: belgeden yeni personel");
+              newVehByPlate.set("p:" + key, rec.id);
+              done.pcards++;
+            }
+          }
+          otype = "personnel"; oid = newVehByPlate.get("p:" + key);
+        } else if (oid === r.owner_id && otype === r.owner_type && r.card_update?.length) {
+          // Kayıtlı araç / personel / şirket: işaretli alanları belgedeki gerçek bilgiyle düzelt
           const on = new Set(qsa("[data-vu]", c).filter((x) => x.checked).map((x) => x.dataset.vu));
-          const upd = Object.fromEntries(r.vehicle_update.filter((u) => on.has(u.k)).map((u) => [u.k, u.to]));
+          const upd = Object.fromEntries(r.card_update.filter((u) => on.has(u.k)).map((u) => [u.k, u.to]));
           if (upd.km) upd.meter_date = val(c, "date") || todayStr();
-          const cur = Object.keys(upd).length && (await db.get("vehicles", oid));
-          if (cur) { await db.saveExisting("vehicles", cur, upd, "Asistan: " + category + " belgesinden güncellendi"); done.vupd++; }
+          if (Object.keys(upd).length) {
+            if (otype === "company") { await db.metaSet("company_profile", { ...((await db.metaGet("company_profile")) || {}), ...upd }); done.vupd++; }
+            else {
+              const cur = await db.get(otype === "vehicle" ? "vehicles" : "personnel", oid);
+              if (cur) { await db.saveExisting(otype === "vehicle" ? "vehicles" : "personnel", cur, upd, "Asistan: " + category + " belgesinden güncellendi"); done.vupd++; }
+            }
+          }
         }
-        const f = { category, owner_type: otype, owner_id: oid, [otype + "_id"]: oid, date: val(c, "date"), doc_no: val(c, "doc_no").trim(),
+        const f = { category, owner_type: otype, owner_id: oid, ...(otype === "vehicle" || otype === "personnel" ? { [otype + "_id"]: oid } : {}), date: val(c, "date"), doc_no: val(c, "doc_no").trim(),
           expiry_date: val(c, "expiry_date") || null, title: category, note: "Asistan fotoğraftan okudu" };
         await (file ? db.saveDocument(f, file) : db.saveNew("documents", f, "Asistan: belge"));
         done.doc++;
@@ -989,7 +1019,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "araç kartı belgeye göre güncellendi"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır

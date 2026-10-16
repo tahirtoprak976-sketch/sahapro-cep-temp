@@ -861,6 +861,7 @@ async function validateFields(store, fields) {
   if (store === "documents") {
     const { normalizedDocument, OWNER_STORES } = await import("./business.js");
     const d = normalizedDocument(f);
+    if (d.owner_type === "company") await ensureCompany();
     const owner = await get(OWNER_STORES[d.owner_type], d.owner_id);
     if (!owner || owner.deleted_at) throw Error("Belge sahibi bulunamadı");
     return d;
@@ -1201,6 +1202,11 @@ export async function byRelation(store, key, value) {
       .index(key)
       .getAll(value),
   );
+}
+// Şirket evrakının sahibi: meta "company_profile" (ünvan, vergi no…). Yoksa varsayılan adla açılır.
+export async function ensureCompany() {
+  const cur = await metaGet("company_profile");
+  if (!cur) await metaSet("company_profile", { name: (await import("./core.js")).COMPANY_NAME });
 }
 export async function saveDocument(fields, file) {
   const f = await validateFields("documents", fields),

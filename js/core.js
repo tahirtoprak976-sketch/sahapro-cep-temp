@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.83";
+export const APP_VERSION = "SAHAPRO SOLO v3.7.84";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -700,7 +700,7 @@ export function smartAlerts(data, opts = {}) {
       alerts.push({
         kind: d.expiry_date < today ? "alert" : "warn",
         key: "doc_expiry",
-        text: `${(data.vehicles || []).find((v) => v.id === (d.vehicle_id || d.owner_id))?.name || (data.personnel || []).find((p) => p.id === (d.personnel_id || d.owner_id))?.name || "Belge"} · ${d.category || "Belge"}: ${d.expiry_date < today ? "Süresi geçti" : Math.ceil((new Date(d.expiry_date + "T12:00:00") - new Date(today + "T12:00:00")) / 86400000) + " gün kaldı"} (${trDate(d.expiry_date)})`,
+        text: `${(data.vehicles || []).find((v) => v.id === (d.vehicle_id || d.owner_id))?.name || (data.personnel || []).find((p) => p.id === (d.personnel_id || d.owner_id))?.name || (d.owner_type === "company" ? "Şirket" : "Belge")} · ${d.category || "Belge"}: ${d.expiry_date < today ? "Süresi geçti" : Math.ceil((new Date(d.expiry_date + "T12:00:00") - new Date(today + "T12:00:00")) / 86400000) + " gün kaldı"} (${trDate(d.expiry_date)})`,
         ref: { type: "document", id: d.id },
       });
   }
