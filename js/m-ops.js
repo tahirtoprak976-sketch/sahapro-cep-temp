@@ -257,6 +257,8 @@ async function tank(ctx) {
     db.listActive("customers"),
   ]);
   const { hasFuelRules: hasFuelRulesT } = await import("./assistant-rules.js");
+  const { tankDupPairs } = await import("./tank-match.js");
+  const dupPairs = tankDupPairs(rows);
   const uncosted = fuels.filter((f) => isActive(f) && f.fuel_source === "Depo Tankı" && !(Number(f.total) > 0)).length;
 
   root.innerHTML =
@@ -270,6 +272,7 @@ async function tank(ctx) {
       ${stat(st.daily ? fmtNum(st.daily) : "—", "Günlük L (14g)")}
       ${stat(st.daysLeft != null ? fmtNum(st.daysLeft) : "—", "Kaç gün yeter")}
     </div>
+    ${dupPairs.map((p, i) => `<div class="card" style="border-left:4px solid #e0a030"><div class="small"><b>⚠ Aynı yakıt iki kez girilmiş olabilir</b><br>${trDate(p.keep.date)} elle girilen ${fmtNum(p.keep.liters)} L ve ${trDate(p.drop.date)} faturadan gelen ${fmtNum(p.drop.liters)} L (fatura ${esc(p.drop.invoice_no)}). Aynı teslimatsa birleştirin: fatura bilgisi ve fotoğrafı elle girdiğiniz kayda geçer, fazla giriş silinir, borç bir kez kalır.</div><button class="btn block" style="margin-top:8px" data-merge="${i}">🔗 Birleştir</button></div>`).join("")}
     ${bal.remaining < 0 ? notice("warn", "Depo eksiye düşmüş: depoya giriş kaydı eksik. Gelen yakıtı GİRİŞ olarak ekleyin.") : ""}
     ${uncosted && st.unitCost ? `<div class="card"><div class="small">${uncosted} depo yakıtı kaydının tutarı yok. Ortalama ${fmtTL(st.unitCost)} ₺/L ile maliyet yazılsın mı? (araç maliyeti ve kâr hesabı düzelir)</div><button class="btn block" style="margin-top:8px" data-fillcost>₺ Maliyetleri Yaz</button></div>` : ""}
     <div class="card">
@@ -337,6 +340,13 @@ async function tank(ctx) {
         .join("")
     : emptyState("🛢", "Hareket yok");
 
+  for (const b of qsa("[data-merge]", root))
+    b.addEventListener("click", async () => {
+      const p = dupPairs[Number(b.dataset.merge)];
+      if (!(await confirmDialog("Birleştirilsin mi?", `Elle girilen ${fmtNum(p.keep.liters)} L kayıt kalır, faturadan gelen ikinci giriş silinir. Depo stoku ${fmtNum(p.drop.liters)} L azalır (çift sayım düzelir).`, "Birleştir"))) return;
+      try { await mergeTankDup(db, ctx, p); toast("Birleştirildi", "ok"); ctx.reload(); }
+      catch (e) { toast(e.message || String(e), "err"); }
+    });
   qs("[data-fillcost]", root)?.addEventListener("click", async () => {
     const n = await db.fillTankFuelCosts();
     toast(n + " yakıt kaydına maliyet yazıldı", "ok");
@@ -1014,4 +1024,26 @@ async function contractors(ctx) {
     toast("Eklendi", "ok");
     go("#/taseron/" + created.id);
   });
+}
+
+// Mükerrer depo girişi: faturalı kaydın bilgisi/fotoğrafı elle girilen kayda geçer, faturalı kayıt silinir, borç tek kalır
+async function mergeTankDup(db, ctx, { keep, drop }) {
+  const { invoiceFieldsOf } = await import("./tank-match.js");
+  const edb = await import("./enterprise-db.js");
+  const d = await db.dumpAll();
+  const billOf = (id) => (d.payables || []).find((b) => !b.deleted_at && b.status !== "İptal" && b.source_store === "fuel_tank_movements" && b.source_id === id);
+  const bKeep = billOf(keep.id), bDrop = billOf(drop.id);
+  if (bDrop) await edb.cancelPayable(bDrop.id, "Mükerrer depo girişi: elle girilen girişle birleştirildi");
+  const f = invoiceFieldsOf(drop);
+  if (bKeep) delete f.supplier_id;
+  await db.saveExisting("fuel_tank_movements", await db.get("fuel_tank_movements", keep.id), f, "Faturalı girişle birleştirildi");
+  for (const a of await db.attachmentsFor("tank", drop.id)) await db.addAttachment("tank", keep.id, a.blob, { kind: a.kind || "invoice" });
+  await db.deleteTankIn(drop.id, "Mükerrer depo girişi (birleştirildi)");
+  if (bDrop && !bKeep) {
+    const { createCreditBill } = await import("./esnaf.js");
+    const fresh = await db.dumpAll();
+    await createCreditBill(ctx, fresh, fresh.suppliers.find((x) => x.id === bDrop.party_id),
+      { date: keep.date, amount: Number(bDrop.gross_total), description: `Depoya yakıt ${keep.liters} L${drop.invoice_no ? " · fatura " + drop.invoice_no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
+      { source: { store: "fuel_tank_movements", id: keep.id } });
+  }
 }

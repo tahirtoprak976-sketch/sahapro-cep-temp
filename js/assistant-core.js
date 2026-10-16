@@ -1,6 +1,7 @@
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
+import { tankInMatch } from "./tank-match.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
 import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
@@ -619,11 +620,18 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (r.credit && !r.total) r.issues.push("Veresiye için tutar gerekli");
     if (r.detail?.no && (d.fuel_tank_movements || []).some((m) => !m.deleted_at && m.invoice_no === r.detail.no)) r.issues.push(`Bu fatura (${r.detail.no}) depo girişi olarak zaten kayıtlı`);
     if (!r.credit && !r.detail) r.supplier_id = null;
+    // Elle girilmiş aynı teslimat (faturasız depo girişi) varsa ona bağlanır — stok iki kez artmaz
+    const mm = r.detail && !r.customer_id && liters ? tankInMatch(d.fuel_tank_movements || [], { date: r.date, liters }) : null;
+    if (mm) {
+      const bill = (d.payables || []).find((b) => !b.deleted_at && b.status !== "İptal" && b.source_store === "fuel_tank_movements" && b.source_id === mm.id);
+      r.match = { id: mm.id, date: mm.date, liters: Number(mm.liters), total: Number(mm.total) || null, supplier_id: mm.supplier_id || null, bill: bill ? Number(bill.gross_total) || 0 : null };
+      if (!r.supplier_id && !r.newSupplier && mm.supplier_id) r.supplier_id = mm.supplier_id;
+    }
     r.ok = !!liters && !r.issues.length;
     out.tankIn.push(r);
   }
   out.tankStock = calcTankBalance(d.fuel_tank_movements || []).remaining;
-  let stock = out.tankStock + out.tankIn.filter((t) => t.ok).reduce((n, t) => n + t.liters, 0);
+  let stock = out.tankStock + out.tankIn.filter((t) => t.ok && !t.match).reduce((n, t) => n + t.liters, 0);
   const STATION = /istasyon|petrol|opet|shell|\bbp\b|total|aytemiz|lukoil|alpet|akaryak|pompac/i;
   for (const f of (Array.isArray(plan.fuel) ? plan.fuel : []).slice(0, 10)) {
     const issues = [];

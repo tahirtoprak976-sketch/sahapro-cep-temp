@@ -208,6 +208,17 @@ export async function softDelete(store, id, reason) {
   );
   return upd;
 }
+// Mükerrer depo GİRİŞİ silme (birleştirme sonrası). Sayım/çıkış hareketi ve borca bağlı giriş silinmez.
+export async function deleteTankIn(id, reason) {
+  const rec = await get("fuel_tank_movements", id);
+  if (!rec || rec.deleted_at) return null;
+  if (rec.move_type !== "GİRİŞ" || rec.count_id || rec.fuel_record_id) throw Error("Yalnız depo girişi silinebilir");
+  if ((await getAll("payables")).some((b) => isActive(b) && b.status !== "İptal" && b.source_store === "fuel_tank_movements" && b.source_id === id)) throw Error("Borca bağlı giriş silinemez");
+  const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
+  await put("fuel_tank_movements", upd);
+  await audit("fuel_tank_movements", id, "soft_delete", { deleted_at: null }, { deleted_at: upd.deleted_at }, reason || "");
+  return upd;
+}
 export async function restore(store, id) {
   const rec = await get(store, id);
   if (!rec) return null;
