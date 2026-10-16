@@ -98,7 +98,7 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
   const since = (n) => addDays(today, -n);
   const fuelDaily = (sumBy(live(d, "fuel_records").filter((f) => f.date >= since(30) && f.date <= today && !["Müşteri Verdi", "Depo Tankı"].includes(f.fuel_source)), (f) => f.total)
     + sumBy(live(d, "fuel_tank_movements").filter((m) => m.move_type === "GİRİŞ" && !m.customer_id && m.date >= since(30) && m.date <= today), (m) => m.total)) / 30;
-  const expDaily = sumBy(live(d, "expense_records").filter((e) => e.date >= since(60) && e.date <= today && !e.supplier_id && !(e.payment_method === "Personel Ödedi" && e.reimbursement_status === "Bekliyor")), (e) => e.amount) / 60;
+  const expDaily = sumBy(live(d, "expense_records").filter((e) => !e.invoice_paid && e.date >= since(60) && e.date <= today && !e.supplier_id && !(e.payment_method === "Personel Ödedi" && e.reimbursement_status === "Bekliyor")), (e) => e.amount) / 60;
   const maintDaily = sumBy(live(d, "maintenance_records").filter((m) => m.date >= since(90) && m.date <= today && !m.supplier_id), (m) => m.cost) / 90;
   for (let w = 0; w < weeks; w++) {
     const ws = addDays(today, w * 7);

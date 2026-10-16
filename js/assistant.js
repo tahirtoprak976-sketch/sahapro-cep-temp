@@ -404,7 +404,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         </div>
         ${r.dumpInv ? `<div class="notice info" style="margin-top:6px"><div>Bu bir <b>döküm sahası faturası</b>. Gider yazılmaz: para döküm hesabına yatırılırken ödendi, maliyet her dökümde ayrıca yazılıyor (yoksa iki kez sayılır). Fatura döküm hesabına bağlanır; faturadaki ton ve tutar kayıtlarımızla karşılaştırılır.${r.dumpInv.ton ? `<br><b>${r.dumpInv.ton.toLocaleString("tr-TR")} ton</b>${r.amount ? ` · ton başı ${(Math.round((r.amount / r.dumpInv.ton) * 100) / 100).toLocaleString("tr-TR")} ₺ (KDV dahil)` : ""}` : ""}${r.dumpInv.place ? ` · yer: ${esc(r.dumpInv.place)}` : ""}</div></div>
           <div class="formgrid2"><div class="field"><label>Döküm sahası</label><select name="dinv_site">${opt(v.dumpSites || [], r.dumpInv.site_id, "— seçin —")}</select></div>
-          <div class="field"><label>Nasıl kaydedilsin</label><select name="dinv_mode">${opt([["inv", "Döküm faturası (önerilen)"], ["exp", "Normal gider olarak"]], "inv")}</select></div></div>` : ""}
+          <div class="field"><label>Nasıl kaydedilsin</label><select name="dinv_mode">${opt([["paid", "Geçmiş dönem: fatura tutarını ödenmiş say (giderlerde görünür)"], ["inv", "Yalnız fatura (para yatırma kayıtları girili)"], ["exp", "Düz gider (dökümler ayrıca sayılır — iki kez!)"]], r.dumpInv.hasDeposits ? "inv" : "paid")}</select></div></div>` : ""}
         <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${r.issues_pay ? `<div class="muted tiny">⚠ ${esc(r.issues_pay)}</div>` : ""}${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
     v.tankIn
@@ -593,7 +593,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
-  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0 };
+  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -1001,22 +1001,31 @@ async function save(ctx, out, v, d, { message, files }) {
         const r = v.expenses[Number(c.dataset.i)];
         const file = r.photo != null ? files[r.photo] : null;
         // Döküm faturası → döküm hesabına bağlı belge (gider değil); saha VKN/yer adı öğrenilir
-        if (r.dumpInv && val(c, "dinv_mode") === "inv") {
+        if (r.dumpInv && ["inv", "paid"].includes(val(c, "dinv_mode"))) {
           const sid = val(c, "dinv_site");
           if (!sid) { toast("Döküm faturası için döküm sahasını seçin", "err"); continue; }
           const D = r.detail || {}, amount = Number(val(c, "amount")) || r.amount, date = val(c, "date") || todayStr();
           const doc = { category: "Döküm Faturası", owner_type: "dump_site", owner_id: sid, date, doc_no: D.no || "", title: val(c, "company") || "Döküm faturası", amount,
             ton: r.dumpInv.ton || null, net_amount: D.net ?? null, kdv_amount: D.kdv ?? null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, items: D.items?.length ? D.items : null, place: r.dumpInv.place || null,
             note: [r.dumpInv.ton ? `${r.dumpInv.ton.toLocaleString("tr-TR")} ton` : "", r.dumpInv.place].filter(Boolean).join(" · ") };
+          let drec;
           try {
-            if (file) await db.saveDocument(doc, file); else await db.saveNew("documents", doc, "Asistan: döküm faturası");
+            drec = file ? await db.saveDocument(doc, file) : await db.saveNew("documents", doc, "Asistan: döküm faturası");
           } catch (e) { toast(e.message || String(e), "err"); continue; }
           const site = await db.get("dump_sites", sid);
+          // Geçmiş dönem: parça parça yatırılan paralar tek tek bilinmiyor → fatura tutarı döküm hesabına yatırılmış sayılır.
+          // Giderlerde görünür ve nakit çıkışıdır; kâr-zararda dökümler zaten ton × ücretle sayıldığından ikinci kez maliyet olmaz.
+          if (val(c, "dinv_mode") === "paid") {
+            const pay = val(c, "pay");
+            await db.saveNew("expense_records", { date, amount, category: "Döküm", company: site.name, dump_site_id: sid, dump_deposit: true, invoice_paid: true, invoice_no: D.no || null, dump_invoice_doc_id: drec?.id || null,
+              payment_method: pay && !pay.startsWith("p:") && pay !== "Şirket Ödedi" ? pay : "Şirket Ödedi", receipt: "Evet",
+              description: `${site.name} döküm faturası ${D.no || ""} — geçmiş dönem ödemesi (kart/havale parça parça; fatura belgede)`.replace(/\s+/g, " ") }, "Asistan: geçmiş dönem döküm ödemesi");
+            done.dumpinvPaid++;
+          } else done.dumpinv++;
           const learnF = {};
           if (D.seller_tax_no && !site.invoice_tax_no) learnF.invoice_tax_no = D.seller_tax_no;
           if (r.dumpInv.place && !String(site.invoice_place || "").toLocaleLowerCase("tr-TR").includes(r.dumpInv.place.toLocaleLowerCase("tr-TR"))) learnF.invoice_place = [site.invoice_place, r.dumpInv.place].filter(Boolean).join(" / ").slice(0, 160);
           if (Object.keys(learnF).length) await db.saveExisting("dump_sites", site, learnF, "Döküm faturasından öğrenildi");
-          done.dumpinv++;
           continue;
         }
         const f = { date: val(c, "date") || todayStr(), amount: Number(val(c, "amount")), category: val(c, "category") || "Diğer", vehicle_id: val(c, "vehicle") || null, description: val(c, "description") || (val(c, "company") ? val(c, "company") + " · " : "") + (r.note || val(c, "category")), kdv_rate: null, file };
@@ -1130,7 +1139,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır

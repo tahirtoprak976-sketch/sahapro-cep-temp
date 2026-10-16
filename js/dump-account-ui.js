@@ -44,7 +44,7 @@ export async function screen(ctx) {
       ${legacy.length ? notice("warn", `${legacy.length} eski "Döküm" gideri var (${tl(legacy.reduce((n, e) => n + (Number(e.amount) || 0), 0))}). Döküm ücreti fişten ayrıca hesaplandığı için bunlar maliyete iki kez giriyordu.`) + '<button class="btn block" data-legacy style="margin-bottom:8px">Eski döküm giderlerini döküm hesabına aktar</button>' : ""}
       ${acc.map((a) => `<div class="card tap" data-go="#/dokum-hesap/${esc(a.site.id)}" style="border-left:4px solid ${a.balance < 0 ? "#d9534f" : a.daysLeft != null && a.daysLeft <= 3 ? "#e0a030" : "#2e9e6b"}">
         <div class="row between"><b>${esc(a.site.name)}</b><b style="color:${a.balance < 0 ? "#d9534f" : "inherit"}">${tl(a.balance)}</b></div>
-        <div class="tiny muted">Yatırılan ${tl(a.dep)} · dökümde düşen ${tl(a.used)} (${a.trips} döküm)${a.daysLeft != null ? ` · ~${a.daysLeft} gün yeter` : ""}${a.balanceInv != null ? ` · faturaya göre kalan ${tl(a.balanceInv)}` : ""}</div></div>`).join("") || notice("info", "Henüz döküm hesabına para yatırma kaydı yok. Aşağıdan sahayı seçip \"Para yatırdım\" deyin; ya da asistana \"Bolluca'ya 50.000 yatırdım\" yazın.")}
+        <div class="tiny muted">Yatırılan ${tl(a.dep)} · dökümde düşen ${tl(a.used)} (${a.trips} döküm)${a.daysLeft != null ? ` · ~${a.daysLeft} gün yeter` : ""}${a.balanceInv != null ? " · faturaya göre" : ""}</div></div>`).join("") || notice("info", "Henüz döküm hesabına para yatırma kaydı yok. Aşağıdan sahayı seçip \"Para yatırdım\" deyin; ya da asistana \"Bolluca'ya 50.000 yatırdım\" yazın.")}
       <div class="section-title">Para yatır</div>
       ${sites.map((s) => `<div class="card"><div class="row between"><span>${esc(s.name)} <span class="tiny muted">${Number(s.fee) > 0 ? `${num(s.fee)} ₺ / ${String(s.fee_unit || "").toLocaleLowerCase("tr-TR")}` : "ücret yazılmamış"}</span></span><button class="btn sm${withAcc.has(s.id) ? "" : " primary"}" data-dep="${esc(s.id)}">+ Para yatırdım</button></div></div>`).join("")}
       <div class="tiny muted" style="margin:8px 4px 80px">Döküm hesabına yatırılan para kâr-zararda gider sayılmaz; maliyet her dökümde (fişteki ton × sahanın ücreti) yazılır. Ton fişi yoksa aracın ortalama yükü kullanılır (tahmini). Nakit tahmininde yatırılan para gerçek çıkıştır.</div>`;
@@ -72,7 +72,7 @@ export async function screen(ctx) {
   root.innerHTML = appbar(site.name, "Döküm hesabı") + `
     <div style="height:10px"></div>
     <div class="formgrid2">
-      <div class="card" style="margin:0;padding:10px"><div class="tiny muted">Kalan (hesaplanan)</div><b style="font-size:20px;color:${a.balance < 0 ? "#d9534f" : "inherit"}">${tl(a.balance)}</b>${a.daysLeft != null ? `<div class="tiny muted">günde ~${tl(a.perDay)} → ~${a.daysLeft} gün</div>` : ""}</div>
+      <div class="card" style="margin:0;padding:10px"><div class="tiny muted">Kalan (${a.invoices.length ? "faturaya göre" : "hesaplanan"})</div><b style="font-size:20px;color:${a.balance < 0 ? "#d9534f" : "inherit"}">${tl(a.balance)}</b>${a.daysLeft != null ? `<div class="tiny muted">günde ~${tl(a.perDay)} → ~${a.daysLeft} gün</div>` : ""}</div>
       <div class="card" style="margin:0;padding:10px"><div class="tiny muted">Yatırılan / düşen</div><b>${tl(a.dep)}</b><div class="tiny muted">− ${tl(a.used)} · ${a.trips} döküm</div></div>
     </div>
     ${a.missingTon ? notice("info", `${a.missingTon} dökümde ton fişi yok; aracın ortalama yüküyle tahmin edildi (${tl(a.usedEst)}). Fiş girildikçe kesinleşir.`) : ""}
@@ -80,7 +80,7 @@ export async function screen(ctx) {
       <div class="row between"><span>Döküm sahasının söylediği bakiye</span><button class="btn sm" data-rep>${rep ? tl(rep.amount) : "Yaz"}</button></div>
       ${rep ? `<div class="tiny muted">${trDate(rep.date)} tarihli</div>` + (Math.abs(diff) < 1 ? notice("ok", "Kayıtlarla tutuyor.") : notice(diff < 0 ? "warn" : "info", diff < 0 ? `Saha ${tl(-diff)} daha fazla düşmüş. Eksik girilen döküm, fazla ton ya da yanlış tarife olabilir — dökümleri fişlerle karşılaştırın.` : `Sahada ${tl(diff)} daha fazla para görünüyor. Kaydedilmiş ama yapılmamış döküm ya da fazla tahmin edilmiş ton olabilir.`)) : '<div class="tiny muted">Sahanın ekstresindeki / barkod sisteminde görünen kalanı yazın; fark varsa gösterir.</div>'}
     </div>
-    ${a.invoices.length ? `<div class="card"><div class="row between"><span>Faturaya göre kalan</span><b style="color:${a.balanceInv < 0 ? "#d9534f" : "inherit"}">${tl(a.balanceInv)}</b></div><div class="tiny muted">Yatırılan ${tl(a.dep)} − faturalanan ${tl(a.invTotal)}${a.lastInv ? ` − son faturadan (${trDate(a.lastInv)}) sonraki dökümler (tahmini)` : ""}. Saha faturası gerçek düşen tutardır.</div></div>` : ""}
+    ${a.invoices.length ? `<div class="card"><div class="small"><b>Kalan nasıl hesaplandı</b></div><div class="tiny muted">Yatırılan ${tl(a.dep)} − faturalanan ${tl(a.invTotal)} − son faturadan (${trDate(a.lastInv)}) sonraki dökümler ${tl(a.afterInv)} (tahmini) = <b>${tl(a.balanceInv)}</b>. Saha faturası gerçek düşen tutardır. Sahanın sisteminde görünen bakiyeyi yukarıya yazarsanız fark gösterilir.</div></div>` : ""}
     <button class="btn primary block" data-dep style="margin:8px 0">+ Para yatırdım</button>
     <div class="section-title">Faturalar (${a.invoices.length})</div>
     ${a.invoices.slice().reverse().map((x) => {
@@ -91,6 +91,7 @@ export async function screen(ctx) {
         <div class="tiny muted">${x.ton ? `${num(x.ton)} ton` : "ton yok"}${x.perTon ? ` · ton başı ${num(x.perTon)} ₺ (KDV dahil)` : ""}${x.doc.place ? ` · ${esc(x.doc.place)}` : ""}</div>
         <div class="small" style="margin-top:4px">Kayıtlarımız (${trDate(addDay(x.from))} – ${trDate(x.doc.date)}): ${x.ourTrips} döküm${x.ourTon ? `, ${x.ourEst ? "~" : ""}${num(x.ourTon)} ton` : ""}, ${tl(x.ourAmount)}</div>
         ${x.ourTrips && dt != null && x.ton && Math.abs(dt) > Math.max(1, x.ton * 0.03) ? notice(dt > 0 ? "warn" : "info", dt > 0 ? `Saha ${num(dt)} ton fazla faturalamış ya da bizim kayıtlarda eksik döküm/ton var. Fişleri kontrol edin (fatura dönemi farklıysa fark normaldir).` : `Kayıtlarımızda ${num(-dt)} ton fazla var; ton tahmini yüksek ya da fatura dönemi farklı olabilir.`) : ""}
+        ${(d.expense_records || []).some((e) => isActive(e) && e.dump_invoice_doc_id === x.doc.id) ? '<div class="tiny muted" style="margin-top:4px">✓ Geçmiş dönem: fatura tutarı ödenmiş sayıldı (giderlerde)</div>' : `<button class="btn sm block" data-paid="${esc(x.doc.id)}" style="margin-top:6px">Geçmiş dönem: bu faturayı ödenmiş say</button>`}
         ${!x.ourTrips ? '<div class="tiny muted">Bu dönemde bu sahaya kayıtlı döküm yok; fatura dönemi farklı olabilir.</div>' : ""}
         ${feeOff ? `<div class="notice warn" style="margin-top:6px"><div>Kartta ${num(site.fee)} ₺/ton yazılı, faturada ${num(x.perTon)} ₺/ton (KDV dahil). Döküm maliyetleri yanlış hesaplanıyor.</div></div><button class="btn sm block" data-fee="${x.perTon}" style="margin-top:6px">Sahanın ücretini ${num(x.perTon)} ₺/ton yap</button>` : ""}
       </div>`;
@@ -104,6 +105,14 @@ export async function screen(ctx) {
     </table></div>
     <div style="height:80px"></div>`;
   qs("[data-dep]", root).addEventListener("click", () => depositSheet(site));
+  for (const b of qsa("[data-paid]", root))
+    b.addEventListener("click", async () => {
+      const x = a.invoices.find((i) => i.doc.id === b.dataset.paid);
+      if (!(await confirmDialog("Ödenmiş sayılsın mı?", `Bu dönemin parça parça yatırılan paraları tek tek girilmeyecekse fatura tutarı (${tl(x.amount)}) döküm hesabına yatırılmış sayılır. Giderlerde "Döküm" olarak görünür; kâr-zararda dökümler zaten sayıldığından iki kez girmez.`, "Ödenmiş say"))) return;
+      await db.saveNew("expense_records", { date: x.doc.date, amount: x.amount, category: "Döküm", company: site.name, dump_site_id: site.id, dump_deposit: true, invoice_paid: true, invoice_no: x.doc.doc_no || null, dump_invoice_doc_id: x.doc.id,
+        payment_method: "Şirket Ödedi", receipt: "Evet", description: `${site.name} döküm faturası ${x.doc.doc_no || ""} — geçmiş dönem ödemesi (kart/havale parça parça; fatura belgede)` }, "Geçmiş dönem döküm ödemesi");
+      toast("Kaydedildi", "ok"); ctx.reload();
+    });
   for (const b of qsa("[data-fee]", root))
     b.addEventListener("click", async () => {
       if (!(await confirmDialog("Ücret güncellensin mi?", `${site.name}: ${num(site.fee)} → ${num(b.dataset.fee)} ₺/ton (KDV dahil). Bundan sonraki ve önceki dökümlerin maliyeti bu ücretle hesaplanır.`, "Güncelle"))) return;
