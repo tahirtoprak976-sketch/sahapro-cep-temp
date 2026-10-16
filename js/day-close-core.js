@@ -4,6 +4,7 @@ import { isActive, addDays } from "./core.js";
 import { workAmount } from "./collect-core.js";
 import { isRoadVehicle } from "./maint-core.js";
 import { loadTon } from "./dump-fees.js";
+import { invoiceQueue } from "./invoice-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const num = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
@@ -98,6 +99,9 @@ export function dayCloseChecks(d, { date, attCount = {} } = {}) {
       if (bal > 0 && trips >= 3) push("warn", "Biriken", `${nm("vehicles", vid) || "Araç"}: ${c.name}'dan ${num(bal)} L mazot alınmadı`, `Son alımdan bu yana ${num(trips)} sefer${last ? "" : " (hiç alınmadı)"}`, "#/mazot-hesaplari");
     }
   }
+  // Faturası kesilmemiş işler (7 günden eski)
+  const inv = invoiceQueue(d, { today: date }).filter((q) => q.oldestDays > 7);
+  for (const q of inv.slice(0, 5)) push("warn", "Biriken", `${q.customer.name}: ${q.n} işin faturası kesilmedi`, `${Math.round(q.net).toLocaleString("tr-TR")} ₺ (KDV hariç) · en eski ${q.oldestDays} gün`, "#/fatura/" + q.customer.id);
   const open = live(d, "maintenance_records").filter((m) => m.status && /arıza|bekl|açık|serviste|devam/i.test(m.status) && !/tamam|kapandı|bitti/i.test(m.status));
   if (open.length) push("info", "Biriken", `${open.length} açık arıza / bakım`, open.slice(0, 3).map((m) => `${nm("vehicles", m.vehicle_id)} ${m.maint_type || ""}`).join(", "), "#/bakim");
 
