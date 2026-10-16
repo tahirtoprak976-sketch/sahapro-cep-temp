@@ -103,6 +103,7 @@ async function hub(ctx) {
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
     <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
+    <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
     <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span class="strong ${cur.profit < 0 ? "danger" : ""}">${fmtTL(cur.profit)} ₺</span></div>
       <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>

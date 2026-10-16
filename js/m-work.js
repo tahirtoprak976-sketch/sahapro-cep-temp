@@ -795,6 +795,7 @@ async function workDetail(ctx, id) {
       ${w.description ? kv("Açıklama", w.description) : ""}
       ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}
       ${w.internal_note ? kv("İç Not", w.internal_note) : ""}
+      ${w.invoice_no ? kv("Fatura", w.invoice_no + (w.invoice_date ? " · " + trDate(w.invoice_date) : "")) : ""}
       ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
       ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
     </div>

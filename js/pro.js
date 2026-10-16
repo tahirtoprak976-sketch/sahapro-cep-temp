@@ -116,6 +116,10 @@ export const FIELD_LABELS = {
   model_year: "Model yılı",
   chassis_no: "Şasi no",
   identity_number: "TC kimlik no",
+  tax_title: "Faturadaki ticari ünvan",
+  tax_no: "VKN / TCKN",
+  tax_office: "Vergi dairesi",
+  kdv_withholding: "KDV tevkifatı (Yok, 2/10…)",
   birth_date: "Doğum tarihi",
   license_class: "Ehliyet sınıfı",
   blood_type: "Kan grubu",
@@ -850,7 +854,9 @@ async function master(ctx) {
               ? ["name", "contact", "phone", "address"]
               : store === "dump_sites"
                 ? ["name", "address", "location", "contact", "phone", "fee_unit", "fee"]
-                : [
+                : store === "customers"
+                  ? ["name", "tax_title", "tax_no", "tax_office", "address", "email", "contact", "phone", "kdv_withholding", "location", "unit_price"]
+                  : [
                   "name",
                   "address",
                   "location",
