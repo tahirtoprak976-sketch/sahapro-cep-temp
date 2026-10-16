@@ -16,6 +16,10 @@ export const TEMPLATES = {
     { title: "Şanzıman / diferansiyel yağı", every_km: 100000, keywords: "sanziman,diferansiyel" },
     { title: "Fren kontrolü", every_days: 90, keywords: "fren,balata" },
   ],
+  trailer: [
+    { title: "Fren / balata kontrolü", every_days: 90, keywords: "fren,balata" },
+    { title: "Dingil rulman yağlama", every_km: 50000, keywords: "rulman,dingil,gres" },
+  ],
   machine: [
     { title: "Motor yağı + filtre", every_hours: 500, keywords: "motor yag,yag bakim,yag degis,periyodik" },
     { title: "Hidrolik filtre", every_hours: 1000, keywords: "hidrolik filtre" },
@@ -23,9 +27,11 @@ export const TEMPLATES = {
     { title: "Yakıt filtresi", every_hours: 500, keywords: "yakit filtre,mazot filtre" },
   ],
 };
-const ROAD = /kamyon|tir|cekici|kamyonet|pikap|dorse|damper/;
+const ROAD = /kamyon|tir|cekici|kamyonet|pikap|dorse|damper|romork|binek|otomobil/;
+const TRAILER = /romork|dorse/;
 export const isRoadVehicle = (v) => ROAD.test(fold([v?.type, v?.name].join(" ")));
-export const templatesFor = (v) => (isRoadVehicle(v) ? TEMPLATES.road : TEMPLATES.machine);
+export const isTrailer = (v) => TRAILER.test(fold(v?.type));
+export const templatesFor = (v) => (isTrailer(v) ? TEMPLATES.trailer : isRoadVehicle(v) ? TEMPLATES.road : TEMPLATES.machine);
 
 // Tüm sayaç noktaları (tarih, değer) — km ya da saat
 export function meterPoints(d, v, kind) {

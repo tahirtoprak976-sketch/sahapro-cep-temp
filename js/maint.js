@@ -30,7 +30,7 @@ export async function screen(ctx) {
       ${without.length ? `<div class="section-title">Kuralı olmayan araçlar</div><button class="btn block" data-bulk style="margin-bottom:8px">⚡ Önerilen motor yağı + filtre kuralını ${without.length} araca ekle</button>${without.map((v) => `<div class="card tap" data-go="#/bakim-takvimi/${esc(v.id)}"><div class="row between"><span>${esc(v.name)} <span class="muted small">${esc(v.type || "")}</span></span><span class="muted small">kural ekle ›</span></div></div>`).join("")}` : ""}
       <div class="muted tiny" style="margin:6px 2px">Km / saat: araç kartı, yakıt kayıtları (km, makine saati) ve sayaç girişlerinden; makinede son okumadan sonraki saatlik işler eklenir. Son bakım: "✓ Yapıldı" ya da başlığına uyan bakım kaydından.</div>`;
     qs("[data-bulk]", root)?.addEventListener("click", async () => {
-      if (!(await confirmDialog("Kurallar eklensin mi?", `${without.length} araca türüne göre "Motor yağı + filtre" kuralı eklenir (tır/kamyon 20.000 km, iş makinesi 500 saat). Sonra her araçta son bakımı girin; rakamları değiştirebilirsiniz.`, "Ekle"))) return;
+      if (!(await confirmDialog("Kurallar eklensin mi?", `${without.length} araca türüne göre "Motor yağı + filtre" kuralı eklenir (tır/kamyon/binek 20.000 km, iş makinesi 500 saat; römorka fren kontrolü). Sonra her araçta son bakımı girin; rakamları değiştirebilirsiniz.`, "Ekle"))) return;
       for (const v of without) await db.saveExisting("vehicles", v, { service_rules: [core.newRule(core.templatesFor(v)[0])] }, "Bakım kuralı (toplu)");
       toast(without.length + " araca kural eklendi", "ok"); ctx.reload();
     });
