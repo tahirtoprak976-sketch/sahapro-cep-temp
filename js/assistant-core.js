@@ -279,7 +279,7 @@ export function assistantSystem(rules = "") {
     "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
-    "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
+    "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\"}],",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\"}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma),",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
@@ -566,7 +566,10 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const photo = Number.isInteger(e.photo) && e.photo >= 0 && e.photo < photoCount ? e.photo : null;
     const r = { date: validDate(e.date, today) || today, amount: null, category: EXPENSE_CATEGORIES.includes(e.category) ? e.category : "Diğer",
       company: String(e.company || "").slice(0, 80), vehicle_id: byId(vehicles, e.vehicle_id)?.id || null,
-      supplier_id: byId(suppliers, e.supplier_id)?.id || null, credit: !!e.credit, photo, note: String(e.note || "").slice(0, 200) };
+      supplier_id: byId(suppliers, e.supplier_id)?.id || null, credit: !!e.credit, photo, note: String(e.note || "").slice(0, 200),
+      payment_method: ["Nakit", "Kart", "Havale", "Personel Ödedi"].includes(e.payment_method) ? e.payment_method : null,
+      paid_by: byId(personnel, e.paid_by_personnel_id)?.id || null };
+    if (r.payment_method === "Personel Ödedi" && !r.paid_by) r.issues_pay = "Kim ödedi? Seçin";
     const a = Number(e.amount);
     if (Number.isFinite(a) && a > 0) {
       const k = Math.round(a * 100) / 100;
@@ -872,7 +875,7 @@ export function assistantSchema() {
         work_type: { type: ["string", "null"], enum: [...WORK_TYPES, null] }, quantity: NN, unit: { type: ["string", "null"], enum: [...ASSIST_UNITS, null] },
         guessed: NB, customer_guess: NB, reporter: NS, date_source: NS, from_place: NS, quarry_id: NS, to_place: NS, to_is_dump: NB, slip_no: NS, description: NS, material: NS, dump_site_id: NS, unit_price: NN, dump_cost: NN, note: NS,
         mentions: { type: "object", properties: { customer: NS, site: NS, vehicle: NS, personnel: NS } } }),
-      expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, photo: { type: ["integer", "null"] }, note: NS }),
+      expenses: row({ date: NS, amount: NN, category: NS, company: NS, vehicle_id: NS, supplier_id: NS, credit: NB, payment_method: NS, paid_by_personnel_id: NS, photo: { type: ["integer", "null"] }, note: NS }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, km: NN, machine_hours: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),

@@ -378,16 +378,18 @@ function render(ctx, out, v, d, { message, files, ms }) {
     v.expenses
       .map((r, i) => `<div class="card" data-kind="expense" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Gider</b>${r.photo != null ? " · fiş fotoğrafı eklenecek" : ""}</label>
-        ${r.photo != null && files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Fiş" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
+        ${r.photo != null && files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="📷 fiş fotoğrafı (önizleme açılamadı, yine de eklenecek)" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'small muted',textContent:this.alt}))" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="amount" value="${r.amount ?? ""}"></div>
           <div class="field"><label>Kategori</label><select name="category">${opt(EXPENSE_CATEGORIES.map((x) => [x, x]), r.category, "Diğer")}</select></div>
           <div class="field"><label>Firma</label><input name="company" value="${esc(r.company)}"></div>
           <div class="field"><label>Araç</label><select name="vehicle">${opt(vehicles, r.vehicle_id, "— yok —")}</select></div>
+          <div class="field"><label>Ödeme</label><select name="pay">${opt([["Şirket Ödedi", "🏢 Şirket (belirtilmedi)"], ["Nakit", "💵 Nakit"], ["Kart", "💳 Kart"], ["Havale", "🏦 Havale / EFT"], ...personnel.map(([id, n]) => ["p:" + id, "👷 " + n + " cebinden ödedi"])],
+            r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : r.payment_method === "Personel Ödedi" && r.paid_by ? "p:" + r.paid_by : r.payment_method || "Şirket Ödedi")}</select></div>
           <div class="field"><label>Veresiye esnaf</label><select name="supplier">${opt(suppliers, r.credit ? r.supplier_id : "", "— peşin —")}</select></div>
         </div>
-        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${issues(r)}</div>`)
+        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${r.issues_pay ? `<div class="muted tiny">⚠ ${esc(r.issues_pay)}</div>` : ""}${issues(r)}</div>`)
       .join("") +
     v.tankIn
       .map((r, i) => `<div class="card" data-kind="tank" data-i="${i}">
@@ -876,10 +878,12 @@ async function save(ctx, out, v, d, { message, files }) {
           const dup = findDuplicates(fresh, { date: f.date, amount: f.amount });
           if ((dup.bills.length || dup.expenses.length) && !(await confirmDialog("Aynı gün aynı tutarda kayıt var", `${f.date} · ${fmtTL(f.amount)} ₺ zaten kayıtlı (gider veya esnaf borcu). Farklı bir harcama mı?`, "Farklı, kaydet"))) continue;
           if (r.driver_entry_id && fresh.expense_records.some((x) => isActive(x) && x.driver_entry_id === r.driver_entry_id)) { toast("Şoför gideri zaten alınmış, atlandı", "err"); continue; }
-          const cep = r.driver_pay === "cep";
+          // Ödeme: kartta seçilen (personel cebinden ödediyse iade bekler, maaşla geri ödenir)
+          const pay = val(c, "pay") || (r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : "Şirket Ödedi");
+          const payer = pay.startsWith("p:") ? pay.slice(2) : null;
           const rec = await db.saveNew("expense_records", {
-            date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: cep ? r.driver_pid : null, vehicle_id: f.vehicle_id,
-            payment_method: cep ? "Personel Ödedi" : "Şirket Ödedi", receipt: file ? "Evet" : "Hayır", reimbursement_status: cep ? "Bekliyor" : null,
+            date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: payer, vehicle_id: f.vehicle_id,
+            payment_method: payer ? "Personel Ödedi" : pay, receipt: file ? "Evet" : "Hayır", reimbursement_status: payer ? "Bekliyor" : null,
             company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
           }, "Asistan");
           if (file) await db.addAttachment("expense", rec.id, file);
