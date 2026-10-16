@@ -465,6 +465,10 @@ export async function ensureSeeded() {
       }
     await metaSet("migrated_business_v3", true);
   }
+  if (!(await metaGet("doc_dedupe_v1"))) {
+    try { await dedupeDocuments(); } catch (e) { console.warn("Mükerrer belge temizliği", e); }
+    await metaSet("doc_dedupe_v1", true);
+  }
   await metaSet("schema_version_current", SCHEMA_VERSION);
   return installId;
 }
@@ -491,6 +495,7 @@ export async function saveNew(store, fields, auditReason) {
   }
   if (store === "hakedis") return createHakedis(fields);
   if (store === "cash_records") return saveCashEvent(fields);
+  if (store === "documents") await assertNotDuplicateDoc(fields);
   const rec = newRecord(fields);
   await put(store, rec);
   await audit(store, rec.id, "create", null, fields, auditReason || "");
@@ -1203,6 +1208,35 @@ export async function byRelation(store, key, value) {
       .getAll(value),
   );
 }
+// Aynı belge iki kez kaydedildiyse (aynı sahip + tür ailesi + numara/tarih): ilki tutulur, en geç bitiş tarihi ona yazılır,
+// fotoğrafı yoksa diğerinin fotoğrafı ona taşınır, fazlalar çöp kutusuna gider (geri alınabilir).
+export async function dedupeDocuments() {
+  const { duplicateDocuments } = await import("./core.js");
+  const groups = duplicateDocuments(await listActive("documents"));
+  const atts = await getAll("attachments");
+  let removed = 0;
+  for (const [keep, ...dups] of groups) {
+    const exp = [keep, ...dups].map((d) => d.expiry_date).filter(Boolean).sort().pop() || keep.expiry_date || null;
+    const pref = [keep, ...dups].find((d) => d.expiry_date === exp) || keep;
+    const fields = {};
+    if (exp !== keep.expiry_date) { fields.expiry_date = exp; if (pref.date) fields.date = pref.date; }
+    if (DOC_PREF.includes(pref.category) && pref.category !== keep.category) { fields.category = pref.category; fields.title = pref.category; }
+    if (Object.keys(fields).length) await saveExisting("documents", keep, fields, "Mükerrer belge birleştirildi");
+    let keepHas = atts.some((a) => a.record_type === "document" && a.record_id === keep.id && !a.deleted_at);
+    for (const d of dups) {
+      if (!keepHas) for (const a of atts.filter((x) => x.record_type === "document" && x.record_id === d.id)) { await put("attachments", { ...a, record_id: keep.id }); keepHas = true; }
+      await softDelete("documents", d.id, "Mükerrer belge (aynı belge iki kez kaydedilmiş)");
+      removed++;
+    }
+  }
+  return removed;
+}
+async function assertNotDuplicateDoc(f) {
+  const { sameDocument, trDate } = await import("./core.js");
+  const ex = (await listActive("documents")).find((d) => sameDocument(d, f));
+  if (ex) throw Error(`Bu belge zaten kayıtlı (${ex.category} · ${ex.doc_no || "no yok"}${ex.expiry_date ? " · bitiş " + trDate(ex.expiry_date) : ""}). Aynı belgeyi ikinci kez eklemeyin; gerekiyorsa kayıtlı belgeyi düzenleyin.`);
+}
+const DOC_PREF = ["TÜVTÜRK / Periyodik Muayene", "Zorunlu Trafik Sigortası"];
 // Şirket evrakının sahibi: meta "company_profile" (ünvan, vergi no…). Yoksa varsayılan adla açılır.
 export async function ensureCompany() {
   const cur = await metaGet("company_profile");
@@ -1215,6 +1249,7 @@ export async function saveDocument(fields, file) {
       f.owner_id,
     );
   if (!owner || owner.deleted_at) throw Error("Belge sahibi geçersiz");
+  await assertNotDuplicateDoc(f);
   const rec = newRecord(f),
     attachment = {
       id: uuid(),

@@ -8,6 +8,7 @@ import {
   newRecord,
   toKurus,
   fromKurus,
+  DOC_FAMILY,
 } from "./core.js";
 export const VEHICLE_DOCS = [
   "Ruhsat",
@@ -357,10 +358,7 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
       (d.vehicle_id === vehicle.id ||
         (d.owner_type === "vehicle" && d.owner_id === vehicle.id)),
   );
-  const aliases = {
-    "TÜVTÜRK / Periyodik Muayene": "Muayene Belgesi",
-    "Sigorta / Poliçe": "Zorunlu Trafik Sigortası",
-  };
+  const aliases = DOC_FAMILY;
   const truck =
     vehicle.type === "Kamyon" ||
     /^\d{2}\s*[A-Z]/i.test(vehicle.plate || vehicle.name || "");
