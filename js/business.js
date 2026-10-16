@@ -65,6 +65,7 @@ export const DOCUMENT_TYPES = [
   "İrsaliye",
   "Makbuz",
   "Fatura",
+  "Döküm Faturası",
   "Diğer",
 ];
 export const OWNER_STORES = {
@@ -77,6 +78,7 @@ export const OWNER_STORES = {
   work: "work_records",
   contract: "contracts",
   company: "meta",
+  dump_site: "dump_sites",
 };
 export function documentOwner(category) {
   if (COMPANY_DOCS.includes(category)) return "company";
