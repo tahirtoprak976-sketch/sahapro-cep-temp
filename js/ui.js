@@ -152,11 +152,11 @@ export function confirmDialog(title, text, okLabel = "Evet", danger = false) {
     });
   });
 }
-export function promptDialog(title, label, value = "") {
+export function promptDialog(title, label, value = "", opts = {}) {
   return new Promise((resolve) => {
     const sh = sheet(
       `<h3>${esc(title)}</h3>
-      <div class="field"><label>${esc(label)}</label><input type="text" data-p value="${esc(value)}" autocomplete="off"></div>
+      <div class="field"><label>${esc(label)}</label><input type="${opts.type === "password" ? "password" : "text"}" data-p value="${esc(value)}" autocomplete="off"></div>${opts.hint ? `<div class="tiny muted" style="margin:-6px 2px 10px">${esc(opts.hint)}</div>` : ""}
       <div class="row" style="gap:8px"><button class="btn ghost grow" data-x="0">Vazgeç</button><button class="btn primary grow" data-x="1">Tamam</button></div>`,
       { modal: true },
     );
