@@ -39,3 +39,14 @@ const b = todayBoard(d, { today: date, lastBackupAt: new Date().toISOString(), d
 assert.ok(b.items.some((i) => i.text === "Günü kapat: 4 eksik" && i.href === "#/gunsonu"));
 assert.ok(!todayBoard(d, { today: date, lastBackupAt: new Date().toISOString() }).items.some((i) => /Günü kapat/.test(i.text)));
 console.log("day-close ok");
+{
+  const { dayCloseChecks } = await import("../js/day-close-core.js");
+  const n = "x", date = "2026-10-16";
+  const d = { customers: [{ id: "C", name: "K", created_at: n }], vehicles: [{ id: "V", name: "34GA2261", type: "Kamyon", created_at: n }], personnel: [],
+    work_records: [{ id: "Z", date, customer_id: "C", vehicle_id: "V", quantity: 1, unit: "Sefer", tonnage: 31, slip_no: "F-77", price_snapshot: { amount: 1 }, created_at: n },
+      { id: "B", date: "2026-10-14", customer_id: "C", vehicle_id: "V", quantity: 1, unit: "Sefer", tonnage: 20, slip_no: "f77", price_snapshot: { amount: 1 }, created_at: n }],
+    fuel_records: [], expense_records: [], personnel_events: [], cash_records: [], hakedis: [], maintenance_records: [] };
+  const t = dayCloseChecks(d, { date }).items.map((i) => i.text);
+  assert.ok(t.some((x) => /Tonaj yüksek: 31 ton/.test(x)), t.join("|")); assert.ok(t.some((x) => /Aynı fiş no iki işte: F-77/.test(x)), t.join("|"));
+  console.log("day-close tonaj ok");
+}
