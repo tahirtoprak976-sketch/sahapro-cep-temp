@@ -4,7 +4,7 @@
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
-import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS } from "./assistant-docs.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
@@ -377,7 +377,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Belge no</label><input name="doc_no" value="${esc(r.doc_no)}"></div>
           <div class="field"><label>Düzenleme tarihi</label><input type="date" name="date" value="${esc(r.date || "")}"></div>
           <div class="field"><label>Bitiş tarihi</label><input type="date" name="expiry_date" value="${esc(r.expiry_date || "")}"></div>
-        </div>${issues(r)}</div>`;
+        </div>${r.vehicle_update?.length ? `<div class="small" style="margin-top:8px"><b>🚚 Araç kartı belgeye göre güncellenecek</b> <span class="muted tiny">(sahibi değiştirilmezse)</span>
+          ${r.vehicle_update.map((u) => `<label class="history-check"><input type="checkbox" data-vu="${esc(u.k)}" ${u.on ? "checked" : ""}> ${esc(VEHICLE_INFO_LABELS[u.k])}: <span class="muted">${esc(u.from ?? "—")}</span> → <b>${esc(u.to)}</b></label>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
       .join("") +
     v.expenses
@@ -573,7 +574,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map();
-  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0 };
+  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -776,12 +777,19 @@ async function save(ctx, out, v, d, { message, files }) {
             else {
               const nv = r.new_vehicle || {};
               const yr = Number(val(c, "nv_year")) || null;
-              const rec = await db.saveNew("vehicles", { name: pl, plate: pl, type: val(c, "nv_type") || nv.type || "Araç/Makine", brand: val(c, "nv_brand").trim() || null, model: nv.model || null, model_year: yr, ownership: "Özmal", active: true, note: category + " belgesinden otomatik açıldı" }, "Asistan: belgeden yeni araç");
+              const rec = await db.saveNew("vehicles", { name: pl, plate: pl, type: val(c, "nv_type") || nv.type || "Araç/Makine", brand: val(c, "nv_brand").trim() || null, model: nv.model || null, model_year: yr, chassis_no: nv.chassis_no || null, engine_no: nv.engine_no || null, color: nv.color || null, fuel_type: nv.fuel_type || null, km: nv.km || null, meter_date: nv.km ? val(c, "date") || todayStr() : null, ownership: "Özmal", active: true, note: category + " belgesinden otomatik açıldı" }, "Asistan: belgeden yeni araç");
               newVehByPlate.set(pl, rec.id);
               done.cards++;
             }
           }
           otype = "vehicle"; oid = newVehByPlate.get(pl);
+        } else if (otype === "vehicle" && oid === r.owner_id && r.vehicle_update?.length) {
+          // Kayıtlı araç: işaretli alanları belgedeki gerçek bilgiyle düzelt
+          const on = new Set(qsa("[data-vu]", c).filter((x) => x.checked).map((x) => x.dataset.vu));
+          const upd = Object.fromEntries(r.vehicle_update.filter((u) => on.has(u.k)).map((u) => [u.k, u.to]));
+          if (upd.km) upd.meter_date = val(c, "date") || todayStr();
+          const cur = Object.keys(upd).length && (await db.get("vehicles", oid));
+          if (cur) { await db.saveExisting("vehicles", cur, upd, "Asistan: " + category + " belgesinden güncellendi"); done.vupd++; }
         }
         const f = { category, owner_type: otype, owner_id: oid, [otype + "_id"]: oid, date: val(c, "date"), doc_no: val(c, "doc_no").trim(),
           expiry_date: val(c, "expiry_date") || null, title: category, note: "Asistan fotoğraftan okudu" };
@@ -981,7 +989,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.work, "iş"], [done.expense, "gider"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "araç kartı belgeye göre güncellendi"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır
