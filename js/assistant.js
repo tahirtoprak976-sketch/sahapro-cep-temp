@@ -390,7 +390,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       .join("") +
     v.expenses
       .map((r, i) => `<div class="card" data-kind="expense" data-i="${i}">
-        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Gider</b>${r.photo != null ? " · fiş fotoğrafı eklenecek" : ""}</label>
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>${r.dumpInv ? "🧾 Döküm faturası" : "Gider"}</b>${r.photo != null ? " · fiş fotoğrafı eklenecek" : ""}</label>
         ${r.photo != null && files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="📷 fiş fotoğrafı (önizleme açılamadı, yine de eklenecek)" data-imgfb style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
@@ -402,6 +402,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
             r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : r.payment_method === "Personel Ödedi" && r.paid_by ? "p:" + r.paid_by : r.payment_method || "Şirket Ödedi")}</select></div>
           <div class="field"><label>Veresiye esnaf</label><select name="supplier">${opt(suppliers, r.credit ? r.supplier_id : "", "— peşin —")}</select></div>
         </div>
+        ${r.dumpInv ? `<div class="notice info" style="margin-top:6px"><div>Bu bir <b>döküm sahası faturası</b>. Gider yazılmaz: para döküm hesabına yatırılırken ödendi, maliyet her dökümde ayrıca yazılıyor (yoksa iki kez sayılır). Fatura döküm hesabına bağlanır; faturadaki ton ve tutar kayıtlarımızla karşılaştırılır.${r.dumpInv.ton ? `<br><b>${r.dumpInv.ton.toLocaleString("tr-TR")} ton</b>${r.amount ? ` · ton başı ${(Math.round((r.amount / r.dumpInv.ton) * 100) / 100).toLocaleString("tr-TR")} ₺ (KDV dahil)` : ""}` : ""}${r.dumpInv.place ? ` · yer: ${esc(r.dumpInv.place)}` : ""}</div></div>
+          <div class="formgrid2"><div class="field"><label>Döküm sahası</label><select name="dinv_site">${opt(v.dumpSites || [], r.dumpInv.site_id, "— seçin —")}</select></div>
+          <div class="field"><label>Nasıl kaydedilsin</label><select name="dinv_mode">${opt([["inv", "Döküm faturası (önerilen)"], ["exp", "Normal gider olarak"]], "inv")}</select></div></div>` : ""}
         <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${r.issues_pay ? `<div class="muted tiny">⚠ ${esc(r.issues_pay)}</div>` : ""}${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
     v.tankIn
@@ -417,7 +420,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Ödeme</label><select name="tank_pay">${opt([["credit", "Veresiye (petrolcüye borç)"], ["paid", "Peşin ödendi"]], r.credit ? "credit" : "paid")}</select></div>
           <div class="field"><label>Müşteriden (sefer karşılığı)</label><select name="tank_customer">${opt(customers, r.customer_id, "— yok —")}</select></div>
           ${r.irsaliye_no ? `<div class="field"><label>İrsaliye no</label><input name="irsaliye_no" value="${esc(r.irsaliye_no)}"></div>` : ""}
-        </div>${r.match ? `<div class="notice info" style="margin-top:6px">📌 ${trDate(r.match.date)} tarihinde elle girilmiş <b>${r.match.liters.toLocaleString("tr-TR")} L</b> depo girişi var${r.match.total ? ` (${r.match.total.toLocaleString("tr-TR")} ₺)` : " (fiyatsız)"}. Aynı teslimatsa faturayı ona bağlayın; depo iki kez artmaz.${r.match.bill != null ? `<br>Bu girişin petrolcü borcu zaten yazılmış (${r.match.bill.toLocaleString("tr-TR")} ₺); yeni borç yazılmaz.` : ""}</div>
+        </div>${r.match ? `<div class="notice info" style="margin-top:6px"><div>📌 ${trDate(r.match.date)} tarihinde elle girilmiş <b>${r.match.liters.toLocaleString("tr-TR")} L</b> depo girişi var${r.match.total ? ` (${r.match.total.toLocaleString("tr-TR")} ₺)` : " (fiyatsız)"}. Aynı teslimatsa faturayı ona bağlayın; depo iki kez artmaz.${r.match.bill != null ? `<br>Bu girişin petrolcü borcu zaten yazılmış (${r.match.bill.toLocaleString("tr-TR")} ₺); yeni borç yazılmaz.` : ""}</div></div>
           <div class="field"><label>Bu fatura</label><select name="tank_link">${opt([["link", "Elle girdiğim girişe bağla (önerilen)"], ["new", "Ayrı, yeni bir teslimat"]], "link")}</select></div>` : ""}${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
     v.fuel
@@ -590,7 +593,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
-  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0 };
+  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -997,6 +1000,25 @@ async function save(ctx, out, v, d, { message, files }) {
       } else if (k === "expense") {
         const r = v.expenses[Number(c.dataset.i)];
         const file = r.photo != null ? files[r.photo] : null;
+        // Döküm faturası → döküm hesabına bağlı belge (gider değil); saha VKN/yer adı öğrenilir
+        if (r.dumpInv && val(c, "dinv_mode") === "inv") {
+          const sid = val(c, "dinv_site");
+          if (!sid) { toast("Döküm faturası için döküm sahasını seçin", "err"); continue; }
+          const D = r.detail || {}, amount = Number(val(c, "amount")) || r.amount, date = val(c, "date") || todayStr();
+          const doc = { category: "Döküm Faturası", owner_type: "dump_site", owner_id: sid, date, doc_no: D.no || "", title: val(c, "company") || "Döküm faturası", amount,
+            ton: r.dumpInv.ton || null, net_amount: D.net ?? null, kdv_amount: D.kdv ?? null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, items: D.items?.length ? D.items : null, place: r.dumpInv.place || null,
+            note: [r.dumpInv.ton ? `${r.dumpInv.ton.toLocaleString("tr-TR")} ton` : "", r.dumpInv.place].filter(Boolean).join(" · ") };
+          try {
+            if (file) await db.saveDocument(doc, file); else await db.saveNew("documents", doc, "Asistan: döküm faturası");
+          } catch (e) { toast(e.message || String(e), "err"); continue; }
+          const site = await db.get("dump_sites", sid);
+          const learnF = {};
+          if (D.seller_tax_no && !site.invoice_tax_no) learnF.invoice_tax_no = D.seller_tax_no;
+          if (r.dumpInv.place && !String(site.invoice_place || "").toLocaleLowerCase("tr-TR").includes(r.dumpInv.place.toLocaleLowerCase("tr-TR"))) learnF.invoice_place = [site.invoice_place, r.dumpInv.place].filter(Boolean).join(" / ").slice(0, 160);
+          if (Object.keys(learnF).length) await db.saveExisting("dump_sites", site, learnF, "Döküm faturasından öğrenildi");
+          done.dumpinv++;
+          continue;
+        }
         const f = { date: val(c, "date") || todayStr(), amount: Number(val(c, "amount")), category: val(c, "category") || "Diğer", vehicle_id: val(c, "vehicle") || null, description: val(c, "description") || (val(c, "company") ? val(c, "company") + " · " : "") + (r.note || val(c, "category")), kdv_rate: null, file };
         const supId = val(c, "supplier");
         const fresh = await db.dumpAll();
@@ -1108,7 +1130,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır

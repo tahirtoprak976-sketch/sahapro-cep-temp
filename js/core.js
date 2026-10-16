@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.7.99";
+export const APP_VERSION = "SAHAPRO SOLO v3.8.00";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -231,6 +231,7 @@ export const DOC_TYPES = [
   "İrsaliye",
   "Makbuz",
   "Fatura",
+  "Döküm Faturası",
   "Sözleşme",
   "Ruhsat",
   "Sigorta / Poliçe",
