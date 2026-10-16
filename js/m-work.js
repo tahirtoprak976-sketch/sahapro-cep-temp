@@ -852,16 +852,20 @@ const slipSerial = (n) => `FS-${String(n || 0).padStart(6, "0")}`;
 async function slipList(ctx) {
   const { root, db, names, query } = ctx;
   const f = query.f || "all";
-  const all = (await db.getAll("slips")).filter(isActive).sort((a,b)=>(b.slip_no||0)-(a.slip_no||0));
-  const rows = f === "all" ? all : all.filter(r=>r.status===f);
+  // Şoförün sahada imzalattığı dijital fişler iş kaydında durur; listede onlar da görünür (dokununca iş detayı ve PDF)
+  const sigIds = new Set((await db.getAll("attachments")).filter((a) => a.kind === "signature" && a.record_type === "work").map((a) => a.record_id));
+  const drv = (await db.listActive("work_records")).filter((w) => w.digital_slip_no).map((w) => ({ drv: true, id: w.id, w, date: w.date, status: sigIds.has(w.id) || w.slip_signed_at ? "İmzalandı" : "Taslak" }));
+  const own = (await db.getAll("slips")).filter(isActive);
+  const all = [...own, ...drv].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")) || (b.slip_no||0)-(a.slip_no||0));
+  const rows = f === "all" ? all : f === "sofor" ? drv : all.filter(r=>r.status===f);
   root.innerHTML = appbar("Dijital İş Fişleri", "Hizmet, teslim ve imza takibi") + `
     <div class="slip-overview"><div><span>Toplam fiş</span><strong>${all.length}</strong></div><div><span>İmza bekleyen</span><strong>${all.filter(r=>r.status==='Taslak').length}</strong></div><div><span>İmzalı</span><strong>${all.filter(r=>r.status==='İmzalandı').length}</strong></div></div>
-    ${segBar([{v:"all",t:"Tümü"},{v:"Taslak",t:"Taslak"},{v:"İmzalandı",t:"İmzalı"},{v:"Revize",t:"Revize"},{v:"İptal",t:"İptal"}],f,v=>`#/fisler?f=${v}`)}
+    ${segBar([{v:"all",t:"Tümü"},{v:"Taslak",t:"Taslak"},{v:"İmzalandı",t:"İmzalı"},{v:"Revize",t:"Revize"},{v:"İptal",t:"İptal"},...(drv.length?[{v:"sofor",t:"Şoför"}]:[])],f,v=>`#/fisler?f=${v}`)}
     <div class="slip-list" data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/fisler/new">Yeni Fiş Oluştur</button></div>`;
   const el = qs("[data-list]",root);
   if (!rows.length) el.innerHTML = '<div class="slip-empty">'+slipIcon+'<h2>Bu görünümde fiş bulunmuyor</h2><p>İş kaydından veya Yeni Fiş Oluştur ile başlayabilirsiniz.</p></div>';
-  else pagedRender(el,rows,s=>`<a class="slip-list-card" href="#/fisler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${slipSerial(s.slip_no)}</span>${statusBadge(s.status||"Taslak")}</div><h2>${esc(names.customers[s.customer_id]||"—")}</h2><p>${esc(names.sites[s.site_id]||"Şantiye belirtilmedi")}</p><div class="slip-card-bottom"><span>${trDate(s.date)}<small>${esc(s.work_text||"İş fişi")}</small></span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit||"")}</small></strong></div></a>`);
+  else pagedRender(el,rows,s=>s.drv?`<a class="slip-list-card" href="#/isler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${esc(s.w.digital_slip_no)}</span>${statusBadge(s.status)}</div><h2>${esc(names.customers[s.w.customer_id]||"—")}</h2><p>${esc(names.sites[s.w.site_id]||"Şantiye belirtilmedi")} · 🚚 şoför${names.personnel?.[s.w.personnel_id]?" "+esc(names.personnel[s.w.personnel_id]):""}${s.w.slip_receiver?" · imzalayan: "+esc(s.w.slip_receiver):""}</p><div class="slip-card-bottom"><span>${trDate(s.w.date)}<small>${esc(s.w.work_type||"İş")}</small></span><strong>${fmtNum(s.w.quantity)} <small>${esc(s.w.unit||"")}</small></strong></div></a>`:`<a class="slip-list-card" href="#/fisler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${slipSerial(s.slip_no)}</span>${statusBadge(s.status||"Taslak")}</div><h2>${esc(names.customers[s.customer_id]||"—")}</h2><p>${esc(names.sites[s.site_id]||"Şantiye belirtilmedi")}</p><div class="slip-card-bottom"><span>${trDate(s.date)}<small>${esc(s.work_text||"İş fişi")}</small></span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit||"")}</small></strong></div></a>`);
 }
 
 async function slipForm(ctx, editId) {
