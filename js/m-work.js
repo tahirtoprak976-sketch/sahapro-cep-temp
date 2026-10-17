@@ -747,6 +747,14 @@ async function workForm(ctx, editId) {
         go("#/isler/" + created.id);
       }
     } catch (e) {
+      if (e?.code === "STALE" && e.current) {
+        // Çakışma: kayıttaki güncel değerle sizin girdiğinizi karşılaştır; yenileyince güncel hâl açılır
+        const L = { date: "Tarih", quantity: "Miktar", unit: "Birim", work_type: "İş türü", customer_id: "Müşteri", vehicle_id: "Araç", site_id: "Şantiye" };
+        const nm = (k, v) => (k === "customer_id" ? ctx.names.customers[v] : k === "vehicle_id" ? ctx.names.vehicles[v] : k === "site_id" ? ctx.names.sites[v] : v) ?? "—";
+        const diff = Object.keys(L).filter((k) => String(e.current[k] ?? "") !== String(e.mine?.[k] ?? "")).map((k) => `${L[k]}: kayıtta ${nm(k, e.current[k])} · sizde ${nm(k, e.mine?.[k])}`);
+        if (await confirmDialog("Kayıt başka yerde değişti", (diff.length ? diff.join(" | ") + ". " : "") + "Değişikliğiniz YAZILMADI (eski ekran yeni değişikliği ezmesin). Güncel hâli açıp yeniden düzenleyin.", "Güncel hâli aç")) ctx.reload();
+        return;
+      }
       toast(e.message || "Kayıt kaydedilemedi", "err");
     } finally {
       saving = false;

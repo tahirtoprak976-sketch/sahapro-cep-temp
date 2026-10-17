@@ -814,7 +814,8 @@ export async function saveWorkSlip(fields, workIds) {
   });
 }
 
-export async function saveExisting(store, rec, fields, auditReason) {
+export async function saveExisting(store, rec, fields, auditReason, _retry = 0) {
+  const delta = fields; // çağıranın değiştirmek istediği alanlar (çakışma denetimi bunlara bakar)
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   const current = await get(store, rec.id);
@@ -925,9 +926,38 @@ export async function saveExisting(store, rec, fields, auditReason) {
     schema_version: rec.schema_version,
     migration_status: rec.migration_status,
     deleted_at: rec.deleted_at,
+    // Sürüm damgası her güncellemede yenilenir (önceden birleşen alanlar eski damgayı geri yazıyordu → çakışma görünmüyordu)
+    updated_at: nowISO(),
   };
-  await put(store, upd);
-  await audit(store, rec.id, "update", rec, fields, auditReason || "");
+  // Eşzamanlı düzenleme: ekranın yüklediği sürüm (rec.updated_at) veritabanındakiyle aynı değilse yazılmaz — eski ekran
+  // başka sekmede/ekranda yapılan değişikliği ezemez. Okuma-karşılaştırma-yazma TEK transaction'da.
+  const d = await openDB();
+  const wrote = await new Promise((resolve, reject) => {
+    const t = d.transaction([store, "audit_log"], "readwrite");
+    let error = null;
+    const g = t.objectStore(store).get(rec.id);
+    g.onsuccess = () => {
+      const now = g.result;
+      if (rec.updated_at && now && now.updated_at && now.updated_at !== rec.updated_at) {
+        // Arada başka yazım olmuş. Sizin değiştirdiğiniz alanlardan biri de değiştiyse: ÇAKIŞMA (ezilmez).
+        // Yalnız başka alanlar değiştiyse: güncel kayıt üzerine yeniden uygulanır (aşağıda, doğrulama yeniden çalışır).
+        const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        const overlap = Object.keys(delta || {}).filter((k) => !same(now[k], rec[k]));
+        error = overlap.length || _retry >= 2
+          ? Object.assign(Error("Bu kayıt, siz açtıktan sonra başka bir ekranda / sekmede değiştirildi. Sayfayı yenileyip değişikliği yeniden yapın."), { code: "STALE", current: now, mine: upd, fields: overlap })
+          : Object.assign(Error("rebase"), { code: "REBASE", current: now });
+        t.abort();
+        return;
+      }
+      // Damga kesin artan: aynı milisaniyedeki iki yazım da farklı sürüm olur
+      if (now?.updated_at && upd.updated_at <= now.updated_at) upd.updated_at = new Date(Date.parse(now.updated_at) + 1).toISOString();
+      t.objectStore(store).put(upd);
+      t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "update", old: rec ?? null, new: fields ?? null, reason: auditReason || "", at: nowISO() });
+    };
+    t.oncomplete = resolve;
+    t.onabort = t.onerror = () => reject(error || t.error);
+  }).catch((e) => { if (e?.code === "REBASE") return e; throw e; });
+  if (wrote?.code === "REBASE") return saveExisting(store, wrote.current, delta, auditReason, _retry + 1);
   return upd;
 }
 
