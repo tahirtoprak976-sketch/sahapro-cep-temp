@@ -20,7 +20,7 @@ const OWNER_STORE = { vehicle: "vehicles", personnel: "personnel", customer: "cu
 const HREF = { work_records: "#/isler/", fuel_records: "#/yakit/", expense_records: "#/gider/", maintenance_records: "#/bakim/", cash_records: "#/kasa/", documents: "#/belgeler/", hakedis: "#/hakedis/" };
 const LABEL = { work_records: "İş", fuel_records: "Yakıt", fuel_tank_movements: "Depo hareketi", expense_records: "Gider", maintenance_records: "Arıza/bakım", cash_records: "Kasa", personnel_events: "Personel hareketi", documents: "Belge", payables: "Esnaf borcu", sites: "Şantiye", hakedis: "Hakediş" };
 
-export function integrityCheck(d, { today, attachments = [] } = {}) {
+export function integrityCheck(d, { today, attachments = [], restoreSets = [] } = {}) {
   const out = [];
   const add = (sev, code, text, sub = "", href = "", fix = null) => out.push({ sev, code, text, sub, href, fix });
   const idx = {};
@@ -90,6 +90,15 @@ export function integrityCheck(d, { today, attachments = [] } = {}) {
   const dupBy = (rows, key, make) => { const m = new Map(); for (const r of rows) { const k = key(r); if (!k) continue; if (m.has(k)) make(m.get(k), r); else m.set(k, r); } };
   for (const s of ["work_records", "fuel_records", "expense_records", "maintenance_records"])
     dupBy(live(d, s), (r) => r.driver_entry_id, (a, b) => add("error", "dup-driver", `${lbl(s, b)}: aynı şoför kaydı iki kez işlenmiş`, `${lbl(s, a)} ile aynı`, HREF[s] ? HREF[s] + b.id : ""));
+  // Parçalı yedek geri yüklemesi yarım: eksik parça ve eki gelmemiş kayıtlar (sessizce "tamam" sayılmaz)
+  for (const st of restoreSets || []) {
+    const missing = Array.from({ length: st.of }, (_, i) => i + 1).filter((n) => !(st.done || []).includes(n));
+    const waiting = Object.values(st.pending || {});
+    if (missing.length || waiting.length) {
+      const recs = [...new Set(waiting.map((x) => x[0] + ":" + x[1]))];
+      add("error", "restore-incomplete", `Yedek geri yüklemesi tamamlanmadı: ${(st.done || []).length}/${st.of} parça`, `Eksik parça: ${missing.join(", ") || "—"} · eki bekleyen kayıt: ${recs.length}${st.created_at ? " · yedek tarihi " + String(st.created_at).slice(0, 10) : ""}`);
+    }
+  }
   // KDV / cari tutar sözleşmesi: aynı müşterinin cari toplamında KDV dahil ve hariç fiyatlı işler karışıyor mu (hesap değiştirilmez, işaretlenir)
   for (const r of vatContractReport(d)) {
     if (r.mixedBasis) add("warn", "vat-mixed", `${r.customer}: cari toplamında KDV dahil (${r.dahil}) ve hariç (${r.haric}) fiyatlı işler karışık`, `Bugünkü toplam ${r.booked} · net ${r.net} · brüt ${r.gross} ₺ (karar notu: KDV/cari)`);

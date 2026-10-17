@@ -1728,8 +1728,11 @@ async function backupPanel(ctx) {
             ))
           )
             return;
-          await restoreBackup(db, obj, false);
-          toast("Veriler ve dosyalar geri yüklendi", "ok");
+          const res = await restoreBackup(db, obj, false);
+          const { setStatusText } = await import("./backup.js");
+          if (res.already) toast(`Bu parça (${res.part.no}/${res.part.of}) zaten yüklenmişti — hiçbir şey değişmedi. ${setStatusText(res.set)}`, "warn");
+          else if (res.set) toast((res.set.finished_at ? "✓ " : "") + setStatusText(res.set), res.set.finished_at ? "ok" : "warn");
+          else toast("Veriler ve dosyalar geri yüklendi", "ok");
           ctx.reload();
         } catch (error) {
           toast(error.message, "err");

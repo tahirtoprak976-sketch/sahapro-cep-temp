@@ -45,7 +45,7 @@ export async function fullBackup(db, { encrypted = true, attachments: mode = "ba
     data,
     attachments,
     // API anahtarı gibi gizli ayarlar yedek dosyasına yazılmaz (yedek WhatsApp/Drive ile paylaşılabilir)
-    meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key) && (encrypted || !LINK_META.includes(m.key))),
+    meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key) && !m.key.startsWith(RESTORE_SET) && (encrypted || !LINK_META.includes(m.key))),
     ...(encrypted ? {} : { driver_links_omitted: true }),
   };
 }
@@ -70,19 +70,42 @@ export async function backupParts(db, { encrypted = true, budget = PART_JSON_BUD
   }
   const set = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
   const n = groups.length;
-  // Parçalar sırayla üretilir (aynı anda yalnız bir parçanın JSON'u bellekte)
+  // Manifest (her parçada): ortak set kimliği, sıra/toplam, sınırın temeli, setin ve parçanın kayıt/ek sayıları.
+  // 1. parça ayrıca bütün eklerin dizinini taşır: hangi kaydın eki hangi parçada (ekleri gelmemiş kayıtlar işaretlenir).
+  const records = Object.values(head.data || {}).reduce((k, rows) => k + (Array.isArray(rows) ? rows.length : 0), 0);
+  const totals = { records, attachments: atts.length, attachment_bytes: atts.reduce((k, a) => k + (a.blob?.size || 0), 0) };
+  const index = groups.flatMap((g, i) => g.map((a) => [a.m.id, a.m.record_type, a.m.record_id, i + 1]));
   return {
-    count: n,
+    count: n, set,
     async *[Symbol.asyncIterator]() {
       for (let i = 0; i < n; i++) {
         const attachments = [];
         for (const a of groups[i]) attachments.push({ ...a.m, base64: await toB64(a.blob) });
         yield { ...(i === 0 ? head : { app: head.app, app_version: head.app_version, schema_version: head.schema_version, exported_at: head.exported_at, device_install_id: head.device_install_id, data: {}, meta: [] }),
-          attachments, ...(n > 1 ? { part: { set, no: i + 1, of: n } } : {}) };
+          attachments,
+          part: { set, no: i + 1, of: n, created_at: head.exported_at, limit_basis: "açılmış JSON (karakter)", budget, totals,
+            part_attachments: attachments.length, part_attachment_bytes: groups[i].reduce((k, a) => k + (a.blob?.size || 0), 0),
+            ...(i === 0 ? { index } : {}) } };
         groups[i] = null;
       }
     },
   };
+}
+// ---- Geri yükleme seti durumu (meta "restore_set:<set>") ----
+// { set, of, done:[no], pending:{ekId:[record_type, record_id, partNo]}, started_at, finished_at }
+// Parça verisiyle AYNI transaction'da yazılır: parça ya bütünüyle yüklenir ve işaretlenir, ya hiç.
+export const RESTORE_SET = "restore_set:";
+export async function restoreSets(db) {
+  return (await db.getAll("meta")).filter((m) => m.key.startsWith(RESTORE_SET)).map((m) => m.value);
+}
+function checkPart(obj, state) {
+  const P = obj.part;
+  if (!P) return;
+  if (!P.set || !(P.no >= 1) || !(P.of >= P.no)) throw Error("Yedek parçasının bilgileri bozuk (set / sıra)");
+  if ((obj.attachments || []).length !== P.part_attachments && P.part_attachments != null) throw Error(`Parça eksik ya da bozuk: ${P.part_attachments} ek olmalı, ${(obj.attachments || []).length} var`);
+  if (P.no > 1 && !state) throw Error(`Bu, bir yedek setinin ${P.no}/${P.of}. parçası; bu setin 1. parçası bu telefonda yüklenmemiş (yanlış set ya da sıra). Önce aynı setin 1. parçasını yükleyin.`);
+  if (state && state.of !== P.of) throw Error("Parça başka bir yedek setine ait (toplam parça sayısı tutmuyor)");
+  if (P.no === 1 && !Array.isArray(P.index)) throw Error("1. parçada ek dizini yok — dosya bozuk");
 }
 export async function previewBackup(db, obj) {
   if (!isValidBackup(obj) || obj.schema_version > SCHEMA_VERSION)
@@ -142,6 +165,10 @@ export function freshDeviceDrops(local, obj) {
 }
 
 export async function restoreBackup(db, obj, replace = false) {
+  const state0 = obj.part ? await db.metaGet(RESTORE_SET + obj.part.set) : null;
+  checkPart(obj, state0);
+  if (obj.part && state0?.done?.includes(obj.part.no))
+    return { ...(await previewBackup(db, obj)), part: obj.part, already: true, set: state0 }; // aynı parça ikinci kez: hiçbir şey yazılmaz
   const preview = await previewBackup(db, obj);
   // Telefon içi kurtarma kopyası: ekler Blob olarak (base64 kopyası yok — bellek iki katına çıkmaz)
   await saveRecovery(db, await fullBackup(db, { attachments: "blob" }));
@@ -151,7 +178,9 @@ export async function restoreBackup(db, obj, replace = false) {
   for (const a of obj.attachments || []) {
     if (!a.id || !a.record_id || typeof a.base64 !== "string")
       throw Error("Ek geçersiz");
-    const bin = atob(a.base64);
+    let bin;
+    try { bin = atob(a.base64); } catch { throw Error(`Ek bozuk (${a.name || a.id}) — yedek parçası hasarlı`); }
+    if (a.size && bin.length !== a.size) throw Error(`Ek bozuk (${a.name || a.id}): ${a.size} bayt olmalı, ${bin.length} geldi`);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const { base64, ...fields } = a;
@@ -233,10 +262,35 @@ export async function restoreBackup(db, obj, replace = false) {
           value: Math.max(max, Number(q.result?.value) || 0),
         });
     }
-    t.oncomplete = () => resolve(preview);
+    // Parçalı set: bu parçanın yüklendiği ve gelen eklerin bekleyenlerden düştüğü AYNI işlemde işaretlenir
+    let setState = null;
+    if (obj.part) {
+      const key = RESTORE_SET + obj.part.set;
+      const q = t.objectStore("meta").get(key);
+      q.onsuccess = () => {
+        const st = q.result?.value || { set: obj.part.set, of: obj.part.of, done: [], pending: {}, started_at: new Date().toISOString(), created_at: obj.part.created_at || null, totals: obj.part.totals || null };
+        if (st.done.includes(obj.part.no)) { error = Error("Bu parça az önce başka bir ekranda yüklendi"); t.abort(); return; }
+        if (obj.part.no === 1) for (const [id, rt, rid, no] of obj.part.index || []) if (no !== 1) st.pending[id] = [rt, rid, no];
+        for (const a of decoded) delete st.pending[a.id];
+        st.done = [...st.done, obj.part.no].sort((x, y) => x - y);
+        if (st.done.length === st.of) st.finished_at = new Date().toISOString();
+        t.objectStore("meta").put({ key, value: st });
+        setState = st;
+      };
+    }
+    t.oncomplete = () => resolve({ ...preview, part: obj.part || null, set: setState });
     t.onabort = t.onerror = () =>
       reject(error || t.error || Error("Geri yükleme iptal edildi"));
   });
+}
+// Kullanıcıya gösterilecek durum: tamamlandı mı, eksik parçalar, eki beklenen kayıt sayısı
+export function setStatusText(st) {
+  if (!st) return "";
+  const missing = Array.from({ length: st.of }, (_, i) => i + 1).filter((n) => !st.done.includes(n));
+  const waitRecs = new Set(Object.values(st.pending || {}).map((x) => x[1])).size;
+  return missing.length
+    ? `Yedek seti TAMAMLANMADI: ${st.done.length}/${st.of} parça yüklendi; eksik parça: ${missing.join(", ")}. ${waitRecs} kaydın eki bekleniyor.`
+    : `Yedek seti tamamlandı (${st.of}/${st.of} parça).`;
 }
 export async function backupBeforeSoloOperation(
   db,

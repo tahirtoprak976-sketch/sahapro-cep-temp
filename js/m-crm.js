@@ -1851,7 +1851,7 @@ async function restorePreview(ctx, file) {
     view.innerHTML =
       notice(
         "info",
-        `${p.added} yeni / ${p.same} aynı / ${p.conflicts} çakışma / ${p.attachments} ek`,
+        `${obj.part ? `Parça ${obj.part.no}/${obj.part.of} · ` : ""}${p.added} yeni / ${p.same} aynı / ${p.conflicts} çakışma / ${p.attachments} ek`,
       ) +
       (!Array.isArray(obj.attachments)
         ? notice(
@@ -1870,8 +1870,11 @@ async function restorePreview(ctx, file) {
           ))
         )
           return;
-        await restoreBackup(ctx.db, obj, false);
-        toast("Yedek geri yüklendi", "ok");
+        const res = await restoreBackup(ctx.db, obj, false);
+        const { setStatusText } = await import("./backup.js");
+        if (res.already) toast(`Bu parça (${res.part.no}/${res.part.of}) zaten yüklenmişti — hiçbir şey değişmedi. ${setStatusText(res.set)}`, "warn");
+        else if (res.set) toast((res.set.finished_at ? "✓ " : "") + setStatusText(res.set), res.set.finished_at ? "ok" : "warn");
+        else toast("Yedek geri yüklendi", "ok");
         ctx.reload();
       } catch (error) {
         toast(error.message, "err");
