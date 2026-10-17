@@ -4,7 +4,7 @@ import json, base64, os, sys, random
 from playwright.sync_api import sync_playwright
 U = "http://localhost:8841/"
 PIN = "482917"
-OUT = os.environ.get("SIM_OUT", "/tmp/sahapro_sim"); os.makedirs(OUT, exist_ok=True)
+OUT = os.environ.get("SIM_OUT", "/tmp/sahapro_sim") + "/tohum-" + (sys.argv[1] if len(sys.argv) > 1 else "7"); os.makedirs(OUT, exist_ok=True)  # paralel koşular birbirinin dosyasını ezmesin
 random.seed(int(sys.argv[1]) if len(sys.argv) > 1 else 7)
 FAIL = []
 SHEETS = []
