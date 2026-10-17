@@ -301,6 +301,49 @@ with sync_playwright() as p:
       return [x.customer_note,x.internal_note,c,(await db.get('work_records',w.id)).customer_note]}}""")
     check(r == ["not A", "not B", "STALE", "not A"], f"alan düzeyinde: farklı alanlar korunur, aynı alan ezilmez ({r})")
 
+    # ---- 13) Bağlı alanlar ve bağımsız alanlar ----
+    print("13) Alan bağımlılığı")
+    r = ev(f"""async()=>{{const db=await import('./js/db.js');const mk=async()=>db.saveNew('work_records',{{date:'{TODAY}',customer_id:'{ids['k']}',vehicle_id:'{ids['v']}',work_type:'Kazı',quantity:2,unit:'Saat',price_snapshot:{{unit_price:1000,kdv_rate:20,kdv_included:false,amount:2000,price_source:'Manuel'}}}},'t');
+      const out={{}};
+      let w=await mk();await db.saveExisting('work_records',w,{{quantity:5}},'A');await db.saveExisting('work_records',w,{{price_snapshot:{{...w.price_snapshot,unit_price:1500}}}},'B');
+      let x=await db.get('work_records',w.id);out.qp=[x.quantity,x.price_snapshot.unit_price,x.price_snapshot.amount];
+      w=await mk();await db.saveExisting('work_records',w,{{price_snapshot:{{...w.price_snapshot,unit_price:1500}}}},'B');await db.saveExisting('work_records',w,{{quantity:5}},'A');
+      x=await db.get('work_records',w.id);out.pq=[x.quantity,x.price_snapshot.unit_price,x.price_snapshot.amount];
+      const t=async(a,b)=>{{const w=await mk();await db.saveExisting('work_records',w,a,'A');try{{await db.saveExisting('work_records',w,b,'B');return 'BİRLEŞTİ'}}catch(e){{return e.code}}}};
+      out.cs=await t({{customer_id:'{ids['h']}'}},{{site_id:'{ids['s']}'}});
+      out.qu=await t({{quantity:4}},{{unit:'Yevmiye'}});
+      out.np=await t({{customer_note:'a'}},{{internal_note:'b'}});
+      return out}}""")
+    check(r["qp"] == [5, 1500, 7500] and r["pq"] == [5, 1500, 7500], f"miktar ve fiyat ayrı sekmelerde: birleşti, tutar yeniden hesaplandı ({r['qp']}, {r['pq']})")
+    check(r["cs"] == "STALE", f"müşteri ↔ şantiye bağlı: otomatik birleştirilmedi ({r['cs']})")
+    check(r["qu"] == "STALE", f"miktar ↔ birim bağlı: otomatik birleştirilmedi ({r['qu']})")
+    check(r["np"] == "BİRLEŞTİ", f"bağımsız notlar birleşti ({r['np']})")
+    # ---- 14) Aynı mesajda iki benzer gerçek iş: ayrı kalır; yeniden gönderimde ikisi de tekrar yazılmaz ----
+    print("14) İki benzer gerçek iş")
+    PLANS.clear()
+    L = f"{ids['vn']} Hisar Polat 2 sefer mıcır"
+    M3 = L + "\n" + L
+    P3 = {"works": [{"date": TODAY, "date_source": "mesaj", "customer_id": ids["h"], "vehicle_id": ids["v"], "work_type": "Mıcır Nakliye", "quantity": 2, "unit": "Sefer", "quote": L} for _ in range(2)]}
+    def mcount(): return ev(f"""async()=>{{const db=await import('./js/db.js');return (await db.listActive('work_records')).filter(w=>w.work_type==='Mıcır Nakliye'&&w.customer_id==='{ids['h']}').length}}""")
+    assistant(M3, json.loads(json.dumps(P3)))
+    ev("document.querySelectorAll('[data-out] [data-kind=work] [data-pick]').forEach(x=>{x.checked=true})")
+    pg.click("[data-save]"); pg.wait_for_timeout(1200)
+    while pg.query_selector(".sheet"):
+        for x in pg.query_selector_all(".sheet button"):
+            if x.inner_text().strip() in ("Kaydet", "Ayrı kayıt olarak kaydet"): x.click(); break
+        pg.wait_for_timeout(1200)
+    check(mcount() == 2, f"aynı satır iki kez yazılmış mesaj: iki ayrı iş ({mcount()})")
+    assistant(M3, json.loads(json.dumps(P3)))
+    ev("document.querySelectorAll('[data-out] [data-kind=work] [data-pick]').forEach(x=>{x.checked=true})")
+    pg.click("[data-save]"); pg.wait_for_timeout(1200)
+    n_sheets = 0
+    while pg.query_selector(".sheet") and n_sheets < 6:
+        n_sheets += 1
+        for x in pg.query_selector_all(".sheet button"):
+            if x.inner_text().strip() == "Vazgeç": x.click(); break
+        pg.wait_for_timeout(1200)
+    check(mcount() == 2, f"aynı mesaj yeniden gönderildi: yine iki iş (tekrar yazılmadı) ({mcount()})")
+
     print("\nsayfa hataları:", errs[:5])
     check(not errs, "sayfa hatası yok")
     b.close()

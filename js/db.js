@@ -814,6 +814,14 @@ export async function saveWorkSlip(fields, workIds) {
   });
 }
 
+const DEPENDENT = {
+  customer_id: ["site_id", "price_snapshot", "contractor_id"], site_id: ["customer_id", "price_snapshot"],
+  unit: ["quantity", "price_snapshot"], quantity: ["unit"], price_snapshot: ["customer_id", "site_id", "unit", "work_type"], work_type: ["price_snapshot", "unit"],
+  vehicle_id: ["contractor_id", "vehicle_type", "personnel_id"], personnel_id: ["vehicle_id"],
+  amount: ["kdv_rate", "net_amount", "kdv_amount", "total"], kdv_rate: ["amount", "net_amount", "kdv_amount"], net_amount: ["amount", "kdv_rate", "kdv_amount"], kdv_amount: ["amount", "kdv_rate", "net_amount"],
+  liters: ["unit_price", "total"], unit_price: ["liters", "total"], total: ["liters", "unit_price", "amount"],
+  cash_type: ["amount", "customer_id"], date: [],
+};
 export async function saveExisting(store, rec, fields, auditReason, _retry = 0) {
   const delta = fields; // çağıranın değiştirmek istediği alanlar (çakışma denetimi bunlara bakar)
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
@@ -942,7 +950,13 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0) 
         // Arada başka yazım olmuş. Sizin değiştirdiğiniz alanlardan biri de değiştiyse: ÇAKIŞMA (ezilmez).
         // Yalnız başka alanlar değiştiyse: güncel kayıt üzerine yeniden uygulanır (aşağıda, doğrulama yeniden çalışır).
         const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-        const overlap = Object.keys(delta || {}).filter((k) => !same(now[k], rec[k]));
+        // Bağlı alanlar: biri değişince diğeriyle birlikte anlam taşır (müşteri↔şantiye↔fiyat, miktar↔birim, birim↔fiyat,
+        // tutar↔KDV…). Alan adları farklı diye bunlar otomatik birleştirilmez → çakışma. Miktar ile fiyat bağımsızdır:
+        // birleşince tutar, doğrulamada (validateFields) birim fiyat × miktar olarak yeniden hesaplanır.
+        // Türetilen değerler (fiyat snapshot'ındaki tutar = birim fiyat × miktar) "değişiklik" sayılmaz; yeniden hesaplanır
+        const core = (k, v) => (k === "price_snapshot" && v && typeof v === "object" ? (({ amount, snapshot_at, ...x }) => x)(v) : v);
+        const changedByOther = new Set(Object.keys({ ...now, ...rec }).filter((k) => k !== "updated_at" && !same(core(k, now[k]), core(k, rec[k]))));
+        const overlap = Object.keys(delta || {}).filter((k) => changedByOther.has(k) || (DEPENDENT[k] || []).some((x) => changedByOther.has(x)));
         error = overlap.length || _retry >= 2
           ? Object.assign(Error("Bu kayıt, siz açtıktan sonra başka bir ekranda / sekmede değiştirildi. Sayfayı yenileyip değişikliği yeniden yapın."), { code: "STALE", current: now, mine: upd, fields: overlap })
           : Object.assign(Error("rebase"), { code: "REBASE", current: now });

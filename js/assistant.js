@@ -689,10 +689,18 @@ async function save(ctx, out, v, d, { message, files }) {
     // Kimlik = mesaj + kart türü + satırın kaynağı (Gemini alıntısı ya da sıra) + tarih; içerik özeti ayrıca saklanır.
     const nrm = (x) => String(x || "").replace(/\s+/g, " ").trim().toLocaleLowerCase("tr-TR");
     const msgKey = await db.opHash({ m: nrm(message) });
-    const ordinal = {};
-    const opGate = async (kind, row, content, label) => {
-      const n = (ordinal[kind] = (ordinal[kind] || 0) + 1);
-      const op = { id: await db.opHash({ msgKey, kind, row: row ? nrm(row) : "#" + n, date: content.date || "" }), hash: await db.opHash(content) };
+    // Satır anahtarı plandan türetilir (işaretlenen kartların sırasından DEĞİL): alıntı varsa alıntı + aynı alıntının
+    // kaçıncı tekrarı ("Kaya 3 sefer" iki kez yazıldıysa iki ayrı iş), yoksa plandaki sıra. Her Kaydet'te yeni kimlik üretilmez.
+    const LISTS = { work: v.works, expense: v.expenses, collection: v.collections, maintenance: v.maintenance, fuel: v.fuel };
+    const rowKey = (kind, i) => {
+      const list = LISTS[kind] || [], q = nrm(list[i]?.quote);
+      if (!q) return "#" + i;
+      let occ = 0;
+      for (let j = 0; j < i; j++) if (nrm(list[j]?.quote) === q) occ++;
+      return q + "@" + occ;
+    };
+    const opGate = async (kind, idx, content, label) => {
+      const op = { id: await db.opHash({ msgKey, kind, row: rowKey(kind, Number(idx)), date: content.date || "" }), hash: await db.opHash(content) };
       const prior = await db.opLookup(op.id);
       if (!prior) return { op, existing: null, forced: false };
       if (prior.hash !== op.hash) { toast(`${label}: bu mesaj satırı daha önce FARKLI bilgilerle kaydedilmiş — o kaydı açıp düzeltin. Atlandı.`, "err"); done.conflict++; return null; }
@@ -1051,7 +1059,7 @@ async function save(ctx, out, v, d, { message, files }) {
           && !(slipK(fields.slip_no) && slipK(w.slip_no) && slipK(fields.slip_no) !== slipK(w.slip_no)));
         let wg = null;
         if (!fields.driver_entry_id) {
-          wg = await opGate("work", wr0.quote, { date: fields.date, customer_id: fields.customer_id, site_id: fields.site_id || null, vehicle_id: fields.vehicle_id, work_type: fields.work_type, quantity: fields.quantity, unit: fields.unit },
+          wg = await opGate("work", c.dataset.i, { date: fields.date, customer_id: fields.customer_id, site_id: fields.site_id || null, vehicle_id: fields.vehicle_id, work_type: fields.work_type, quantity: fields.quantity, unit: fields.unit },
             `İş ${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit}`);
           if (!wg) continue;
         }
@@ -1151,7 +1159,7 @@ async function save(ctx, out, v, d, { message, files }) {
             && !(await confirmDialog("Bu fatura zaten girilmiş", `${D.no} numaralı fatura gider olarak kayıtlı. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
           let eg = null;
           if (!r.driver_entry_id) {
-            eg = await opGate("expense", r.quote, { date: f.date, amount: f.amount, category: f.category, vehicle_id: f.vehicle_id || null, payer: payer || pay }, `Gider ${f.date} · ${fmtTL(f.amount)} ₺`);
+            eg = await opGate("expense", c.dataset.i, { date: f.date, amount: f.amount, category: f.category, vehicle_id: f.vehicle_id || null, payer: payer || pay }, `Gider ${f.date} · ${fmtTL(f.amount)} ₺`);
             if (!eg) continue;
             if (eg.existing) { if (file) await db.addAttachment("expense", eg.existing.id, file); continue; }
           }
@@ -1186,7 +1194,7 @@ async function save(ctx, out, v, d, { message, files }) {
           await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, ctx.core.uuid());
         } else {
           const pid = val(c, "personnel") || null;
-          const cg = await opGate("collection", null, { date, customer_id: customer, amount, method: "Nakit" }, `Tahsilat ${date} · ${fmtTL(amount)} ₺`);
+          const cg = await opGate("collection", c.dataset.i, { date, customer_id: customer, amount, method: "Nakit" }, `Tahsilat ${date} · ${fmtTL(amount)} ₺`);
           if (!cg || cg.existing) continue;
           const cr = await db.saveNew("cash_records", {
             request_id: ctx.core.uuid(), date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
@@ -1203,7 +1211,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const cepM = mr.driver_pay === "cep" && cost;
         let mg = null;
         if (!mr.driver_entry_id) {
-          mg = await opGate("maintenance", mr.quote, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), description: val(c, "description"), cost }, `Arıza/bakım ${val(c, "date") || todayStr()}`);
+          mg = await opGate("maintenance", c.dataset.i, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), description: val(c, "description"), cost }, `Arıza/bakım ${val(c, "date") || todayStr()}`);
           if (!mg) continue;
           if (mg.existing) { if (files0) await db.addAttachment("maintenance", mg.existing.id, files0); continue; }
         }
@@ -1249,7 +1257,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const byCustomer = src === "Müşteri Verdi";
         let fg = null;
         if (!r.driver_entry_id) {
-          fg = await opGate("fuel", r.quote, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), liters, total, source: src }, `Yakıt ${val(c, "date") || todayStr()} · ${liters} L`);
+          fg = await opGate("fuel", c.dataset.i, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), liters, total, source: src }, `Yakıt ${val(c, "date") || todayStr()} · ${liters} L`);
           if (!fg) continue;
           if (fg.existing) { if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", fg.existing.id, files[r.photo]); continue; }
         }
