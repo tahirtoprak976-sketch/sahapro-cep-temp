@@ -102,7 +102,11 @@ console.log("driver ok");
   assert.equal(meta[0].digital.no, "ASA-0001"); assert.equal(meta[1].digital, undefined);
   const w = { date: "2026-10-16", vehicle_id: "T", customer_id: "C", site_id: null, personnel_id: "A", work_type: "Hafriyat Nakliye", quantity: 2, unit: "Sefer", digital_slip_no: "ASA-0001", slip_no: "ASA-0001", slip_receiver: "Ahmet", slip_signed_at: "2026-10-16T08:00:00Z" };
   const names = { customers: { C: "Kılıç Hafriyat" }, vehicles: { T: "34GAM627" }, personnel: { A: "Ali Şoför" }, sites: {}, dump_sites: {} };
-  const spec = workSlipSpec(w, names, { company: "Muratoğlu", sigBlob: { x: 1 } });
+  // v3.9.04: imzalı fiş yalnız saklanan imzalı içerikle basılır (asistan kaydederken meta[0].digital.signed yazılır)
+  assert.equal(meta[0].digital.signed.q, 2);
+  const spec = workSlipSpec({ ...w, slip_signed_content: meta[0].digital.signed }, names, { company: "Muratoğlu", sigBlob: { x: 1 } });
+  // imzalı içerik saklanmamış eski kayıt: imza güncel içerikle birleşmez, revizyon olur
+  assert.equal(workSlipSpec(w, names, { company: "Muratoğlu", sigBlob: { x: 1 } }).number, "ASA-0001-R");
   assert.equal(spec.number, "ASA-0001"); assert.equal(spec.sections[0].pairs[2][1], "Kılıç Hafriyat"); assert.equal(spec.sections[0].pairs[5][1], "Ali Şoför");
   assert.ok(!spec.sections[1].pairs.some(([k]) => k === "Döküm fişi no"), "dijital fiş no kâğıt fiş gibi tekrar yazılmaz");
   console.log("driver slip to owner ok");

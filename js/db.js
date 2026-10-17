@@ -283,6 +283,25 @@ export async function metaUpdate(key, fn) {
     t.onerror = t.onabort = () => reject(t.error);
   });
 }
+// Birden çok meta anahtarını tek transaction'da oku → fn(değerler) → { set: {anahtar: değer}, result } (fn hata atarsa hiçbir şey yazılmaz)
+export async function metaTxn(keys, fn) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("meta", "readwrite");
+    const st = t.objectStore("meta");
+    const reqs = keys.map((k) => st.get(k));
+    let out, error;
+    reqs.at(-1).onsuccess = () => {
+      try {
+        const r = fn(Object.fromEntries(keys.map((k, i) => [k, reqs[i].result ? reqs[i].result.value : null])));
+        for (const [k, v] of Object.entries(r?.set || {})) st.put({ key: k, value: v });
+        out = r?.result;
+      } catch (e) { error = e; t.abort(); }
+    };
+    t.oncomplete = () => resolve(out);
+    t.onerror = t.onabort = () => reject(error || t.error);
+  });
+}
 // Sayaç (fiş/teklif/hakediş seri no) — tek transaction'da atomik artış
 export async function nextSeq(name) {
   const db = await openDB();
