@@ -18,6 +18,7 @@ export const PDF_TEMPLATES = {
   personnel: profile('PR', 'PERSONEL', 'Personel bilgi kartı', 'Personel Bilgileri', 'Personel Bilgi Dökümü', [['Görev ve Çalışma Bilgileri', /görev|işe giriş|zimmet|başlangıç|bitiş|aktif/i]]),
   personnel_document: profile('PE', 'PERSONEL', 'Kişiye ait evrak ve geçerlilik takibi', 'Personel ve Belge Bilgileri', 'Personel Evrak Dökümü', [['Geçerlilik ve Hatırlatma', /geçerlilik|hatırlatma|başlangıç|bitiş/i]]),
   personnel_activity: profile('PC', 'PERSONEL', 'İzin, çalışma ve zimmet takibi', 'Personel ve Dönem Bilgileri', 'İzin / Çalışma Hareketleri'),
+  leave: profile('IZ', 'PERSONEL', 'İzin talep, onay ve kayıt belgesi', 'Personel Bilgileri', 'İzin Bilgileri'),
   payroll: profile('UA', 'PERSONEL', 'Ücret, avans ve ödeme takip defteri', 'Personel ve Dönem Bilgileri', 'Ücret / Avans Hareketleri'),
   maintenance: profile('BK', 'FİLO', 'Bakım ve servis işlem kaydı', 'Araç ve Servis Bilgileri', 'Bakım İşlemleri', [['Yapılan İşlem ve Parçalar', /bakım|işlem|parça|açıklama/i], ['Maliyet ve Durum', /maliyet|kdv|tutar|durum/i]]),
   fault: profile('AZ', 'FİLO', 'Arıza bildirimi ve müdahale kaydı', 'Araç ve Arıza Bilgileri', 'Arıza ve Müdahale Dökümü', [['Arıza ve Müdahale', /arıza|açıklama|önem|servis|parça/i], ['Maliyet ve Durum', /maliyet|kdv|tutar|durum/i]]),
