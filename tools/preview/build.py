@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""SAHAPRO SOLO — İZOLE ÖNİZLEME derlemesi.
+"""SAHAPRO SOLO — ÖNİZLEME derlemesi (örnek verili işlevsel test alanı).
 
-Aynı github.io adresi altında (örn. /sahapro-onizleme/) canlı uygulamayla AYNI tarayıcı kökenini paylaşır.
-Bu yüzden bütün tarayıcı depolama adları değiştirilir; önizleme gerçek verileri göremez, silemez, bozamaz:
-  IndexedDB  sahapro_cep_db            → sahapro_onizleme_db  (+ _recovery)
+ÖNEMLİ — bu bir GÜVENLİK İZOLASYONU DEĞİLDİR. Aynı kullanıcı.github.io altındaki farklı depo yolları AYNI origin'dir:
+aynı origin'deki her sayfanın JavaScript'i tarayıcı depolamasının tamamına erişebilir. Burada yapılan ad ayrımı yalnız
+iki uygulamanın kazara birbirinin verisini açmasını / silmesini önler:
+  IndexedDB  sahapro_cep_db (+ _recovery, ?db=) → sahapro_onizleme_db…
   Cache      sahapro-solo-* / -share / -wa / -driver → sahapro-onizleme-*  (SW yalnız kendi önekini temizler)
-  localStorage  sp_*  → spx_*     sessionStorage solo_* → solox_*
-  manifest   id / ad / kapsam ayrı, ekranda "ÖNİZLEME" şeridi
+  localStorage sp_* → spx_*    sessionStorage solo_* → solox_*
+  manifest   ayrı id / ad, paylaşım hedefi YOK, ekranda "ÖNİZLEME" şeridi
+Gerçek veriye erişmeyen önizleme için FARKLI bir origin kullanın (ör. ayrı GitHub organizasyonu: <org>.github.io).
+Önizlemeye kişisel yedek, şoför bağlantısı / sırrı ya da gerçek kayıt KONMAZ; gerçek şoförlere önizleme bağlantısı gönderilmez.
 Kullanım:  python3 tools/preview/build.py <çıkış_klasörü>
-Çıkış klasörü yalnız önizleme deposuna yayımlanır; canlı dala (gh-pages) KONMAZ.
 """
 import os, re, shutil, sys, json
 
@@ -29,6 +31,12 @@ REPL = [
 FORBID = [r'"sahapro_cep_db', r'sahapro-solo-', r'"sahapro-share"', r'"sahapro-wa"', r'"sahapro-driver"', r'["\']sp_[a-z]', r'["\']solo_unlocked']
 
 def build():
+    # Kişisel veri koruması: depoda yedek dosyası / dışa aktarım varsa derleme durur
+    for dp, dn, fs in os.walk(ROOT):
+        if ".git" in dp.split(os.sep): continue
+        for f in fs:
+            if f.endswith((".sahapro", ".sahapro.json")) or f.startswith(("SAHAPRO_YEDEK", "SAHAPRO_aktarim")):
+                print("HATA: depoda yedek dosyası var, önizlemeye konmaz:", os.path.join(dp, f)); sys.exit(1)
     if os.path.exists(OUT): shutil.rmtree(OUT)
     shutil.copytree(ROOT, OUT, ignore=lambda d, names: [n for n in names if n in SKIP and os.path.samefile(d, ROOT)])
     changed = 0
@@ -58,7 +66,7 @@ def build():
                 for mm in re.finditer(pat, s): bad.append(f"{os.path.relpath(p, OUT)}: {mm.group(0)}")
     if bad:
         print("HATA: canlı depolama adı önizlemede kaldı:\n  " + "\n  ".join(bad[:20])); sys.exit(1)
-    print(f"Önizleme hazır: {OUT} ({changed} dosya değişti, canlı depolama adı yok)")
+    print(f"Önizleme hazır: {OUT} ({changed} dosya değişti; canlı depolama adı yok — aynı origin'de güvenlik izolasyonu DEĞİLDİR)")
 
 if __name__ == "__main__":
     build()

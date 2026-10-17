@@ -16,4 +16,13 @@ assert.equal(r.net, 2000); assert.equal(r.gross, 2400); assert.ok(r.mixedBasis);
 assert.equal(JSON.stringify(d), before, "rapor veriyi değiştirmez");
 const ic = integrityCheck(d, { today: "2026-10-17" });
 assert.ok(ic.issues.some((x) => x.code === "vat-mixed"));
+// Belge durumu oranı belirlemez: faturasız (invoice_no yok) iş %0 sayılmaz; faturalı işin oranı da faturadan türetilmez
+const nf = workMoney({ ...W("w5", 3500, { kdv_rate: 20, kdv_included: false }), invoice_no: null });
+const f = workMoney({ ...W("w6", 3500, { kdv_rate: 20, kdv_included: false }), invoice_no: "MRH2026000000077" });
+assert.deepEqual([nf.rate, nf.gross, nf.invoiced], [20, 4200, false]);
+assert.deepEqual([f.rate, f.gross, f.invoiced], [20, 4200, true]);
+// Karar notundaki örnek: 5 hariç + 5 dahil (3500) → bugün 35.000, brüt 38.500
+const mix = { customers: [{ id: "C", name: "K" }], hakedis: [], cari_movements: [], work_records: [...Array.from({ length: 5 }, (_, i) => W("h" + i, 3500, { kdv_rate: 20, kdv_included: false })), ...Array.from({ length: 5 }, (_, i) => W("d" + i, 3500, { kdv_rate: 20, kdv_included: true }))] };
+const rm = vatContractReport(mix)[0];
+assert.deepEqual([rm.booked, rm.gross], [35000, 38500]);
 console.log("vat-contract PASS");
