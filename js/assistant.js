@@ -1,11 +1,12 @@
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
 // giderleri, yakıtı çıkarır → doğrulanmış kartlar → tek dokunuşla kaydet. Yeni müşteri/şantiye,
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
-import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr, trDate } from "./ui.js";
+import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
+import { priceDecision, priceSummary } from "./price-decision.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, answerMetricIssues, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
@@ -383,6 +384,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${(r.photos || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${r.photos.filter((p) => files[p]).map((p) => `<img src="${URL.createObjectURL(files[p])}" alt="Fiş" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`).join("")}<span class="muted tiny" style="align-self:center">🧾 fiş bu işe eklenecek</span></div>` : ""}
         ${r.reporter ? `<div class="muted tiny">Bildiren: ${esc(r.reporter)}</div>` : ""}
         ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> mazot hak edildi → müşterinin mazot hesabına eklenir (ücret yalnız mazotsa hakedişe 0 ₺ yazılır)</div>` : ""}
+        <div class="small" data-price-preview style="margin-top:4px"></div>
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
         ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
@@ -565,6 +567,29 @@ function render(ctx, out, v, d, { message, files, ms }) {
       qs("[data-pick]", card).checked = true;
       for (const x of qsa("[data-pickcust]", card)) x.classList.toggle("on", x === b);
     });
+  // Fiyat önizlemesi (kayıttan ÖNCE): uygulanacak kural, iş tarihi, birim fiyat, KDV esası/oranı ve tutar — kart değiştikçe güncellenir
+  {
+    for (const card of qsa('.card[data-kind="work"]', out)) {
+      const box = qs("[data-price-preview]", card), r0 = v.works[Number(card.dataset.i)] || {};
+      const show = () => {
+        const g = (n) => qs(`[name=${n}]`, card)?.value || "";
+        const up = Number(g("unit_price")), q = Number(g("quantity")) || 0;
+        if (up > 0) { box.innerHTML = `💰 <b>Fiyat: elle / mesajdan</b> ${fmtTL(up)} ₺ × ${q} = <b>${fmtTL(up * q)} ₺</b> (KDV ayarlardaki varsayılan oranla hesaplanır)${r0.unit_price_src ? ` · kaynak: “${esc(r0.unit_price_src)}”` : ""}`; return; }
+        const cust = g("customer");
+        if (cust.startsWith("new:")) { box.innerHTML = "💰 Yeni müşteri: fiyat listesinde kuralı yok — fiyat boş kalır"; return; }
+        const veh = (d.vehicles || []).find((x) => x.id === g("vehicle"));
+        const site = g("site").startsWith("new:") ? null : g("site") || null;
+        const dateSure = !(r0.dateUnsure && g("date") === r0.date);
+        const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
+        card.dataset.priceAmb = dec.ambiguous ? "1" : "";
+        box.innerHTML = dec.rule ? `💰 <b>Fiyat listesinden</b> — ${esc(priceSummary(dec.rule, { date: g("date"), quantity: q, unit: g("unit") }))}${r0.fuelAllowance?.only_pay ? " · <b>Bu müşteride ücret yalnız mazot: hakedişe 0 ₺ yazılır</b>" : ""}`
+          : dec.ambiguous ? `❓ <b>Fiyat seçimi gerekli:</b> ${esc(dec.reason)} — kaydederken sorulacak`
+          : `💰 ${esc(dec.reason)}`;
+      };
+      for (const n of ["date", "customer", "site", "vehicle", "work_type", "quantity", "unit", "material", "unit_price"]) { const el = qs(`[name=${n}]`, card); el?.addEventListener("change", show); el?.addEventListener("input", show); }
+      show();
+    }
+  }
   // Müşteri değişince önerilen "yeni şantiye" o müşteriye ait olmayabilir: temizle
   for (const card of qsa('.card[data-kind="work"]', out)) {
     const cs = qs("[name=customer]", card), ss = qs("[name=site]", card);
@@ -1015,9 +1040,19 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         const up = Number(val(c, "unit_price"));
         const kdDef = (await import("./core.js")).kdvRateOf(await db.metaGet("kdv_default"));
-        fields.price_snapshot = up > 0
-          ? { unit_price: up, kdv_rate: kdDef ?? 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
-          : priceSnapshot(fields, prices, crane);
+        if (up > 0) fields.price_snapshot = { unit_price: up, kdv_rate: kdDef ?? 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() };
+        else {
+          // Fiyat listesi: eşit öncelikli birden çok kural ya da tarihe göre değişen fiyat + kesin olmayan tarih → SESSİZ SEÇİM YOK
+          const wr1 = v.works[Number(c.dataset.i)] || {};
+          const dec = priceDecision(prices, fields, { dateSure: !(wr1.dateUnsure && fields.date === wr1.date) });
+          if (dec.ambiguous) {
+            const pick = await choiceDialog("Hangi fiyat kuralı uygulansın?", `${fields.date} · ${(d.customers || []).find((x) => x.id === fields.customer_id)?.name || ""} · ${fields.quantity} ${fields.unit}: ${dec.reason}`,
+              [...dec.candidates.map((x) => [x.id, `${fmtTL(x.price)} ₺ · ${x.price_source}${x.valid_from ? " · " + x.valid_from + "'den" : ""}${x.valid_to ? " " + x.valid_to + "'e kadar" : ""} · KDV ${x.kdv_included ? "dahil" : "hariç"} %${x.kdv_rate}`]), ["", "Fiyatsız kaydet (sonra fiyatlandırırım)"]]);
+            if (pick == null) continue;
+            fields.price_snapshot = pick ? priceSnapshot(fields, prices.filter((x) => x.id === pick).map((x) => ({ ...x, valid_from: null, valid_to: null })), crane) : null;
+            if (fields.price_snapshot) fields.price_snapshot.price_choice = "kullanıcı seçti: " + dec.reason;
+          } else fields.price_snapshot = priceSnapshot(fields, prices, crane);
+        }
         // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
         { const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields)); }
         // Aynı gün/araç/müşteri/miktar: gerçekten aynı iş mi? İki şoför kaydı (ayrı kimlik) ya da farklı fiş no → ayrı iştir, sorulmaz
@@ -1134,24 +1169,57 @@ async function save(ctx, out, v, d, { message, files }) {
         }
       } else if (k === "collection") {
         const customer = await ensureCustomer(val(c, "customer"));
-        const amount = Number(val(c, "amount")), date = val(c, "date") || todayStr();
+        const amount = Number(val(c, "amount")), date = val(c, "date") || todayStr(), method = val(c, "method") === "Havale" ? "Havale" : "Nakit";
+        const ck = await import("./collection-key.js");
+        const cr = v.collections[Number(c.dataset.i)] || {};
+        // Kaynak kimliği: mesajdaki ödeme ifadesinden (WhatsApp satırı varsa o satır, yoksa mesaj metni) + tutar + sıra.
+        // Fotoğraftan gelen ya da mesajda bulunamayan tutarda kaynak = mesaj + kart sırası (tutar düzenlenirse çakışma verir)
+        const src = cr.src || { source: "txt:" + ck.normText(message), amount: cr.amount ?? amount, occ: "kart" + c.dataset.i, quote: "" };
+        const key0 = await ck.collectionKey(src);
+        const fieldsC = { customer_id: customer, amount, date, payment_method: method, bank_account_id: method === "Havale" ? val(c, "bank") : null };
         const fresh = await db.dumpAll();
-        const same = (fresh.cash_records || []).filter((x) => isActive(x) && x.cash_type === "Müşteriden Para Alındı" && x.customer_id === customer && x.date === date && Number(x.amount) === amount);
-        if (same.length && !(await confirmDialog("Aynı tahsilat kayıtlı olabilir", `${date} · ${fmtTL(amount)} ₺ bu müşteriden zaten alınmış görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
-        // İstek kimliği mesajdan türetilir: aynı mesajın aynı tahsilat satırı yeniden kaydedilirse ikinci tahsilat yazılmaz
-        const reqId = "msg-" + [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(message).replace(/\s+/g, " ").trim() + "|tahsilat|" + c.dataset.i + "|" + date)))].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 32);
-        const t0 = new Date().toISOString();
-        if (val(c, "method") === "Havale") {
-          const { customerBankReceipt } = await import("./enterprise-db.js");
-          const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, reqId);
-          if (r0.created_at < t0) { toast("Bu tahsilat bu mesajdan daha önce kaydedilmiş — ikinci kez yazılmadı", "err"); continue; }
+        const cash = (fresh.cash_records || []).filter(isActive);
+        const dec = ck.collectionDecision(cash, key0, fieldsC, src.source);
+        let reqId = key0, rel = {};
+        if (dec.kind === "conflict") {
+          toast(`Çakışma: bu mesaj satırından ${dec.old.date} · ${fmtTL(dec.old.amount)} ₺ tahsilat zaten kayıtlı; farklı tutar/müşteri/tarihle ikinci kez yazılmadı`, "err");
+          continue;
+        }
+        if (dec.kind === "repeat") { toast("Bu WhatsApp satırındaki tahsilat daha önce kaydedilmiş — ikinci kez yazılmadı", "err"); continue; }
+        if (dec.kind === "ask") {
+          // Elle yapıştırılan metinde kesin kaynak kimliği yok: aynı metin tekrar mı geldi, yoksa aynı tutarda yeni bir ödeme mi?
+          const ans = await repeatOrNewDialog("Bu tahsilat bu mesajdan daha önce kaydedildi",
+            `${dec.old.date} · ${fmtTL(dec.old.amount)} ₺ (kayıt: ${String(dec.old.created_at || "").slice(0, 16).replace("T", " ")}). Aynı ödemenin tekrarı mı, yoksa müşteriden gelen YENİ ve ayrı bir ödeme mi?`, { needReason: true });
+          if (!ans || ans.choice !== "new") { toast("Tekrar sayıldı — tahsilat ikinci kez yazılmadı", "ok"); continue; }
+          reqId = ck.nextNewKey(cash, key0);
+          rel = { repeat_of: dec.old.id, new_payment_reason: ans.reason };
         } else {
-          const pid = val(c, "personnel") || null;
-          const r0 = await db.saveNew("cash_records", {
-            request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
-            payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI",
-          }, "Asistan tahsilat");
-          if (r0?._existing) { toast("Bu tahsilat bu mesajdan daha önce kaydedilmiş — ikinci kez yazılmadı", "err"); continue; }
+          // Aynı müşteri + tarih + tutar başka kaynaktan kayıtlı: kesin tekrar SAYILMAZ, kullanıcı seçer
+          const sim = ck.similarCollections(cash, fieldsC, key0);
+          if (sim.length) {
+            const ans = await repeatOrNewDialog("Aynı gün aynı tutarda tahsilat var",
+              `${date} · ${fmtTL(amount)} ₺ bu müşteriden başka bir kayıtla alınmış görünüyor (${sim.length} kayıt). Bu aynı ödeme mi (tekrar), yoksa ikinci ve ayrı bir ödeme mi?`, { needReason: false });
+            if (!ans || ans.choice !== "new") { toast("Tekrar sayıldı — tahsilat yazılmadı", "ok"); continue; }
+            rel = { similar_to: sim.map((x) => x.id), ...(ans.reason ? { new_payment_reason: ans.reason } : {}) };
+          }
+        }
+        const srcInfo = { source_ref: src.source.startsWith("wa:") ? src.source : "elle yapıştırılan mesaj", source_quote: src.quote || "", ...rel };
+        try {
+          if (method === "Havale") {
+            const { customerBankReceipt } = await import("./enterprise-db.js");
+            const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source, extra: srcInfo }, reqId);
+            if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); continue; }
+          } else {
+            const pid = val(c, "personnel") || null;
+            const r0 = await db.saveNew("cash_records", {
+              request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
+              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo,
+            }, "Asistan tahsilat");
+            if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); continue; }
+          }
+        } catch (e) {
+          if (e?.code === "OP_CONFLICT") { toast("Çakışma: aynı kaynak satırıyla farklı tahsilat kayıtlı — yazılmadı", "err"); continue; }
+          throw e;
         }
         done.collection++;
       } else if (k === "maintenance") {

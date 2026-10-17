@@ -72,7 +72,7 @@ export function moneyMentions(message) {
     else if (R.unit_bare.test(b) && !/\d[\d.,]*\s*(?:sefer|saat|ton|yevmiye|gün|gun)[ıiuü]?\s*$/.test(b)) role = "unit_price";
     else if (R.total.test(c)) role = "total";
     else if (R.payment_possible.test(c)) role = "payment_possible";
-    out.push({ n, raw: m[0], start, end, role, clause: cl.text.trim(), currency: cur ? "TRY" : null });
+    out.push({ n, raw: m[0], start, end, role, clause: cl.text.trim(), cst: cl.st, cen: cl.en, currency: cur ? "TRY" : null });
   }
   return out;
 }
@@ -82,3 +82,65 @@ export function rolesOf(mentions, n) {
   return [...new Set(mentions.filter((m) => m.n === k).map((m) => m.role))];
 }
 export const ROLE_TR = { unit_price: "birim fiyat", total: "işin toplam bedeli", payment: "alınan ödeme", payment_possible: "ödeme olabilir (\"verdi\")", promise: "ödeme sözü", negative: "ödenmedi", corrected_away: "düzeltilmiş (geçersiz) tutar", price_quote: "fiyat teklifi", unknown: "anlamı belirsiz tutar" };
+
+// ---- Tutarın SAHİBİ (hangi müşterinin işi / ödemesi) ----
+// "Kaya'ya 5 sefer, seferi 3000; Leda'dan 20000 ödeme geldi": 3000 Kaya'nın cümlesinde, 20000 Leda'nın.
+// Kural (sırayla):
+//   1) Tutarla AYNI yan cümlede adı geçen müşteri(ler)
+//   2) Yoksa aynı bölümde (";", ". ", satır sonu) tutardan ÖNCE en son adı geçen müşteri
+//   3) Yoksa mesajda tek bir müşteri adı geçiyorsa o
+//   4) Mesajda hiç müşteri adı yoksa "none" (bağlam dışarıdan gelir, bu katman karar vermez)
+//   5) Aksi hâlde "ambiguous": kullanıcıya sorulur, sessizce seçilmez
+const GENERIC = new Set(["inşaat", "insaat", "yapı", "yapi", "ltd", "şti", "sti", "a.ş", "taahhüt", "taahhut", "hafriyat", "nakliyat", "nakliye", "san", "tic", "grup", "group", "beton", "mimarlık", "müh", "mühendislik", "ve", "bey", "abi", "usta", "firma", "şirket", "sirket"]);
+const SUFFIX = "(?:['’`]\\p{L}*|y?[ae]|y?[ıiuü]|n?[ıiuü]n|[dt][ae]n?|l[ae]r\\p{L}*)?";
+const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function nameKeys(name) {
+  const f = fold(name).replace(/\s+/g, " ").trim();
+  if (!f) return [];
+  const keys = [f];
+  const first = f.split(" ")[0].replace(/[^\p{L}\d]/gu, "");
+  if (first.length >= 3 && !GENERIC.has(first) && first !== f) keys.push(first);
+  return keys;
+}
+// Mesajda geçen müşteri adları (konumlarıyla). customers: [{id,name}], aliases: [{alias,target_type,target_id}]
+export function customerSpans(message, customers = [], aliases = []) {
+  const text = fold(message);
+  const out = [];
+  const add = (id, key) => {
+    const re = new RegExp("(?<![\\p{L}\\d])" + esc(key) + SUFFIX + "(?![\\p{L}])", "gu");
+    for (const m of text.matchAll(re)) out.push({ id, start: m.index, end: m.index + m[0].length, key });
+  };
+  for (const c of customers) for (const k of nameKeys(c.name)) add(c.id, k);
+  for (const a of aliases) if (a && a.target_type === "customer" && a.active !== false && a.alias) add(a.target_id, fold(a.alias).trim());
+  // Aynı konumdaki tam ad ile ilk kelime eşleşmesini tekille
+  return out.sort((a, b) => a.start - b.start);
+}
+const SEG = /;|[.!?](?=\s)|\n/g;
+export function ownerOfMention(message, mention, spans) {
+  const text = String(message || "");
+  if (!spans.length) return { ids: [], how: "none" };
+  const inClause = [...new Set(spans.filter((s) => s.start >= mention.cst && s.end <= mention.cen).map((s) => s.id))];
+  if (inClause.length) return { ids: inClause, how: inClause.length === 1 ? "clause" : "ambiguous" };
+  let segSt = 0;
+  for (const b of text.slice(0, mention.start).matchAll(SEG)) segSt = b.index + 1;
+  const before = spans.filter((s) => s.start >= segSt && s.end <= mention.start);
+  if (before.length) {
+    const lastStart = Math.max(...before.map((s) => s.start));
+    const ids = [...new Set(before.filter((s) => s.start === lastStart).map((s) => s.id))];
+    return { ids, how: ids.length === 1 ? "before" : "ambiguous" };
+  }
+  const all = [...new Set(spans.map((s) => s.id))];
+  if (all.length === 1) return { ids: all, how: "single" };
+  return { ids: all, how: "ambiguous" };
+}
+// Tutarın (belirli rollerdeki) bütün geçişleri için sahip kararı.
+// Sonuç: { owners: Set, ambiguous: bool, mentions: [...] }
+export function amountOwners(message, n, { customers = [], aliases = [], roles = null } = {}) {
+  const k = Math.round(Number(n) * 100) / 100;
+  const spans = customerSpans(message, customers, aliases);
+  const ms = moneyMentions(message).filter((m) => m.n === k && (!roles || roles.includes(m.role)));
+  const owners = new Set();
+  let ambiguous = false, none = false;
+  const per = ms.map((m) => { const o = ownerOfMention(message, m, spans); if (o.how === "ambiguous") ambiguous = true; else if (o.how === "none") none = true; else o.ids.forEach((x) => owners.add(x)); return { ...m, owner: o }; });
+  return { owners, ambiguous, none, mentions: per };
+}

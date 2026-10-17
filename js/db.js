@@ -1449,6 +1449,11 @@ export async function signContract(id, blobs) {
   });
 }
 
+// Tahsilat içeriği (kaynak kimliği çakışma denetimi için): müşteri, tutar, tarih, ödeme şekli, banka
+export function sameCollection(a, b) {
+  const k = (f) => [f.customer_id || null, Math.round(Number(f.amount) * 100) / 100, f.date || null, f.payment_method || null, f.payment_method === "Havale" ? f.bank_account_id || null : null].join("|");
+  return k(a) === k(b);
+}
 export async function saveCashEvent(fields) {
   const d = await openDB(),
     rec = newRecord(fields);
@@ -1458,12 +1463,15 @@ export async function saveCashEvent(fields) {
     if (fields.request_id) {
       let existing = null;
       const q = t.objectStore("cash_records").getAll();
+      let conflict = null;
       q.onsuccess = () => {
         existing = q.result.find((x) => !x.deleted_at && x.request_id === fields.request_id) || null;
+        // Aynı kaynak kimliği + FARKLI içerik (müşteri / tutar / tarih / şekil): çakışma, hiçbir şey yazılmaz
+        if (existing && !sameCollection(existing, fields)) { conflict = Object.assign(Error("Aynı kaynak kimliğiyle farklı tahsilat kayıtlı — yazılmadı"), { code: "OP_CONFLICT", old: existing }); t.abort(); return; }
         if (!existing) write();
       };
       t.oncomplete = () => res(existing ? { ...existing, _existing: true } : rec);
-      t.onerror = t.onabort = () => rej(t.error);
+      t.onerror = t.onabort = () => rej(conflict || t.error);
       return;
     }
     write();
