@@ -271,6 +271,9 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
         expense: "expense_records",
         slip_signature: "slips",
         contract_signature: "contracts",
+        leave_signature: "documents",
+        tank: "fuel_tank_movements",
+        payable: "payables",
         work: "work_records",
         fuel: "fuel_records",
       }[a.record_type] || a.record_type;

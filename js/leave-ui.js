@@ -3,6 +3,8 @@
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, confirmDialog, sheet, sheetClose } from "./ui.js";
 import { isActive } from "./core.js";
 import { LEAVE_KINDS, eventTypeOf, leaveDays, leaveSummary, offBetween } from "./leave-core.js";
+import { formsOf } from "./leave-form.js";
+const FSTAT = { "Onay bekliyor": "#e0a030", Onaylandı: "#2e9e6b", Reddedildi: "#d9534f", İptal: "#9aa4b2" };
 
 const COLOR = { "Yıllık izin": "#3b82f6", "Ücretsiz izin": "#9aa4b2", "Mazeret izni": "#0ea5a4", Rapor: "#8b5cf6" };
 const addD = (t, n) => { const x = new Date(t + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -60,19 +62,24 @@ export function leaveSheet(ctx, d, { pid = "", onDone } = {}) {
 
 export async function screen(ctx) {
   if (ctx.parts[0] !== "izinler") return false;
+  if (ctx.parts[1] === "form") return (await import("./leave-form.js")).formScreen(ctx);
   const { root, db } = ctx;
   const today = todayStr();
   const d = await db.dumpAll();
   const pid = ctx.parts[1];
   const people = (d.personnel || []).filter((p) => isActive(p) && p.active !== false);
+  const nameOf = (id) => (d.personnel || []).find((x) => x.id === id)?.name || "—";
+  const formRow = (x) => `<div class="card tap" data-go="#/izinler/form/${esc(x.id)}" style="padding:10px 12px;border-left:4px solid ${FSTAT[x.status] || "#999"}"><div class="row between"><b>${esc(nameOf(x.owner_id))}</b><span class="small" style="color:${FSTAT[x.status] || "inherit"}">${esc(x.status || "")}</span></div><div class="tiny muted">${esc(x.doc_no)} · ${esc(x.leave?.kind || "")} · ${rng(x.leave?.from, x.leave?.to)} · ${x.leave?.days || 0} gün</div></div>`;
 
   if (!pid) {
     const now = offBetween(d, today, today), soon = offBetween(d, addD(today, 1), addD(today, 14));
     const rows = people.map((p) => ({ p, s: leaveSummary(d, p, { today }) }));
     const noStart = rows.filter((x) => !x.s.ready).length;
+    const forms = formsOf(d);
     root.innerHTML = appbar("İzinler", "Yıllık izin · rapor · ücretsiz izin") + `
       <div style="height:10px"></div>
-      <button class="btn primary block" data-add style="margin-bottom:10px">+ İzin gir</button>
+      <div class="row" style="gap:8px;margin-bottom:10px"><button class="btn primary grow" data-go="#/izinler/form/new">📝 İzin talep formu</button><button class="btn grow" data-add>+ Hızlı izin (formsuz)</button></div>
+      ${(() => { const pend = forms.filter((x) => x.status === "Onay bekliyor"); return pend.length ? `<div class="section-title">Onay bekleyen talepler (${pend.length})</div>` + pend.map(formRow).join("") : ""; })()}
       <div class="section-title">Bugün izinde (${now.length})</div>
       ${now.map((o) => `<div class="card tap" data-go="#/izinler/${esc(o.p.id)}" style="padding:10px 12px;border-left:4px solid ${COLOR[o.kind] || "#3b82f6"}"><div class="row between"><b>${esc(o.p.name)}</b><span class="small">${esc(o.kind)}</span></div></div>`).join("") || '<div class="muted small" style="margin:4px">Bugün izinli kimse yok.</div>'}
       ${soon.length ? `<div class="section-title">Önümüzdeki 14 gün</div>` + soon.map((o) => `<div class="card tap" data-go="#/izinler/${esc(o.p.id)}" style="padding:10px 12px"><div class="row between"><b>${esc(o.p.name)}</b><span class="small">${rng(o.dates[0], o.dates.at(-1))}</span></div><div class="tiny muted">${esc(o.kind)} · ${o.dates.length} gün</div></div>`).join("") : ""}
@@ -85,6 +92,7 @@ export async function screen(ctx) {
     qs("[data-add]", root).addEventListener("click", () => leaveSheet(ctx, d));
     return true;
   }
+
 
   const p = people.find((x) => x.id === pid);
   if (!p) { root.innerHTML = appbar("İzin") + notice("warn", "Personel bulunamadı"); return true; }
@@ -100,11 +108,12 @@ export async function screen(ctx) {
     ${s.ready && !s.hasOpen && s.earnedList.length > 1 ? notice("info", `Hak, işe girişten bu yana ${s.earnedList.length} yılın toplamı (${s.earned} gün). Uygulamadan önce kullandığı izinler burada yok: "İzin ayarları"ndan bugünkü kalan izni (devreden) girin, doğru olsun.`) : ""}
     ${s.nextAt ? `<div class="small muted" style="margin:6px 2px">Sonraki hak: ${trDate(s.nextAt)} tarihinde +${s.nextDays} gün${s.start ? ` · işe giriş ${trDate(s.start)} (${s.years} yıl)` : ""}</div>` : ""}
     <div class="small" style="margin:6px 2px">Bu yıl: yıllık ${s.year.annual} · rapor ${s.year.report} · ücretsiz ${s.year.unpaid} · mazeret ${s.year.excuse}${s.year.other ? ` · türü yazılmamış ${s.year.other}` : ""} gün</div>
-    <button class="btn primary block" data-add style="margin:8px 0">+ İzin gir</button>
+    <div class="row" style="gap:8px;margin:8px 0"><button class="btn primary grow" data-go="#/izinler/form/new?pid=${esc(pid)}">📝 İzin talep formu</button><button class="btn grow" data-add>+ Hızlı izin</button></div>
+    ${formsOf(d, pid).length ? `<div class="section-title">İzin formları (${formsOf(d, pid).length})</div>` + formsOf(d, pid).slice(0, 10).map(formRow).join("") : ""}
     <div class="section-title">İzin geçmişi</div>
     ${s.ranges.map((r, i) => `<div class="card" style="padding:10px 12px;border-left:4px solid ${COLOR[r.kind] || "#e0a030"}">
       <div class="row between"><b>${rng(r.from, r.to)}</b><span class="small">${r.days} gün</span></div>
-      <div class="row between"><span class="tiny muted">${esc(r.kind)}${r.note && r.note !== r.kind ? " · " + esc(r.note) : ""}${r.from > today ? " · planlı" : ""}</span><button class="btn sm ghost" data-del="${i}">Sil</button></div></div>`).join("") || '<div class="muted small" style="margin:4px">Kayıtlı izin yok.</div>'}
+      <div class="row between"><span class="tiny muted">${esc(r.kind)}${r.note && r.note !== r.kind ? " · " + esc(r.note) : ""}${r.from > today ? " · planlı" : ""}</span>${r.group && formsOf(d, pid).some((x) => x.id === r.group) ? `<button class="btn sm ghost" data-go="#/izinler/form/${esc(r.group)}">📄 Form</button>` : `<button class="btn sm ghost" data-del="${i}">Sil</button>`}</div></div>`).join("") || '<div class="muted small" style="margin:4px">Kayıtlı izin yok.</div>'}
     <details class="card" ${s.ready ? "" : "open"}><summary class="small strong">⚙ İzin ayarları</summary>
       <div class="formgrid2" style="margin-top:6px">
         <div class="field"><label>İşe giriş tarihi</label><input type="date" data-f="start_date" value="${esc(p.start_date || "")}"></div>

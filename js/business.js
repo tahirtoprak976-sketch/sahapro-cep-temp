@@ -66,6 +66,7 @@ export const DOCUMENT_TYPES = [
   "Makbuz",
   "Fatura",
   "Döküm Faturası",
+  "İzin Formu",
   "Diğer",
 ];
 export const OWNER_STORES = {

@@ -228,6 +228,21 @@ export async function buildDocument(input) {
     }y+=9;
   }
   for(const section of spec.sections){
+    // Yan yana imza kutuları: [{label, image (Blob|null), name, at}] — imza yoksa boş kutu (ıslak imza için)
+    if(section.signs?.length){
+      const n=section.signs.length,gap=20,w=(contentWidth-gap*(n-1))/n,boxH=78,h=boxH+58;
+      ensure(h+(section.title?30:0));if(section.title)heading(section.title,h);
+      for(let i=0;i<n;i++){
+        const s0=section.signs[i],x=M+i*(w+gap);
+        text(s0.label,x,y+10,9,true);
+        page.push(`${edge.join(' ')} RG 0.6 w ${x} ${H-(y+16+boxH)} ${w} ${boxH} re S`);
+        if(s0.image){const img=await imageData(s0.image);const sc=Math.min((w-16)/img.width,(boxH-12)/img.height);const iw=img.width*sc,ih=img.height*sc;placeImage(img,x+(w-iw)/2,y+16+(boxH-ih)/2,iw,ih);}
+        else text('İmza',x+6,y+30,7.5,false,muted);
+        const nm=wrap(s0.name||'Ad Soyad: ..............................',w,8.5,fb);nm.slice(0,2).forEach((v,k)=>text(v,x,y+16+boxH+13+k*11,8.5,!!s0.name,s0.name?ink:muted));
+        text(s0.at||'Tarih: ....../....../..........',x,y+16+boxH+13+Math.min(nm.length,2)*11+2,7.5,false,muted);
+      }
+      y+=h+8;signaturesRendered=true;continue;
+    }
     if(section.image){
       const img=await imageData(section.image),iw=Math.min(section.image_width||190,contentWidth,(section.max_h||100)*img.width/img.height),ih=iw*img.height/img.width;
       ensure(ih+50);if(section.title)heading(section.title,ih+12);
