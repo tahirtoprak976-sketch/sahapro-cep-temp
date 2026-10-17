@@ -5,6 +5,7 @@ import { duplicateDocuments, calcHakedisTotals, toKurus } from "./core.js";
 import { customerBalances, customerOpenItems, customerLedgerMovements } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
 import { signedSlipChanges } from "./driver-core.js";
+import { vatContractReport } from "./vat-contract.js";
 
 const live = (d, s) => (d[s] || []).filter((r) => r && !r.deleted_at);
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !isNaN(new Date(String(s) + "T12:00:00Z"));
@@ -89,6 +90,11 @@ export function integrityCheck(d, { today, attachments = [] } = {}) {
   const dupBy = (rows, key, make) => { const m = new Map(); for (const r of rows) { const k = key(r); if (!k) continue; if (m.has(k)) make(m.get(k), r); else m.set(k, r); } };
   for (const s of ["work_records", "fuel_records", "expense_records", "maintenance_records"])
     dupBy(live(d, s), (r) => r.driver_entry_id, (a, b) => add("error", "dup-driver", `${lbl(s, b)}: aynı şoför kaydı iki kez işlenmiş`, `${lbl(s, a)} ile aynı`, HREF[s] ? HREF[s] + b.id : ""));
+  // KDV / cari tutar sözleşmesi: aynı müşterinin cari toplamında KDV dahil ve hariç fiyatlı işler karışıyor mu (hesap değiştirilmez, işaretlenir)
+  for (const r of vatContractReport(d)) {
+    if (r.mixedBasis) add("warn", "vat-mixed", `${r.customer}: cari toplamında KDV dahil (${r.dahil}) ve hariç (${r.haric}) fiyatlı işler karışık`, `Bugünkü toplam ${r.booked} · net ${r.net} · brüt ${r.gross} ₺ (karar notu: KDV/cari)`);
+    else if (r.ambiguous) add("warn", "vat-ambiguous", `${r.customer}: ${r.ambiguous} işte KDV oranı / temeli kayıtlı değil`, `Bugünkü toplam ${r.booked} ₺; varsayımla net ${r.net} · brüt ${r.gross} ₺`);
+  }
   // İmzalı dijital fiş: kayıt, müşterinin imzaladığı içerikten sonra değişmiş mi
   for (const w of live(d, "work_records")) {
     const ch = signedSlipChanges(w, { customers: Object.fromEntries((d.customers || []).map((x) => [x.id, x.name])), vehicles: Object.fromEntries((d.vehicles || []).map((x) => [x.id, x.name])), sites: Object.fromEntries((d.sites || []).map((x) => [x.id, x.name])) });
