@@ -71,6 +71,7 @@ const ASSETS = [
   "./js/security-core.js",
   "./js/security.js",
   "./js/integrity-core.js",
+  "./js/vat-contract.js",
   "./js/integrity-ui.js",
   "./js/invoice-import.js",
   "./js/invoice-import-ui.js",
