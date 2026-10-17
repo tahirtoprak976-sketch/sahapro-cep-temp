@@ -23,16 +23,19 @@ export async function readBackupFile(file) {
   const { promptDialog } = await import("./ui.js");
   return decodeBackup(new Uint8Array(await file.arrayBuffer()), () => promptDialog("Şifreli yedek", "Yedek şifresi", "", { type: "password" }));
 }
-export async function fullBackup(db, { encrypted = true } = {}) {
+async function toB64(blob) {
+  const buffer = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < buffer.length; i += 8192) binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
+  return btoa(binary);
+}
+// attachments: "base64" (dosyaya yazılan yedek) | "blob" (telefon içi kurtarma kopyası: kopya yok, bellek az) | "none"
+export async function fullBackup(db, { encrypted = true, attachments: mode = "base64" } = {}) {
   const data = await db.dumpAll(),
     attachments = [];
-  for (const a of await db.getAll("attachments")) {
-    const buffer = new Uint8Array(await a.blob.arrayBuffer());
-    let binary = "";
-    for (let i = 0; i < buffer.length; i += 8192)
-      binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
-    attachments.push({ ...a, blob: undefined, base64: btoa(binary) });
-  }
+  if (mode !== "none")
+    for (const a of await db.getAll("attachments"))
+      attachments.push(mode === "blob" ? { ...a } : { ...a, blob: undefined, base64: await toB64(a.blob) });
   return {
     app: APP_ID,
     app_version: APP_VERSION,
@@ -44,6 +47,41 @@ export async function fullBackup(db, { encrypted = true } = {}) {
     // API anahtarı gibi gizli ayarlar yedek dosyasına yazılmaz (yedek WhatsApp/Drive ile paylaşılabilir)
     meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key) && (encrypted || !LINK_META.includes(m.key))),
     ...(encrypted ? {} : { driver_links_omitted: true }),
+  };
+}
+// ---- Parçalı yedek (telefon belleği) ----
+// Bir parçanın açılmış (JSON) boyutu bu bütçeyi aşmaz. Ölçüm (masaüstü Chromium, v3.9.04): geri yüklemede bellek
+// tepe artışı ≈ 2–2,5 × açılmış boyut. 120 MB parça → ~300 MB ek bellek: 3–4 GB RAM'li Android'de güvenli kabul edildi
+// (fiziksel telefonda ölçülmedi). Fotoğraflar parçalara bölünür; her parça tek başına okunabilir (okuma sınırının altında).
+export const PART_JSON_BUDGET = 120 * 1024 * 1024;
+const b64Len = (n) => Math.ceil(n / 3) * 4;
+export async function backupParts(db, { encrypted = true, budget = PART_JSON_BUDGET } = {}) {
+  const head = await fullBackup(db, { encrypted, attachments: "none" });
+  const headLen = JSON.stringify(head).length;
+  if (headLen > budget) throw Error(`Kayıt verisi tek parçaya sığmıyor (${Math.round(headLen / 1048576)} MB). Lütfen bildirin.`);
+  const atts = (await db.getAll("attachments")).map(({ blob, ...m }) => ({ m, blob, est: b64Len(blob?.size || 0) + JSON.stringify(m).length + 32 }));
+  const groups = [[]];
+  let size = headLen;
+  for (const a of atts) {
+    if (a.est > budget - Math.min(1024 * 1024, budget / 10)) throw Error(`Tek dosya yedek parçasına sığmıyor: ${a.m.name || a.m.id}`);
+    if (size + a.est > budget && groups.at(-1).length) { groups.push([]); size = 2048; }
+    groups.at(-1).push(a);
+    size += a.est;
+  }
+  const set = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
+  const n = groups.length;
+  // Parçalar sırayla üretilir (aynı anda yalnız bir parçanın JSON'u bellekte)
+  return {
+    count: n,
+    async *[Symbol.asyncIterator]() {
+      for (let i = 0; i < n; i++) {
+        const attachments = [];
+        for (const a of groups[i]) attachments.push({ ...a.m, base64: await toB64(a.blob) });
+        yield { ...(i === 0 ? head : { app: head.app, app_version: head.app_version, schema_version: head.schema_version, exported_at: head.exported_at, device_install_id: head.device_install_id, data: {}, meta: [] }),
+          attachments, ...(n > 1 ? { part: { set, no: i + 1, of: n } } : {}) };
+        groups[i] = null;
+      }
+    },
   };
 }
 export async function previewBackup(db, obj) {
@@ -104,17 +142,21 @@ export function freshDeviceDrops(local, obj) {
 }
 
 export async function restoreBackup(db, obj, replace = false) {
-  const preview = await previewBackup(db, obj),
-    old = await fullBackup(db);
-  await saveRecovery(db, old);
-  validateRestoreLinks(await db.dumpAll(), obj, preview, replace);
+  const preview = await previewBackup(db, obj);
+  // Telefon içi kurtarma kopyası: ekler Blob olarak (base64 kopyası yok — bellek iki katına çıkmaz)
+  await saveRecovery(db, await fullBackup(db, { attachments: "blob" }));
+  try { validateRestoreLinks(await db.dumpAll(), obj, preview, replace); }
+  catch (e) { if (obj.part?.no > 1 && /bağlı olmayan dosya eki/.test(e.message)) throw Error(`Bu, yedeğin ${obj.part.no}. parçası (toplam ${obj.part.of}). Önce 1. parçayı yükleyin.`); throw e; }
   const decoded = [];
   for (const a of obj.attachments || []) {
     if (!a.id || !a.record_id || typeof a.base64 !== "string")
       throw Error("Ek geçersiz");
-    const bytes = Uint8Array.from(atob(a.base64), (c) => c.charCodeAt(0));
+    const bin = atob(a.base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
     const { base64, ...fields } = a;
     decoded.push({ ...fields, blob: new Blob([bytes], { type: a.type }) });
+    a.base64 = null; // çözülen metin hemen bırakılır (tepe bellek düşer)
   }
   // Yeni telefon (henüz işletme kaydı yok): ilk açılışta oluşturulan başlangıç kartları, yedekteki aynı adlı kartların
   // yerine geçer. Yoksa araç / personel / döküm sahası / eşleştirme / fiyat ikişer olur.
@@ -200,10 +242,10 @@ export async function backupBeforeSoloOperation(
   db,
   prefix = "before-solo-operation",
 ) {
-  await saveRecovery(db, await fullBackup(db), prefix);
+  await saveRecovery(db, await fullBackup(db, { attachments: "blob" }), prefix);
 }
 export async function backupBeforeHistoryImport(db) {
-  const snapshot = await fullBackup(db);
+  const snapshot = await fullBackup(db, { attachments: "blob" });
   await saveRecovery(db, snapshot, "before-history-import");
 }
 async function saveRecovery(db, obj, prefix = "before-restore") {

@@ -275,6 +275,32 @@ with sync_playwright() as p:
     check(ok and len(CALLS) == n0, "sınır doluyken imzalı şoför kaydı yerelde işlendi (Gemini'siz)")
     ev("""async()=>{const db=await import('./js/db.js');await db.metaSet('gemini_daily_limit',300)}""")
 
+    # ---- 12) Eşzamanlı düzenleme: iki sekme aynı işi düzenler; eski ekran yeni değişikliği ezemez ----
+    print("12) Eşzamanlı düzenleme")
+    wid2 = ev(f"""async()=>{{const db=await import('./js/db.js');return (await db.saveNew('work_records',{{date:'{TODAY}',customer_id:'{ids['k']}',vehicle_id:'{ids['v']}',work_type:'Kazı',quantity:3,unit:'Saat'}},'test')).id}}""")
+    tabs = []
+    for _ in range(2):
+        pp = ctx.new_page(); pp.on("pageerror", lambda e: errs.append("TAB " + str(e)))
+        pp.goto(U + f"index.html#/isler/{wid2}/edit"); pp.wait_for_timeout(2500); unlock_if(pp); tabs.append(pp)
+    tabs[0].fill("[name=quantity]", "7"); tabs[0].click("[data-save]"); tabs[0].wait_for_timeout(2000)
+    tabs[1].fill("[name=quantity]", "8"); tabs[1].click("[data-save]"); tabs[1].wait_for_timeout(1500)
+    sheet = tabs[1].inner_text(".sheet") if tabs[1].query_selector(".sheet") else ""
+    q = ev(f"""async()=>{{const db=await import('./js/db.js');return (await db.get('work_records','{wid2}')).quantity}}""")
+    check(q == 7, f"eski sekme yeni değişikliği ezmedi (miktar {q})")
+    check("başka yerde değişti" in sheet and "kayıtta 7" in sheet and "sizde 8" in sheet, "çakışmada karşılaştırma + yenileme sunuldu")
+    for pp in tabs: pp.close()
+    # çift onay: aynı form iki eski ekrandan onaylanırsa yalnız biri geçer
+    r = ev(f"""async()=>{{const db=await import('./js/db.js');const f=await db.saveNew('documents',{{category:'İzin Formu',doc_no:'IZ-T1',date:'{TODAY}',owner_type:'personnel',owner_id:'{ids['p']}',personnel_id:'{ids['p']}',status:'Bekliyor'}},'test');
+      const a=db.saveExisting('documents',f,{{status:'Onaylandı'}},'A');const b=db.saveExisting('documents',f,{{status:'Onaylandı'}},'B');
+      const res=await Promise.allSettled([a,b]);return res.map(x=>x.status+(x.reason?':'+x.reason.code:''))}}""")
+    check(sorted(r) == ["fulfilled", "rejected:STALE"], f"aynı form iki kez onaylanamadı ({r})")
+    # aynı eski nesneyle FARKLI alanlar arka arkaya yazılırsa ikisi de korunur (yanlış çakışma yok); AYNI alan → çakışma
+    r = ev(f"""async()=>{{const db=await import('./js/db.js');const w=await db.saveNew('work_records',{{date:'{TODAY}',customer_id:'{ids['k']}',vehicle_id:'{ids['v']}',work_type:'Kazı',quantity:2,unit:'Saat'}},'t');
+      await db.saveExisting('work_records',w,{{customer_note:'not A'}},'A');await db.saveExisting('work_records',w,{{internal_note:'not B'}},'B');
+      const x=await db.get('work_records',w.id);let c='';try{{await db.saveExisting('work_records',w,{{customer_note:'not C'}},'C')}}catch(e){{c=e.code}}
+      return [x.customer_note,x.internal_note,c,(await db.get('work_records',w.id)).customer_note]}}""")
+    check(r == ["not A", "not B", "STALE", "not A"], f"alan düzeyinde: farklı alanlar korunur, aynı alan ezilmez ({r})")
+
     print("\nsayfa hataları:", errs[:5])
     check(not errs, "sayfa hatası yok")
     b.close()

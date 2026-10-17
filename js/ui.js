@@ -287,6 +287,19 @@ export async function shareOrDownload(blob, filename, title = "") {
   downloadBlob(blob, filename);
   return "downloaded";
 }
+// Birden çok dosya tek paylaşımda (ör. parçalı yedek); paylaşılamazsa hepsi indirilir
+export async function shareOrDownloadMany(files, title = "") {
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: title || files[0]?.name || "" });
+      return "shared";
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return "aborted";
+  }
+  for (const f of files) downloadBlob(f, f.name);
+  return "downloaded";
+}
 export async function shareText(text) {
   try {
     if (navigator.share) {
