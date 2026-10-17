@@ -54,8 +54,10 @@ export function entryLine(e, cfg) {
   return `🚚 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${cust}${e.sid ? " / " + nm(cfg.S, e.sid) : ""} · ${e.wt} ${e.q} ${String(e.u).toLocaleLowerCase("tr-TR")}${e.mat ? " " + e.mat : ""}${dump ? " → " + dump : ""}${e.ton ? ` · ${e.ton} ton` : ""}${e.slip ? ` · fiş ${e.slip}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}${e.note ? ` · ${e.note}` : ""}${dfs}`;
 }
 export async function driverMessage(entries, cfg) {
-  const code = await pack({ v: 1, p: cfg.p[0], n: cfg.p[1], e: entries.map(({ sent, ...e }) => e) });
-  return [`📋 SAHAPRO şoför kaydı — ${cfg.p[1]}`, ...entries.map((e) => entryLine(e, cfg)), `SP1:${code}`].join("\n");
+  const code = await pack({ v: 1, p: cfg.p[0], n: cfg.p[1], ...(cfg.lid ? { lid: cfg.lid } : {}), e: entries.map(({ sent, ...e }) => e) });
+  // İmzalı bağlantı: kod, bağlantının gizli anahtarıyla imzalanır (patron telefonu doğrular; değiştirilen kod işlenmez)
+  const sig = cfg.ls ? "." + (await (await import("./security-core.js")).hmac(cfg.ls, code)) : "";
+  return [`📋 SAHAPRO şoför kaydı — ${cfg.p[1]}`, ...entries.map((e) => entryLine(e, cfg)), `SP1:${code}${sig}`].join("\n");
 }
 
 // WhatsApp'a paylaşılan / kopyalanan metin yaklaşık 4 KB'ta kesilebiliyor (kesilen kod açılmaz).
@@ -91,10 +93,10 @@ export function decodeStrokes(sv) {
 }
 
 // Patronun tarafı: metindeki kodlar
-const CODE = /SP1:([A-Za-z0-9_-]{8,})/g;
+const CODE = /SP1:([A-Za-z0-9_-]{8,})(?:\.([A-Za-z0-9_-]{16,}))?/g;
 export async function extractPayloads(text) {
   const out = [];
-  for (const m of String(text || "").matchAll(CODE)) { try { const p = await unpack(m[1]); if (p?.v === 1 && Array.isArray(p.e)) out.push(p); } catch (e) { /* bozuk kod: atla */ } }
+  for (const m of String(text || "").matchAll(CODE)) { try { const p = await unpack(m[1]); if (p?.v === 1 && Array.isArray(p.e)) out.push({ ...p, _code: m[1], _sig: m[2] || null }); } catch (e) { /* bozuk kod: atla */ } }
   return out;
 }
 // Şoför mesajlarının okunur kısmı ve kod satırı çıkarılınca kalan serbest metin (Gemini'ye yalnız bu gider)

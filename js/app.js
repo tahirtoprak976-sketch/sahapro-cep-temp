@@ -17,6 +17,7 @@ import * as cashScreen from "./cashflow.js";
 import * as dumpAccScreen from "./dump-account-ui.js";
 import * as priceHealthScreen from "./price-health-ui.js";
 import * as leaveScreen from "./leave-ui.js";
+import * as securityScreen from "./security.js";
 import * as invoiceScreen from "./invoice-ui.js";
 import * as driverScreen from "./driver.js";
 import * as pro from "./pro.js";
@@ -84,6 +85,7 @@ const SECTION = {
   "dokum-hesap": "daha",
   "fiyat-saglik": "finans",
   izinler: "daha",
+  guvenlik: "daha",
   fatura: "finans",
   hakedis: "finans",
   cari: "finans",
@@ -139,11 +141,12 @@ function parseHash() {
   return { parts, query };
 }
 
+const isDriverPhone = () => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } };
 const isStandalone = () => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (e) { return false; } };
 async function firstRunChoice() {
   let role = null;
   try { role = localStorage.getItem("sp_role"); } catch (e) { return false; }
-  if (role || !isStandalone()) return false;
+  if (role) return false;
   // Gerçek kayıtları olan telefon patronundur
   if ((await db.getAll("work_records")).filter((w) => !w.deleted_at).length > 5) { try { localStorage.setItem("sp_role", "boss"); } catch (e) {} return false; }
   const root = qs("#screen");
@@ -165,7 +168,20 @@ async function firstRunChoice() {
     if (!m) return toast("Bağlantı bulunamadı; patronun gönderdiği mesajın tamamını yapıştırın", "err");
     location.hash = "#/sofor?k=" + m[1];
   });
-  qs("[data-boss]", root).addEventListener("click", () => { try { localStorage.setItem("sp_role", "boss"); } catch (e) {} location.hash = "#/"; renderCurrent(); });
+  qs("[data-boss]", root).addEventListener("click", async () => {
+    // Daha önce şoför telefonu olarak kurulduysa: yalnız patronun verdiği çıkış koduyla yönetici olur
+    let dcfg = null; try { dcfg = JSON.parse(localStorage.getItem("sp_driver_cfg") || "null"); } catch (e) {}
+    if (dcfg?.xk) {
+      const { promptDialog } = await import("./ui.js");
+      const code = await promptDialog("Bu telefon şoför telefonu", "Patronun verdiği 8 haneli çıkış kodu", "", { type: "password" });
+      if (code == null) return;
+      const { verifySecret } = await import("./security-core.js");
+      if (!(await verifySecret(code.replace(/\s/g, ""), dcfg.xk))) return toast("Çıkış kodu hatalı", "err");
+    }
+    try { localStorage.setItem("sp_role", "boss"); } catch (e) {}
+    toast("Önce yönetici kilidini kurun: telefonunuzu eline alan kimse kayıtları göremesin", "ok");
+    location.hash = "#/guvenlik"; renderCurrent();
+  });
   return true;
 }
 
@@ -200,7 +216,7 @@ export async function renderCurrent() {
   root.innerHTML =
     '<div style="padding:40px 0"><div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div></div>';
   try {
-    const soloHandled = (await driverScreen.screen(ctx)) || (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await whoCheck.screen(ctx)) || (await yardScreen.screen(ctx)) || (await fuelPayScreen.screen(ctx)) || (await collectScreen.screen(ctx)) || (await quoteCalcScreen.screen(ctx)) || (await waBulkScreen.screen(ctx)) || (await payrollScreen.screen(ctx)) || (await leaveScreen.screen(ctx)) || (await maintScreen.screen(ctx)) || (await reportScreen.screen(ctx)) || (await cashScreen.screen(ctx)) || (await dumpAccScreen.screen(ctx)) || (await priceHealthScreen.screen(ctx)) || (await invoiceScreen.screen(ctx)) || (await solo.screen(ctx));
+    const soloHandled = (await driverScreen.screen(ctx)) || (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await whoCheck.screen(ctx)) || (await yardScreen.screen(ctx)) || (await fuelPayScreen.screen(ctx)) || (await collectScreen.screen(ctx)) || (await quoteCalcScreen.screen(ctx)) || (await waBulkScreen.screen(ctx)) || (await payrollScreen.screen(ctx)) || (await leaveScreen.screen(ctx)) || (await securityScreen.screen(ctx)) || (await maintScreen.screen(ctx)) || (await reportScreen.screen(ctx)) || (await cashScreen.screen(ctx)) || (await dumpAccScreen.screen(ctx)) || (await priceHealthScreen.screen(ctx)) || (await invoiceScreen.screen(ctx)) || (await solo.screen(ctx));
     const enterpriseHandled = soloHandled || await enterprise.screen(ctx);
     const handled = enterpriseHandled || (await pro.screen(ctx));
     if (!handled) await mod(ctx);
@@ -413,7 +429,12 @@ document.addEventListener("click", (ev) => {
     await db.ensureSeeded();
     registerSW();
     bindOnline();
-    if (!(await pinGate())) return;
+    // Yönetici kilidi (şoför telefonunda değil): açılışta şifre / parmak izi, boşta ve arka planda otomatik kilit
+    if (!isDriverPhone()) {
+      const sec = await import("./security.js");
+      sec.watchIdle();
+      if (!(await sec.gate())) return;
+    }
     try { await (await import("./dump-fees.js")).seedOfficialDumps(db); } catch (e) { console.warn(e); }
     try { await (await import("./yard-core.js")).seedVehicleTypes(db); } catch (e) { console.warn(e); }
     window.addEventListener("hashchange", renderCurrent);

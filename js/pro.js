@@ -1700,6 +1700,7 @@ async function backupPanel(ctx) {
     try {
       const file = e.target.files[0];
       if (!file) return;
+      { const sec = await import("./security.js"); if (!(await sec.reauth("Yedekten geri yükleme"))) return; await sec.secLog("backup", "Yedek geri yükleme açıldı: " + file.name); }
       const { previewBackup, restoreBackup, readBackupFile } = await import("./backup.js"),
         obj = await readBackupFile(file),
         p = await previewBackup(db, obj),

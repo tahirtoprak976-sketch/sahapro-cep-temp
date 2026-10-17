@@ -73,6 +73,7 @@ export async function screen(ctx) {
     return true;
   }
   const today = todayStr();
+  const expired = cfg.exp && today > cfg.exp;
   let entries = ls.get(K_ENT, []).filter((e) => !e.sent || e.date >= new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10));
   const nm = (list, id) => (list || []).find((x) => x[0] === id)?.[1] || "";
   let tab = "is", photos = [], slipFor = null;
@@ -196,6 +197,7 @@ export async function screen(ctx) {
         <div class="row between"><div><div style="font-size:20px;font-weight:800">👷 ${esc(cfg.p[1])}</div><div class="small" style="opacity:.8">${esc(cfg.co || "")} · şoför ekranı</div></div><div style="font-size:28px">🚚</div></div>
         <select data-vid style="margin-top:8px;width:100%;${big};border-radius:10px;padding:6px 10px">${opt(cfg.V || [], st.vid, "— araç seçin —")}</select>
       </div>
+      ${expired ? `<div class="notice danger"><div>Bağlantının süresi ${esc(trDate(cfg.exp))} tarihinde doldu. Gönderdiğin kayıtlar işlenmez: patrondan <b>yeni bağlantı</b> iste.</div></div>` : ""}
       ${weekHtml()}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">${[["is", "🚚 İş"], ["yakit", "⛽ Mazot"], ["ariza", "🔧 Arıza / Bakım"], ["gider", "💸 Gider"]].map(([k, t]) => `<button class="btn ${tab === k ? "primary" : ""}" data-tab="${k}" style="${big}">${t}</button>`).join("")}</div>
       ${tab === "is" ? `<div class="card">
@@ -385,8 +387,16 @@ export async function screen(ctx) {
       if (done && done.length < batch.length) toast(`${done.length}/${batch.length} kayıt gönderildi (mesaj uzun olmasın diye)`, "ok");
     });
     qs("[data-exit]", root)?.addEventListener("click", async () => {
-      if (!(await confirmDialog("Şoför modundan çıkılsın mı?", "Bu telefon patron telefonu olarak açılır. Gönderilmemiş kayıtlar telefonda kalır.", "Çık"))) return;
-      ls.del(K_MODE); location.replace("#/");
+      // İmzalı bağlantıda çıkış yalnız patronun çıkış koduyla (şoför yönetici ekranlarına geçemez)
+      if (cfg.xk) {
+        const { promptDialog } = await import("./ui.js");
+        const code = await promptDialog("Şoför modundan çıkış", "Patronun verdiği 8 haneli çıkış kodu", "", { type: "password" });
+        if (code == null) return;
+        const { verifySecret } = await import("./security-core.js");
+        if (!(await verifySecret(code.replace(/\s/g, ""), cfg.xk))) return toast("Çıkış kodu hatalı", "err");
+      } else if (!(await confirmDialog("Şoför modundan çıkılsın mı?", "Bu telefon patron telefonu olarak açılır. Gönderilmemiş kayıtlar telefonda kalır.", "Çık"))) return;
+      try { localStorage.setItem("sp_role", "boss"); } catch (e) {}
+      ls.del(K_MODE); location.replace("#/guvenlik");
     });
   };
   draw();
@@ -413,17 +423,31 @@ async function setupScreen(ctx) {
     </div>
     <div class="card">
       <div class="field"><label>Şoför / operatör</label><select data-pid>${people.map((p) => `<option value="${esc(p.id)}" ${p.id === pid ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
+      <div class="field"><label>Bağlantı geçerliliği</label><select data-days><option value="30">30 gün</option><option value="90">90 gün</option><option value="180" selected>180 gün</option><option value="365">1 yıl</option></select></div>
       <div class="field"><label>Aracı (değiştirebilir)</label><select data-vid><option value="">— zimmetli aracı —</option>${vehicles.map((v) => `<option value="${esc(v.id)}">${esc(v.name)}</option>`).join("")}</select></div>
       <div class="row" style="gap:6px"><button class="btn primary grow" data-share>📤 WhatsApp'tan gönder</button><button class="btn grow" data-copy>Bağlantıyı kopyala</button></div>
       <div class="tiny muted" data-info style="margin-top:6px"></div>
     </div>`;
   if (!people.length) qs("[data-share]", root).disabled = qs("[data-copy]", root).disabled = true;
+  const sec = await import("./security.js");
+  const locked = await sec.lockEnabled();
+  if (!locked) {
+    qs("[data-share]", root).disabled = qs("[data-copy]", root).disabled = true;
+    qs("[data-info]", root).insertAdjacentHTML("beforebegin", `<div class="notice warn" style="margin-top:8px"><div>Şoför bağlantısı göndermeden önce <b>yönetici kilidini</b> kurun. Böylece bağlantılar imzalı olur, şoför telefonu yönetici ekranına geçemez.<br><button class="btn sm primary" data-go="#/guvenlik" style="margin-top:6px">🛡 Kilidi kur</button></div></div>`);
+  }
+  let made = null; // aynı ekranda paylaş + kopyala aynı bağlantıyı kullansın
   const link = async () => {
     const p = people.find((x) => x.id === qs("[data-pid]", root).value);
-    const cfg = core.driverConfig(d, { personnel_id: p.id, vehicle_id: qs("[data-vid]", root).value || null, company: COMPANY_NAME, issued: todayStr() });
+    if (made && made.pid === p.id && made.vid === (qs("[data-vid]", root).value || null)) return made.out;
+    if (!(await sec.reauth("Şoför bağlantısı oluşturma: " + p.name))) throw new Error("Vazgeçildi");
+    // Aynı kişinin eski bağlantıları iptal (yalnız son bağlantı geçerli)
+    await sec.revokeForPerson(p.id, "Yeni bağlantı gönderildi");
+    const { forDriver } = await sec.newDriverLink({ pid: p.id, name: p.name, vid: qs("[data-vid]", root).value || null, days: Number(qs("[data-days]", root)?.value) || 180 });
+    const cfg = { ...core.driverConfig(d, { personnel_id: p.id, vehicle_id: qs("[data-vid]", root).value || null, company: COMPANY_NAME, issued: todayStr() }), ...forDriver };
     const url = location.origin + location.pathname + "#/sofor?k=" + (await core.pack(cfg));
-    qs("[data-info]", root).textContent = `${cfg.C.length} müşteri, ${cfg.V.length} araç, ${cfg.D.length} döküm yeri · bağlantı ${url.length} karakter`;
-    return { p, url };
+    qs("[data-info]", root).textContent = `İmzalı bağlantı · geçerlilik ${trDate(cfg.exp)} · ${cfg.C.length} müşteri, ${cfg.V.length} araç · ${url.length} karakter. Çıkış kodu: Güvenlik ekranında.`;
+    made = { pid: p.id, vid: qs("[data-vid]", root).value || null, out: { p, url } };
+    return made.out;
   };
   qs("[data-share]", root).addEventListener("click", async () => {
     try { const { p, url } = await link(); shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Ana ekrandan ilk açılışta "Şoför" seçeneğine bu mesajı yapıştır.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); }

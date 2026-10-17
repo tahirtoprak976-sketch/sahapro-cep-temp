@@ -1503,6 +1503,9 @@ function tsName() {
 }
 
 export async function doBackup(ctx) {
+  const sec = await import("./security.js");
+  if (!(await sec.reauth("Yedek alma (tüm kayıtlar dışarı çıkar)"))) return;
+  await sec.secLog("backup", "Yedek alındı");
   const { fullBackup } = await import("./backup.js");
   const backup = await fullBackup(ctx.db);
   // Sıkıştırılmış (çok daha küçük) ve şifre konduysa şifreli: WhatsApp/Drive'daki dosyayı başkası açamaz
@@ -1689,15 +1692,8 @@ async function settings(ctx) {
       <button class="btn block" data-finset>Tarifeyi Kaydet</button>
       <div class="muted tiny" style="margin-top:8px">Kesinleşmiş belgeler (hakediş snapshot) bu değişiklikten ETKİLENMEZ.</div>
     </div>
-    <div class="section-title">Kilit</div>
-    <div class="card">
-      ${kv("Local PIN", pinSet ? "Kurulu" : "Yok")}
-      <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn grow" data-pinset>${pinSet ? "PIN Değiştir" : "PIN Kur"}</button>
-        ${pinSet ? '<button class="btn grow" data-pinclr>PIN Kaldır</button>' : ""}
-      </div>
-      <div class="muted tiny" style="margin-top:8px">Basit cihaz içi ekran kilididir; kriptografik güvenlik DEĞİLDİR.</div>
-    </div>
+    <div class="section-title">Kilit ve Güvenlik</div>
+    <div class="card tap" data-go="#/guvenlik"><div class="row between"><span>🛡 Yönetici kilidi, parmak izi / Face ID, şoför bağlantıları, güvenlik günlüğü</span><span class="muted">›</span></div></div>
     <div class="section-title">Sistem Durumu</div>
     <div class="card">
       ${kv("Kayıt (aktif)", fmtNum(recCount))}
@@ -1839,6 +1835,7 @@ async function settings(ctx) {
 // ---- Restore: önizleme + çakışma politikası (§34/§47) ----
 async function restorePreview(ctx, file) {
   const view = qs("[data-restoreview]", ctx.root);
+  { const sec = await import("./security.js"); if (!(await sec.reauth("Yedekten geri yükleme"))) return; await sec.secLog("backup", "Yedek geri yükleme açıldı: " + (file?.name || "")); }
   try {
     const { previewBackup, restoreBackup, readBackupFile } = await import("./backup.js"),
       obj = await readBackupFile(file),
