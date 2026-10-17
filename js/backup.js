@@ -73,6 +73,31 @@ export async function previewBackup(db, obj) {
     attachments: (obj.attachments || []).length,
   };
 }
+const USER_STORES = ["work_records", "fuel_records", "expense_records", "cash_records", "documents", "customers", "sites", "maintenance_records", "personnel_events", "fuel_tank_movements", "payables", "hakedis", "slips", "quotes"];
+const keyName = (x) => String(x?.name || "").toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
+export function freshDeviceDrops(local, obj) {
+  const live = (rows) => (rows || []).filter((r) => r && !r.deleted_at);
+  if (USER_STORES.some((s) => live(local[s]).length)) return {};
+  const inBackup = (s) => new Set((obj.data?.[s] || []).map((r) => r.id));
+  const out = {}, dropped = new Set();
+  for (const s of ["vehicles", "personnel", "dump_sites", "quarries"]) {
+    const ids = inBackup(s), names = new Set((obj.data?.[s] || []).filter((r) => !r.deleted_at).map(keyName));
+    const ds = (local[s] || []).filter((r) => !ids.has(r.id) && names.has(keyName(r))).map((r) => r.id);
+    if (ds.length) { out[s] = ds; ds.forEach((id) => dropped.add(id)); }
+  }
+  const al = inBackup("aliases"), alk = new Set((obj.data?.aliases || []).map((a) => String(a.alias || "").toLocaleLowerCase("tr-TR") + "|" + a.target_type));
+  const da = (local.aliases || []).filter((a) => !al.has(a.id) && (dropped.has(a.target_id) || alk.has(String(a.alias || "").toLocaleLowerCase("tr-TR") + "|" + a.target_type))).map((a) => a.id);
+  if (da.length) out.aliases = da;
+  const pb = inBackup("price_book");
+  const vName = (rows) => new Map((rows || []).map((v) => [v.id, keyName(v)]));
+  const lv = vName(local.vehicles), bv = vName(obj.data?.vehicles);
+  const pk = (r, vm) => [r.work_type || "", r.unit || "", r.vehicle_id ? vm.get(r.vehicle_id) || "?" : "", r.customer_id || "", r.site_id || ""].join("|");
+  const bk = new Set((obj.data?.price_book || []).filter((r) => !r.deleted_at).map((r) => pk(r, bv)));
+  const dp = (local.price_book || []).filter((r) => !pb.has(r.id) && (dropped.has(r.vehicle_id) || bk.has(pk(r, lv)))).map((r) => r.id);
+  if (dp.length) out.price_book = dp;
+  return out;
+}
+
 export async function restoreBackup(db, obj, replace = false) {
   const preview = await previewBackup(db, obj),
     old = await fullBackup(db);
@@ -86,11 +111,15 @@ export async function restoreBackup(db, obj, replace = false) {
     const { base64, ...fields } = a;
     decoded.push({ ...fields, blob: new Blob([bytes], { type: a.type }) });
   }
+  // Yeni telefon (henüz işletme kaydı yok): ilk açılışta oluşturulan başlangıç kartları, yedekteki aynı adlı kartların
+  // yerine geçer. Yoksa araç / personel / döküm sahası / eşleştirme / fiyat ikişer olur.
+  const drop = freshDeviceDrops(await db.dumpAll(), obj);
   const connection = await db.openDB(),
     stores = [...ENTITY_STORES, "attachments", "meta"];
   return new Promise((resolve, reject) => {
     const t = connection.transaction(stores, "readwrite");
     let error;
+    for (const [s, ids] of Object.entries(drop)) for (const id of ids) t.objectStore(s).delete(id);
     for (const s of ENTITY_STORES) {
       const rows = [
         ...preview.stores[s].new,
