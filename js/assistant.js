@@ -215,7 +215,8 @@ export async function screen(ctx) {
         drvPlan.mainMeta.forEach((m, i) => { tag((v.maintenance || [])[i], m); if (v.maintenance?.[i]) Object.assign(v.maintenance[i], { driver_pay: m.pay, driver_pid: m.personnel_id, km: m.km, machine_hours: m.hours }); });
         // Şoför fotoğraf gönderdi ama buraya eklenmedi (kopyala-yapıştırda yalnız yazı gelir)
         const expected = drvPayloads.reduce((n, p) => n + p.e.reduce((k, e) => k + (Number(e.ph) || 0) + (e.sg ? 1 : 0), 0), 0);
-        if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} WhatsApp'ta şoförün fotoğraflarını seçip Paylaş → SAHAPRO deyin, sonra bu yazıyı tekrar yapıştırın — ya da yukarıdaki fotoğraf kutusundan galeriden aynı sırayla ekleyin. Fotoğrafsız da kaydedebilirsiniz.`;
+        if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} Aşağıdan fotoğrafı galeriden seçin (WhatsApp'tan gelen fotoğraflar galeride "WhatsApp Images" klasöründedir); kartlar fotoğrafla yeniden hazırlanır. Fotoğrafsız da kaydedebilirsiniz.`;
+        if (expected > images.length) v.driverPhotoNeed = expected;
         v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir)`;
       }
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
@@ -270,6 +271,27 @@ function summaryHtml(v, d) {
 }
 
 function render(ctx, out, v, d, { message, files, ms }) {
+  // Şoförün fotoğrafı eksikse: burada seçilir, mesaj fotoğraflarla yeniden işlenir (WhatsApp'a dönmeye gerek yok)
+  setTimeout(() => {
+    const dp = qs("[data-drvph]", out);
+    if (!dp) return;
+    dp.addEventListener("change", () => {
+      if (!dp.files.length) return;
+      const root = ctx.root, inp = qs("[data-photos]", root);
+      try {
+        const dt = new DataTransfer();
+        for (const f of dp.files) dt.items.add(f);
+        inp.files = dt.files;
+        inp.dispatchEvent(new Event("change"));
+      } catch { return toast("Fotoğraf eklenemedi; yukarıdaki fotoğraf kutusundan seçip tekrar gönderin", "err"); }
+      const m = qs("[data-msg]", root);
+      if (!m.value.trim()) m.value = message;
+      const rf = qs("[data-refine]", root);
+      if (rf) rf.checked = false;
+      root.scrollTo?.(0, 0);
+      qs("[data-ask]", root).click();
+    });
+  }, 0);
   const live = (s) => (d[s] || []).filter(isActive);
   const customers = live("customers").map((c) => [c.id, c.name]);
   const vehicles = live("vehicles").map((x) => [x.id, x.name]);
@@ -288,7 +310,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
-    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) : "") +
+    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Şoförün fotoğrafını ekle${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/*" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
