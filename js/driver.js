@@ -52,13 +52,17 @@ export async function screen(ctx) {
       const own = ((await db.dumpAll()).work_records || []).filter(isActive).length;
       if (own > 5 && !isDriverMode() && !(await confirmDialog("Bu telefon patron telefonu mu?", `Bu telefonda ${own} iş kaydı var. Şoför moduna geçerseniz yalnız şoför ekranı görünür (kayıtlar silinmez, istediğinizde çıkabilirsiniz).`, "Şoför moduna geç"))) { location.replace("#/"); return true; }
       const first = !isDriverMode();
-      ls.set(K_CFG, cfg); ls.set(K_MODE, 1);
+      const prev = ls.get(K_CFG);
+      // Adresteki eski kod, sonradan kurulan daha yeni bağlantıyı ezmesin (ana ekran simgesi hep ilk adresi açar)
+      if (prev && (Number(prev.ts) || 0) > (Number(cfg.ts) || 0)) { ls.set(K_MODE, 1); }
+      else ls.set(K_CFG, cfg), ls.set(K_MODE, 1);
       try { localStorage.setItem("sp_role", "driver"); } catch (e) {}
       if (first) toast(`Hoş geldin ${cfg.p[1]}`, "ok");
     } catch (e) { root.innerHTML = appbar("Şoför Ekranı") + notice("danger", "Bağlantı açılamadı: " + (e.message || e) + ". Patrondan yeni bağlantı isteyin."); return true; }
     // iPhone'da "Ana Ekrana Ekle" bu sayfanın adresini kullansın: bağlantı adreste kalır, uygulama bildirimi (manifest) kaldırılır.
     // Ana ekran uygulaması Safari'den ayrı hafızayla açıldığında da kendini bu bağlantıdan kurar.
-    if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) history.replaceState(null, "", location.pathname + "#/sofor");
+    if (ctx.standaloneDriver) { /* sofor.html: kod adreste kalır (ana ekran simgesi kendini kurabilsin) */ }
+    else if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) history.replaceState(null, "", location.pathname + "#/sofor");
     else {
       document.querySelector('link[rel="manifest"]')?.remove();
       let t = document.querySelector('meta[name="apple-mobile-web-app-title"]');
@@ -234,7 +238,7 @@ export async function screen(ctx) {
       ${unsent.map((e) => `<div class="card"><div class="row between"><span class="small">${esc(core.entryLine(e, cfg))}</span><span class="row" style="gap:4px">${!e.k ? `<button class="btn sm" data-slip="${esc(e.id)}" title="Dijital fiş">🧾</button>` : ""}<button class="btn sm ghost" data-del="${esc(e.id)}">🗑</button></span></div>${!e.k && !e.dfs ? '<div class="tiny muted">🧾 Şantiye şefine imzalı dijital fiş</div>' : ""}</div>`).join("") || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}
       ${unsent.length ? `<button class="btn block" data-send style="${big};background:#25d366;color:#fff;border:0;font-weight:800">📤 Patrona gönder (WhatsApp)</button>` : ""}
       ${sent.length ? `<details class="card" style="margin-top:10px"><summary class="small">Gönderilenler (${sent.length})</summary>${sent.map((e) => `<div class="tiny muted" style="margin-top:4px">✓ ${esc(core.entryLine(e, cfg))}</div>`).join("")}<button class="btn sm" style="margin-top:6px" data-resend>Son gönderileni tekrar gönder</button></details>` : ""}
-      <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
+      <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><div class="field" style="margin-top:6px"><label class="tiny">Patron yeni bağlantı gönderdiyse buraya yapıştırın</label><textarea data-newlink rows="2" placeholder="Yeni bağlantı"></textarea><button class="btn sm block" data-newlink-ok style="margin-top:4px">Yeni bağlantıyı kur</button></div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
     bind();
   };
   const readForm = () => {
@@ -386,6 +390,18 @@ export async function screen(ctx) {
       const done = await send(batch);
       if (done && done.length < batch.length) toast(`${done.length}/${batch.length} kayıt gönderildi (mesaj uzun olmasın diye)`, "ok");
     });
+    qs("[data-newlink-ok]", root)?.addEventListener("click", async () => {
+      const m = /(?:^|[#&?/])k=([A-Za-z0-9_-]{20,})/.exec(qs("[data-newlink]", root).value);
+      if (!m) return toast("Bağlantı bulunamadı; mesajın tamamını yapıştırın", "err");
+      try {
+        const n = await core.unpack(m[1]);
+        if (n?.v !== 1 || !n.p) throw new Error("Bağlantı bozuk");
+        if (n.p[0] !== cfg.p[0] && !(await confirmDialog("Başka kişinin bağlantısı", `Bu bağlantı ${n.p[1]} adına. Bu telefonda ${cfg.p[1]} yerine kurulsun mu?`, "Kur"))) return;
+        ls.set(K_CFG, { ...n, ts: Math.max(Number(n.ts) || 0, Date.now()) });
+        toast("Yeni bağlantı kuruldu", "ok");
+        location.reload();
+      } catch (e) { toast(e.message || String(e), "err"); }
+    });
     qs("[data-exit]", root)?.addEventListener("click", async () => {
       // İmzalı bağlantıda çıkış yalnız patronun çıkış koduyla (şoför yönetici ekranlarına geçemez)
       if (cfg.xk) {
@@ -396,7 +412,7 @@ export async function screen(ctx) {
         if (!(await verifySecret(code.replace(/\s/g, ""), cfg.xk))) return toast("Çıkış kodu hatalı", "err");
       } else if (!(await confirmDialog("Şoför modundan çıkılsın mı?", "Bu telefon patron telefonu olarak açılır. Gönderilmemiş kayıtlar telefonda kalır.", "Çık"))) return;
       try { localStorage.setItem("sp_role", "boss"); } catch (e) {}
-      ls.del(K_MODE); location.replace("#/guvenlik");
+      ls.del(K_MODE); location.replace(location.pathname.replace(/[^/]*$/, "") + "index.html#/guvenlik");
     });
   };
   draw();
@@ -443,14 +459,15 @@ async function setupScreen(ctx) {
     // Aynı kişinin eski bağlantıları iptal (yalnız son bağlantı geçerli)
     await sec.revokeForPerson(p.id, "Yeni bağlantı gönderildi");
     const { forDriver } = await sec.newDriverLink({ pid: p.id, name: p.name, vid: qs("[data-vid]", root).value || null, days: Number(qs("[data-days]", root)?.value) || 180 });
-    const cfg = { ...core.driverConfig(d, { personnel_id: p.id, vehicle_id: qs("[data-vid]", root).value || null, company: COMPANY_NAME, issued: todayStr() }), ...forDriver };
-    const url = location.origin + location.pathname + "#/sofor?k=" + (await core.pack(cfg));
+    const cfg = { ...core.driverConfig(d, { personnel_id: p.id, vehicle_id: qs("[data-vid]", root).value || null, company: COMPANY_NAME, issued: todayStr() }), ...forDriver, ts: Date.now() };
+    // Ayrı şoför uygulaması: yönetici ekranları hiç yüklenmez; iPhone ana ekran simgesi bu adresi açar
+    const url = location.origin + location.pathname.replace(/[^/]*$/, "") + "sofor.html?k=" + (await core.pack(cfg));
     qs("[data-info]", root).textContent = `İmzalı bağlantı · geçerlilik ${trDate(cfg.exp)} · ${cfg.C.length} müşteri, ${cfg.V.length} araç · ${url.length} karakter. Çıkış kodu: Güvenlik ekranında.`;
     made = { pid: p.id, vid: qs("[data-vid]", root).value || null, out: { p, url } };
     return made.out;
   };
   qs("[data-share]", root).addEventListener("click", async () => {
-    try { const { p, url } = await link(); shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Ana ekrandan ilk açılışta "Şoför" seçeneğine bu mesajı yapıştır.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); }
+    try { const { p, url } = await link(); shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Sonra ana ekrandaki "SAHAPRO Şoför" simgesinden aç.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); }
   });
   qs("[data-copy]", root).addEventListener("click", async () => {
     try { const { url } = await link(); await navigator.clipboard.writeText(url); toast("Kopyalandı", "ok"); } catch (e) { toast(e.message || String(e), "err"); }
