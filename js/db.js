@@ -336,8 +336,12 @@ export async function draftClear(form) {
 
 // ---- attachments (Blob ayrı store; JSON'a GÖMÜLMEZ; orijinal immutable, türev derived_of) ----
 export async function addAttachment(recordType, recordId, file, extra = {}) {
+  // Aynı dosya aynı kayda ikinci kez eklenmez (tekrar Kaydet / yarım kalan işlemin yeniden denenmesi): özgün dosyanın özeti
+  let src_sha256 = null;
+  try { src_sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join(""); } catch {}
   file = await (await import("./image-shrink.js")).shrinkImage(file, { kind: extra.kind });
   const rec = {
+    src_sha256,
     id: uuid(),
     record_type: recordType,
     record_id: recordId,
@@ -349,8 +353,20 @@ export async function addAttachment(recordType, recordId, file, extra = {}) {
     kind: extra.kind || "photo",
     created_at: nowISO(),
   };
-  await put("attachments", rec);
-  return rec;
+  if (!src_sha256) { await put("attachments", rec); return rec; }
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction("attachments", "readwrite");
+    let out = rec;
+    const q = t.objectStore("attachments").getAll();
+    q.onsuccess = () => {
+      const same = q.result.find((a) => a.record_type === recordType && a.record_id === recordId && a.src_sha256 === src_sha256 && (a.kind || "photo") === rec.kind);
+      if (same) out = { ...same, _existing: true };
+      else t.objectStore("attachments").put(rec);
+    };
+    t.oncomplete = () => resolve(out);
+    t.onabort = t.onerror = () => reject(t.error);
+  });
 }
 export async function attachmentsFor(recordType, recordId) {
   return (await getAll("attachments")).filter(
@@ -530,12 +546,61 @@ export async function dumpAll() {
 }
 
 // ---- kayıt yardımcıları ----
-export async function saveNew(store, fields, auditReason) {
+// ---- Kalıcı işlem kimliği (idempotent kayıt) ----
+// op = { id, hash }: aynı kimlik + aynı içerik → mevcut kayıt döner (_existing), yeniden yazılmaz;
+// aynı kimlik + farklı içerik → OP_CONFLICT. Kimlik kaydı, asıl kayıtla AYNI işlemde (transaction) yazılır.
+export const OP = "op:";
+export async function opHash(obj) {
+  const canon = (x) => Array.isArray(x) ? x.map(canon) : x && typeof x === "object" ? Object.fromEntries(Object.keys(x).sort().map((k) => [k, canon(x[k])])) : x;
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(canon(obj))));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+}
+export async function opLookup(id) {
+  const x = await metaGet(OP + id);
+  if (!x) return null;
+  const rec = await get(x.store, x.record_id);
+  return rec && !rec.deleted_at ? { ...x, record: rec } : null; // silinmiş kaydın kimliği yeniden kullanılabilir
+}
+const opConflict = (x) => Object.assign(Error("Bu kayıt daha önce farklı bilgilerle kaydedilmiş — o kaydı açıp düzeltin"), { code: "OP_CONFLICT", record_id: x.record_id, store: x.store });
+// İşlem içinde: opReq (meta.get) sonucu → "new" | "same" | "conflict"; "same" ise mevcut kayıt okunur (cb ile)
+function opDecide(t, opReq, op, onSame) {
+  const x = opReq?.result?.value;
+  if (!op || !x) return "new";
+  if (x.hash !== op.hash) return "conflict";
+  const r = t.objectStore(x.store).get(x.record_id);
+  r.onsuccess = () => onSame(r.result && !r.result.deleted_at ? r.result : null);
+  return "same";
+}
+const opPut = (t, op, store, recordId) => op && t.objectStore("meta").put({ key: OP + op.id, value: { hash: op.hash, store, record_id: recordId, at: nowISO() } });
+async function putPlainOp(store, fields, auditReason, op) {
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction([store, "audit_log", "meta"], "readwrite");
+    let rec = null, existing = null, error = null;
+    const g = t.objectStore("meta").get(OP + op.id);
+    g.onsuccess = () => {
+      const st = opDecide(t, g, op, (r) => {
+        if (r) { existing = r; return; }
+        rec = newRecord(fields); t.objectStore(store).put(rec); opPut(t, op, store, rec.id);
+        t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
+      });
+      if (st === "conflict") { error = opConflict(g.result.value); t.abort(); return; }
+      if (st === "new") {
+        rec = newRecord(fields); t.objectStore(store).put(rec); opPut(t, op, store, rec.id);
+        t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
+      }
+    };
+    t.oncomplete = () => resolve(existing ? { ...existing, _existing: true } : rec);
+    t.onabort = t.onerror = () => reject(error || t.error);
+  });
+}
+export async function saveNew(store, fields, auditReason, { op = null } = {}) {
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından oluşturulmalı");
   fields = await validateFields(store, fields);
-  if (store === "fuel_records") return saveFuelEvent(fields, auditReason);
+  if (store === "fuel_records") return saveFuelEvent(fields, auditReason, { op });
   if (fields.driver_entry_id && ["work_records", "expense_records", "maintenance_records"].includes(store)) return putUniqueDriver(store, fields, auditReason);
+  if (op && ["work_records", "expense_records", "maintenance_records"].includes(store)) return putPlainOp(store, fields, auditReason, op);
   if (store === "fuel_tank_movements" && fields.move_type === "ÇIKIŞ") {
     const fuel = await saveFuelEvent(
       { ...fields, fuel_source: "Depo Tankı" },
@@ -544,7 +609,7 @@ export async function saveNew(store, fields, auditReason) {
     return get("fuel_tank_movements", fuel.tank_movement_id);
   }
   if (store === "hakedis") return createHakedis(fields);
-  if (store === "cash_records") return saveCashEvent(fields);
+  if (store === "cash_records") return saveCashEvent(fields, { op });
   if (store === "documents") await assertNotDuplicateDoc(fields);
   const rec = newRecord(fields);
   await put(store, rec);
@@ -552,14 +617,31 @@ export async function saveNew(store, fields, auditReason) {
   return rec;
 }
 
+// Doğrulanmış şoför kayıtları: imzası bu telefonda doğrulanan (security.checkPayloads) şoför kaydı kimlikleri.
+// Şoför kimlikli (driver_entry_id) kayıt YALNIZ bu listedeyse yazılabilir — ekran atlatılsa, kayıt fonksiyonu doğrudan
+// çağrılsa da imzasız / tanınmayan / iptal edilmiş paketten kayıt çıkmaz.
+export const DRV_OK = "drv_ok:";
+export async function markDriverVerified(entries) {
+  if (!entries?.length) return;
+  const d = await openDB();
+  await new Promise((resolve, reject) => {
+    const t = d.transaction("meta", "readwrite");
+    for (const e of entries) t.objectStore("meta").put({ key: DRV_OK + e.id, value: { pid: e.pid || null, lid: e.lid || null, at: nowISO() } });
+    t.oncomplete = resolve;
+    t.onabort = t.onerror = () => reject(t.error);
+  });
+}
+const unverifiedDriver = () => Object.assign(Error("Şoför kaydı doğrulanmamış (imzasız / tanınmayan / iptal edilmiş bağlantı) — kaydedilemez"), { code: "UNVERIFIED_DRIVER" });
 // Şoför kaydı (driver_entry_id) bir kez yazılır: denetim ve yazma TEK işlemde (IndexedDB aynı depoya yazan işlemleri sıraya koyar)
 async function putUniqueDriver(store, fields, auditReason) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction([store, "audit_log"], "readwrite");
+    const t = d.transaction([store, "audit_log", "meta"], "readwrite");
     let rec = null, error = null;
+    const ok = t.objectStore("meta").get(DRV_OK + fields.driver_entry_id);
     const q = t.objectStore(store).getAll();
     q.onsuccess = () => {
+      if (!ok.result) { error = unverifiedDriver(); t.abort(); return; }
       if (q.result.some((x) => isActive(x) && x.driver_entry_id === fields.driver_entry_id)) { error = Object.assign(Error("Şoför kaydı zaten alınmış"), { code: "DUP_DRIVER" }); t.abort(); return; }
       rec = newRecord(fields);
       t.objectStore(store).put(rec);
@@ -717,6 +799,8 @@ export async function saveExisting(store, rec, fields, auditReason) {
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   const current = await get(store, rec.id);
+  // Şoför kaydı kimliği sonradan eklenemez / değiştirilemez (doğrulanmamış kayıt "şoför kaydı" gibi gösterilmesin)
+  if ("driver_entry_id" in fields && (fields.driver_entry_id || null) !== (current?.driver_entry_id || null)) throw Error("Şoför kaydı kimliği değiştirilemez");
   if(store==='fuel_tank_movements'&&current?.count_id)throw Error("Sayım hareketi tek başına değiştirilemez; yeni fiziksel sayım yapın");
   if((await getAll('cost_allocations')).some(r=>isActive(r)&&r.status==='Aktif'&&r.source_store===store&&r.source_id===rec.id)&&Object.keys(fields).some(k=>['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k)))throw Error('Maliyeti değiştirmeden önce dağıtımı iptal edin');
   if (
@@ -1026,20 +1110,32 @@ async function validateFields(store, fields) {
   }
   return f;
 }
-export async function saveFuelEvent(fields, reason = "Yakıt") {
+export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {}) {
   if (!fields.vehicle_id || !(Number(fields.liters) > 0))
     throw Error("Araç ve pozitif litre zorunlu");
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const stores = ["fuel_records", "fuel_tank_movements", "audit_log"];
+    const stores = ["fuel_records", "fuel_tank_movements", "audit_log", ...(fields.driver_entry_id || op ? ["meta"] : [])];
     const t = d.transaction(stores, "readwrite");
-    let result, error;
+    let result, error, existing = null;
+    const vok = fields.driver_entry_id ? t.objectStore("meta").get(DRV_OK + fields.driver_entry_id) : null;
+    const opReq = op ? t.objectStore("meta").get(OP + op.id) : null;
     // Şoför kaydı tekilliği aynı işlemde denetlenir (iki sekme / çift dokunma aynı anda kaydetse de bir kez yazılır).
     // fuel_records ve fuel_tank_movements aynı istekte sıraya girer: önce yakıtlar okunur, sonra depo.
     const fr = fields.driver_entry_id ? t.objectStore("fuel_records").getAll() : null;
     const request = t.objectStore("fuel_tank_movements").getAll();
     request.onsuccess = () => {
+      if (vok && !vok.result) { error = unverifiedDriver(); t.abort(); return; }
       if (fr && fr.result.some((x) => isActive(x) && x.driver_entry_id === fields.driver_entry_id)) { error = Object.assign(Error("Şoför kaydı zaten alınmış"), { code: "DUP_DRIVER" }); t.abort(); return; }
+      if (op) {
+        let sameRec;
+        const st = opDecide(t, opReq, op, (r) => { sameRec = r; if (r) existing = r; else writeFuel(); });
+        if (st === "conflict") { error = opConflict(opReq.result.value); t.abort(); return; }
+        if (st === "same") return; // mevcut kayıt okunuyor (silinmişse yeni yazılır)
+      }
+      writeFuel();
+    };
+    const writeFuel = () => {
       const tank = fields.fuel_source === "Depo Tankı";
       const remaining = request.result
         .filter(isActive)
@@ -1079,6 +1175,7 @@ export async function saveFuelEvent(fields, reason = "Yakıt") {
         t.objectStore("fuel_tank_movements").put(move);
       }
       t.objectStore("fuel_records").put(result);
+      opPut(t, op, "fuel_records", result.id);
       t.objectStore("audit_log").put({
         id: uuid(),
         entity: "fuel_records",
@@ -1089,7 +1186,7 @@ export async function saveFuelEvent(fields, reason = "Yakıt") {
         at: nowISO(),
       });
     };
-    t.oncomplete = () => resolve(result);
+    t.oncomplete = () => resolve(existing ? { ...existing, _existing: true } : result);
     t.onabort = t.onerror = () =>
       reject(error || t.error || Error("Yakıt işlemi iptal edildi"));
   });
@@ -1449,25 +1546,38 @@ export async function signContract(id, blobs) {
   });
 }
 
-export async function saveCashEvent(fields) {
+export async function saveCashEvent(fields, { op = null } = {}) {
   const d = await openDB(),
     rec = newRecord(fields);
   return new Promise((res, rej) => {
-    const t = d.transaction(["cash_records", "cari_movements"], "readwrite");
-    t.objectStore("cash_records").put(rec);
-    if (fields.cash_type === "Müşteriden Para Alındı")
-      t.objectStore("cari_movements").put(
-        newRecord({
-          date: fields.date,
-          customer_id: fields.customer_id,
-          type: "Tahsilat",
-          amount: -Number(fields.amount),
-          ref_id: rec.id,
-          note: "Tahsilat",
-        }),
-      );
-    t.oncomplete = () => res(rec);
-    t.onerror = t.onabort = () => rej(t.error);
+    const t = d.transaction(["cash_records", "cari_movements", "audit_log", ...(op ? ["meta"] : [])], "readwrite");
+    let existing = null, error = null;
+    const write = () => {
+      t.objectStore("cash_records").put(rec);
+      opPut(t, op, "cash_records", rec.id);
+      t.objectStore("audit_log").put({ id: uuid(), entity: "cash_records", entity_id: rec.id, action: "create", old: null, new: fields, reason: "Kasa", at: nowISO() });
+      if (fields.cash_type === "Müşteriden Para Alındı")
+        t.objectStore("cari_movements").put(
+          newRecord({
+            date: fields.date,
+            customer_id: fields.customer_id,
+            type: "Tahsilat",
+            amount: -Number(fields.amount),
+            ref_id: rec.id,
+            note: "Tahsilat",
+          }),
+        );
+    };
+    if (op) {
+      const g = t.objectStore("meta").get(OP + op.id);
+      g.onsuccess = () => {
+        const st = opDecide(t, g, op, (r) => { if (r) existing = r; else write(); });
+        if (st === "conflict") { error = opConflict(g.result.value); t.abort(); return; }
+        if (st === "new") write();
+      };
+    } else write();
+    t.oncomplete = () => res(existing ? { ...existing, _existing: true } : rec);
+    t.onerror = t.onabort = () => rej(error || t.error);
   });
 }
 

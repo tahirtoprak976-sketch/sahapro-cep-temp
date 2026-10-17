@@ -124,12 +124,25 @@ with sync_playwright() as p:
       const unsigned=await dc.driverMessage([e('ent-uns-1',2)],{{...base}});
       const unknown=await dc.driverMessage([e('ent-unk-1',3)],{{...base,lid:'XXXXXXXXXXXX',ls:'c2VjcmV0c2VjcmV0c2VjcmV0'}});
       return {{signed,unsigned,unknown}}}}""")
-    for key, want in [("signed", True), ("unsigned", False), ("unknown", False)]:
+    for key in ["unsigned", "unknown"]:
+        n0 = len(CALLS)
         assistant(mk[key])
         st = ev("[...document.querySelectorAll('[data-out] [data-kind=work] [data-pick]')].map(x=>x.checked)")
-        check(st == [want], f"{key}: kart {'işaretli' if want else 'işaretsiz'} geldi ({st})")
-        if key == "signed":
-            pg.click("[data-save]"); pg.wait_for_timeout(2500)
+        out = pg.inner_text("[data-out]") if pg.query_selector("[data-out]") else ""
+        check(st == [] and "İŞLENMEDİ" in out, f"{key}: paket reddedildi, kart hiç oluşmadı ({st})")
+        check(len(CALLS) == n0, f"{key}: reddedilen paket Gemini'ye gitmedi")
+        check("yeni imzalı bağlantı oluştur" in out, f"{key}: 'yeni imzalı bağlantı' yolu gösterildi")
+        # Ekran atlatılsa bile: kayıt fonksiyonu doğrudan çağrılır → yazılmaz
+        r = ev(f"""async()=>{{const db=await import('./js/db.js');try{{await db.saveNew('work_records',{{date:'{TODAY}',customer_id:'{ids['k']}',vehicle_id:'{ids['v']}',work_type:'Hafriyat Nakliye',quantity:2,unit:'Sefer',driver_entry_id:'ent-{key[:3]}-1',source:'şoför'}},'saldırı');return 'YAZILDI'}}catch(e){{return e.code||String(e)}}}}""")
+        check(r == "UNVERIFIED_DRIVER", f"{key}: kayıt fonksiyonu doğrudan çağrılınca da yazılmadı ({r})")
+        r = ev(f"""async()=>{{const db=await import('./js/db.js');try{{await db.saveNew('fuel_records',{{date:'{TODAY}',vehicle_id:'{ids['v']}',liters:5,fuel_source:'Akaryakıt İstasyonu',driver_entry_id:'ent-{key[:3]}-f'}},'saldırı');return 'YAZILDI'}}catch(e){{return e.code||String(e)}}}}""")
+        check(r == "UNVERIFIED_DRIVER", f"{key}: doğrulanmamış şoför yakıtı da yazılmadı ({r})")
+    assistant(mk["signed"])
+    st = ev("[...document.querySelectorAll('[data-out] [data-kind=work] [data-pick]')].map(x=>x.checked)")
+    check(st == [True], f"imzalı paket: kart işaretli geldi ({st})")
+    pg.click("[data-save]"); pg.wait_for_timeout(2500)
+    r = ev(f"""async()=>{{const db=await import('./js/db.js');const w=await db.listActive('work_records');const x=w.find(r=>r.driver_entry_id==='ent-sig-1');if(!x)return 'yok';try{{await db.saveExisting('work_records',x,{{driver_entry_id:'ent-baska'}},'t');return 'DEĞİŞTİ'}}catch(e){{return 'engellendi'}}}}""")
+    check(r == "engellendi", f"şoför kaydı kimliği sonradan değiştirilemez ({r})")
     # 7b) İptal edilmiş bağlantının mesajı: kod reddedilir; yazıdan çıkarılan iş de işaretsiz gelir
     rv = ev(f"""async()=>{{const sec=await import('./js/security.js');const dc=await import('./js/driver-core.js');const db=await import('./js/db.js');
       const d=await db.dumpAll();const {{link,forDriver}}=await sec.newDriverLink({{pid:'{ids['p']}',name:'{ids['pn']}',vid:'{ids['v']}'}});
@@ -140,7 +153,7 @@ with sync_playwright() as p:
     assistant(rv + "\n" + extra, {"works": [{"date": TODAY, "date_source": "mesaj", "customer_id": ids["k"], "vehicle_id": ids["v"], "work_type": "Hafriyat Nakliye", "quantity": 7, "unit": "Sefer", "quote": extra}]})
     st = ev("[...document.querySelectorAll('[data-out] [data-kind=work] [data-pick]')].map(x=>x.checked)")
     out = pg.inner_text("[data-out]")
-    check("ent-rev-1" not in out and st == [False], f"iptal edilmiş bağlantı: kod işlenmedi, yazıdan çıkan iş işaretsiz ({st})")
+    check("İŞLENMEDİ" in out and st == [] and "diğer yazı da işlenmedi" in out, f"iptal edilmiş bağlantı: kod ve mesajdaki yazı işlenmedi, kart yok ({st})")
     # ---- 8) İmzalı dijital fiş: imzadan sonra miktar değişirse PDF imzalanan hâli gösterir, uyarı çıkar ----
     print("8) İmzalı fiş sonradan değişti")
     wid = ev("""async()=>{const db=await import('./js/db.js');const w=(await db.listActive('work_records')).find(x=>x.digital_slip_no==='DF-77');return w&&w.id}""")
@@ -168,6 +181,69 @@ with sync_playwright() as p:
     check(not r["pl"] and not r["leak"], f"şifresiz yedekte şoför bağlantı anahtarı yok ({r})")
     check(r["en"], "şifreli yedekte şoför bağlantıları var (yeni telefonda imzalar doğrulanır)")
     check(not r["pin"] and not r["gk"], "PIN özeti ve Gemini anahtarı hiçbir yedekte yok")
+
+    # ---- 10) Kalıcı işlem kimliği: kapat-aç + aynı mesaj, foto tamamlama, farklı içerik, ayrı kayıt, iki sekme ----
+    print("10) İşlem kimliği")
+    PLANS.clear()  # (7b'de Gemini çağrılmadığı için kuyrukta kalan taklit plan)
+    from PIL import Image
+    Image.new("RGB", (640, 480), (200, 180, 160)).save(OUT + "/fis.jpg", "JPEG")
+    M = f"{ids['vn']} Hisar Polat 4 sefer moloz"
+    PW = {"works": [{"date": TODAY, "date_source": "mesaj", "customer_id": ids["h"], "vehicle_id": ids["v"], "work_type": "Moloz Nakliye", "quantity": 4, "unit": "Sefer", "quote": M}]}
+    def wcount(): return ev(f"""async()=>{{const db=await import('./js/db.js');return (await db.listActive('work_records')).filter(w=>w.work_type==='Moloz Nakliye'&&w.customer_id==='{ids['h']}').length}}""")
+    def acount(): return ev(f"""async()=>{{const db=await import('./js/db.js');const w=(await db.listActive('work_records')).filter(w=>w.work_type==='Moloz Nakliye'&&w.customer_id==='{ids['h']}');let n=0;for(const x of w)n+=(await db.attachmentsFor('work',x.id)).length;return n}}""")
+    def answer_sheet(btn):
+        pg.wait_for_timeout(800)
+        if pg.query_selector(".sheet"):
+            txt = pg.inner_text(".sheet")
+            for x in pg.query_selector_all(".sheet button"):
+                if x.inner_text().strip() == btn: x.click(); break
+            pg.wait_for_timeout(1500); return txt
+        return ""
+    # a) ilk kayıt fotoğrafsız; ekran sonucu göstermeden "kapandı" (sayfa yenilenir)
+    assistant(M, json.loads(json.dumps(PW)))
+    pg.click("[data-save]")
+    for _ in range(50):  # iş veritabanına yazılır yazılmaz (ekran sonucu göstermeden) sayfa kapanır
+        if wcount() == 1: break
+        pg.wait_for_timeout(50)
+    pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    c1 = wcount(); check(c1 == 1, f"ilk kayıt yazıldı ({c1})")
+    # b) uygulama yeniden açıldı, aynı mesaj + bu kez fotoğrafla tekrar: iş yeniden yazılmaz, eksik foto tamamlanır
+    PW2 = json.loads(json.dumps(PW)); PW2["works"][0]["photos"] = [0]
+    pg.goto(U + "index.html#/akilli-asistan"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    ev("(()=>{const r=document.querySelector('[data-refine]');if(r)r.checked=false})()")
+    PLANS.append(PW2); pg.set_input_files("[data-photos]", [OUT + "/fis.jpg"]); pg.wait_for_timeout(500)
+    pg.fill("[data-msg]", M); pg.click("[data-ask]"); pg.wait_for_timeout(3000)
+    pg.click("[data-save]"); sh = answer_sheet("Vazgeç"); pg.wait_for_timeout(1500)
+    check("zaten kaydedildi" in sh, "aynı mesaj tekrar: 'bu satır zaten kaydedildi' soruldu")
+    check(wcount() == 1, f"aynı mesaj tekrar: iş yeniden oluşturulmadı ({wcount()})")
+    a1 = acount(); check(a1 == 1, f"eksik fotoğraf mevcut işe eklendi ({a1})")
+    # c) aynı mesaj + aynı fotoğraf bir kez daha: fotoğraf da çiftlenmez
+    pg.goto(U + "index.html#/akilli-asistan"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    ev("(()=>{const r=document.querySelector('[data-refine]');if(r)r.checked=false})()")
+    PLANS.append(json.loads(json.dumps(PW2))); pg.set_input_files("[data-photos]", [OUT + "/fis.jpg"]); pg.wait_for_timeout(500)
+    pg.fill("[data-msg]", M); pg.click("[data-ask]"); pg.wait_for_timeout(3000)
+    pg.click("[data-save]"); answer_sheet("Vazgeç"); pg.wait_for_timeout(1000)
+    check(wcount() == 1 and acount() == 1, f"üçüncü kez: iş ve fotoğraf tek ({wcount()}, {acount()})")
+    # d) aynı satır, kartta miktar değiştirilmiş → çakışma, yazılmaz
+    assistant(M, json.loads(json.dumps(PW)))
+    pg.fill("[data-kind=work] [name=quantity]", "6"); pg.click("[data-save]"); pg.wait_for_timeout(2500)
+    check(wcount() == 1, f"aynı kimlik + farklı içerik: çakışma, yazılmadı ({wcount()})")
+    # e) bilerek ayrı kayıt
+    assistant(M, json.loads(json.dumps(PW))); pg.click("[data-save]"); answer_sheet("Ayrı kayıt olarak kaydet"); pg.wait_for_timeout(1500)
+    check(wcount() == 2, f"kullanıcı 'ayrı kayıt' derse yazılır ({wcount()})")
+    # f) iki sekme aynı yeni mesajı aynı anda kaydeder
+    M2 = f"{ids['vn']} Hisar Polat 9 sefer moloz"
+    P2 = {"works": [{**PW["works"][0], "quantity": 9, "quote": M2}]}
+    pg2 = ctx.new_page(); pg2.route("https://generativelanguage.googleapis.com/**", gem); pg2.on("pageerror", lambda e: errs.append("TAB2 " + str(e)))
+    for pp in (pg, pg2):
+        PLANS.append(json.loads(json.dumps(P2)))
+        pp.goto(U + "index.html#/akilli-asistan"); pp.reload(); pp.wait_for_timeout(2500); unlock_if(pp)
+        pp.evaluate("(()=>{const r=document.querySelector('[data-refine]');if(r)r.checked=false})()")
+        pp.fill("[data-msg]", M2); pp.click("[data-ask]"); pp.wait_for_timeout(3000)
+    pg.evaluate("document.querySelector('[data-save]').click()"); pg2.evaluate("document.querySelector('[data-save]').click()"); pg.wait_for_timeout(3500)
+    n9 = ev(f"""async()=>{{const db=await import('./js/db.js');return (await db.listActive('work_records')).filter(w=>w.work_type==='Moloz Nakliye'&&Number(w.quantity)===9).length}}""")
+    check(n9 == 1, f"iki sekme aynı anda: iş bir kez yazıldı ({n9})")
+    pg2.close()
 
     print("\nsayfa hataları:", errs[:5])
     check(not errs, "sayfa hatası yok")
