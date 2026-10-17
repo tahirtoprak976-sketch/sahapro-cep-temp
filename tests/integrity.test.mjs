@@ -41,4 +41,19 @@ d = base(); d.personnel[0].deleted_at = "x"; assert.ok(codes(d).includes("veh-as
 d = base(); d.payables[0].gross_total = 400000; assert.ok(codes(d).includes("tank-payable"));
 d = base(); d.fuel_tank_movements[0].deleted_at = "x"; assert.ok(codes(d).includes("payable-source"));
 d = base(); d.documents.push({ id: "x1", category: "Fatura", owner_type: "customer", owner_id: "c1", date: T, doc_no: "FT001" }, { id: "x2", category: "Fatura", owner_type: "customer", owner_id: "c1", date: T, doc_no: "FT001" }); assert.ok(codes(d).includes("dup-doc"));
+// ---- Para ----
+const money = () => { const x = base(); x.cash_records = [{ id: "k1", date: "2026-10-12", cash_type: "Müşteriden Para Alındı", amount: 5000, customer_id: "c1" }];
+  x.cari_movements = [{ id: "cm1", date: "2026-10-12", customer_id: "c1", type: "Tahsilat", amount: -5000, ref_id: "k1" }];
+  x.work_records[0].price_snapshot = { unit_price: 3000, amount: 9000 }; return x; };
+assert.deepEqual(codes(money()), [], JSON.stringify(integrityCheck(money(), { today: T, attachments: atts }).issues));
+d = money(); d.cari_movements = []; assert.ok(codes(d).includes("cash-cari"));
+d = money(); d.cari_movements.push({ ...d.cari_movements[0], id: "cm2" }); assert.ok(codes(d).includes("cash-cari"));
+d = money(); d.cash_records[0].amount = 6000; assert.ok(codes(d).includes("cash-cari-amount"));
+d = money(); d.cash_records[0].deleted_at = "x"; assert.ok(codes(d).includes("cari-orphan-cash"));
+const hk = (st, gt) => { const x = money(); x.hakedis = [{ id: "h1", hakedis_no: 1, status: st, customer_id: "c1", grand_total: gt, items: [{ work_record_id: "w1", quantity: 3, unit_price: 3000, kdv_rate: 20 }] }];
+  if (st === "Kesinleşti") x.cari_movements.push({ id: "cm3", date: "2026-10-13", customer_id: "c1", type: "Hakedis", amount: gt, ref_id: "h1" }); return x; };
+assert.deepEqual(codes(hk("Kesinleşti", 10800)), []);
+assert.ok(codes(hk("Kesinleşti", 10000)).includes("hakedis-total"));
+d = hk("Kesinleşti", 10800); d.cari_movements.pop(); assert.ok(codes(d).includes("hakedis-cari"));
+d = hk("Taslak", 10800); d.cari_movements.push({ id: "cm9", customer_id: "c1", type: "Hakedis", amount: 10800, ref_id: "h1", date: "2026-10-13" }); assert.ok(codes(d).includes("hakedis-cari-draft"));
 console.log("integrity ok");

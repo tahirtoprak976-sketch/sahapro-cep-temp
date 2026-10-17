@@ -522,6 +522,7 @@ export async function saveNew(store, fields, auditReason) {
     throw Error("İşletme defteri ilgili işlem ekranından oluşturulmalı");
   fields = await validateFields(store, fields);
   if (store === "fuel_records") return saveFuelEvent(fields, auditReason);
+  if (fields.driver_entry_id && ["work_records", "expense_records", "maintenance_records"].includes(store)) return putUniqueDriver(store, fields, auditReason);
   if (store === "fuel_tank_movements" && fields.move_type === "ÇIKIŞ") {
     const fuel = await saveFuelEvent(
       { ...fields, fuel_source: "Depo Tankı" },
@@ -536,6 +537,24 @@ export async function saveNew(store, fields, auditReason) {
   await put(store, rec);
   await audit(store, rec.id, "create", null, fields, auditReason || "");
   return rec;
+}
+
+// Şoför kaydı (driver_entry_id) bir kez yazılır: denetim ve yazma TEK işlemde (IndexedDB aynı depoya yazan işlemleri sıraya koyar)
+async function putUniqueDriver(store, fields, auditReason) {
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction([store, "audit_log"], "readwrite");
+    let rec = null, error = null;
+    const q = t.objectStore(store).getAll();
+    q.onsuccess = () => {
+      if (q.result.some((x) => isActive(x) && x.driver_entry_id === fields.driver_entry_id)) { error = Object.assign(Error("Şoför kaydı zaten alınmış"), { code: "DUP_DRIVER" }); t.abort(); return; }
+      rec = newRecord(fields);
+      t.objectStore(store).put(rec);
+      t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
+    };
+    t.oncomplete = () => resolve(rec);
+    t.onabort = t.onerror = () => reject(error || t.error);
+  });
 }
 
 // All transport rows commit together; invalid rows cannot leave a partial job.
@@ -1002,8 +1021,12 @@ export async function saveFuelEvent(fields, reason = "Yakıt") {
     const stores = ["fuel_records", "fuel_tank_movements", "audit_log"];
     const t = d.transaction(stores, "readwrite");
     let result, error;
+    // Şoför kaydı tekilliği aynı işlemde denetlenir (iki sekme / çift dokunma aynı anda kaydetse de bir kez yazılır).
+    // fuel_records ve fuel_tank_movements aynı istekte sıraya girer: önce yakıtlar okunur, sonra depo.
+    const fr = fields.driver_entry_id ? t.objectStore("fuel_records").getAll() : null;
     const request = t.objectStore("fuel_tank_movements").getAll();
     request.onsuccess = () => {
+      if (fr && fr.result.some((x) => isActive(x) && x.driver_entry_id === fields.driver_entry_id)) { error = Object.assign(Error("Şoför kaydı zaten alınmış"), { code: "DUP_DRIVER" }); t.abort(); return; }
       const tank = fields.fuel_source === "Depo Tankı";
       const remaining = request.result
         .filter(isActive)
