@@ -51,10 +51,20 @@ export async function screen(ctx) {
       if (cfg?.v !== 1 || !cfg.p) throw new Error("Bağlantı bozuk");
       const own = ((await db.dumpAll()).work_records || []).filter(isActive).length;
       if (own > 5 && !isDriverMode() && !(await confirmDialog("Bu telefon patron telefonu mu?", `Bu telefonda ${own} iş kaydı var. Şoför moduna geçerseniz yalnız şoför ekranı görünür (kayıtlar silinmez, istediğinizde çıkabilirsiniz).`, "Şoför moduna geç"))) { location.replace("#/"); return true; }
+      const first = !isDriverMode();
       ls.set(K_CFG, cfg); ls.set(K_MODE, 1);
-      toast(`Hoş geldin ${cfg.p[1]}`, "ok");
+      try { localStorage.setItem("sp_role", "driver"); } catch (e) {}
+      if (first) toast(`Hoş geldin ${cfg.p[1]}`, "ok");
     } catch (e) { root.innerHTML = appbar("Şoför Ekranı") + notice("danger", "Bağlantı açılamadı: " + (e.message || e) + ". Patrondan yeni bağlantı isteyin."); return true; }
-    history.replaceState(null, "", location.pathname + "#/sofor");
+    // iPhone'da "Ana Ekrana Ekle" bu sayfanın adresini kullansın: bağlantı adreste kalır, uygulama bildirimi (manifest) kaldırılır.
+    // Ana ekran uygulaması Safari'den ayrı hafızayla açıldığında da kendini bu bağlantıdan kurar.
+    if (!/iPhone|iPad|iPod/.test(navigator.userAgent)) history.replaceState(null, "", location.pathname + "#/sofor");
+    else {
+      document.querySelector('link[rel="manifest"]')?.remove();
+      let t = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (!t) { t = document.createElement("meta"); t.name = "apple-mobile-web-app-title"; document.head.appendChild(t); }
+      t.content = "SAHAPRO Şoför";
+    }
   }
   const cfg = ls.get(K_CFG);
   if (!cfg) {
@@ -416,7 +426,7 @@ async function setupScreen(ctx) {
     return { p, url };
   };
   qs("[data-share]", root).addEventListener("click", async () => {
-    try { const { p, url } = await link(); shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAçılınca tarayıcı menüsünden "Ana ekrana ekle" de. Akşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); }
+    try { const { p, url } = await link(); shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Ana ekrandan ilk açılışta "Şoför" seçeneğine bu mesajı yapıştır.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); }
   });
   qs("[data-copy]", root).addEventListener("click", async () => {
     try { const { url } = await link(); await navigator.clipboard.writeText(url); toast("Kopyalandı", "ok"); } catch (e) { toast(e.message || String(e), "err"); }

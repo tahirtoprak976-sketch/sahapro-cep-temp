@@ -139,11 +139,44 @@ function parseHash() {
   return { parts, query };
 }
 
+const isStandalone = () => { try { return navigator.standalone === true || matchMedia("(display-mode: standalone)").matches; } catch (e) { return false; } };
+async function firstRunChoice() {
+  let role = null;
+  try { role = localStorage.getItem("sp_role"); } catch (e) { return false; }
+  if (role || !isStandalone()) return false;
+  // Gerçek kayıtları olan telefon patronundur
+  if ((await db.getAll("work_records")).filter((w) => !w.deleted_at).length > 5) { try { localStorage.setItem("sp_role", "boss"); } catch (e) {} return false; }
+  const root = qs("#screen");
+  qs("#bottomnav").hidden = true;
+  root.innerHTML = `<div style="padding:28px 18px;max-width:520px;margin:0 auto">
+    <h2 style="margin:0 0 6px">SAHAPRO'ya hoş geldiniz</h2>
+    <div class="muted small" style="margin-bottom:16px">Bu telefonu kim kullanacak?</div>
+    <div class="card"><b>🚚 Şoför / operatör</b>
+      <div class="small muted" style="margin:6px 0">Patronun WhatsApp'tan gönderdiği mesajı (ya da bağlantıyı) kopyalayıp aşağıya yapıştırın.</div>
+      <textarea data-link rows="3" placeholder="Bağlantıyı buraya yapıştırın" style="width:100%"></textarea>
+      <button class="btn primary block" data-drv style="margin-top:8px;min-height:50px">Şoför ekranını aç</button>
+    </div>
+    <div class="card"><b>🏢 Patron / yönetici</b>
+      <div class="small muted" style="margin:6px 0">İşletmenin tüm kayıtlarını bu telefonda tutacaksanız.</div>
+      <button class="btn block" data-boss style="min-height:50px">Yönetici olarak devam et</button>
+    </div></div>`;
+  qs("[data-drv]", root).addEventListener("click", () => {
+    const m = /[#&?]k=([A-Za-z0-9_-]{20,})/.exec(qs("[data-link]", root).value) || /^\s*([A-Za-z0-9_-]{40,})\s*$/.exec(qs("[data-link]", root).value);
+    if (!m) return toast("Bağlantı bulunamadı; patronun gönderdiği mesajın tamamını yapıştırın", "err");
+    location.hash = "#/sofor?k=" + m[1];
+  });
+  qs("[data-boss]", root).addEventListener("click", () => { try { localStorage.setItem("sp_role", "boss"); } catch (e) {} location.hash = "#/"; renderCurrent(); });
+  return true;
+}
+
 export async function renderCurrent() {
   const { parts, query } = parseHash();
   // Şoför telefonu: yalnız şoför ekranı (menü, asistan ve patron ekranları gizli)
   const driverMode = (() => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } })();
   if (driverMode && parts[0] !== "sofor") { location.replace("#/sofor"); return; }
+  // Ana ekrandan açılan uygulama (özellikle iPhone): Safari'den ayrı, boş hafızayla ve bağlantısız açılır.
+  // Bu telefonun kimin olduğu bilinmiyorsa önce sorulur; şoför bağlantısını yapıştırır → şoför ekranı.
+  if (!driverMode && parts[0] !== "sofor" && (await firstRunChoice())) return;
   const previousRoot = qs("#screen");
   const root = previousRoot.cloneNode(false);
   previousRoot.replaceWith(root);
