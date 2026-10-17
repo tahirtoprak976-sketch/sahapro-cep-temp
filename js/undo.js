@@ -47,6 +47,22 @@ export function undoConflicts(plan, current) {
   return [...new Set(out)];
 }
 
+// Saf: geri alınacak (eklenmiş) kayıtlara SONRADAN bağlanan başka kayıt var mı? (hakediş kalemi, tahsilat, fiş, ek…)
+// Varsa geri alma reddedilir: bağlanmış kaydı körlemesine silmek bağlantıyı koparır.
+export function undoLinks(plan, current, attachments = []) {
+  const ids = new Set(Object.values(plan.stores).flatMap((x) => x.added.map((r) => r.id)));
+  if (!ids.size) return [];
+  const planned = new Set(Object.values(plan.stores).flatMap((x) => [...x.added.map((r) => r.id), ...x.changed.map((c) => c.after.id)]));
+  const out = [];
+  for (const [s, m] of Object.entries(current.stores)) for (const [id, r] of m) {
+    if (planned.has(id) || r?.deleted_at) continue;
+    const j = JSON.stringify(r);
+    for (const x of ids) if (j.includes('"' + x + '"')) { out.push(s); break; }
+  }
+  const attPlanned = new Set(plan.attAdded || []);
+  for (const a of attachments) if (ids.has(a.record_id) && !attPlanned.has(a.id)) out.push("sonradan eklenen dosya");
+  return [...new Set(out)];
+}
 export async function saveUndo(db, before, label) {
   const after = await snapshot(db);
   const diff = diffSnapshots(before, after);
@@ -59,12 +75,19 @@ export async function saveUndo(db, before, label) {
 export async function applyUndo(db) {
   const plan = await db.metaGet("assistant_undo");
   if (!plan) throw Error("Geri alınacak kayıt yok");
-  const conflicts = undoConflicts(plan, await snapshot(db));
+  const cur = await snapshot(db);
+  const conflicts = undoConflicts(plan, cur);
   if (conflicts.length) throw Error("Bu kayıtlar sonradan değişmiş, geri alınamaz (" + conflicts.slice(0, 3).join(", ") + "). Tek tek düzeltin.");
+  const links = undoLinks(plan, cur, await db.getAll("attachments"));
+  if (links.length) throw Error("Geri alınamaz: eklenen kayıtlara sonradan başka kayıt bağlandı (" + links.slice(0, 3).join(", ") + "). Bağlı kaydı silmeden tek tek düzeltin.");
   const idb = await db.openDB();
   const stores = [...Object.keys(plan.stores), "attachments", "meta", "audit_log"];
   await new Promise((resolve, reject) => {
     const t = idb.transaction(stores, "readwrite");
+    // İki sekme aynı anda geri alırsa: plan işlem içinde yeniden okunur, yalnız biri uygular
+    const pr = t.objectStore("meta").get("assistant_undo");
+    pr.onsuccess = () => {
+      if (!pr.result || pr.result.value?.at !== plan.at) { t.abort(); return; }
     for (const [s, x] of Object.entries(plan.stores)) {
       const os = t.objectStore(s);
       for (const r of x.added) os.delete(r.id);
@@ -74,8 +97,9 @@ export async function applyUndo(db) {
     for (const [k, m] of Object.entries(plan.meta)) t.objectStore("meta").put({ key: k, value: m.before });
     t.objectStore("meta").delete("assistant_undo");
     t.objectStore("audit_log").put({ id: uuid(), entity: "assistant", entity_id: plan.at, action: "undo", old: null, new: null, reason: "Asistan kaydı geri alındı: " + (plan.label || ""), at: nowISO() });
+    };
     t.oncomplete = resolve;
-    t.onerror = t.onabort = () => reject(t.error || Error("Geri alınamadı"));
+    t.onerror = t.onabort = () => reject(t.error || Error("Geri alınamadı (başka ekranda zaten geri alınmış olabilir)"));
   });
   return plan;
 }

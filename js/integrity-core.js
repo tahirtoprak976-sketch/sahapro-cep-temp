@@ -6,6 +6,7 @@ import { customerBalances, customerOpenItems, customerLedgerMovements } from "./
 import { customerStatement } from "./statement.js";
 import { signedSlipChanges } from "./driver-core.js";
 import { vatContractReport } from "./vat-contract.js";
+import { leaveDays as leaveDaysOf } from "./leave-core.js";
 
 const live = (d, s) => (d[s] || []).filter((r) => r && !r.deleted_at);
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !isNaN(new Date(String(s) + "T12:00:00Z"));
@@ -138,6 +139,14 @@ export function integrityCheck(d, { today, attachments = [], restoreSets = [] } 
   // ---- 5. İş kuralları ----
   const forms = new Map(live(d, "documents").filter((x) => x.category === "İzin Formu").map((x) => [x.id, x]));
   const badLeave = live(d, "personnel_events").filter((e) => e.leave_form_id && (!forms.get(e.leave_form_id) || forms.get(e.leave_form_id).status !== "Onaylandı"));
+  // Onaylı formun günlerinin bir kısmı puantaja yazılmamış (onay ile gün kayıtları tek işlem değil — yarım kalmış olabilir)
+  for (const f of forms.values()) {
+    if (f.status !== "Onaylandı" || !f.leave?.from || !f.leave?.to) continue;
+    const want = leaveDaysOf(f.leave.from, f.leave.to);
+    const have = new Set(live(d, "personnel_events").filter((e) => e.leave_form_id === f.id).map((e) => e.date));
+    const miss = want.filter((x) => !have.has(x));
+    if (miss.length) add("error", "leave-partial", `İzin formu ${f.doc_no || ""} onaylı ama ${miss.length}/${want.length} günü puantajda yok`, "Onay yarım kalmış olabilir: eksik günler " + miss.slice(0, 5).join(", "), "#/izinler");
+  }
   if (badLeave.length) add("error", "leave-form", `${badLeave.length} izin günü onaylı olmayan forma bağlı`, "Form reddedilmiş/iptal ya da silinmiş; günler puantajda izin görünüyor", "#/izinler", { kind: "leave-orphan", ids: badLeave.map((e) => e.id) });
   // İzinli gün iş kaydı
   const leaveDay = new Set(live(d, "personnel_events").filter((e) => e.event_type === "İzin" || e.event_type === "Rapor").map((e) => e.personnel_id + "|" + e.date));

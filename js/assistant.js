@@ -1140,7 +1140,9 @@ async function save(ctx, out, v, d, { message, files }) {
         if (supId) {
           const { createCreditBill } = await import("./esnaf.js");
           const s = fresh.suppliers.find((x) => x.id === supId);
-          const res = await createCreditBill(ctx, fresh, s, f);
+          // Esnaf borcunun istek anahtarı kalıcı işlem kimliğinden: aynı satır yeniden kaydedilince ikinci borç yazılmaz
+          const key = "op-" + (await db.opHash({ msgKey, kind: "credit-bill", row: rowKey("expense", Number(c.dataset.i)), date: f.date }));
+          const res = await createCreditBill(ctx, fresh, s, f, { key });
           if (res) done.expense++;
         } else {
           const { findDuplicates } = await import("./esnaf.js");
@@ -1190,8 +1192,17 @@ async function save(ctx, out, v, d, { message, files }) {
         const same = (fresh.cash_records || []).filter((x) => isActive(x) && x.cash_type === "Müşteriden Para Alındı" && x.customer_id === customer && x.date === date && Number(x.amount) === amount);
         if (same.length && !(await confirmDialog("Aynı tahsilat kayıtlı olabilir", `${date} · ${fmtTL(amount)} ₺ bu müşteriden zaten alınmış görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
         if (val(c, "method") === "Havale") {
+          // İşletme defterinin kendi istek anahtarı (request_id) kalıcı işlem kimliğinden türetilir: aynı mesajın aynı
+          // satırı yeniden kaydedilirse banka hareketi ikinci kez yazılmaz, mevcut kayıt döner (tek transaction).
           const { customerBankReceipt } = await import("./enterprise-db.js");
-          await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, ctx.core.uuid());
+          const hk = "op-" + (await db.opHash({ msgKey, kind: "collection-havale", row: rowKey("collection", Number(c.dataset.i)), date }));
+          const t0 = new Date().toISOString();
+          const r = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, hk);
+          if (r.created_at < t0) {
+            if (Number(r.amount) !== amount || r.customer_id !== customer) { toast(`Havale tahsilatı bu mesajdan daha önce FARKLI bilgilerle kaydedilmiş (${fmtTL(r.amount)} ₺) — atlandı`, "err"); done.conflict++; }
+            else done.already++;
+            continue;
+          }
         } else {
           const pid = val(c, "personnel") || null;
           const cg = await opGate("collection", c.dataset.i, { date, customer_id: customer, amount, method: "Nakit" }, `Tahsilat ${date} · ${fmtTL(amount)} ₺`);
