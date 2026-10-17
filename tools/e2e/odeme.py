@@ -59,9 +59,10 @@ with sync_playwright() as p:
         ev("document.querySelectorAll('[data-out] [data-kind=work] [data-pick]').forEach(x=>{x.checked=false})")
         ev("document.querySelectorAll('[data-out] [data-kind=collection] [data-pick]').forEach(x=>{x.checked=true})")
         pg.click("[data-save]"); pg.wait_for_timeout(1500)
-        while pg.query_selector(".sheet"):
-            for x in pg.query_selector_all(".sheet button"):
-                if x.inner_text().strip() == "Kaydet": x.click(); break
+        for _ in range(6):  # "Aynı tahsilat kayıtlı olabilir" → Kaydet (kullanıcı ısrar eder); "zaten kaydedildi" → Vazgeç
+            if not pg.query_selector(".sheet"): break
+            btns = {x.inner_text().strip(): x for x in pg.query_selector_all(".sheet button")}
+            (btns.get("Kaydet") or btns.get("Vazgeç") or list(btns.values())[-1]).click()
             pg.wait_for_timeout(1200)
         pg.wait_for_timeout(1000)
     s3 = snap()
