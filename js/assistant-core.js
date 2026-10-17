@@ -380,7 +380,9 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
 
   for (const w of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
     const issues = [];
-    const r = { date: validDate(w.date, today) || today, customer_id: null, new_customer: null, site_id: null, new_site: null,
+    // Şoför ekranından (SP1 kodu): müşteri/araç listeden kesin seçildi; metin tahmini kontrolleri uygulanmaz
+    const fromDriver = w.from_driver === true;
+    const r = { fromDriver, date: validDate(w.date, today) || today, customer_id: null, new_customer: null, site_id: null, new_site: null,
       vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200),
       description: String(w.description || w.note || "").slice(0, 300), material: String(w.material || "").slice(0, 60),
       dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, quarry_id: byId(live(d, "quarries"), w.quarry_id)?.id || null, new_quarry: null, new_dump_site: null, unit_price: null, dump_cost: null };
@@ -518,14 +520,14 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (m.length >= 3 && m.length <= 60 && !/^\d+$/.test(m) && inMessage(m, message)) r.mentions[k] = m;
     }
     // Kullanıcının daha önce reddettiği eşleşme otomatik seçilmez
-    if (r.customer_id && r.mentions.customer && negatives.some((x) => x.target_type === "customer" && x.target_id === r.customer_id && norm(x.alias) === norm(r.mentions.customer))) {
+    if (!fromDriver && r.customer_id && r.mentions.customer && negatives.some((x) => x.target_type === "customer" && x.target_id === r.customer_id && norm(x.alias) === norm(r.mentions.customer))) {
       issues.push(`"${r.mentions.customer}" için bu müşteriyi daha önce düzelttiniz; doğru müşteriyi seçin`);
       r.customer_id = null;
     }
     // Benzer adlı müşteriler: emin olunamıyorsa adaylar gösterilir, satır işaretsiz gelir
     {
       const rowText = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
-      const amb = r.customer_id ? customerAmbiguity(d, rowText, r.customer_id, { vehicleId: r.vehicle_id, date: r.date }) : null;
+      const amb = r.customer_id && !fromDriver ? customerAmbiguity(d, rowText, r.customer_id, { vehicleId: r.vehicle_id, date: r.date }) : null;
       if (amb && amb.cands.length > 1) {
         r.ambiguous = amb.cands;
         const best = amb.cands[0];

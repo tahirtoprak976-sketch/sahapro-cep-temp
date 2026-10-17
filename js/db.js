@@ -219,6 +219,30 @@ export async function deleteTankIn(id, reason) {
   await audit("fuel_tank_movements", id, "soft_delete", { deleted_at: null }, { deleted_at: upd.deleted_at }, reason || "");
   return upd;
 }
+// Veri Sağlığı düzeltmeleri (yalnız denetimin bulduğu kesin durumlar için)
+// Yakıt kaydı silinmiş ama depo çıkışı kalmış: çıkış da silinir (stok doğru görünür)
+export async function removeOrphanTankOut(id) {
+  const m = await get("fuel_tank_movements", id);
+  if (!m || m.deleted_at || m.move_type !== "ÇIKIŞ" || !m.fuel_record_id) throw Error("Uygun depo çıkışı değil");
+  const f = await get("fuel_records", m.fuel_record_id);
+  if (f && !f.deleted_at) throw Error("Yakıt kaydı duruyor; çıkış silinemez");
+  const upd = { ...m, deleted_at: nowISO(), updated_at: nowISO() };
+  await put("fuel_tank_movements", upd);
+  await audit("fuel_tank_movements", id, "soft_delete", { deleted_at: null }, { deleted_at: upd.deleted_at }, "Veri sağlığı: sahipsiz depo çıkışı");
+  return upd;
+}
+// Sahibi hiç olmayan ek (dosya/fotoğraf) kaldırılır
+export async function removeOrphanAttachment(id) {
+  const a = await get("attachments", id);
+  if (!a) return null;
+  const owner = { document: "documents", maintenance: "maintenance_records", expense: "expense_records", slip_signature: "slips", contract_signature: "contracts", leave_signature: "documents", tank: "fuel_tank_movements", payable: "payables", work: "work_records", fuel: "fuel_records" }[a.record_type] || a.record_type;
+  let parent = null; try { parent = await get(owner, a.record_id); } catch (e) {}
+  if (parent) throw Error("Bu dosyanın sahibi var; silinmez");
+  const d = await openDB();
+  await new Promise((res, rej) => { const t = d.transaction(["attachments"], "readwrite"); t.objectStore("attachments").delete(id); t.oncomplete = res; t.onerror = t.onabort = () => rej(t.error); });
+  await audit("attachments", id, "delete", { name: a.name, record_type: a.record_type, record_id: a.record_id }, null, "Veri sağlığı: sahipsiz dosya");
+  return true;
+}
 export async function restore(store, id) {
   const rec = await get(store, id);
   if (!rec) return null;

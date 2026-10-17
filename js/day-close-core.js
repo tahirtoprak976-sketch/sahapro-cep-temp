@@ -5,6 +5,7 @@ import { workAmount } from "./collect-core.js";
 import { isRoadVehicle } from "./maint-core.js";
 import { loadTon } from "./dump-fees.js";
 import { invoiceQueue } from "./invoice-core.js";
+import { integrityCheck } from "./integrity-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const num = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
@@ -105,6 +106,9 @@ export function dayCloseChecks(d, { date, attCount = {} } = {}) {
   const open = live(d, "maintenance_records").filter((m) => m.status && /arıza|bekl|açık|serviste|devam/i.test(m.status) && !/tamam|kapandı|bitti/i.test(m.status));
   if (open.length) push("info", "Biriken", `${open.length} açık arıza / bakım`, open.slice(0, 3).map((m) => `${nm("vehicles", m.vehicle_id)} ${m.maint_type || ""}`).join(", "), "#/bakim");
 
+  // Veri sağlığı: kopuk bağ, mükerrer, eksi stok… (dosyalar ekranda ayrıca denetlenir)
+  const integ = integrityCheck(d, { today: date });
+  if (integ.errors) push("warn", "Biriken", `Veri sağlığı: ${integ.errors} tutarsızlık`, integ.issues.filter((x) => x.sev === "error").slice(0, 2).map((x) => x.text).join(" · "), "#/veri-sagligi");
   const rank = { alert: 0, warn: 1, info: 2 };
   items.sort((a, b) => (a.group === b.group ? 0 : a.group === "Bugün" ? -1 : 1) || rank[a.kind] - rank[b.kind]);
   return { items, warns: items.filter((i) => i.kind !== "info").length };

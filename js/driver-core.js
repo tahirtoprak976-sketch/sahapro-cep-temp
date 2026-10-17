@@ -137,7 +137,7 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
     works.push({
       date: e.date, customer_id: has("customers", e.cid) ? e.cid : null, new_customer: !has("customers", e.cid) && e.cn ? e.cn : null,
       site_id: has("sites", e.sid) ? e.sid : null, vehicle_id: has("vehicles", e.vid) ? e.vid : null, personnel_id: has("personnel", p.p) ? p.p : null,
-      work_type: e.wt, quantity: Number(e.q), unit: e.u, date_source: "mesaj", reporter: p.n || null, guessed: false,
+      work_type: e.wt, quantity: Number(e.q), unit: e.u, date_source: "mesaj", from_driver: true, reporter: p.n || null, guessed: false,
       dump_site_id: has("dump_sites", e.ds) ? e.ds : null, to_place: !has("dump_sites", e.ds) && e.dn ? e.dn : null, to_is_dump: !!e.dn,
       quarry_id: has("quarries", e.qy) ? e.qy : null, slip_no: e.slip || e.dfs || "", material: e.mat || "",
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
