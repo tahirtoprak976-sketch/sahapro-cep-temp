@@ -1,4 +1,5 @@
 import { workHours } from "./enterprise-core.js";
+import { kdvRateOf } from "./core.js";
 // SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
 import {
   qs,
@@ -601,9 +602,13 @@ async function workForm(ctx, editId) {
           toast("Manuel fiyat geçersiz", "err");
           return;
         }
+        if (kdvRateOf(val.manual_kdv) == null) {
+          toast("Elle fiyat için KDV oranını yazın (KDV'siz iş: 0)", "err");
+          return;
+        }
         fields.price_snapshot = {
           unit_price: Number(val.manual_price),
-          kdv_rate: Number(val.manual_kdv) || 0,
+          kdv_rate: kdvRateOf(val.manual_kdv),
           kdv_included: false,
           amount: Number(val.manual_price) * fields.quantity,
           price_source: "Manuel",
@@ -651,10 +656,7 @@ async function workForm(ctx, editId) {
           };
           const manual =
             row.x_manual_price !== "" ? row.x_manual_price : val.manual_price;
-          const rate =
-            row.x_manual_kdv !== ""
-              ? Number(row.x_manual_kdv)
-              : Number(val.manual_kdv);
+          const rate = kdvRateOf(row.x_manual_kdv !== "" ? row.x_manual_kdv : val.manual_kdv) ?? NaN; // boş → geçersiz (sessizce %0 olmaz)
           r.price_snapshot = priceSnapshot(r, prices, crane);
           if (manual !== "" && manual != null) {
             if (
@@ -768,6 +770,7 @@ async function workDetail(ctx, id) {
     : [];
   const slip = w.slip_id ? await db.get("slips", w.slip_id) : null;
   const atts = await db.attachmentsFor("work", id);
+  const slipChanges = w.digital_slip_no ? (await import("./driver-core.js")).signedSlipChanges(w, names) : [];
   const inHakedis = (await db.getAll("hakedis")).some(
     (h) =>
       isActive(h) &&
@@ -799,7 +802,7 @@ async function workDetail(ctx, id) {
       ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
       ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
     </div>
-    ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid #2e9e6b"><div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${atts.some((a) => a.kind === "signature") ? "ok" : "warn"}">${atts.some((a) => a.kind === "signature") ? "imzalı" : "imza yok"}</span></div>
+    ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid ${slipChanges.length ? "#d9534f" : "#2e9e6b"}">${slipChanges.length ? notice("warn", "Bu iş, müşterinin imzaladığı fişten SONRA değiştirildi: " + slipChanges.join(" · ") + ". İmzalı fiş PDF'i imzalanan hâli gösterir; yeni hâl için müşteriden yeniden imza alın.") : ""}<div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${atts.some((a) => a.kind === "signature") ? "ok" : "warn"}">${atts.some((a) => a.kind === "signature") ? "imzalı" : "imza yok"}</span></div>
       <div class="small muted">${esc(w.slip_receiver ? "Teslim alan: " + w.slip_receiver : "")}${w.slip_signed_at ? " · " + esc(new Date(w.slip_signed_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })) : ""} · şoför sahada imzalattı</div>
       <button class="btn block" style="margin-top:8px" data-dslip>📄 İmzalı fiş PDF (indir / gönder)</button></div>` : ""}
     <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/*,application/pdf" multiple data-watt hidden></label></div>

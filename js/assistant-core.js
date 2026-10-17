@@ -4,9 +4,10 @@
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
-import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
+import { isActive, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
+import { tokenize } from "./message-engine.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates, fuelRulesOf } from "./assistant-rules.js";
 import { yardSite, yardCustomer, yardHint } from "./yard-core.js";
@@ -328,6 +329,22 @@ export function similarCard(name, cards) {
   }
   return null;
 }
+// Mesajda rakamla yazılmış her sayının kaç kez geçtiği ("1,5 saat" iki satırda yazıldıysa 2)
+function numberCounts(text) {
+  const out = new Map();
+  for (const t of tokenize(String(text || ""))) {
+    if (t.type !== "number") continue;
+    const v = Number(String(t.raw).replace(/(?:si|sı|su|sü)$/i, "").replace(",", "."));
+    if (Number.isFinite(v)) out.set(v, (out.get(v) || 0) + 1);
+  }
+  return out;
+}
+// İş makinesi mi (kepçe, JCB, ekskavatör…): saatle çalışır; malzeme adı geçti diye nakliye yapmaz
+const MACHINE_WORDS = /(^| )(jcb|kepce|beko|ekskavator|kazici|loder|loader|dozer|greyder|silindir|manitou|vinc|kato|forklift|is makinesi)( |$)/;
+export function isMachineVehicle(v) {
+  if (!v || transportVehicleType(v.type)) return false;
+  return MACHINE_WORDS.test(` ${norm([v.name, v.type].filter(Boolean).join(" "))} `);
+}
 // Ad mesajda geçiyor mu? Son kelimeye Türkçe ek gelebilir ("Erdem Yapı" ↔ "erdem yapıya", "Kaya'ya")
 const inMessage = (name, message) => {
   const n = norm(name);
@@ -416,7 +433,16 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     // Taşeron: yeni müşterinin ana firması (örn. "Mahir beyin inşaatında Erdem Yapı'ya" → ana firma Hisar Polat)
     if (r.new_customer && w.new_customer_parent_id && byId(customers, w.new_customer_parent_id)) r.new_customer_parent_id = w.new_customer_parent_id;
     const parentOf = r.customer_id ? byId(customers, r.customer_id)?.parent_customer_id || null : r.new_customer_parent_id || null;
-    const s = byId(sites, w.site_id);
+    let s = byId(sites, w.site_id);
+    // Şantiye mesajda (ya da onaylı hafıza adıyla) yazmıyorsa kendiliğinden seçilmez: bir mesajda doğrulanan şantiye
+    // sonraki mesajlara genellenmez. Şoför ekranından gelen işte şoför listeden seçmiştir.
+    const siteText = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
+    if (s && !fromDriver && !inMessage(s.name, siteText) && !inMessage(s.name, message)
+      && !live(d, "aliases").some((a) => a.active !== false && a.target_type === "site" && a.target_id === s.id && inMessage(a.alias, message))) {
+      issues.push(`Şantiye "${s.name}" mesajda yazmıyor; seçilmedi — doğruysa kartta seçin`);
+      r.siteHint = s.id;
+      s = null;
+    }
     if (s && (!r.customer_id || s.customer_id === r.customer_id) && !(r.new_customer && parentOf === s.customer_id)) {
       r.site_id = s.id;
       if (!r.customer_id && !r.new_customer) r.customer_id = s.customer_id;
@@ -443,8 +469,18 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     } else issues.push("Araç seçilmeli");
     if (r.vehicleNote) issues.push(r.vehicleNote);
     const p = byId(personnel, w.personnel_id);
-    if (p) r.personnel_id = p.id;
-    else if (sender) r.personnel_id = sender.id;
+    if (p) {
+      // Personel: mesajda adıyla geçmeli, gönderen ya da aracın zimmetlisi olmalı; müşteri adıyla aynı ilk ad sayılmaz ("Şenol abi" müşteri)
+      const rowP = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
+      const first = norm(p.name).split(" ")[0] || "";
+      const custWords = new Set(norm(byId(customers, r.customer_id)?.name || r.new_customer || "").split(" "));
+      const firstUnique = first.length >= 3 && personnel.filter((x) => norm(x.name).split(" ")[0] === first).length === 1;
+      const ok = fromDriver || sender?.id === p.id || (r.vehicle_id && byId(vehicles, r.vehicle_id)?.assignee_id === p.id) || inMessage(p.name, rowP)
+        || live(d, "aliases").some((a) => a.active !== false && a.target_type === "personnel" && a.target_id === p.id && inMessage(a.alias, rowP))
+        || (firstUnique && !custWords.has(first) && (` ${norm(rowP)} `).includes(` ${first} `));
+      if (ok) r.personnel_id = p.id;
+      else issues.push(`Personel "${p.name}" mesajda yazmıyor; işe yazılmadı`);
+    } else if (sender) r.personnel_id = sender.id;
     // Güzergâh ve fiş: mesajda geçen ifade
     const said = (x) => { const t = String(x || "").trim(); return t && (` ${norm(message)} `).includes(` ${norm(t)}`) ? t.slice(0, 80) : ""; };
     r.from_place = said(w.from_place);
@@ -462,6 +498,10 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (w.date_source === "yok") { issues.push("İş tarihi mesajda yazmıyor — teyit edin"); r.dateUnsure = true; }
     if (WORK_TYPES.includes(w.work_type)) r.work_type = w.work_type; else issues.push("İş türü seçilmeli");
     if (ASSIST_UNITS.includes(w.unit)) r.unit = w.unit; else issues.push("Birim seçilmeli");
+    if (!fromDriver && TRUCK_TYPES.includes(r.work_type) && r.unit === "Saat" && isMachineVehicle(byId(vehicles, r.vehicle_id))) {
+      issues.push(`İş türü "${r.work_type}" (nakliye) ama araç iş makinesi (${byId(vehicles, r.vehicle_id).name}) ve birim saat — malzeme adı nakliye demek değildir; türü kontrol edin`);
+      r.typeDoubt = true;
+    }
     const q = w.quantity == null ? null : Number(w.quantity);
     if (q != null && Number.isFinite(q) && q > 0 && q < 1000) {
       r.quantity = q;
@@ -559,12 +599,21 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt);
     r.fuelAllowance = fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     out.works.push(r);
   }
 
   markPasteDuplicates(out.works);
+  // Mesajda bir kez yazılan süre/miktar birden fazla işe yazılmışsa (tek süre bölünmüş): işaretsiz gelir
+  {
+    const counts = numberCounts(message), used = new Map();
+    for (const r of out.works) if (!r.fromDriver && r.quantity && !r.guessed && counts.has(r.quantity)) used.set(r.quantity, [...(used.get(r.quantity) || []), r]);
+    for (const [q, rows] of used) if (rows.length > counts.get(q)) for (const r of rows) {
+      r.ok = false; r.splitDup = true;
+      r.issues.push(`Mesajda ${String(q).replace(".", ",")} bir kez geçiyor ama ${rows.length} işe yazıldı — tek süre/miktar bölünmüş olabilir; doğru olanı işaretleyin`);
+    }
+  }
 
   for (const e of (Array.isArray(plan.expenses) ? plan.expenses : []).slice(0, 10)) {
     const issues = [];
@@ -739,6 +788,53 @@ export function checkAnswer(answer, facts) {
     bad.push(Math.max(...cands));
   }
   return [...new Set(bad)];
+}
+
+// Cevaptaki rakam doğru METRİKTEN mi? (ör. iş değeri "tahsilat" diye yazılmış). Rakam kayıtlarda geçse bile
+// yanındaki kelime başka bir hesaba işaret ediyorsa uyarı döner: [{ n, said, actual }]
+const METRICS = [
+  ["tahsilat", /tahsil|alinan para|para alindi|odeme alindi|odedi|odeme yapti/, /tahsilat|collection/],
+  ["kâr", /(^| )kar( |$)|kari |karimiz|kazanc/, /kar_|profit|review/],
+  ["gider", /gider|maliyet|harcama|masraf/, /gider|maliyet|expense|cost|fuel|review|profit/],
+  ["borç / bakiye", /borc|bakiye|alacak|cari/, /bakiye|borc|balance|debt|receivable/],
+  ["iş değeri", /ciro|gelir|is degeri|hakedis|is tutari|kazandik/, /is_degeri|work_totals|review|profit|receivable/],
+];
+const TOOL_LABEL = { work_totals: "iş toplamı", collection_totals: "tahsilat", expense_totals: "gider", fuel_totals: "yakıt", customer_balance: "müşteri bakiyesi", esnaf_debt: "esnaf borcu", receivables: "alacak" };
+const METRIC_LABEL = { tahsilat_TL: "tahsilat", tahmini_kar_TL: "tahmini kâr", gider_yakit_TL: "gider", son30gun_maliyet_TL: "araç maliyeti", cari_bakiye_TL: "cari bakiye", kalan_borc_TL: "esnaf borcu", is_degeri_TL: "iş değeri" };
+export function answerMetricIssues(answer, facts) {
+  if (!answer) return [];
+  const where = new Map(); // sayı → bu sayıyı tutan alan adları
+  // Alan yolu ("aylik.tahsilat_TL", "collection_totals.total") saklanır: hesap aracının adı da metriği anlatır
+  const walk = (o, path) => {
+    if (Array.isArray(o)) return o.forEach((x) => walk(x, path));
+    if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) {
+      const pth = path ? path + "." + k : k;
+      if (typeof v === "number" && Number.isFinite(v)) for (const n of [v, Math.round(v)]) where.set(n, new Set([...(where.get(n) || []), pth]));
+      else walk(v, pth);
+    }
+  };
+  walk(facts, "");
+  const out = [];
+  const text = String(answer);
+  for (const m of text.matchAll(/\d[\d.,]*/g)) {
+    const tok = m[0].replace(/[.,]$/, "");
+    const n = /^\d{1,3}(\.\d{3})+(,\d+)?$/.test(tok) ? Number(tok.replace(/\./g, "").replace(",", ".")) : Number(tok.replace(",", "."));
+    if (!Number.isFinite(n) || n < 100) continue;
+    const keys = [...(where.get(n) || where.get(Math.round(n)) || [])];
+    if (!keys.length) continue; // bilinmeyen sayı checkAnswer'da yakalanır
+    // Sayının bulunduğu yan cümle (". , ; ! ?" + boşluk ya da satır sonu ile ayrılır; "18.500" içindeki nokta ayırmaz)
+    let st = 0;
+    for (const b of text.slice(0, m.index).matchAll(/[.,;!?](?=\s)|\n/g)) st = b.index + 1;
+    let en = text.slice(m.index + m[0].length).search(/[.,;!?](\s|$)|\n/);
+    en = en < 0 ? text.length : m.index + m[0].length + en;
+    const ctx = ` ${norm(text.slice(st, en))} `;
+    const said = METRICS.filter(([, re]) => re.test(ctx));
+    if (!said.length) continue;
+    if (said.some(([, , keyRe]) => keys.some((k) => keyRe.test(k)))) continue;
+    const lbl = (k) => { const parts = k.split("."); return METRIC_LABEL[parts.at(-1)] || TOOL_LABEL[parts[0]] || parts.at(-1).replace(/_/g, " "); };
+    out.push({ n, said: said.map(([l]) => l).join(" / "), actual: [...new Set(keys.map(lbl))].join(", ") });
+  }
+  return out;
 }
 
 const EDITABLE = {

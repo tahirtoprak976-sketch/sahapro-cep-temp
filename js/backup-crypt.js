@@ -9,7 +9,20 @@ async function streamBytes(bytes, stream) {
   return new Uint8Array(await new Response(s).arrayBuffer());
 }
 const gzip = (b) => streamBytes(b, new CompressionStream("gzip"));
-const gunzip = (b) => streamBytes(b, new DecompressionStream("gzip"));
+// Sınırlar: bozuk / kötü niyetli dosya telefonu kilitlemesin (sıkıştırma bombası). Gerçek yedekler bunun çok altındadır.
+export const MAX_BACKUP_FILE = 300 * 1024 * 1024, MAX_BACKUP_JSON = 800 * 1024 * 1024;
+async function gunzip(b, limit = MAX_BACKUP_JSON) {
+  const reader = new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip")).getReader();
+  const parts = []; let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    if (n > limit) { await reader.cancel().catch(() => {}); throw Error("Yedek açıldığında çok büyük (sınır " + Math.round(limit / 1048576) + " MB) — dosya bozuk olabilir"); }
+    parts.push(value);
+  }
+  return cat(...parts);
+}
 async function keyFrom(password, salt) {
   const base = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey({ name: "PBKDF2", salt, iterations: ITER, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
@@ -33,6 +46,7 @@ export function backupKind(bytes) {
 // getPassword: şifreli dosyada çağrılır (iptal → null)
 export async function decodeBackup(bytes, getPassword) {
   bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (bytes.length > MAX_BACKUP_FILE) throw Error("Yedek dosyası çok büyük (sınır " + Math.round(MAX_BACKUP_FILE / 1048576) + " MB)");
   const kind = backupKind(bytes);
   if (kind === "json") return JSON.parse(dec.decode(bytes));
   if (kind === "gzip") return JSON.parse(dec.decode(await gunzip(bytes)));

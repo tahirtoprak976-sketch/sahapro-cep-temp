@@ -1,4 +1,5 @@
 import { customerBankReceipt } from "./enterprise-db.js";
+import { kdvRateOf } from "./core.js";
 import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
 import { createCreditBill, findDuplicates } from "./esnaf.js";
@@ -656,7 +657,7 @@ async function priceForm(ctx, editId) {
       distance_min: val.distance_min !== "" ? Number(val.distance_min) : null,
       distance_max: val.distance_max !== "" ? Number(val.distance_max) : null,
       price: Number(val.price) || 0,
-      kdv_rate: Number(val.kdv_rate) || 0,
+      kdv_rate: kdvRateOf(val.kdv_rate),
       kdv_included: val.kdv_included === "1",
       customer_id: val.customer_id || null,
       site_id: val.site_id || null,
@@ -669,6 +670,7 @@ async function priceForm(ctx, editId) {
       next_hour_price: val.next_hour_price ? Number(val.next_hour_price) : null,
       active: true,
     };
+    if (fields.kdv_rate == null) return toast("KDV oranını yazın (KDV'siz fiyat için 0)", "err");
     try {
       if (editId)
         await db.saveExisting("price_book", rec, fields, "Fiyat güncellendi");

@@ -8,7 +8,7 @@ import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXP
 import { occupationOnly } from "./assistant-core.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
-import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
+import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, answerMetricIssues, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
 
 const opt = (list, val, empty = "— seçin —") =>
   `<option value="">${esc(empty)}</option>` +
@@ -240,10 +240,23 @@ export async function screen(ctx) {
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
       try { await rereadSlips(db, v, imgParts, d, today); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
       for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])]) if (w.driverDup) w.ok = false;
+      // Mesajdaki şoför kodu REDDEDİLDİYSE (iptal / süresi dolmuş / imzası tutmayan): aynı mesajın yazısından Gemini'nin
+      // çıkardığı kayıtlar da kendiliğinden işaretlenmez (reddedilen kaydın kopyası yazıdan geri gelmesin)
+      if (drvRejected.length)
+        for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || []), ...(v.collections || [])])
+          if (!w.driver_entry_id && w.ok !== false) { w.ok = false; (w.issues ||= []).push("Bu mesajdaki şoför kodu reddedildi; yazıdan çıkarılan bu kaydı dikkatle kontrol edin"); }
+      // İmzası doğrulanamayan şoför kodu (eski imzasız bağlantı / bu telefonda kayıtlı olmayan bağlantı): kartlar işaretsiz gelir.
+      // Kodu herkes üretebilir; kaydetmeden önce patron kontrol edip işaretler.
+      if (drvSecWarn.length) {
+        const unv = new Set(drvSecWarn.flatMap((x) => (x.p.e || []).map((e) => e.id)));
+        for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])])
+          if (w.driver_entry_id && unv.has(w.driver_entry_id) && !w.driverDup) { w.ok = false; w.unverified = true; (w.issues ||= []).push("Şoför kodunun imzası doğrulanamadı — bilgileri kontrol edip işaretleyin"); }
+      }
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = typeof plan.answer === "string" && plan.answer.trim() ? plan.answer.trim().slice(0, 1500) : null;
       v.answerBad = checkAnswer(v.answer, facts);
+      v.answerMetric = answerMetricIssues(v.answer, facts);
       v.asked = asked && asked.answer ? asked : null;
       if (v.asked) v.askedHtml = tools.answerHtml(v.asked);
       prev = { message, plan, v };
@@ -316,7 +329,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   out.innerHTML =
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     summaryHtml(v, d) +
-    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
+    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
     (v.driverReject ? notice("danger", "🚫 İŞLENMEDİ — " + v.driverReject.map(esc).join(" · ") + ". Güvenlik ekranından bağlantıyı kontrol edin.") : "") +
     (v.driverSecWarn ? notice("warn", "🛡 " + v.driverSecWarn.map(esc).join(" · ")) : "") +
@@ -568,7 +581,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       qs("[data-n-unpriced]", card).textContent = same ? `(${s.unpriced} iş)` : "";
       qs("[data-n-differ]", card).textContent = same ? `(${s.differ} iş)` : "";
       qs("[data-scopeinfo]", card).innerHTML = [
-        s.existing ? `Mevcut kural: <b>${fmtTL(s.existing.price)} ₺</b> → yeni fiyatla güncellenecek` : "Yeni kural eklenecek",
+        s.existing ? `Mevcut kural: <b>${fmtTL(s.existing.price)} ₺${s.existing.kdv_included ? " (KDV dahil)" : ""}</b> → yeni fiyatla${s.existing.kdv_included ? " <b>KDV hariç</b> olarak" : ""} güncellenecek` : "Yeni kural eklenecek",
         s.locked ? `<span class="muted">${s.locked} iş hakedişe girdiği için değişmez</span>` : "",
       ].filter(Boolean).join(" · ");
     };
@@ -655,6 +668,7 @@ async function save(ctx, out, v, d, { message, files }) {
   };
   const newIds = new Map();
   const source = "Asistan: " + message.slice(0, 300);
+  let current = null;
   try {
     const { priceSnapshot } = await import("./business.js");
     let prices = await db.listActive("price_book");
@@ -663,7 +677,11 @@ async function save(ctx, out, v, d, { message, files }) {
     const existingWorks = (d.work_records || []).filter(isActive);
     // Şoför kaydı başka sekmede / aynı anda kaydedildiyse veritabanı ikinciyi reddeder: kart atlanır, kalanlar kaydedilir
     const skipDup = async (pr) => { try { return await pr; } catch (e) { if (e?.code === "DUP_DRIVER") { toast("Şoför kaydı zaten alınmış — atlandı", "err"); return null; } throw e; } };
+    // İşlenen kart işaretten çıkar ve kilitlenir: arada hata olursa "Kaydet"e yeniden basmak kaydedilenleri ikinci kez yazmaz
+    const markDone = (x) => { const pk = qs("[data-pick]", x); if (pk) { pk.checked = false; pk.disabled = true; } x.dataset.saved = "1"; x.style.opacity = "0.55"; };
     for (const c of cards) {
+      if (current) markDone(current);
+      current = c;
       const k = c.dataset.kind;
       if (k === "memory") {
         const r = v.memory[Number(c.dataset.i)];
@@ -716,8 +734,11 @@ async function save(ctx, out, v, d, { message, files }) {
           unit: val(c, "unit"), price: Number(val(c, "price")), kdv_rate: 20, kdv_included: false, valid_from: null };
         let fresh = await db.dumpAll();
         const old = pr.sameRule(fresh, rule);
+        // Kartta yazan fiyat KDV HARİÇTİR: mevcut kural "KDV dahil" idiyse o da hariçe çevrilir (yoksa yeni fiyat dahil sayılırdı).
+        // Mevcut kuralın KDV oranı korunur (KDV'siz müşteri: %0).
+        if (old && old.kdv_rate != null && Number.isFinite(Number(old.kdv_rate))) rule.kdv_rate = Number(old.kdv_rate);
         const rec = old
-          ? await db.saveExisting("price_book", old, { price: rule.price }, "Asistan: fiyat kuralı güncellendi")
+          ? await db.saveExisting("price_book", old, { price: rule.price, kdv_included: false, kdv_rate: rule.kdv_rate }, "Asistan: fiyat kuralı güncellendi (KDV hariç)")
           : await db.saveNew("price_book", { ...rule, active: true, note: "Asistan: " + message.slice(0, 120) }, "Asistan: fiyat kuralı");
         done.price++;
         const ruleId = rec?.id || old?.id || null;
@@ -989,11 +1010,13 @@ async function save(ctx, out, v, d, { message, files }) {
           if (existingWorks.some((w) => w.driver_entry_id === wr0.driver_entry_id)) { toast("Şoför kaydı zaten alınmış, atlandı", "err"); continue; }
           fields.driver_entry_id = wr0.driver_entry_id; fields.source = "şoför";
           if (wr0.digital) dslipIds.push(wr0.driver_entry_id);
-          if (wr0.digital) Object.assign(fields, { digital_slip_no: wr0.digital.no, slip_receiver: wr0.digital.receiver || "", slip_signed_at: wr0.digital.signed_at || null, slip_status: "Fiş Var", slip_no: fields.slip_no || wr0.digital.no });
+          if (wr0.digital) Object.assign(fields, { digital_slip_no: wr0.digital.no, slip_receiver: wr0.digital.receiver || "", slip_signed_at: wr0.digital.signed_at || null, slip_status: "Fiş Var", slip_no: fields.slip_no || wr0.digital.no,
+            ...(wr0.digital.signed ? { slip_signed_content: wr0.digital.signed } : {}) });
         }
         const up = Number(val(c, "unit_price"));
+        const kdDef = (await import("./core.js")).kdvRateOf(await db.metaGet("kdv_default"));
         fields.price_snapshot = up > 0
-          ? { unit_price: up, kdv_rate: Number(await db.metaGet("kdv_default")) || 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
+          ? { unit_price: up, kdv_rate: kdDef ?? 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
           : priceSnapshot(fields, prices, crane);
         // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
         { const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields)); }
@@ -1211,6 +1234,12 @@ async function save(ctx, out, v, d, { message, files }) {
     await db.metaSet("assistant_draft", "");
   } catch (e) {
     btn.disabled = false;
+    // Hata veren kart: bir kısmı yazılmış olabilir (ör. iş kaydedildi, fotoğraf eklenemedi) — işaretten çıkarılır, kontrol istenir
+    if (current) {
+      const pk = qs("[data-pick]", current);
+      if (pk) pk.checked = false;
+      current.insertAdjacentHTML("afterbegin", notice("warn", "Bu kart kaydedilirken hata oldu: " + (e.message || String(e)) + ". Kayıtlarda olup olmadığına bakın; yoksa yeniden işaretleyip Kaydet'e basın."));
+    }
     const plan = await undo.saveUndo(db, snap0, "yarım kalan kayıt").catch(() => null);
     toast((e.message || String(e)) + ` (kaydedilen: ${done.work} iş, ${done.expense} gider, ${done.fuel} yakıt)`, "err");
     if (plan) { out.insertAdjacentHTML("afterbegin", '<button class="btn block" data-undo>↩️ Yarım kalan kaydı geri al</button>'); bindUndo(ctx, out); }

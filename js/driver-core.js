@@ -143,7 +143,7 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
     });
     meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
-      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null, sigStrokes: Array.isArray(e.sv) && e.sv.length ? e.sv : null } } : {}) });
+      ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, signed: signedContent(e), sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null, sigStrokes: Array.isArray(e.sv) && e.sv.length ? e.sv : null } } : {}) });
   }
   return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta };
 }
@@ -194,10 +194,33 @@ export function slipShareText(e, cfg, no, receiver) {
 }
 
 // Patron tarafı: iş kaydından aynı imzalı fiş PDF'i (şoförün şefe gönderdiğinin aynısı)
+// Müşterinin sahada imzaladığı içerik (şoför kodundan, birebir). Kayıt sonradan değişse de imzalı fiş bu hâli gösterir.
+export function signedContent(e) {
+  if (!e?.dfs || !e.sgt) return null;
+  return { date: e.date, cid: e.cid || null, cn: e.cn || "", sid: e.sid || null, vid: e.vid || null, wt: e.wt || "", q: Number(e.q), u: e.u || "", mat: e.mat || "",
+    ds: e.ds || null, dn: e.dn || "", ton: Number(e.ton) || null, slip: e.slip || "", note: e.note || "" };
+}
+// İmzadan sonra değişen alanlar (imzalı içerik saklıysa): ["miktar 6 → 5", …]
+export function signedSlipChanges(w, names = {}) {
+  const s = w?.slip_signed_content;
+  if (!s) return [];
+  const nm = (st, id) => names?.[st]?.[id] || "";
+  const out = [];
+  if (s.date !== w.date) out.push(`tarih ${s.date} → ${w.date}`);
+  if (Number(s.q) !== Number(w.quantity) || s.u !== w.unit) out.push(`miktar ${s.q} ${s.u} → ${w.quantity} ${w.unit}`);
+  if (s.wt !== w.work_type) out.push(`iş türü ${s.wt} → ${w.work_type}`);
+  if (s.vid && s.vid !== w.vehicle_id) out.push(`araç ${nm("vehicles", s.vid) || "?"} → ${nm("vehicles", w.vehicle_id) || "?"}`);
+  if (s.cid && s.cid !== w.customer_id) out.push(`müşteri ${nm("customers", s.cid) || "?"} → ${nm("customers", w.customer_id) || "?"}`);
+  if ((s.sid || null) !== (w.site_id || null) && s.cid === w.customer_id) out.push(`şantiye ${nm("sites", s.sid) || "yok"} → ${nm("sites", w.site_id) || "yok"}`);
+  return out;
+}
 export function workSlipSpec(w, names, { company = "", sigBlob = null, photo = null } = {}) {
   const nmOf = (st, id) => (id ? [[id, names?.[st]?.[id] || ""]] : []);
-  const cfg = { co: company, p: [w.personnel_id || "", names?.personnel?.[w.personnel_id] || ""], C: nmOf("customers", w.customer_id), S: nmOf("sites", w.site_id), V: nmOf("vehicles", w.vehicle_id), D: nmOf("dump_sites", w.dump_site_id), Y: null };
-  const e = { date: w.date, vid: w.vehicle_id, cid: w.customer_id, sid: w.site_id, wt: w.work_type, q: w.quantity, u: w.unit, mat: w.material || "", ds: w.dump_site_id, dn: w.dump_area || "",
-    ton: w.tonnage || null, slip: w.slip_no && w.slip_no !== w.digital_slip_no ? w.slip_no : "", note: w.customer_note || "" };
+  // İmzalı içerik saklıysa fiş onunla basılır (imza yalnız imzalanan hâle aittir)
+  const s = w.slip_signed_content || null;
+  const cfg = { co: company, p: [w.personnel_id || "", names?.personnel?.[w.personnel_id] || ""], C: nmOf("customers", s ? s.cid : w.customer_id), S: nmOf("sites", s ? s.sid : w.site_id), V: nmOf("vehicles", s ? s.vid : w.vehicle_id), D: nmOf("dump_sites", s ? s.ds : w.dump_site_id), Y: null };
+  const e = s ? { ...s }
+    : { date: w.date, vid: w.vehicle_id, cid: w.customer_id, sid: w.site_id, wt: w.work_type, q: w.quantity, u: w.unit, mat: w.material || "", ds: w.dump_site_id, dn: w.dump_area || "",
+      ton: w.tonnage || null, slip: w.slip_no && w.slip_no !== w.digital_slip_no ? w.slip_no : "", note: w.customer_note || "" };
   return driverSlipSpec(e, cfg, { no: w.digital_slip_no, receiver: w.slip_receiver || "", signedAt: w.slip_signed_at || "", sigBlob, photo });
 }
