@@ -2,7 +2,7 @@
 // Bu ekran hiçbir kayıt oluşturmaz; yalnız önerileri ve doğrulama sonucunu gösterir.
 import { qs, esc, appbar, toast, confirmDialog, notice, kv } from "./ui.js";
 import { aiSuggest } from "./ai-assist.js";
-import { geminiSettings, listModels, geminiChat, geminiReadReceipt, findWorkingModel, withModelFallback, usageToday } from "./ai-gemini.js";
+import { geminiSettings, listModels, geminiChat, geminiReadReceipt, findWorkingModel, withModelFallback, usageToday, usageFailedToday } from "./ai-gemini.js";
 
 const SAMPLES = [
   "Ahmet Bey 34 ABC 123 6 gidiş yaptı moloz",
@@ -48,7 +48,12 @@ export async function screen(ctx) {
       <div class="muted small">Fiş fotoğrafı okumada en güçlü seçenek. Anahtarı <b>aistudio.google.com</b> → "Get API key" ile alın. Anahtar yalnız bu telefonda saklanır. Google Cloud'da anahtarı bu siteyle (HTTP referrer) ve "Generative Language API" ile sınırlamanız önerilir.</div>
       <div class="field" style="margin-top:8px"><label>API anahtarı</label><input type="password" data-gkey autocomplete="off" value="${esc(gem.key)}" placeholder="AIza…"></div>
       <div class="field"><label>Model</label><select data-gmodel>${gem.model ? `<option value="${esc(gem.model)}">${esc(gem.model)}</option>` : "<option value=''>Önce anahtarı girip modelleri getirin</option>"}</select></div>
-      <label class="history-check"><input type="checkbox" data-gconsent ${gem.consent ? "checked" : ""}> Gemini kullandığımda mesaj metninin veya fiş fotoğrafının Google'a gönderileceğini biliyorum.</label>
+      <label class="history-check"><input type="checkbox" data-gconsent ${gem.consent ? "checked" : ""}> Gemini kullandığımda aşağıdaki bilgilerin Google'a gönderileceğini biliyorum.</label>
+      <details class="tiny" style="margin:4px 0 0 26px"><summary>Neler gönderilir?</summary>
+        <div class="muted" style="margin-top:4px">• Yazdığınız mesaj, eklediğiniz fotoğraf / belge / ses kaydı.<br>
+        • Eşleştirme için kart adları: müşteri, şantiye, araç (plaka), personel, esnaf, döküm yeri, ocak, banka hesabı adları ve onayladığınız takma adlar; son işlerin kısa listesi (tarih, müşteri, araç, miktar).<br>
+        • Akıllı Asistan'da sorulara cevap için özet rakamlar: müşteri cari bakiyeleri, esnaf borçları, son 6 ayın iş değeri / tahsilat / gider / tahmini kâr, araç başı yakıt ve maliyet, açık arızalar.<br>
+        • Gönderilmez: kilit ve yedek şifreleri, yedek dosyası; kartlarda kayıtlı TC no, telefon, IBAN, adres (mesaja ya da fotoğrafa kendiniz yazarsanız onlar da gider). Anahtar yalnız Google'a, isteğin kimliği olarak gider.</div></details>
       <div class="row" style="gap:8px;margin-top:8px">
         <button class="btn grow" data-gmodels>Modelleri Getir</button>
         <button class="btn grow" data-gfind>Çalışan Modeli Bul</button>
@@ -231,10 +236,10 @@ export async function screen(ctx) {
     if (!q || !q.cards || !el) return;
     el.insertAdjacentHTML("afterend", `<div class="muted small">Asistan doğruluğu (${esc(q.since)}'den beri ${q.cards} iş kartı): alanların %${Math.round((100 * q.changed) / (q.fields || 1))}'i elle düzeltildi · uyarısız (sessiz) hata %${Math.round((100 * q.silent) / (q.fields || 1))}</div>`);
   });
-  usageToday(db).then((u) => {
+  Promise.all([usageToday(db), usageFailedToday(db)]).then(([u, failed]) => {
     const el = qs("[data-gusage]", root);
     const parts = Object.entries(u).map(([m, n]) => `${m}: ${n}`);
-    if (el) el.textContent = "Bugünkü Gemini isteği: " + (parts.length ? parts.join(" · ") : "0") + " (günlük ücretsiz sınırı AI Studio'da görünür)";
+    if (el) el.textContent = "Bugünkü Gemini isteği (başarısızlar ve tekrarlar dahil, bu telefon): " + (parts.length ? parts.join(" · ") : "0") + (failed ? ` · ${failed} başarısız` : "") + ". Günlük ücretsiz sınırı Google koyar; kesin sayı AI Studio'da görünür.";
   });
   const gkey = qs("[data-gkey]", root), gmodel = qs("[data-gmodel]", root), gout = qs("[data-gout]", root);
   qs("[data-provider]", root).addEventListener("change", (e) => {

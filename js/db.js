@@ -270,6 +270,19 @@ export async function metaSet(key, value) {
   return wrap(tx(db, "meta", "readwrite").put({ key, value }));
 }
 
+// Meta değerini tek transaction'da oku-değiştir-yaz (iki sekme aynı anda artırsa da kayıp olmaz)
+export async function metaUpdate(key, fn) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = db.transaction("meta", "readwrite");
+    const st = t.objectStore("meta");
+    let nx;
+    const g = st.get(key);
+    g.onsuccess = () => { nx = fn(g.result ? g.result.value : null); st.put({ key, value: nx }); };
+    t.oncomplete = () => resolve(nx);
+    t.onerror = t.onabort = () => reject(t.error);
+  });
+}
 // Sayaç (fiş/teklif/hakediş seri no) — tek transaction'da atomik artış
 export async function nextSeq(name) {
   const db = await openDB();

@@ -49,9 +49,11 @@ console.log('ai-gemini-fallback PASS');
     : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"ok":1}' }] } }] }) };
   const { geminiJson } = await import('../js/ai-gemini.js');
   let switched = null;
-  const out = await withModelFallback(db, (o) => geminiJson([{ text: 'x' }], { ...o, fetchFn: fake }), { onSwitch: (a, b) => (switched = [a, b]) });
+  const out = await withModelFallback(db, (o) => geminiJson([{ text: 'x' }], o), { fetchFn: fake, onSwitch: (a, b) => (switched = [a, b]) });
   assert.deepEqual(out, { ok: 1 }); assert.equal(meta.get('gemini_model'), 'gemini-3.8-flash'); assert.deepEqual(switched, ['gemini-omni-flash', 'gemini-3.8-flash']);
-  assert.equal((await usageToday(db))['gemini-3.8-flash'], 1);
+  // v3.9.04: başarısız denemeler de sayılır (Google'ın ücretsiz sınırı da her isteği sayar)
+  assert.deepEqual(await usageToday(db), { 'gemini-omni-flash': 1, 'gemini-old-flash': 1, 'gemini-3.8-flash': 1 });
+  assert.equal(meta.get('gemini_usage').failed, 2);
   // anahtar hatası model değiştirmez
   meta.set('gemini_model', 'gemini-3.8-flash');
   const badKey = async () => ({ ok: false, status: 400, json: async () => ({ error: { message: 'API key not valid' } }) });
@@ -70,3 +72,14 @@ console.log('ai-gemini-autoswitch PASS');
   assert.deepEqual(seen, [true, false]);
 }
 console.log('ai-gemini-schema PASS');
+// v3.9.04: kullanım sayacı her isteği sayar (başarısızlar dahil), gün değişince sıfırlanır
+{
+  const { usageAdd } = await import("../js/ai-gemini.js");
+  let u = null;
+  u = usageAdd(u, "2026-10-17", "gemini-2.5-flash", true);
+  u = usageAdd(u, "2026-10-17", "gemini-2.5-flash", false);
+  u = usageAdd(u, "2026-10-17", "gemini-2.0-flash", true);
+  assert.deepEqual(u, { date: "2026-10-17", counts: { "gemini-2.5-flash": 2, "gemini-2.0-flash": 1 }, failed: 1 });
+  assert.deepEqual(usageAdd(u, "2026-10-18", "gemini-2.5-flash", true), { date: "2026-10-18", counts: { "gemini-2.5-flash": 1 }, failed: 0 });
+  console.log("usage-counter ok");
+}

@@ -56,7 +56,8 @@ console.log("customer-ambiguity PASS");
   const v = validatePlan({ works: [{ new_customer: "Erdem Yapı", new_customer_parent_id: "HP", site_id: "SHP", vehicle_id: "M", work_type: "Makine Çalışması", quantity: 2, unit: "Saat", description: "cam indirildi" }] }, { message: msg, d: dd, today });
   const w = v.works[0];
   assert.equal(w.new_customer, "Erdem Yapı"); assert.equal(w.new_customer_parent_id, "HP"); assert.equal(w.site_id, null);
-  assert.ok(/Coşar Polat/.test(w.description)); assert.equal(w.ok, true);
+  // v3.9.04 (kullanıcı kuralı): mesajda yazmayan şantiye kendiliğinden seçilmez / açıklamaya yazılmaz; öneri olarak not düşülür
+  assert.ok(!/Coşar Polat/.test(w.description)); assert.ok(w.issues.some((x) => /Coşar Polat.*mesajda yazmıyor/.test(x))); assert.equal(w.ok, true);
   // mevcut taşeron (Ağırtaş → HP) ana firmanın şantiyesinde
   const v2 = validatePlan({ works: [{ customer_id: "AG", site_id: "SHP", vehicle_id: "M", work_type: "Makine Çalışması", quantity: 2, unit: "Saat" }] }, { message: "Coşar Polat'ta ağırtaş mimarlığa 2 saat manitou", d: dd, today });
   assert.equal(v2.works[0].customer_id, "AG"); assert.equal(v2.works[0].site_id, null); assert.ok(!v2.works[0].issues.some((x) => /ait değil/.test(x)));

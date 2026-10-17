@@ -14,6 +14,29 @@ export async function geminiSettings(db) {
   return { key: key || "", model: model || "", consent: !!consent, ready: !!(key && model && consent) };
 }
 
+// Her HTTP isteği sayılır (başarısız, tekrar, model listesi, araçlı soruların ara adımları dahil) — Google'ın ücretsiz
+// günlük sınırı da istek başına sayar. Gün: telefonun yerel tarihi.
+export function usageAdd(u, today, model, ok) {
+  const day = u && u.date === today ? { counts: {}, failed: 0, ...u, counts: { ...(u.counts || {}) } } : { date: today, counts: {}, failed: 0 };
+  day.counts[model] = (day.counts[model] || 0) + 1;
+  if (!ok) day.failed = (day.failed || 0) + 1;
+  return day;
+}
+const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+// İstekleri sayan fetch (withModelFallback içindeki her HTTP isteği; db.metaUpdate varsa iki sekmede de kayıpsız)
+function countingFetch(db, fetchFn = fetch) {
+  return async (url, init) => {
+    let ok = false;
+    try { const r = await fetchFn(url, init); ok = !!r?.ok; return r; }
+    finally {
+      try {
+        const model = decodeURIComponent((String(url).match(/\/models\/([^:?/]+):/) || [])[1] || "model listesi");
+        if (db.metaUpdate) await db.metaUpdate("gemini_usage", (u) => usageAdd(u, localDay(), model, ok));
+        else await db.metaSet("gemini_usage", usageAdd(await db.metaGet("gemini_usage"), localDay(), model, ok));
+      } catch {}
+    }
+  };
+}
 async function call(path, key, body, fetchFn = fetch) {
   const res = await fetchFn(BASE + path, {
     method: body ? "POST" : "GET",
@@ -78,13 +101,13 @@ export async function withModelFallback(db, run, { fetchFn, onSwitch } = {}) {
   const g = await geminiSettings(db);
   if (!g.ready) throw new Error("Gemini ayarları eksik (Ayarlar → Yapay Zeka)");
   const tried = new Set();
+  fetchFn = countingFetch(db, fetchFn);
   let model = g.model, lastErr = null;
   let pool = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     tried.add(model);
     try {
       const out = await run({ key: g.key, model, fetchFn });
-      await countUse(db, model);
       if (model !== g.model) {
         await db.metaSet("gemini_model", model);
         onSwitch?.(g.model, model);
@@ -105,19 +128,13 @@ export async function withModelFallback(db, run, { fetchFn, onSwitch } = {}) {
   }
   throw lastErr || new Error("Çalışan ücretsiz model bulunamadı");
 }
-async function countUse(db, model) {
-  try {
-    const today = new Date().toISOString().slice(0, 10);
-    const u = (await db.metaGet("gemini_usage")) || {};
-    const day = u.date === today ? u : { date: today, counts: {} };
-    day.counts[model] = (day.counts[model] || 0) + 1;
-    await db.metaSet("gemini_usage", day);
-  } catch {}
-}
 export async function usageToday(db) {
   const u = (await db.metaGet("gemini_usage")) || {};
-  const today = new Date().toISOString().slice(0, 10);
-  return u.date === today ? u.counts || {} : {};
+  return u.date === localDay() ? u.counts || {} : {};
+}
+export async function usageFailedToday(db) {
+  const u = (await db.metaGet("gemini_usage")) || {};
+  return u.date === localDay() ? u.failed || 0 : 0;
 }
 // Anahtarla gerçekten çalışan ilk modeli bulur (her deneme tek, çok kısa istek)
 export async function findWorkingModel(key, models, fetchFn) {

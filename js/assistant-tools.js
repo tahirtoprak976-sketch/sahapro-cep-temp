@@ -100,7 +100,7 @@ async function ask(ctx, g) {
 // Soruyu hesap araçlarıyla cevapla (Soru Sor ekranı ve Akıllı Asistan ortak kullanır)
 export async function askWithTools(db, q) {
   const { ASK_TOOLS, ASK_SYSTEM, runAskTool } = await import("./day-summary.js");
-  const { checkAnswer } = await import("./assistant-core.js");
+  const { checkAnswer, answerMetricIssues } = await import("./assistant-core.js");
   const { withModelFallback, geminiAsk } = await import("./ai-gemini.js");
   const d = await db.dumpAll(), today = todayStr();
   const yardSettings = (await db.metaGet("yard_settings")) || {};
@@ -108,13 +108,13 @@ export async function askWithTools(db, q) {
   const fuelRefPrice = await db.metaGet("fuel_ref_price");
   const quoteSettings = (await db.metaGet("quote_settings")) || {};
   const res = await withModelFallback(db, (o) => geminiAsk(`Bugün: ${today}\n<soru>${String(q).replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today, yardSettings, { collectNotes, fuelRefPrice, quoteSettings }) }));
-  return { ...res, bad: checkAnswer(res.answer, res.trace.map((t) => t.result)) };
+  return { ...res, bad: checkAnswer(res.answer, res.trace.map((t) => t.result)), metric: answerMetricIssues(res.answer, res.trace.map((t) => ({ [t.name]: t.result }))) };
 }
 const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı", yard_stock: "Depo stoku", receivables: "Alacaklar", vehicle_profit: "Araç kârlılığı", customer_profit: "Müşteri kârlılığı", price_check: "Fiyat kontrolü", business_review: "İşletme değerlendirmesi", quote_price: "Teklif hesabı", payroll_status: "Puantaj / maaş", maintenance_due: "Bakım takvimi" };
 export function answerHtml(res) {
   const bad = res.bad || [];
   return `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(res.answer || "Cevap alınamadı, soruyu farklı yazın.")}</div>
-    ${bad.length ? notice("warn", "Bu sayılar hesaplanan sonuçlarda yok, güvenmeyin: " + bad.join(", ")) : res.trace.length ? '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlardan hesaplandı.</div>' : notice("warn", "Hiç hesap yapılmadı; cevaptaki rakamlara güvenmeyin.")}
+    ${bad.length ? notice("warn", "Bu sayılar hesaplanan sonuçlarda yok, güvenmeyin: " + bad.join(", ")) : (res.metric || []).length ? notice("warn", res.metric.map((x) => `${x.n.toLocaleString("tr-TR")} cevapta "${x.said}" diye yazılmış ama hesapta ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin.") : res.trace.length ? '<div class="muted tiny" style="margin-top:6px">Rakamlar telefonda hesaplandı (aşağıda "Yapılan hesaplar"). Rakamı cümleye Gemini yerleştirdi; önemli kararda hesabı açıp kontrol edin.</div>' : notice("warn", "Hiç hesap yapılmadı; cevaptaki rakamlara güvenmeyin.")}
     ${res.trace.length ? `<details style="margin-top:8px"><summary class="small">Yapılan hesaplar (${res.trace.length})</summary>${res.trace.map((t) => `<div class="tiny muted" style="margin-top:4px"><b>${esc(TOOL_TR[t.name] || t.name)}</b> ${esc(JSON.stringify(t.args))}<br>${esc(JSON.stringify(t.result).slice(0, 600))}</div>`).join("")}</details>` : ""}</div>`;
 }
 

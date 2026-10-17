@@ -13,3 +13,17 @@ await assert.rejects(() => decodeBackup(e, async () => "yanlis"), /şifresi yanl
 await assert.rejects(() => decodeBackup(e, async () => null), /şifre girilmedi/);
 assert.deepEqual(await decodeBackup(plain), obj, "eski .json yedek");
 console.log("backup-crypt ok");
+// v3.9.04: eski "gzip" biçimi okunur; boyut sınırları (sıkıştırma bombası telefonu kilitlemesin)
+{
+  const { MAX_BACKUP_FILE } = await import("../js/backup-crypt.js");
+  const gz = new Uint8Array(await new Response(new Blob([plain]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
+  assert.equal(backupKind(gz), "gzip"); assert.deepEqual(await decodeBackup(gz), obj, "eski .json.gz yedek");
+  assert.ok(MAX_BACKUP_FILE >= 100 * 1024 * 1024, "gerçek yedeklere yetecek sınır");
+  // 900 MB sıfır → birkaç MB gzip: açılırken sınırda durmalı (belleği doldurmadan)
+  const zeros = new Uint8Array(1024 * 1024);
+  const bomb = new Blob(Array.from({ length: 900 }, () => zeros)).stream().pipeThrough(new CompressionStream("gzip"));
+  const bz = new Uint8Array(await new Response(bomb).arrayBuffer());
+  const magic = new TextEncoder().encode("SPBK0"); const f = new Uint8Array(magic.length + bz.length); f.set(magic); f.set(bz, magic.length);
+  await assert.rejects(() => decodeBackup(f), /çok büyük/);
+  console.log("backup-limits ok");
+}

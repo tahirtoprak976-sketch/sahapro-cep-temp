@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.03";
+export const APP_VERSION = "SAHAPRO SOLO v3.9.04";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -518,6 +518,12 @@ export function calcQuoteTotals(quote) {
 }
 
 // ---- Hakediş kalemi tutarı (snapshot'lı) ----
+// KDV oranı girişi: boş / geçersiz → null (sessizce %0 ya da %20 yapılmaz; kullanıcıdan istenir). %0 geçerlidir.
+export function kdvRateOf(raw) {
+  if (raw == null || String(raw).trim() === "") return null;
+  const n = Number(String(raw).replace(",", "."));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
 export function calcHakedisLine(item, craneDefaults) {
   const q = Number(item.quantity) || 0;
   let amount;

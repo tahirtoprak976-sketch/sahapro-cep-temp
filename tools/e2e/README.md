@@ -8,3 +8,5 @@ Depo kökünde `python3 -m http.server 8841`, sonra:
 Gemini çağrıları sahte (page.route); şoför kodları Gemini'siz işlenir. Playwright + Chromium + Pillow gerekir.
 
 - `node tests/syntax.test.mjs` — tüm js dosyalarının **gerçek** ES modülü sözdizimi denetimi (düz `node --check` bu projede bozuk modülü de geçiyor; güvenmeyin).
+- `python3 tools/e2e/denetim.py` — **v3.9.04 denetimi** (test verisi, taklit Gemini): yarım kalan kayıtta tekrar Kaydet çift yazmaz; KDV %0 korunur, boş KDV sessizce dolmaz; asistan fiyat kuralı güncellemesi KDV hariç; Gemini onay metni gönderilenleri anlatır; internetsiz yerel kayıt; imzasız / tanınmayan / iptal edilmiş şoför kodu işaretsiz; imzalı dijital fiş imzadan sonra değişirse PDF imzalanan hâli basar ve uyarı çıkar; şifresiz yedekte şoför anahtarı yok. `SONUÇ: BAŞARILI` beklenir.
+- `node tests/jcb-regression.test.mjs` — gerçek mesaj regresyonu (JCB / Şenol / Ağırtaş / Mahir Bey) yazım varyantlarıyla; şantiye kendiliğinden seçilmez, makine+saat nakliye sayılmaz, tek süre bölünmez, uydurma personel yazılmaz.

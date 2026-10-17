@@ -1507,9 +1507,10 @@ export async function doBackup(ctx) {
   if (!(await sec.reauth("Yedek alma (tüm kayıtlar dışarı çıkar)"))) return;
   await sec.secLog("backup", "Yedek alındı");
   const { fullBackup } = await import("./backup.js");
-  const backup = await fullBackup(ctx.db);
   // Sıkıştırılmış (çok daha küçük) ve şifre konduysa şifreli: WhatsApp/Drive'daki dosyayı başkası açamaz
   const pw = (await ctx.db.metaGet("backup_pw")) || "";
+  // Şifresiz yedeğe şoför bağlantı anahtarları yazılmaz
+  const backup = await fullBackup(ctx.db, { encrypted: !!pw });
   const { encodeBackup } = await import("./backup-crypt.js");
   const bytes = await encodeBackup(backup, pw);
   const name = `SAHAPRO_YEDEK_${tsName()}${pw ? "_SIFRELI" : ""}.sahapro`;
@@ -1524,10 +1525,11 @@ export async function doBackup(ctx) {
   }
   await ctx.db.metaSet("last_backup_at", new Date().toISOString());
   toast(
-    how === "shared"
+    (how === "shared"
       ? "Yedek paylaşıldı — WhatsApp/Drive'a gönderdiğinizden emin olun"
-      : "Yedek indirildi — dosyayı telefonun dışına (Drive/e-posta) da kopyalayın",
-    "ok",
+      : "Yedek indirildi — dosyayı telefonun dışına (Drive/e-posta) da kopyalayın") +
+      (pw ? "" : ". Yedek şifresiz: şoför bağlantı anahtarları dosyaya yazılmadı; Güvenlik ekranından yedek şifresi koymanız önerilir."),
+    pw ? "ok" : "warn",
   );
   return name;
 }
@@ -1789,7 +1791,10 @@ async function settings(ctx) {
     });
   qs("[data-finset]", root).addEventListener("click", async () => {
     const val = collectForm(root);
-    await db.metaSet("kdv_default", Number(val.kdv) || 20);
+    const { kdvRateOf } = await import("./core.js");
+    const kd = kdvRateOf(val.kdv);
+    if (kd == null) return toast("Varsayılan KDV oranı 0–100 arası olmalı (KDV'siz çalışıyorsanız 0)", "err");
+    await db.metaSet("kdv_default", kd);
     await db.metaSet("crane_first_hour", Number(val.crane_first) || 9000);
     await db.metaSet("crane_next_hour", Number(val.crane_next) || 3000);
     toast("Tarife kaydedildi", "ok");

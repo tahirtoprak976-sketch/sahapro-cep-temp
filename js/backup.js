@@ -12,14 +12,18 @@ import {
   mergePreview,
   isValidBackup,
 } from "./core.js";
-const SECRET_META = ["gemini_key", "backup_pw", "sec_lock", "sec_fail"];
+const SECRET_META = ["gemini_key", "backup_pw", "sec_lock", "sec_fail", "pin_hash"];
+// Şoför bağlantılarının imza anahtarları ve çıkış kodları: yalnız ŞİFRELİ yedeğe yazılır. Şifresiz yedeği ele geçiren
+// imzalı şoför mesajı üretemesin. (Telefon içi kurtarma kopyaları şifreli sayılır; telefondan çıkmaz.)
+const LINK_META = ["driver_links"];
 // Yedek dosyasını oku: eski .json, sıkıştırılmış ya da şifreli .sahapro (şifre sorulur)
 export async function readBackupFile(file) {
-  const { decodeBackup } = await import("./backup-crypt.js");
+  const { decodeBackup, MAX_BACKUP_FILE } = await import("./backup-crypt.js");
+  if (file.size > MAX_BACKUP_FILE) throw Error("Yedek dosyası çok büyük (sınır " + Math.round(MAX_BACKUP_FILE / 1048576) + " MB)");
   const { promptDialog } = await import("./ui.js");
   return decodeBackup(new Uint8Array(await file.arrayBuffer()), () => promptDialog("Şifreli yedek", "Yedek şifresi", "", { type: "password" }));
 }
-export async function fullBackup(db) {
+export async function fullBackup(db, { encrypted = true } = {}) {
   const data = await db.dumpAll(),
     attachments = [];
   for (const a of await db.getAll("attachments")) {
@@ -38,7 +42,8 @@ export async function fullBackup(db) {
     data,
     attachments,
     // API anahtarı gibi gizli ayarlar yedek dosyasına yazılmaz (yedek WhatsApp/Drive ile paylaşılabilir)
-    meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key)),
+    meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key) && (encrypted || !LINK_META.includes(m.key))),
+    ...(encrypted ? {} : { driver_links_omitted: true }),
   };
 }
 export async function previewBackup(db, obj) {
