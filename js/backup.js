@@ -12,7 +12,7 @@ import {
   mergePreview,
   isValidBackup,
 } from "./core.js";
-const SECRET_META = ["gemini_key", "backup_pw"];
+const SECRET_META = ["gemini_key", "backup_pw", "sec_lock", "sec_fail"];
 // Yedek dosyasını oku: eski .json, sıkıştırılmış ya da şifreli .sahapro (şifre sorulur)
 export async function readBackupFile(file) {
   const { decodeBackup } = await import("./backup-crypt.js");
@@ -131,7 +131,7 @@ export async function restoreBackup(db, obj, replace = false) {
             value: Math.max(Number(q.result?.value) || 0, Number(m.value) || 0),
           });
       } else if (
-        !["device_install_id", "pin_hash", "last_backup_at"].includes(m.key)
+        !["device_install_id", "pin_hash", "last_backup_at", "sec_lock", "sec_fail"].includes(m.key)
       ) {
         const q = t.objectStore("meta").get(m.key);
         q.onsuccess = () => {

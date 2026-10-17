@@ -151,11 +151,17 @@ export async function screen(ctx) {
       const today = todayStr();
       // Şoför ekranından gelen kayıtlar (SP1 kodu): Gemini'siz, birebir; fotoğraflar sırayla o işlere. Kalan serbest metin Gemini'ye gider.
       const drv = await import("./driver-core.js");
-      const drvPayloads = await drv.extractPayloads(message);
-      const drvRest = drvPayloads.length ? drv.stripDriverBlocks(message) : message;
+      const drvAll = await drv.extractPayloads(message);
+      // Güvenlik: imza / iptal / süre / kişi denetimi — reddedilen şoför kodu işlenmez (Gemini'ye de gitmez)
+      const drvSec = drvAll.length ? await (await import("./security.js")).checkPayloads(drvAll, d) : [];
+      const drvPayloads = drvSec.filter((x) => !x.reject).map((x) => x.p);
+      const drvRejected = drvSec.filter((x) => x.reject), drvSecWarn = drvSec.filter((x) => x.warn);
+      const drvRest = drvAll.length ? drv.stripDriverBlocks(message) : message;
+      if (drvAll.length && !drvPayloads.length && drvRest.replace(/[^\p{L}\d]/gu, "").length <= 8 && !audios.length)
+        throw new Error("Şoför mesajı işlenmedi: " + drvRejected.map((x) => `${x.p.n || "şoför"} — ${x.reject}`).join(" · ") + ". Güvenlik ekranından bağlantıyı kontrol edin; gerekiyorsa şoföre yeni bağlantı gönderin.");
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
-      if (!drvPayloads.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
-      const useGemini = !drvPayloads.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0;
+      if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
+      const useGemini = !drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0;
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
@@ -198,6 +204,8 @@ export async function screen(ctx) {
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      if (drvRejected.length) v.driverReject = drvRejected.map((x) => `${x.p.n || "Şoför"}: ${x.reject}`);
+      if (drvSecWarn.length) v.driverSecWarn = [...new Set(drvSecWarn.map((x) => `${x.p.n || "Şoför"}: ${x.warn}`))];
       Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
       if (drvPlan) {
         const seen = drv.seenDriverIds(d);
@@ -310,6 +318,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : '<div class="muted tiny" style="margin-top:6px">Rakamlar telefondaki kayıtlarınızdan hesaplandı.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
+    (v.driverReject ? notice("danger", "🚫 İŞLENMEDİ — " + v.driverReject.map(esc).join(" · ") + ". Güvenlik ekranından bağlantıyı kontrol edin.") : "") +
+    (v.driverSecWarn ? notice("warn", "🛡 " + v.driverSecWarn.map(esc).join(" · ")) : "") +
     (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Şoförün fotoğrafını ekle${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/*" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
