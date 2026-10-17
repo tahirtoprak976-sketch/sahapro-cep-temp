@@ -35,7 +35,7 @@ export function marksOf(d, p, period) {
   const out = new Map();
   const evs = live(d, "personnel_events").filter((e) => e.personnel_id === p.id && String(e.date).startsWith(period) && MARK_OF[e.event_type]);
   evs.sort((a, b) => String(a.updated_at || a.created_at || "").localeCompare(String(b.updated_at || b.created_at || "")));
-  for (const e of evs) out.set(e.date, { mark: MARK_OF[e.event_type], id: e.id });
+  for (const e of evs) out.set(e.date, { mark: MARK_OF[e.event_type], id: e.id, kind: e.leave_kind || null });
   return out;
 }
 
@@ -45,7 +45,7 @@ export function dayGrid(d, p, period, { today = todayStr() } = {}) {
     const m = marks.get(date);
     const w = works.get(date) || 0;
     let st = m?.mark || (w ? "C" : isSunday(date) ? "P" : date > today ? "" : "?");
-    return { date, st, auto: !m && !!w, works: w, manual: !!m, eventId: m?.id || null, sunday: isSunday(date), future: date > today };
+    return { date, st, auto: !m && !!w, works: w, manual: !!m, eventId: m?.id || null, leaveKind: m?.kind || null, sunday: isSunday(date), future: date > today };
   });
 }
 
@@ -53,6 +53,9 @@ export function payrollFor(d, p, period, { today = todayStr() } = {}) {
   const grid = dayGrid(d, p, period, { today });
   const cnt = { C: 0, Y: 0, I: 0, R: 0, D: 0, P: 0, "?": 0 };
   for (const g of grid) if (g.st in cnt) cnt[g.st]++;
+  // İzin türü: ücretsiz izin aylık maaştan düşer; yıllık izin yevmiyeliye de ödenir (İş Kanunu md. 57)
+  cnt.U = grid.filter((g) => g.st === "I" && g.leaveKind === "Ücretsiz izin").length;
+  cnt.A = grid.filter((g) => g.st === "I" && g.leaveKind === "Yıllık izin").length;
   const type = PAY_TYPES.includes(p.pay_type) ? p.pay_type : Number(p.daily_wage) > 0 && !(Number(p.salary) > 0) ? "Yevmiye" : "Aylık";
   const salary = Number(p.salary) || 0, daily = Number(p.daily_wage) || 0, otRate = Number(p.overtime_rate) || 0;
   const evs = live(d, "personnel_events").filter((e) => e.personnel_id === p.id && String(e.date).startsWith(period));
@@ -60,13 +63,14 @@ export function payrollFor(d, p, period, { today = todayStr() } = {}) {
   const otHours = evs.filter((e) => e.event_type === "Mesai").reduce((n, e) => n + (Number(e.hours_days) || 0), 0);
   let base = 0, basis = "";
   if (type === "Aylık") {
-    const cut = salary ? r2((salary / 30) * cnt.D) : 0;
+    const cut = salary ? r2((salary / 30) * (cnt.D + cnt.U)) : 0;
     base = r2(salary - cut);
-    basis = salary ? `aylık ${salary.toLocaleString("tr-TR")} ₺${cnt.D ? ` − ${cnt.D} gün devamsızlık (${cut.toLocaleString("tr-TR")} ₺)` : ""}` : "";
+    const why = [cnt.D ? `${cnt.D} gün devamsızlık` : "", cnt.U ? `${cnt.U} gün ücretsiz izin` : ""].filter(Boolean).join(" + ");
+    basis = salary ? `aylık ${salary.toLocaleString("tr-TR")} ₺${why ? ` − ${why} (${cut.toLocaleString("tr-TR")} ₺)` : ""}` : "";
   } else {
-    const days = cnt.C + cnt.Y * 0.5;
+    const days = cnt.C + cnt.Y * 0.5 + cnt.A;
     base = r2(days * daily);
-    basis = daily ? `${days.toLocaleString("tr-TR")} gün × ${daily.toLocaleString("tr-TR")} ₺` : "";
+    basis = daily ? `${days.toLocaleString("tr-TR")} gün${cnt.A ? ` (${cnt.A} gün yıllık izin dahil)` : ""} × ${daily.toLocaleString("tr-TR")} ₺` : "";
   }
   const overtime = r2(otHours * otRate);
   const gross = r2(base + overtime);

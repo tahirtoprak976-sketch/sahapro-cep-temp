@@ -43,6 +43,7 @@ export async function screen(ctx) {
   const p = (d.personnel || []).find((x) => x.id === pid && isActive(x));
   if (!p) { root.innerHTML = appbar("Puantaj") + notice("warn", "Personel bulunamadı"); return true; }
   const r = core.payrollFor(d, p, per, { today });
+  const leave = await import("./leave-core.js");
   const first = new Date(per + "-01T12:00:00").getDay(); // 0 pazar
   const lead = (first + 6) % 7; // pazartesi başlangıç
   const cell = (g) => `<button class="pcell" data-day="${g.date}" ${g.future ? "disabled" : ""} style="border:1px solid var(--border);border-radius:8px;min-height:46px;padding:2px;background:${g.st && g.st !== "P" ? COLORS[g.st] + "22" : "var(--bg2)"};color:var(--text);position:relative">
@@ -72,6 +73,7 @@ export async function screen(ctx) {
     </div>
     <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">
       <button class="btn grow" data-go="#/personel/hareket?pid=${esc(pid)}">➕ Avans / mesai</button>
+      <button class="btn grow" data-go="#/izinler/${esc(pid)}">🏖 İzin${(() => { const ls = leave.leaveSummary(d, p, { today }); return ls.remaining != null ? ` (${ls.remaining} gün kalan)` : ""; })()}</button>
       <button class="btn grow" data-share>📤 Personele gönder</button>
     </div>
     <button class="btn primary block" data-pay ${r.remaining > 0.5 || !r.closed ? "" : "disabled"}>${r.closed ? "💵 Kalanı öde" : "💵 Ayı kapat ve öde"}</button>
