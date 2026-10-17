@@ -170,6 +170,17 @@ with sync_playwright() as p:
         check("imzaladığı fişten SONRA değiştirildi" in pg.inner_text("#screen"), "iş detayında 'imzadan sonra değişti' uyarısı")
         pg.goto(U + "index.html#/veri-sagligi"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
         check("imzalı dijital fişten" in pg.inner_text("#screen"), "Veri Sağlığı imza sonrası değişikliği gösteriyor")
+    # 8b) ESKİ imzalı iş (imzalanan içerik saklanmamış), sonradan değiştirilmiş: imzalı fiş üretilmez, revizyon yolu var
+    oid = ev(f"""async()=>{{const db=await import('./js/db.js');
+      const w=await db.saveNew('work_records',{{date:'{TODAY}',customer_id:'{ids['k']}',vehicle_id:'{ids['v']}',work_type:'Hafriyat Nakliye',quantity:3,unit:'Sefer',digital_slip_no:'DF-ESKI',slip_receiver:'Ali',slip_signed_at:new Date().toISOString()}},'test: eski sürüm kaydı');
+      const png=await (await fetch('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')).blob();
+      await db.addAttachment('work',w.id,new File([png],'imza.png',{{type:'image/png'}}),{{kind:'signature'}});
+      await db.saveExisting('work_records',await db.get('work_records',w.id),{{quantity:5}},'test: düzeltme');return w.id}}""")
+    pg.goto(U + f"index.html#/isler/{oid}"); pg.reload(); pg.wait_for_timeout(2000); unlock_if(pg)
+    t = pg.inner_text("#screen")
+    check("İmza anındaki içerik doğrulanamıyor" in t, "eski imzalı iş: 'imza anındaki içerik doğrulanamıyor' bildirildi")
+    check(pg.query_selector("[data-dslip]") is None, "eski imzalı iş: 'İmzalı fiş PDF' düğmesi yok (eski imza + güncel içerik basılamaz)")
+    check(pg.query_selector("[data-dslip-rev]") is not None, "eski imzalı iş: revizyon (yeniden imza) fişi yolu var")
     # ---- 9) Yedek: şifresizde şoför anahtarı yok, şifrelide var; PIN özeti hiç yok ----
     print("9) Yedek gizli bilgiler")
     r = ev("""async()=>{const db=await import('./js/db.js');const b=await import('./js/backup.js');await db.metaSet('pin_hash','abc');
