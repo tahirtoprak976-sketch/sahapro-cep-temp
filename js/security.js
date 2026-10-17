@@ -193,17 +193,21 @@ export async function checkPayloads(payloads, d) {
   const out = [];
   let touched = false;
   for (const p of payloads) {
-    if (!p.lid) { out.push({ p, ok: true, warn: "Eski bağlantıdan (imzasız) geldi — bu şoföre yeni bağlantı gönderin" }); continue; }
+    // Güvenli varsayılan: imzası BU telefonda doğrulanamayan her paket reddedilir (imzasız eski bağlantı, tanınmayan
+    // bağlantı, iptal, süre, imza tutmuyor, kişi uyuşmuyor). Reddedilen paket kart olmaz, Gemini'ye gitmez, yazılamaz.
+    if (!p.lid) { out.push({ p, ok: false, reject: "Eski (imzasız) bağlantıdan geldi — bu şoföre yeni imzalı bağlantı gönderin", relink: true }); continue; }
     const link = L.find((x) => x.lid === p.lid);
     const person = (d.personnel || []).find((x) => x.id === p.p);
     const v = linkVerdict(link, { today, personnelActive: !!person && !person.deleted_at && person.active !== false });
-    if (!v.ok) { out.push({ p, ok: v.level === "unknown", warn: v.level === "unknown" ? v.why + " (başka telefondan oluşturulmuş olabilir) — kartları dikkatle kontrol edin" : null, reject: v.level !== "unknown" ? v.why : null }); continue; }
+    if (!v.ok) { out.push({ p, ok: false, reject: v.level === "unknown" ? v.why + " (başka telefondan / şifresiz yedekten önce oluşturulmuş olabilir) — yeni imzalı bağlantı gönderin" : v.why, relink: v.level === "unknown" || v.level === "expired" }); continue; }
     if (!(await hmacOk(link.secret, p._code, p._sig))) { out.push({ p, ok: false, reject: "Mesajın imzası tutmuyor: kod değiştirilmiş ya da eksik kopyalanmış" }); continue; }
     if (link.pid !== p.p) { out.push({ p, ok: false, reject: `Bağlantı ${link.name} adına; mesaj başka kişi adına` }); continue; }
     link.last_seen = new Date().toISOString(); link.msgs = (link.msgs || 0) + 1; touched = true;
     out.push({ p, ok: true });
   }
   if (touched) await saveLinks(L);
+  // Doğrulanan kayıt kimlikleri veritabanına: yalnız bunlar şoför kaydı olarak yazılabilir
+  await db.markDriverVerified(out.filter((x) => x.ok).flatMap((x) => (x.p.e || []).map((e) => ({ id: e.id, pid: x.p.p, lid: x.p.lid }))));
   for (const x of out.filter((x) => x.reject)) await secLog("reject", `Şoför mesajı reddedildi (${x.p.n || "?"}): ${x.reject}`);
   return out;
 }
