@@ -256,6 +256,25 @@ with sync_playwright() as p:
     check(n9 == 1, f"iki sekme aynı anda: iş bir kez yazıldı ({n9})")
     pg2.close()
 
+    # ---- 11) Gemini yerel sınırı doluyken: ağa istek çıkmaz, yerel işler çalışır ----
+    print("11) Gemini yerel sınır")
+    PLANS.clear()
+    used = ev("""async()=>{const db=await import('./js/db.js');const u=await db.metaGet('gemini_usage');return Object.values((u&&u.counts)||{}).reduce((a,b)=>a+b,0)}""")
+    check(used == len(CALLS), f"sayaç gerçek ağ isteği sayısıyla aynı ({used} / {len(CALLS)})")
+    ev(f"""async()=>{{const db=await import('./js/db.js');await db.metaSet('gemini_daily_limit',{used})}}""")
+    n0 = len(CALLS)
+    assistant(f"{ids['vn']} Kaya İnşaat 2 sefer hafriyat", {"works": []})
+    t = pg.inner_text("#screen")
+    check(len(CALLS) == n0 and "sınırı doldu" in t, f"sınır doluyken istek gönderilmedi ve söylendi ({len(CALLS) - n0})")
+    PLANS.clear()
+    sm = ev(f"""async()=>{{const sec=await import('./js/security.js');const dc=await import('./js/driver-core.js');const db=await import('./js/db.js');
+      const d=await db.dumpAll();const {{forDriver}}=await sec.newDriverLink({{pid:'{ids['p']}',name:'{ids['pn']}',vid:'{ids['v']}'}});
+      return dc.driverMessage([{{id:'ent-lim-1',k:'w',date:'{TODAY}',vid:'{ids['v']}',cid:'{ids['k']}',wt:'Hafriyat Nakliye',q:2,u:'Sefer'}}],{{...dc.driverConfig(d,{{personnel_id:'{ids['p']}',vehicle_id:'{ids['v']}'}}),lid:forDriver.lid,ls:forDriver.ls}})}}""")
+    assistant(sm); pg.click("[data-save]"); pg.wait_for_timeout(2500)
+    ok = ev("""async()=>{const db=await import('./js/db.js');return (await db.listActive('work_records')).some(w=>w.driver_entry_id==='ent-lim-1')}""")
+    check(ok and len(CALLS) == n0, "sınır doluyken imzalı şoför kaydı yerelde işlendi (Gemini'siz)")
+    ev("""async()=>{const db=await import('./js/db.js');await db.metaSet('gemini_daily_limit',300)}""")
+
     print("\nsayfa hataları:", errs[:5])
     check(not errs, "sayfa hatası yok")
     b.close()

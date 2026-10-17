@@ -60,6 +60,8 @@ export async function screen(ctx) {
         <button class="btn primary grow" data-gsave>Kaydet</button>
       </div>
       <button class="btn ghost block" style="margin-top:8px" data-gclear>Anahtarı Sil</button>
+      <div class="field" style="margin-top:8px"><label>Günlük istek sınırı (bu telefon)</label><input type="number" min="0" max="5000" step="1" data-glimit value="${esc(String(gem.limit))}"></div>
+      <div class="muted tiny">Sınır dolunca Gemini'ye istek gönderilmez (model listesi ve denemeler dahil); yerel kayıtlar çalışır. 0 = Gemini kapalı. Bu yalnız bu telefondaki istekleri sınırlar; ücret garantisi değildir — Google projesine faturalandırma eklemeyin.</div>
       <div class="muted small" style="margin-top:8px" data-gusage></div>
       <div class="muted tiny">Ücretsiz kalmak için bu projeye faturalandırma (kart) eklemeyin. Seçili model ücretsiz kotası biterse veya kapatılırsa uygulama sıradaki ücretsiz modele kendiliğinden geçer.</div>
       <div class="field" style="margin-top:10px"><label>Fiş fotoğrafı ile dene</label><input type="file" accept="image/*" data-gphoto></div>
@@ -239,15 +241,29 @@ export async function screen(ctx) {
   Promise.all([usageToday(db), usageFailedToday(db)]).then(([u, failed]) => {
     const el = qs("[data-gusage]", root);
     const parts = Object.entries(u).map(([m, n]) => `${m}: ${n}`);
-    if (el) el.textContent = "Bugünkü Gemini isteği (başarısızlar ve tekrarlar dahil, bu telefon): " + (parts.length ? parts.join(" · ") : "0") + (failed ? ` · ${failed} başarısız` : "") + ". Günlük ücretsiz sınırı Google koyar; kesin sayı AI Studio'da görünür.";
+    const total = Object.values(u).reduce((n, x) => n + x, 0);
+    if (el) el.textContent = `Bugün bu telefondan Gemini isteği: ${total} / ${gem.limit} (başarısızlar ve tekrarlar dahil)` + (parts.length ? " — " + parts.join(" · ") : "") + (failed ? ` · ${failed} başarısız` : "") + ". Google'ın kendi ücretsiz sınırı ayrıdır; kesin sayı AI Studio'da görünür.";
   });
   const gkey = qs("[data-gkey]", root), gmodel = qs("[data-gmodel]", root), gout = qs("[data-gout]", root);
   qs("[data-provider]", root).addEventListener("change", (e) => {
     runBtn.disabled = e.target.value === "local" ? !ai.loaded() : false;
   });
+  // Model listesi / deneme de Google'a istektir: onay kutusu işaretli olmalı (izin kaydedilir) ve günlük bütçeden düşer
+  const consentNow = async () => {
+    if (!qs("[data-gconsent]", root).checked) { toast("Önce onay kutusunu işaretleyin (model listesi de Google'a gönderilen bir istektir)", "err"); return false; }
+    await db.metaSet("gemini_consent", true);
+    return true;
+  };
+  qs("[data-glimit]", root).addEventListener("change", async (e) => {
+    const n = Math.floor(Number(e.target.value));
+    if (!Number.isFinite(n) || n < 0 || n > 5000) return toast("Sınır 0–5000 arası olmalı", "err");
+    await db.metaSet("gemini_daily_limit", n);
+    toast(n ? `Günlük sınır: ${n} istek` : "Gemini kapatıldı (sınır 0)", "ok");
+  });
   qs("[data-gmodels]", root).addEventListener("click", async () => {
     const key = gkey.value.trim();
     if (!key) return toast("Önce anahtarı girin", "err");
+    if (!(await consentNow())) return;
     gout.innerHTML = '<div class="muted small">Modeller alınıyor…</div>';
     try {
       const list = await listModels(key);
@@ -262,6 +278,7 @@ export async function screen(ctx) {
   qs("[data-gfind]", root).addEventListener("click", async () => {
     const key = gkey.value.trim();
     if (!key) return toast("Önce anahtarı girin", "err");
+    if (!(await consentNow())) return;
     gout.innerHTML = '<div class="muted small">Modeller tek tek deneniyor…</div>';
     try {
       const list = await listModels(key);
