@@ -4,9 +4,10 @@
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
-import { isActive, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
+import { isActive, resolvePrice, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
+import { moneyMentions, rolesOf, ROLE_TR } from "./money-roles.js";
 import { tokenize } from "./message-engine.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates, fuelRulesOf } from "./assistant-rules.js";
@@ -409,7 +410,15 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     if (w.unit_price != null && w.unit_price !== "") {
       const up = amountOk(w.unit_price, [moneyInText(message)]);
-      if (up) r.unit_price = up; else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
+      // Birim fiyat yalnız mesajdaki AÇIK birim fiyat ifadesine dayanır ("sefer fiyatı 3.000", "3.000 TL/sefer").
+      // Ödeme, ödeme sözü, toplam bedel ya da belirsiz tutar fiyat alanına yazılmaz ve miktara bölünmez (model öyle döndürse bile).
+      const roles = up ? rolesOf(moneyMentions(message), up) : [];
+      if (up && roles.includes("unit_price")) { r.unit_price = up; r.unit_price_src = moneyMentions(message).find((m) => m.n === up && m.role === "unit_price")?.clause || ""; }
+      else if (up) {
+        r.moneyQuestion = { amount: up, roles };
+        issues.push(`Mesajdaki ${up.toLocaleString("tr-TR")} TL birim fiyat olarak yazılmamış (${roles.map((x) => ROLE_TR[x] || x).join(", ") || "anlamı belirsiz"}) — fiyat BOŞ bırakıldı; fiyat listesindeki kural varsa o uygulanır. Bu tutar ödemeyse tahsilat kartındadır.`);
+      }
+      else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
     }
     if (w.date && !validDate(w.date, today)) issues.push(`Tarih ${w.date} geçersiz; bugün alındı`);
     const c = byId(customers, w.customer_id);
@@ -596,6 +605,12 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (r.quote && !quoteFound(r.quote, message)) {
       issues.push(`Kaynak alıntı mesajda bulunamadı ("${r.quote}")`);
       r.badQuote = true;
+    }
+    // Mesajdaki tutar fiyat sayılmadıysa: fiyat listesinin (tarihli kural) önerisi AYRI dayanakla gösterilir
+    if (r.moneyQuestion && r.unit) {
+      const v0 = byId(vehicles, r.vehicle_id);
+      const rule = resolvePrice(live(d, "price_book"), { unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, vehicle_type: v0?.type || null, work_type: r.work_type, date: r.date, material: r.material || null });
+      issues.push(rule ? `Fiyat listesinden: ${Number(rule.price).toLocaleString("tr-TR")} ₺ / ${r.unit.toLocaleLowerCase("tr-TR")} (${rule.price_source}${rule.valid_from ? ", " + rule.valid_from + " tarihinden" : ""}; KDV ${rule.kdv_included ? "dahil" : "hariç"} %${rule.kdv_rate ?? 20}) — kayıtta bu uygulanır` : "Fiyat listesinde bu iş için kural yok — fiyat boş kalır");
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
@@ -862,10 +877,23 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     }
     const a = amountOk(c.amount, pools);
     if (a) r.amount = a; else issues.push(a === undefined ? `Tutar ${c.amount} mesajda yazmıyor` : "Tutar yok");
+    // Tahsilat yalnız mesajda ÖDEME olarak geçen tutardan: söz, ödenmedi, düzeltilen tutar, fiyat teklifi, toplam bedel
+    // ya da belirsiz tutar tahsilat değildir. Ödeme olsa bile kart kendiliğinden işaretlenmez (finansal onay).
+    if (r.amount && !photoTexts.some((t) => numbersInText(t).has(r.amount))) {
+      const roles = rolesOf(moneyMentions(message), r.amount);
+      r.roles = roles;
+      if (!roles.some((x) => x === "payment" || x === "payment_possible")) {
+        issues.push(`${r.amount.toLocaleString("tr-TR")} TL mesajda ödeme olarak geçmiyor (${roles.map((x) => ROLE_TR[x] || x).join(", ") || "belirsiz"}) — tahsilat yazılmaz`);
+        r.notPayment = true;
+      } else if (!roles.includes("payment")) issues.push(`"verdi" ödeme anlamına gelmeyebilir — ${r.amount.toLocaleString("tr-TR")} TL gerçekten alındı mı? Doğrulayıp işaretleyin`);
+    }
+    r.needsApproval = true;
     if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
     if (r.method === "Havale" && !r.bank_account_id) issues.push("Havale için banka hesabı seçilmeli");
     r.issues = issues;
-    r.ok = !!(r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id));
+    r.okData = !!(r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id) && !r.notPayment);
+    r.ok = false; // tahsilat kartı her zaman işaretsiz gelir: kullanıcı kontrol edip işaretler
+    if (r.okData) issues.push("Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin");
     out.collections.push(r);
   }
 

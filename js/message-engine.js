@@ -152,6 +152,11 @@ export function segmentMessage(raw, tokens = tokenize(raw)) {
   if (end > start) spans.push({ start, end, text: raw.slice(start, end) });
   return spans;
 }
+// Aynı yan cümle grubunda iş miktarı da var mı ("5 sefer moloz yaptık, 20.000 TL ödeme geldi"): mesaj yalnız ödeme
+// sayılıp iş kaybolmaz — iş satırı çıkar, ödeme ayrı bildirim olarak kalır (iş fiyatına ya da tahsilata yazılmaz).
+export function hasWorkQuantity(text) {
+  return /\d+(?:[.,]\d+)?\s*(?:sefer|sfr|tur\b|saat|sa\b|ton\b|yevmiye|m3|m³|metreküp|metrekup)/i.test(String(text || ""));
+}
 export function intentOf(text) {
   const t = clean(text);
   if (
@@ -170,7 +175,7 @@ export function intentOf(text) {
   )
     return "add_to_existing";
   if (
-    /ödeme|odeme|ödendi|odendi|tahsil|havale|hesaba\s+geç|hesaba\s+gec|nakit\s+ald|parasını\s+ald/.test(
+    /ödeme|odeme|ödendi|odendi|ödedi|odedi|tahsil|havale|hesaba\s+geç|hesaba\s+gec|hesaba\s+yat|yatırdı|yatirdi|nakit\s+ald|nakit\s+verdi|para\s+verdi|parasını\s+ald/.test(
       t,
     )
   )
@@ -945,6 +950,7 @@ export function analyzeMessage(message, d) {
   } else {
     for (const segment of segments) {
       let intent = intentOf(segment.text);
+      if (intent === "payment_notice" && hasWorkQuantity(segment.text)) intent = "new_work";
       intents.push({
         type: intent,
         span: { start: segment.start, end: segment.end },

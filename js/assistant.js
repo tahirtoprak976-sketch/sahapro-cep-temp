@@ -1138,15 +1138,20 @@ async function save(ctx, out, v, d, { message, files }) {
         const fresh = await db.dumpAll();
         const same = (fresh.cash_records || []).filter((x) => isActive(x) && x.cash_type === "Müşteriden Para Alındı" && x.customer_id === customer && x.date === date && Number(x.amount) === amount);
         if (same.length && !(await confirmDialog("Aynı tahsilat kayıtlı olabilir", `${date} · ${fmtTL(amount)} ₺ bu müşteriden zaten alınmış görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
+        // İstek kimliği mesajdan türetilir: aynı mesajın aynı tahsilat satırı yeniden kaydedilirse ikinci tahsilat yazılmaz
+        const reqId = "msg-" + [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(message).replace(/\s+/g, " ").trim() + "|tahsilat|" + c.dataset.i + "|" + date)))].map((x) => x.toString(16).padStart(2, "0")).join("").slice(0, 32);
+        const t0 = new Date().toISOString();
         if (val(c, "method") === "Havale") {
           const { customerBankReceipt } = await import("./enterprise-db.js");
-          await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, ctx.core.uuid());
+          const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, reqId);
+          if (r0.created_at < t0) { toast("Bu tahsilat bu mesajdan daha önce kaydedilmiş — ikinci kez yazılmadı", "err"); continue; }
         } else {
           const pid = val(c, "personnel") || null;
-          await db.saveNew("cash_records", {
-            request_id: ctx.core.uuid(), date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
+          const r0 = await db.saveNew("cash_records", {
+            request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
             payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI",
           }, "Asistan tahsilat");
+          if (r0?._existing) { toast("Bu tahsilat bu mesajdan daha önce kaydedilmiş — ikinci kez yazılmadı", "err"); continue; }
         }
         done.collection++;
       } else if (k === "maintenance") {

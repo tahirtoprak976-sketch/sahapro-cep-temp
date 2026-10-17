@@ -241,7 +241,10 @@ with sync_playwright() as p:
     # Tahsilat (asistan, sahte Gemini)
     PLANS.append({"collections": [{"date": day(1), "customer_id": ids["h"], "amount": 25000, "method": "Nakit", "note": "elden"}]})
     pg.goto(U + "index.html#/akilli-asistan"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
-    pg.fill("[data-msg]", "Hisar Polat 25.000 TL nakit ödedi"); pg.click("[data-ask]"); pg.wait_for_timeout(3000); pg.click("[data-save]"); pg.wait_for_timeout(3000)
+    pg.fill("[data-msg]", "Hisar Polat 25.000 TL nakit ödedi"); pg.click("[data-ask]"); pg.wait_for_timeout(3000)
+    check(pg.evaluate("[...document.querySelectorAll('[data-kind=collection] [data-pick]')].map(x=>x.checked)") == [False], "tahsilat kartı finansal onay için işaretsiz geldi")
+    pg.evaluate("document.querySelectorAll('[data-kind=collection] [data-pick]').forEach(x=>{x.checked=true})")  # patron onaylar
+    pg.click("[data-save]"); pg.wait_for_timeout(3000)
     cc = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const k=(await db.listActive('cash_records')).filter(x=>x.customer_id==='{ids['h']}');const m=(await db.listActive('cari_movements')).filter(x=>x.type==='Tahsilat'&&x.customer_id==='{ids['h']}');return [k.length,k[0]&&k[0].amount,m.length,m[0]&&m[0].amount]}}")
     check(cc == [1, 25000, 1, -25000], f"tahsilat kasaya ve cariye birer kez yazıldı ({cc})")
     # Hakediş (ekrandaki ile aynı yol): Kaya'nın işleri → kesinleştir

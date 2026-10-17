@@ -1454,6 +1454,22 @@ export async function saveCashEvent(fields) {
     rec = newRecord(fields);
   return new Promise((res, rej) => {
     const t = d.transaction(["cash_records", "cari_movements"], "readwrite");
+    // Aynı istek kimliği (ör. aynı mesajın aynı tahsilat satırı) ikinci kez gelirse yeni kasa/cari hareketi yazılmaz
+    if (fields.request_id) {
+      let existing = null;
+      const q = t.objectStore("cash_records").getAll();
+      q.onsuccess = () => {
+        existing = q.result.find((x) => !x.deleted_at && x.request_id === fields.request_id) || null;
+        if (!existing) write();
+      };
+      t.oncomplete = () => res(existing ? { ...existing, _existing: true } : rec);
+      t.onerror = t.onabort = () => rej(t.error);
+      return;
+    }
+    write();
+    t.oncomplete = () => res(rec);
+    t.onerror = t.onabort = () => rej(t.error);
+    function write() {
     t.objectStore("cash_records").put(rec);
     if (fields.cash_type === "Müşteriden Para Alındı")
       t.objectStore("cari_movements").put(
@@ -1466,8 +1482,7 @@ export async function saveCashEvent(fields) {
           note: "Tahsilat",
         }),
       );
-    t.oncomplete = () => res(rec);
-    t.onerror = t.onabort = () => rej(t.error);
+    }
   });
 }
 
