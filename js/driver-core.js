@@ -167,12 +167,12 @@ export function siteContact(cfg, sid) {
   const s = (cfg.S || []).find((x) => x[0] === sid);
   return s ? { name: s[3] || "", phone: s[4] || "" } : { name: "", phone: "" };
 }
-export function driverSlipSpec(e, cfg, { no, receiver = "", signedAt = "", sigBlob = null, photo = null } = {}) {
+export function driverSlipSpec(e, cfg, { no, receiver = "", signedAt = "", sigBlob = null, photo = null, revisionNote = "" } = {}) {
   const cust = e.cid === cfg.Y ? "Kendi depo" : nm(cfg.C, e.cid) || e.cn || "—";
   const dump = nm(cfg.D, e.ds) || e.dn || "";
   const when = signedAt ? new Date(signedAt).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" }) : "";
   return {
-    template: "slip", title: "Dijital İş Fişi", number: no, audience: "customer", filename: `Is_Fisi_${no}.pdf`,
+    template: "slip", title: revisionNote ? "Dijital İş Fişi — REVİZYON (yeniden imza için)" : "Dijital İş Fişi", number: revisionNote ? no + "-R" : no, audience: "customer", filename: `Is_Fisi_${no}${revisionNote ? "_REVIZYON" : ""}.pdf`,
     signatures: sigBlob ? null : ["Hizmeti Veren", "Teslim Alan"],
     sections: [
       { title: "Belge ve Teslim Bilgileri", pairs: [
@@ -185,7 +185,8 @@ export function driverSlipSpec(e, cfg, { no, receiver = "", signedAt = "", sigBl
       ] },
       ...(e.note ? [{ title: "Açıklama", text: e.note }] : []),
       ...(photo ? [{ title: "Döküm / kantar fişi", image: photo, max_h: 340 }] : []),
-      ...(sigBlob ? [{ title: "Teslim Alan İmzası", image: sigBlob, text: (receiver || "Teslim alan") + (when ? " · " + when : "") }] : [{ title: "Belge Durumu", text: "TASLAK — Teslim alan imzası alınmamıştır." }]),
+      ...(revisionNote ? [{ title: "Belge Durumu", text: revisionNote }]
+        : sigBlob ? [{ title: "Teslim Alan İmzası", image: sigBlob, text: (receiver || "Teslim alan") + (when ? " · " + when : "") }] : [{ title: "Belge Durumu", text: "TASLAK — Teslim alan imzası alınmamıştır." }]),
     ],
   };
 }
@@ -214,13 +215,28 @@ export function signedSlipChanges(w, names = {}) {
   if ((s.sid || null) !== (w.site_id || null) && s.cid === w.customer_id) out.push(`şantiye ${nm("sites", s.sid) || "yok"} → ${nm("sites", w.site_id) || "yok"}`);
   return out;
 }
-export function workSlipSpec(w, names, { company = "", sigBlob = null, photo = null } = {}) {
+// Bir işin dijital fişinin durumu: imzalanan içerik saklı mı, sonradan değişti mi, imza var mı
+export function slipState(w, atts = [], names = {}) {
+  const signed = !!(w.slip_signed_at || atts.some((a) => a.kind === "signature"));
+  const original = atts.find((a) => a.type === "application/pdf" && String(a.name || "").startsWith("Is_Fisi_" + w.digital_slip_no)) || null;
+  if (!signed) return { kind: "unsigned", changes: [], original };
+  if (!w.slip_signed_content) return { kind: "legacy", changes: [], original }; // imza anındaki içerik doğrulanamıyor
+  return { kind: "signed", changes: signedSlipChanges(w, names), original };
+}
+export const LEGACY_SLIP_NOTE = "İmza anındaki içerik doğrulanamıyor: bu iş, imzalanan içerik saklanmadan (v3.9.04 öncesi) kaydedildi. Bu belge imzalı fiş DEĞİLDİR; güncel kayıt yeniden imza için düzenlenmiştir.";
+export const CHANGED_SLIP_NOTE = "Kayıt, müşterinin imzaladığı fişten sonra değiştirildi. Bu belge imzalı fiş DEĞİLDİR; güncel hâl yeniden imza için düzenlenmiştir.";
+// revision: true → güncel içerik, imzasız "REVİZYON" belgesi. İmzalı içerik saklı değilse imza ASLA güncel içerikle birleştirilmez.
+export function workSlipSpec(w, names, { company = "", sigBlob = null, photo = null, revision = false } = {}) {
   const nmOf = (st, id) => (id ? [[id, names?.[st]?.[id] || ""]] : []);
+  const legacySigned = !w.slip_signed_content && !!(sigBlob || w.slip_signed_at);
+  if (legacySigned || (revision && w.slip_signed_content)) {
+    return workSlipSpec({ ...w, slip_signed_content: null, slip_signed_at: null }, names, { company, sigBlob: null, photo, _note: legacySigned ? LEGACY_SLIP_NOTE : CHANGED_SLIP_NOTE });
+  }
   // İmzalı içerik saklıysa fiş onunla basılır (imza yalnız imzalanan hâle aittir)
   const s = w.slip_signed_content || null;
   const cfg = { co: company, p: [w.personnel_id || "", names?.personnel?.[w.personnel_id] || ""], C: nmOf("customers", s ? s.cid : w.customer_id), S: nmOf("sites", s ? s.sid : w.site_id), V: nmOf("vehicles", s ? s.vid : w.vehicle_id), D: nmOf("dump_sites", s ? s.ds : w.dump_site_id), Y: null };
   const e = s ? { ...s }
     : { date: w.date, vid: w.vehicle_id, cid: w.customer_id, sid: w.site_id, wt: w.work_type, q: w.quantity, u: w.unit, mat: w.material || "", ds: w.dump_site_id, dn: w.dump_area || "",
       ton: w.tonnage || null, slip: w.slip_no && w.slip_no !== w.digital_slip_no ? w.slip_no : "", note: w.customer_note || "" };
-  return driverSlipSpec(e, cfg, { no: w.digital_slip_no, receiver: w.slip_receiver || "", signedAt: w.slip_signed_at || "", sigBlob, photo });
+  return driverSlipSpec(e, cfg, { no: w.digital_slip_no, receiver: w.slip_receiver || "", signedAt: w.slip_signed_at || "", sigBlob, photo, revisionNote: arguments[2]?._note || "" });
 }
