@@ -84,11 +84,77 @@
   - `tests/assistant.test.mjs`: tahsilat kartı artık işaretsiz; veri geçerliliği `okData`'da.
   - `tools/e2e/sim.py`: patron tahsilatı işaretleyerek onaylıyor.
 
+## Birleşme öncesi kabul (2. tur)
+
+### Tahsilat kimliği: tekrar mesaj mı, ikinci gerçek ödeme mi?
+
+Önceki kimlik `sha256(mesaj | tahsilat | kart sırası | tarih)` idi ve tek başına yeterli değildi: aynı metinle gelen ikinci gerçek ödemeyi sessizce yutabiliyordu. Yeni kimlik `js/collection-key.js` içinde üretilir:
+
+- **Kaynak**
+  - WhatsApp dışa aktarım satırının başlığı ("12.10.2026 14:03 - Ali:") varsa → `wa:<tarih saat gönderen>`. Bu kesin kaynak kimliğidir.
+  - Yoksa (elle yapıştırma) → `txt:<mesaj metni>`. Bu kesin kaynak kimliği değildir.
+- **Satır:** mesajdaki ödeme ifadesinin tutarı ve aynı kaynakta aynı tutarın kaçıncı ödeme ifadesi olduğu. Kart sırasına (modelin çıktı sırasına) bağlı değildir.
+- **Anahtar:** `col-` + sha256(kaynak | tutar | sıra).
+
+| Durum | Sonuç |
+|---|---|
+| Aynı anahtar, aynı içerik, WhatsApp satırı | Kesin tekrar: yazılmaz, soru sorulmaz |
+| Aynı anahtar, aynı içerik, elle yapıştırma | **"Tekrar mı, yeni ödeme mi?"** açıkça sorulur. "Yeni ödeme" için gerekçe zorunludur. Yeni kayıt `…:yeni:<n>` anahtarı, `repeat_of` (ilk kayıt) ve `new_payment_reason` ile yazılır |
+| Aynı anahtar, farklı müşteri / tutar / tarih / şekil / banka | **Çakışma:** yazılmaz. Denetim hem ekranda hem veritabanı transaction'ında yapılır (`db.saveCashEvent`, `customerBankReceipt` → `OP_CONFLICT`) |
+| Farklı anahtar, ama aynı müşteri + tarih + tutar | Kesin tekrar **sayılmaz**: kullanıcı seçer, ilişki `similar_to` alanında tutulur |
+| Aynı mesajda aynı tutarda iki ödeme ifadesi | İki ayrı anahtar; biri ötekini yutmaz. Model aynı ödemeyi iki karta yazarsa (mesajda bir kez geçiyorsa) ikinci kart yazılamaz |
+| İki sekmeden eşzamanlı onay | Aynı anahtar; veritabanı transaction'ı tek kayıt bırakır (`_existing`) |
+
+Kayıtta ayrıca kaynak türü (`source_ref`) ve kaynak alıntı (`source_quote`) tutulur.
+
+### Tutar hangi müşterinin, hangi işin?
+
+`js/money-roles.js` → `customerSpans`, `ownerOfMention`, `amountOwners`. Sahip şu sırayla aranır:
+1. Tutarla aynı yan cümlede adı geçen müşteri.
+2. Yoksa aynı bölümde tutardan önce en son adı geçen müşteri.
+3. Yoksa mesajda tek müşteri varsa o.
+4. Bunlar da yoksa **belirsiz**: sorulur, sessizce atanmaz.
+
+- "34 KM 101 Kaya'ya 5 sefer moloz, seferi 3000; Leda'dan 20000 ödeme geldi." mesajında 3000 Kaya'nın birim fiyatıdır; 20000 Leda'nın tahsilat adayıdır.
+- Model 20000'i Kaya'ya tahsilat ya da fiyat yazarsa reddedilir.
+- Model 3000'i Leda'nın işine fiyat yazarsa reddedilir.
+
+### Fiyat listesi
+
+`js/price-decision.js`. Mesajda birim fiyat yoksa iş fiyatsız kalmaz; fiyat listesi uygulanır. Kaydetmeden önce iş kartında şunlar görünür ve kart değiştikçe güncellenir:
+- kural (kapsam ve tarih aralığı);
+- iş tarihi;
+- birim fiyat;
+- KDV dahil/hariç ve oranı;
+- tutar.
+
+- **Eşit öncelikte farklı kural** ya da **tarih kesin değil ve fiyat tarihe göre değişiyor:** sessiz seçim yok. Kaydederken aday kurallar listelenir; kullanıcı birini ya da "fiyatsız kaydet"i seçer. Seçim `price_snapshot.price_choice` alanına yazılır.
+- **Tahsilat onayı fiyat onayı değildir:** fiyat yalnız iş kartının kendi alanlarından hesaplanır.
+
+### Testler (son test edilen commit bu PR'ın başlığında)
+
+- **Birim:** `tests/kabul-122.test.mjs` (12 grup) ve bütün birim testleri.
+- **Gerçek ekran:** `tools/e2e/kabul122.py` (23 kontrol). Taklit Gemini ve test verisi kullanır.
+- **Gerileme:** `odeme.py`, `denetim.py`, `sim.py` (tohum 7 ve 42).
+
+### Bilinen sınırlar
+- Yerel mesaj kontrolü "Kaya'ya", "Leda'dan" gibi ekli adları müşteri olarak tanımıyor; tam ad yazılınca doğru. Bu, paket 2'nin (Türkçe ek / takma ad) konusu.
+- Asistan yolunda iş kartı bu durumda "kime çalışıldı" diye işaretsiz gelebilir.
+- Elle iş formu (`m-work.js`) ve hakediş ekranı fiyatı hâlâ `resolvePrice` ile seçiyor. Eşit öncelikli kural sorusu yalnız asistan kaydında var.
+- Tutarın sahibi metindeki ad konumuna göre bulunur. Adı hiç geçmeyen ("dünkü işin parası geldi") ödemede müşteri modelin seçimidir; kart işaretsiz gelir, kullanıcı kontrol eder.
+
 ## PR #121 ile birleştirme planı
 1. Önce bu küçük PR telefonda denenip `gh-pages`'e birleştirilir.
 2. PR #121'in dalına (`sahapro-v3905-kapilar`) `gh-pages` birleştirilir. Deneme birleştirmesinde 5 dosyada çakışma çıktı; çözümleri:
    - `js/core.js`, `js/m-dash.js`: sürüm v3.9.05 kalır.
    - `sw.js`: yeni önbellek adı; `ASSETS` listesine hem `vat-contract.js` hem `money-roles.js` girer.
-   - `js/assistant.js` (tahsilat): PR #121'in işlem kimliği yolu (`opGate`, havale anahtarı) kalır; bu PR'ın `reqId` satırları kaldırılır. Rol denetimi `assistant-core.js`'te olduğu için çakışmadan gelir.
+   - `js/assistant.js` (tahsilat): **bu PR'ın kaynak kimliği kalır** (`collection-key.js`: tekrar / yeni ödeme / çakışma kararı). PR #121'in işlem kaydına bu anahtar verilir: `op = { id: <col-… anahtarı>, hash: opHash(içerik) }` → `saveNew(..., { op })`. Havalede `customerBankReceipt` anahtarı da aynıdır. PR #121'in tahsilat için `opGate` "ayrı kayıt" yolu (`Date.now()` ile) kullanılmaz; yerine deterministik `…:yeni:<n>` gelir.
    - `js/db.js` `saveCashEvent`: PR #121'in işlem kimliği yolu + bu PR'ın `request_id` ön denetimi aynı transaction'da birleştirilir.
-3. Birleşmiş hâlde bütün testler yeniden koşulur.
+3. Birleşmiş hâlde bütün testler yeniden koşulur. Deneme birleştirmesinin sonuçları gerçek birleşmiş commit'in testinin yerini tutmaz.
+
+Sıra:
+1. Bu PR'ın kabulü ve incelemesi.
+2. Yalnız yetkili kullanıcı kararıyla canlıya birleştirme.
+3. Canlı dalın PR #121'e birleştirilmesi.
+4. Çakışma çözümü.
+5. Birleşmiş commit'in yeniden testi.
