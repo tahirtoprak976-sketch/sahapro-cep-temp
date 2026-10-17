@@ -661,6 +661,8 @@ async function save(ctx, out, v, d, { message, files }) {
     const crane = { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") };
     const vehicles = (d.vehicles || []).filter(isActive);
     const existingWorks = (d.work_records || []).filter(isActive);
+    // Şoför kaydı başka sekmede / aynı anda kaydedildiyse veritabanı ikinciyi reddeder: kart atlanır, kalanlar kaydedilir
+    const skipDup = async (pr) => { try { return await pr; } catch (e) { if (e?.code === "DUP_DRIVER") { toast("Şoför kaydı zaten alınmış — atlandı", "err"); return null; } throw e; } };
     for (const c of cards) {
       const k = c.dataset.kind;
       if (k === "memory") {
@@ -1001,7 +1003,8 @@ async function save(ctx, out, v, d, { message, files }) {
           && !(fields.driver_entry_id && w.driver_entry_id && w.driver_entry_id !== fields.driver_entry_id)
           && !(slipK(fields.slip_no) && slipK(w.slip_no) && slipK(fields.slip_no) !== slipK(w.slip_no)));
         if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
-        const savedWork = await db.saveNew("work_records", fields, "Asistan");
+        const savedWork = await skipDup(db.saveNew("work_records", fields, "Asistan"));
+        if (!savedWork) continue;
         batchWorks[c.dataset.i] = savedWork;
         for (const p of v.works[Number(c.dataset.i)].photos || []) if (files[p]) await db.addAttachment("work", savedWork.id, files[p], { kind: "slip_photo" });
         {
@@ -1087,13 +1090,14 @@ async function save(ctx, out, v, d, { message, files }) {
           const D = r.detail;
           if (D?.no && fresh.expense_records.some((x) => isActive(x) && x.invoice_no === D.no && (!D.seller_tax_no || !x.seller_tax_no || x.seller_tax_no === D.seller_tax_no))
             && !(await confirmDialog("Bu fatura zaten girilmiş", `${D.no} numaralı fatura gider olarak kayıtlı. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
-          const rec = await db.saveNew("expense_records", {
+          const rec = await skipDup(db.saveNew("expense_records", {
             ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
             ...(dsite ? { dump_site_id: dsite.id, dump_deposit: true } : {}),
             date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: payer, vehicle_id: f.vehicle_id,
             payment_method: payer ? "Personel Ödedi" : pay, receipt: file ? "Evet" : "Hayır", reimbursement_status: payer ? "Bekliyor" : null,
             company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
-          }, "Asistan");
+          }, "Asistan"));
+          if (!rec) continue;
           if (file) await db.addAttachment("expense", rec.id, file);
           // Kalemlerde filtre/yağ/balata… varsa ve araç seçiliyse: bakım kaydı (maliyet giderde; bakım takvimi için)
           if (D?.items?.length && f.vehicle_id && qs("[data-mhint]", c)?.checked) {
@@ -1128,14 +1132,15 @@ async function save(ctx, out, v, d, { message, files }) {
         if (mr.driver_entry_id && (await db.dumpAll()).maintenance_records.some((x) => isActive(x) && x.driver_entry_id === mr.driver_entry_id)) { toast("Şoför arıza kaydı zaten alınmış, atlandı", "err"); continue; }
         const files0 = mr.driver_entry_id ? null : files[0] && v.expenses.every((e) => e.photo !== 0) ? files[0] : null;
         const cepM = mr.driver_pay === "cep" && cost;
-        const rec = await db.saveNew("maintenance_records", {
+        const rec = await skipDup(db.saveNew("maintenance_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: mr.driver_pid || null, severity: "Normal", part: "",
           maint_type: val(c, "maint_type") || "Arıza", status: val(c, "status") || "Açık", description: val(c, "description"),
           cost, kdv_rate: null, service_company: val(c, "service_company"), km_hours: [mr.km ? mr.km + " km" : "", mr.machine_hours ? mr.machine_hours + " saat" : ""].filter(Boolean).join(" · "),
           ...(mr.km ? { km: mr.km } : {}), ...(mr.machine_hours ? { machine_hours: mr.machine_hours } : {}),
           ...(cepM ? { paid_by_personnel_id: mr.driver_pid, reimbursement_status: "Bekliyor" } : {}),
           ...(mr.driver_entry_id ? { driver_entry_id: mr.driver_entry_id, source: "şoför" } : {}),
-        }, "Asistan arıza/bakım");
+        }, "Asistan arıza/bakım"));
+        if (!rec) continue;
         if (files0) await db.addAttachment("maintenance", rec.id, files0);
         for (const pi of mr.photos || []) if (files[pi]) await db.addAttachment("maintenance", rec.id, files[pi]);
         const supId = val(c, "supplier");
@@ -1166,13 +1171,14 @@ async function save(ctx, out, v, d, { message, files }) {
         const liters = Number(val(c, "liters")), total = Number(val(c, "total")) || null;
         const src = val(c, "source") || "Depo Tankı";
         const byCustomer = src === "Müşteri Verdi";
-        const rec = await db.saveNew("fuel_records", {
+        const rec = await skipDup(db.saveNew("fuel_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
           unit_price: !byCustomer && total ? Math.round((total / liters) * 100) / 100 : null, total: byCustomer ? null : total,
           ...(byCustomer ? { customer_id: val(c, "fuel_customer") || null } : {}),
           fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: r.km || null,
           machine_hours: r.machine_hours || null, description: source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id } : {}), customer_billable: false,
-        }, "Asistan");
+        }, "Asistan"));
+        if (!rec) continue;
         if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
         done.fuel++;
       }

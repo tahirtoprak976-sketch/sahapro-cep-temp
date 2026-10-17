@@ -47,6 +47,7 @@ with sync_playwright() as p:
       await db.metaSet('sec_lock',{...(await c.hashSecret('482917')),idle_min:30,away_min:15});
       const k=await db.saveNew('customers',{name:'Kaya İnşaat'},'sim');const h=await db.saveNew('customers',{name:'Hisar Polat'},'sim');
       const s=await db.saveNew('sites',{name:'Göktürk Villa',customer_id:k.id},'sim');
+      for (const [c,pr] of [[k,3500],[h,4000]]) await db.saveNew('price_book',{customer_id:c.id,site_id:null,vehicle_id:null,work_type:'Hafriyat Nakliye',unit:'Sefer',price:pr,kdv_rate:20,kdv_included:false,valid_from:null,valid_to:null,active:true},'sim');
       const ps=await db.listActive('personnel');const vs=await db.listActive('vehicles');const pick=(n)=>ps.find(x=>x.name===n);
       const drivers=['Soner','Olcay','Bayram'].map(pick);
       for(let i=0;i<3;i++){await db.saveExisting('vehicles',vs[i],{assignee_id:drivers[i].id,load_ton:25},'sim');await db.saveExisting('personnel',drivers[i],{salary:30000,pay_type:'Aylık',start_date:'2022-01-10'},'sim');}
@@ -233,6 +234,75 @@ with sync_playwright() as p:
     expected["works"] = count("work_records", "!!r.driver_entry_id")
     rej, picked, out = boss_process(sh, "bayram-geri-2")
     check(count("work_records") == w0 + 1, "geri alınan şoför kaydı yeniden yapıştırılınca tekrar alınabiliyor")
+
+    # ================= TUR 2: para, belge, toplu işleme, eşzamanlılık =================
+    priced = pg.evaluate("async()=>{const db=await import('./js/db.js');const c=await import('./js/collect-core.js');const w=(await db.listActive('work_records')).filter(x=>x.driver_entry_id);return [w.length,w.filter(x=>c.workAmount(x)>0).length]}")
+    check(priced[0] == priced[1], f"fiyat kuralı tüm şoför işlerine uygulandı ({priced[1]}/{priced[0]})")
+    # Tahsilat (asistan, sahte Gemini)
+    PLANS.append({"collections": [{"date": day(1), "customer_id": ids["h"], "amount": 25000, "method": "Nakit", "note": "elden"}]})
+    pg.goto(U + "index.html#/akilli-asistan"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    pg.fill("[data-msg]", "Hisar Polat 25.000 TL nakit ödedi"); pg.click("[data-ask]"); pg.wait_for_timeout(3000); pg.click("[data-save]"); pg.wait_for_timeout(3000)
+    cc = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const k=(await db.listActive('cash_records')).filter(x=>x.customer_id==='{ids['h']}');const m=(await db.listActive('cari_movements')).filter(x=>x.type==='Tahsilat'&&x.customer_id==='{ids['h']}');return [k.length,k[0]&&k[0].amount,m.length,m[0]&&m[0].amount]}}")
+    check(cc == [1, 25000, 1, -25000], f"tahsilat kasaya ve cariye birer kez yazıldı ({cc})")
+    # Hakediş (ekrandaki ile aynı yol): Kaya'nın işleri → kesinleştir
+    hk = pg.evaluate(f"""async()=>{{const db=await import('./js/db.js');const core=await import('./js/core.js');
+      const ws=(await db.listActive('work_records')).filter(w=>w.customer_id==='{ids['k']}');
+      const items=ws.map(w=>({{work_record_id:w.id,date:w.date,customer_id:w.customer_id,work_type:w.work_type,quantity:Number(w.quantity),unit:w.unit,unit_price:w.price_snapshot.unit_price,kdv_rate:20,kdv_included:false}}));
+      const tot=core.calcHakedisTotals(items);const no=await db.nextSeq('hakedis');
+      const dates=ws.map(w=>w.date).sort();
+      const h=await db.saveNew('hakedis',{{hakedis_no:no,customer_id:'{ids['k']}',site_id:null,date_from:dates[0],date_to:dates.at(-1),created_date:'{TODAY}',status:'Taslak',items:tot.lines,subtotal:tot.subtotal,kdv_total:tot.kdv,grand_total:tot.grand}},'sim');
+      await db.finalizeHakedis(h.id);
+      const m=(await db.listActive('cari_movements')).filter(x=>x.ref_id===h.id);return [ws.length,tot.grand,m.length,m[0]&&m[0].amount]}}""")
+    check(hk[2] == 1 and hk[3] == hk[1], f"hakediş kesinleşti: {hk[0]} iş, {hk[1]} ₺ cariye bir kez yazıldı")
+    # eLogo XML (Hisar Polat'ın faturasız işleri)
+    net = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const ic=await import('./js/invoice-core.js');const d=await db.dumpAll();return Math.round(ic.uninvoicedWorks(d,{{customerId:'{ids['h']}'}}).reduce((n,w)=>n+ic.workNet(w).net,0)*100)/100}}")
+    kdv = round(net * 0.2, 2)
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?><Invoice xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+<cbc:UBLVersionID>2.1</cbc:UBLVersionID><cbc:ID>MRH2026000000077</cbc:ID><cbc:UUID>11111111-2222-3333-4444-555555555555</cbc:UUID><cbc:IssueDate>{TODAY}</cbc:IssueDate>
+<cac:AccountingSupplierParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="TCKN">11111111111</cbc:ID></cac:PartyIdentification></cac:Party></cac:AccountingSupplierParty>
+<cac:AccountingCustomerParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="VKN">1234567890</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>HİSAR POLAT İNŞAAT</cbc:Name></cac:PartyName></cac:Party></cac:AccountingCustomerParty>
+<cac:TaxTotal><cbc:TaxAmount currencyID="TRY">{kdv:.2f}</cbc:TaxAmount></cac:TaxTotal>
+<cac:LegalMonetaryTotal><cbc:LineExtensionAmount currencyID="TRY">{net:.2f}</cbc:LineExtensionAmount><cbc:TaxExclusiveAmount currencyID="TRY">{net:.2f}</cbc:TaxExclusiveAmount><cbc:TaxInclusiveAmount currencyID="TRY">{net+kdv:.2f}</cbc:TaxInclusiveAmount><cbc:PayableAmount currencyID="TRY">{net+kdv:.2f}</cbc:PayableAmount></cac:LegalMonetaryTotal></Invoice>"""
+    open(OUT + "/fatura.xml", "w").write(xml)
+    pg.goto(U + "index.html#/fatura"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    pg.click("[data-import]"); pg.wait_for_timeout(800); pg.set_input_files(".sheet [data-ifile]", [OUT + "/fatura.xml"]); pg.wait_for_timeout(2500)
+    itxt = pg.inner_text(".sheet")
+    check("tutuyor" in itxt, "eLogo faturası: müşteri bulundu, faturasız işlerin toplamı faturayla tutuyor")
+    pg.click(".sheet [data-isave]"); pg.wait_for_timeout(2500)
+    inv = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const w=(await db.listActive('work_records')).filter(x=>x.customer_id==='{ids['h']}');return [w.length,w.filter(x=>x.invoice_no==='MRH2026000000077').length,(await db.listActive('documents')).filter(x=>x.doc_no==='MRH2026000000077').length]}}")
+    check(inv[0] == inv[1] and inv[2] == 1, f"eLogo: {inv[1]}/{inv[0]} iş faturalandı, belge 1 kez kaydedildi")
+    # Döküm hesabı: Bolluca'ya 100.000 yatır
+    pg.goto(U + "index.html#/dokum-hesap"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    bid = pg.evaluate("async()=>{const db=await import('./js/db.js');return (await db.listActive('dump_sites')).find(x=>x.name==='Bolluca').id}")
+    pg.click(f"[data-dep='{bid}']"); pg.wait_for_timeout(500); pg.fill(".sheet [data-da]", "100000"); pg.click(".sheet [data-ok]"); pg.wait_for_timeout(1500)
+    da = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const a=await import('./js/dump-account.js');const d=await db.dumpAll();const [x]=a.dumpAccounts(d,{{today:'{TODAY}',siteId:'{bid}'}});return [x.dep,x.used,x.balance,x.trips]}}")
+    check(da[0] == 100000 and abs(da[2] - (da[0] - da[1])) < 0.01, f"döküm hesabı: yatırılan {da[0]} − düşen {da[1]} = kalan {da[2]} ({da[3]} döküm)")
+    # WhatsApp toplu: Olcay'ın mesajı grupta (dışa aktarım dosyası)
+    dp = phones["Olcay"]; driver_work(dp, day(1), "Kaya İnşaat", 4, "B7777", 26); sh = driver_send(dp)
+    chat = "\n".join([f"[{day(1)[8:10]}.{day(1)[5:7]}.{day(1)[:4]} 18:05] Olcay: " + sh["text"].split("\n")[0]] + sh["text"].split("\n")[1:] + [f"[{day(1)[8:10]}.{day(1)[5:7]}.{day(1)[:4]} 18:06] Mahir: tamam 👍"])
+    open(OUT + "/sohbet.txt", "w").write(chat)
+    w0 = count("work_records")
+    pg.goto(U + "index.html#/whatsapp-toplu"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    pg.fill("[data-from]", day(2)); pg.dispatch_event("[data-from]", "change"); pg.set_input_files("[data-file]", [OUT + "/sohbet.txt"]); pg.wait_for_timeout(2000)
+    check(len(pg.query_selector_all("[data-go-ai]")) == 1, "WhatsApp dışa aktarımı okundu: 1 gün, sohbet ('tamam 👍') atlandı")
+    pg.click("[data-go-ai]"); pg.wait_for_timeout(3000)
+    pg.click("[data-ask]"); pg.wait_for_timeout(3000); pg.click("[data-save]"); pg.wait_for_timeout(3000)
+    check(count("work_records") == w0 + 1, "WhatsApp toplu: şoför işi kaydedildi")
+    pg.goto(U + "index.html#/whatsapp-toplu"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
+    check(len(pg.query_selector_all("[data-go-ai]")) == 0, "aynı sohbet tekrar seçildiğinde işlenmiş gün çıkmıyor")
+    # Aynı telefonda iki sekme aynı anda kaydediyor
+    dp = phones["Soner"]; driver_work(dp, day(1), "Hisar Polat", 2, "B8888", 25); sh = driver_send(dp)
+    pg2 = boss.new_page(); pg2.on("pageerror", lambda e: errs.append("TAB2 " + str(e))); pg2.route("https://generativelanguage.googleapis.com/**", gem)
+    tabs = [pg, pg2]
+    for t in tabs:
+        t.goto(U + "index.html#/akilli-asistan"); t.reload(); t.wait_for_timeout(2500); unlock_if(t)
+        t.fill("[data-msg]", sh["text"]); t.click("[data-ask]")
+    for t in tabs: t.wait_for_timeout(3000)
+    w0 = count("work_records")
+    pg.evaluate("document.querySelector('[data-save]').click()"); pg2.evaluate("document.querySelector('[data-save]').click()")
+    pg.wait_for_timeout(4000)
+    check(count("work_records") == w0 + 1, f"iki sekme aynı mesajı aynı anda kaydetti → iş 1 kez yazıldı ({count('work_records') - w0})")
+    pg2.close()
 
     # ---------------- Veri sağlığı ----------------
     r = pg.evaluate("async()=>{const db=await import('./js/db.js');const m=await import('./js/integrity-ui.js');const r=await m.runIntegrity(db);return {e:r.errors,w:r.warns,list:r.issues.map(x=>x.sev+': '+x.text)}}")

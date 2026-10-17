@@ -1,7 +1,9 @@
 // Veri Sağlığı — SAF denetim. Bütün kayıtları, ekleri (fotoğraf/dosya) ve bağlantıları birbirine karşı denetler;
 // çelişkiyi bulur, nedenini ve nereye gidileceğini söyler. Hiçbir şeyi değiştirmez (düzeltmeler ekranda, onayla).
 // sev: "error" (yanlış sonuç üretir: mükerrer, kopuk bağ, eksi stok…) · "warn" (kontrol edilmeli) · "info"
-import { duplicateDocuments } from "./core.js";
+import { duplicateDocuments, calcHakedisTotals, toKurus } from "./core.js";
+import { customerBalances, customerOpenItems, customerLedgerMovements } from "./collect-core.js";
+import { customerStatement } from "./statement.js";
 
 const live = (d, s) => (d[s] || []).filter((r) => r && !r.deleted_at);
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !isNaN(new Date(String(s) + "T12:00:00Z"));
@@ -128,6 +130,35 @@ export function integrityCheck(d, { today, attachments = [] } = {}) {
   for (const b of live(d, "payables").filter((b) => b.status !== "İptal" && b.source_store === "fuel_tank_movements")) {
     const m = byId("fuel_tank_movements").get(b.source_id);
     if (m && !m.deleted_at && Number(m.total) > 0 && Math.abs(Number(b.gross_total) - Number(m.total)) > 1) add("warn", "tank-payable", `Depo girişi ${m.date}: petrolcü borcu ${Number(b.gross_total).toLocaleString("tr-TR")} ₺, giriş tutarı ${Number(m.total).toLocaleString("tr-TR")} ₺`, "", "#/esnaf");
+  }
+
+  // ---- 6. Para: tahsilat ↔ cari, hakediş ↔ cari, bakiye ekranları aynı ----
+  const cari = live(d, "cari_movements");
+  for (const c of live(d, "cash_records").filter((c) => c.cash_type === "Müşteriden Para Alındı")) {
+    const mv = cari.filter((m) => m.type === "Tahsilat" && m.ref_id === c.id);
+    if (mv.length !== 1) add("error", "cash-cari", `Tahsilat ${c.date} · ${Number(c.amount).toLocaleString("tr-TR")} ₺: cari hareketi ${mv.length ? mv.length + " tane" : "yok"}`, mv.length ? "Müşteri bakiyesinden iki kez düşüyor" : "Müşterinin bakiyesinden düşmemiş", "#/kasa/" + c.id);
+    else if (toKurus(mv[0].amount) !== -toKurus(c.amount) || mv[0].customer_id !== c.customer_id) add("error", "cash-cari-amount", `Tahsilat ${c.date}: kasada ${Number(c.amount).toLocaleString("tr-TR")} ₺, caride ${(-Number(mv[0].amount)).toLocaleString("tr-TR")} ₺${mv[0].customer_id !== c.customer_id ? " (başka müşteri)" : ""}`, "Tahsilat sonradan değiştirilmiş", "#/kasa/" + c.id);
+  }
+  const cashIds = new Set(live(d, "cash_records").map((c) => c.id));
+  for (const m of cari.filter((m) => m.type === "Tahsilat" && m.ref_id && !cashIds.has(m.ref_id)))
+    add("error", "cari-orphan-cash", `Cari tahsilat ${m.date} · ${(-Number(m.amount)).toLocaleString("tr-TR")} ₺: kasa kaydı silinmiş`, `${name("customers", m.customer_id)} bakiyesi bu kadar az görünüyor`, "");
+  for (const h of live(d, "hakedis")) {
+    const mv = cari.filter((m) => m.type === "Hakedis" && m.ref_id === h.id);
+    if (h.status === "Kesinleşti") {
+      if (mv.length !== 1) add("error", "hakedis-cari", `Hakediş #${h.hakedis_no}: cari hareketi ${mv.length ? mv.length + " tane" : "yok"}`, "", "#/hakedis/" + h.id);
+      else if (toKurus(mv[0].amount) !== toKurus(h.grand_total)) add("error", "hakedis-cari-amount", `Hakediş #${h.hakedis_no}: toplam ${h.grand_total} ₺, caride ${mv[0].amount} ₺`, "", "#/hakedis/" + h.id);
+      const re = calcHakedisTotals(h.items || []).grand;
+      if (toKurus(re) !== toKurus(h.grand_total)) add("error", "hakedis-total", `Hakediş #${h.hakedis_no}: kalemlerin toplamı ${re} ₺, kayıtlı toplam ${h.grand_total} ₺`, "", "#/hakedis/" + h.id);
+    } else if (mv.length) add("error", "hakedis-cari-draft", `Hakediş #${h.hakedis_no} (${h.status}) kesinleşmemiş ama cariye yazılmış`, "", "#/hakedis/" + h.id);
+  }
+  { const { bal } = customerBalances(d);
+    for (const c of live(d, "customers")) {
+      const oi = customerOpenItems(d, c.id, today);
+      const viaOpen = toKurus(oi.open.reduce((n, x) => n + x.left, 0)) - toKurus(oi.advance);
+      const viaSt = toKurus(customerStatement(customerLedgerMovements(d, c.id), c.id).closing);
+      const b = toKurus(bal[c.id] || 0);
+      if (b !== viaOpen || b !== viaSt) add("error", "balance-views", `${c.name}: ekranlar farklı bakiye gösteriyor`, `cari ${b / 100} · açık kalemler ${viaOpen / 100} · ekstre ${viaSt / 100}`, "#/cari/" + c.id);
+    }
   }
 
   const rank = { error: 0, warn: 1, info: 2 };
