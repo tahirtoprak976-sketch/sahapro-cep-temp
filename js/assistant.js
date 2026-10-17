@@ -1114,6 +1114,8 @@ async function save(ctx, out, v, d, { message, files }) {
         await db.saveNew("personnel_events", {
           date: val(c, "date") || todayStr(), personnel_id: val(c, "personnel"), event_type: val(c, "event_type") || "Diğer",
           amount: Number(val(c, "amount")) || null, hours_days: Number(val(c, "hours_days")) || null, description: source,
+          // İzin türü mesajdan: "yıllık izin", "ücretsiz izin", "mazeret"; rapor ayrı tür
+          ...(val(c, "event_type") === "Rapor" ? { leave_kind: "Rapor" } : val(c, "event_type") === "İzin" ? { leave_kind: /ücretsiz/i.test(source) ? "Ücretsiz izin" : /mazeret|cenaze|düğün|evlen|doğum/i.test(source) ? "Mazeret izni" : /yıllık|senelik/i.test(source) ? "Yıllık izin" : null } : {}),
         }, "Asistan personel hareketi");
         done.personnel++;
       } else if (k === "edit") {

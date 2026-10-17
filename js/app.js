@@ -16,6 +16,7 @@ import * as reportScreen from "./report-ui.js";
 import * as cashScreen from "./cashflow.js";
 import * as dumpAccScreen from "./dump-account-ui.js";
 import * as priceHealthScreen from "./price-health-ui.js";
+import * as leaveScreen from "./leave-ui.js";
 import * as invoiceScreen from "./invoice-ui.js";
 import * as driverScreen from "./driver.js";
 import * as pro from "./pro.js";
@@ -82,6 +83,7 @@ const SECTION = {
   nakit: "finans",
   "dokum-hesap": "daha",
   "fiyat-saglik": "finans",
+  izinler: "daha",
   fatura: "finans",
   hakedis: "finans",
   cari: "finans",
@@ -165,7 +167,7 @@ export async function renderCurrent() {
   root.innerHTML =
     '<div style="padding:40px 0"><div class="skel" style="height:120px;margin-bottom:10px"></div><div class="skel" style="height:64px;margin-bottom:8px"></div><div class="skel" style="height:64px"></div></div>';
   try {
-    const soloHandled = (await driverScreen.screen(ctx)) || (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await whoCheck.screen(ctx)) || (await yardScreen.screen(ctx)) || (await fuelPayScreen.screen(ctx)) || (await collectScreen.screen(ctx)) || (await quoteCalcScreen.screen(ctx)) || (await waBulkScreen.screen(ctx)) || (await payrollScreen.screen(ctx)) || (await maintScreen.screen(ctx)) || (await reportScreen.screen(ctx)) || (await cashScreen.screen(ctx)) || (await dumpAccScreen.screen(ctx)) || (await priceHealthScreen.screen(ctx)) || (await invoiceScreen.screen(ctx)) || (await solo.screen(ctx));
+    const soloHandled = (await driverScreen.screen(ctx)) || (await esnaf.screen(ctx)) || (await aiScreen.screen(ctx)) || (await assistant.screen(ctx)) || (await mergeScreen.screen(ctx)) || (await whoCheck.screen(ctx)) || (await yardScreen.screen(ctx)) || (await fuelPayScreen.screen(ctx)) || (await collectScreen.screen(ctx)) || (await quoteCalcScreen.screen(ctx)) || (await waBulkScreen.screen(ctx)) || (await payrollScreen.screen(ctx)) || (await leaveScreen.screen(ctx)) || (await maintScreen.screen(ctx)) || (await reportScreen.screen(ctx)) || (await cashScreen.screen(ctx)) || (await dumpAccScreen.screen(ctx)) || (await priceHealthScreen.screen(ctx)) || (await invoiceScreen.screen(ctx)) || (await solo.screen(ctx));
     const enterpriseHandled = soloHandled || await enterprise.screen(ctx);
     const handled = enterpriseHandled || (await pro.screen(ctx));
     if (!handled) await mod(ctx);

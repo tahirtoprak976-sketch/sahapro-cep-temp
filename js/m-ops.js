@@ -817,7 +817,7 @@ async function personnel(ctx) {
     `
     <div style="height:10px"></div>
     <div data-list></div>
-    <div class="row actionbar"><button class="btn" data-padd>+ Personel</button><button class="btn" data-go="#/puantaj">📅 Puantaj / Maaş</button><button class="btn primary" data-go="#/personel/hareket">+ Hareket</button></div>`;
+    <div class="row actionbar"><button class="btn" data-padd>+ Personel</button><button class="btn" data-go="#/izinler">🏖 İzinler</button><button class="btn" data-go="#/puantaj">📅 Puantaj / Maaş</button><button class="btn primary" data-go="#/personel/hareket">+ Hareket</button></div>`;
   qs("[data-list]", root).innerHTML = rows
     .map((p) => {
       const pending = events
@@ -918,7 +918,7 @@ async function personnelDetail(ctx, id) {
         : emptyState("⚒", "İş yok")
     }
     <div class="card tap" data-go="#/sofor-kur?pid=${id}"><div class="row between"><span>📲 Şoför bağlantısı — kendi telefonundan iş girsin</span><span class="muted small">›</span></div></div>
-    <div class="actionbar"><button class="btn" data-go="#/puantaj/${id}">📅 Puantaj / Maaş</button><button class="btn primary" data-go="#/personel/hareket?pid=${id}">+ Hareket</button></div>`;
+    <div class="actionbar"><button class="btn" data-go="#/izinler/${id}">🏖 İzin</button><button class="btn" data-go="#/puantaj/${id}">📅 Puantaj / Maaş</button><button class="btn primary" data-go="#/personel/hareket?pid=${id}">+ Hareket</button></div>`;
 }
 
 async function personnelEventForm(ctx) {
