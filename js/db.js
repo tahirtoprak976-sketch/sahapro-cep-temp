@@ -1515,3 +1515,24 @@ export async function signSlip(id, file) {
     t.onerror = t.onabort = () => reject(error || t.error);
   });
 }
+
+// Koşullu tek kayıt güncellemesi: okuma, koşul denetimi, yazma ve audit AYNI transaction'da.
+// İki sekme aynı düzeltmeyi aynı anda onaylarsa yalnız biri yazar; öteki { skipped: true } alır.
+export async function updateIf(store, id, pred, fields, auditReason) {
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction([store, "audit_log"], "readwrite");
+    let out = { skipped: true };
+    const q = t.objectStore(store).get(id);
+    q.onsuccess = () => {
+      const cur = q.result;
+      if (!cur || cur.deleted_at || !pred(cur)) return;
+      const rec = { ...cur, ...fields, updated_at: nowISO() };
+      t.objectStore(store).put(rec);
+      t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: id, action: "update", old: Object.fromEntries(Object.keys(fields).map((k) => [k, cur[k] ?? null])), new: fields, reason: auditReason || "", at: nowISO() });
+      out = rec;
+    };
+    t.oncomplete = () => resolve(out);
+    t.onerror = t.onabort = () => reject(t.error);
+  });
+}

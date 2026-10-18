@@ -98,15 +98,16 @@ async function auditScreen(ctx, id) {
     let n = 0, skip = 0;
     for (const w0 of sel) {
       const cur = await db.get("work_records", w0.id);
-      // Başka sekmede / arada düzeltilmişse ya da hakedişe girmişse dokunulmaz (aynı düzeltme ikinci kez yazılmaz)
-      if (!cur || cur.deleted_at || Number(cur.customer_fuel_allowance_l) > 0 || cur.price_snapshot?.locked) { skip++; continue; }
+      if (!cur) { skip++; continue; }
       const f = applyFuelPay(await db.dumpAll(), cur, "");
       if (!f.customer_fuel_allowance_l) { skip++; continue; }
       const op = "fuelfix:" + cur.id + ":" + (f.fuel_rule_id || "");
-      try {
-        await db.saveExisting("work_records", cur, { customer_fuel_allowance_l: f.customer_fuel_allowance_l, fuel_rule_id: f.fuel_rule_id || null, price_snapshot: f.price_snapshot, fuel_fix_op: op }, `Mazot denetimi: kural uygulandı (${op}; önceki ${tl(w0.amount)} ₺)`);
-        n++;
-      } catch (e) { skip++; }
+      // Koşul ve yazma tek transaction'da: başka sekmede / arada düzeltilmiş, hakedişe girmiş ya da toplu fişe bağlı iş değişmez
+      const r = await db.updateIf("work_records", cur.id,
+        (x) => !(Number(x.customer_fuel_allowance_l) > 0) && !x.price_snapshot?.locked && !(x.work_batch_id && x.slip_id) && !x.fuel_fix_op,
+        { customer_fuel_allowance_l: f.customer_fuel_allowance_l, fuel_rule_id: f.fuel_rule_id || null, price_snapshot: f.price_snapshot, fuel_fix_op: op },
+        `Mazot denetimi: kural uygulandı (${op}; önceki ${tl(w0.amount)} ₺)`);
+      if (r.skipped) skip++; else n++;
     }
     toast(`${n} iş düzeltildi${skip ? `, ${skip} iş atlandı (zaten düzeltilmiş ya da kilitli)` : ""}`, n ? "ok" : "err");
     ctx.reload();
@@ -115,7 +116,8 @@ async function auditScreen(ctx, id) {
     const m = await db.get("fuel_tank_movements", b.dataset.link);
     if (!m || m.customer_id || m.supplier_id || Number(m.total) > 0) return toast("Bu kayıt artık bağlanamaz (değişmiş)", "err");
     if (!(await confirmDialog("Depo girişi bu müşteriye bağlansın mı?", `${tr(m.date)} · ${tl(m.liters)} L ${a.customer} tarafından verilmiş sayılır. Kalan litre ${a.ledger.balance} → ${Math.round((a.ledger.balance - Number(m.liters)) * 10) / 10} L olur.`, "Bağla"))) return;
-    await db.saveExisting("fuel_tank_movements", m, { customer_id: id }, "Mazot denetimi: depo girişi müşteriye bağlandı");
+    const r = await db.updateIf("fuel_tank_movements", m.id, (x) => !x.customer_id && !x.supplier_id && !(Number(x.total) > 0) && x.move_type === "GİRİŞ", { customer_id: id }, "Mazot denetimi: depo girişi müşteriye bağlandı");
+    if (r.skipped) return toast("Bu kayıt artık bağlanamaz (değişmiş)", "err");
     toast("Bağlandı", "ok"); ctx.reload();
   }));
   return true;
