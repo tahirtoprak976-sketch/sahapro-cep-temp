@@ -88,7 +88,7 @@ test("300 L 'müşteri verdi' kaydı müşterisi boş: mevcut kayıt bağlanabil
   assert.deepEqual(a.unlinkedFuel.map((x) => [x.store, x.liters, x.linkable]), [["fuel_records", 300, true]]);
   assert.equal(d.fuel_records.length, 1); assert.equal(d.cash_records, undefined, "denetim kayıt açmaz");
 });
-test("düzeltme önizlemesi: kayıt, o tarihteki kural, bugünkü kuraldan fark, TL ve litre eski/yeni, değişecek alanlar", () => {
+test("düzeltme önizlemesi: kayıt, mevcut kurala göre öneri, bugünkü kuraldan fark, TL ve litre eski/yeni, değişecek alanlar", () => {
   const d = base({ from: "2026-10-01" });
   const w = priced({ material: "gravak" }); d.work_records.push(w); d.fuel_records.push(gift(200));
   const before = JSON.stringify(d);
@@ -96,7 +96,10 @@ test("düzeltme önizlemesi: kayıt, o tarihteki kural, bugünkü kuraldan fark,
   assert.equal(JSON.stringify(d), before, "önizleme yazmaz");
   const r = P.rows[0];
   assert.match(r.record, /2026-10-09 · 34 KM 101 · 5 sefer gravak/); assert.match(r.record, /= 15000 ₺/);
-  assert.match(r.atDate[0], /75 L \/ sefer \("gravak" işleri\), ücret yalnız mazot · 2026-10-01 – …/);
+  assert.match(r.current[0], /75 L \/ sefer \("gravak" işleri\), ücret yalnız mazot · 2026-10-01 – …/);
+  assert.deepEqual(r.money.old, { net: 15000, kdv: 3000, gross: 18000, booked: 15000, rate: 20, basis: "hariç" }, "KDV hariç 3.000 × 5: net 15.000, KDV 3.000, brüt 18.000; cari 15.000 topluyor");
+  assert.deepEqual([r.money.new.net, r.money.new.kdv, r.money.new.gross, r.money.new.booked], [0, 0, 0, 0]);
+  assert.deepEqual(P.money, { net: -15000, kdv: -3000, gross: -18000, booked: -15000 });
   assert.match(r.diff, /litre hakkı yok, 15000 ₺ TL fiyatlı/); assert.match(r.changes[0], /TL tutar 15000 → 0 ₺, litre hakkı 0 → 375 L/);
   assert.deepEqual([P.tl.delta, P.litre.earnedOld, P.litre.earnedNew, P.litre.received, P.litre.remainingOld, P.litre.remainingNew], [-15000, 0, 375, 200, -200, 175]);
   assert.deepEqual(rulesAt(d.customers[0], "2026-09-01", "Sefer"), [], "kural başlangıcından önceki tarihte geçerli kural yok");

@@ -43,7 +43,7 @@ export async function screen(ctx) {
 function auditLine(a, id) {
   if (!a || a.clean) return "";
   const p = [];
-  if (a.tlWorks.length + a.lockedTl.length) p.push(`${a.tlWorks.length + a.lockedTl.length} iş TL fiyatla yazılmış (${a.tlTotal.toLocaleString("tr-TR")} ₺)`);
+  if (a.tlWorks.length + a.lockedTl.length) p.push(`${a.tlWorks.length + a.lockedTl.length} iş TL fiyatla yazılmış (carideki tutar ${a.tlTotal.toLocaleString("tr-TR")} ₺)`);
   if (a.mixed.length) p.push(`${a.mixed.length} işte hem litre hem TL var`);
   if (a.unlinkedFuel.length) p.push(`${a.unlinkedFuel.length} yakıt kaydı bu müşteriye bağlı değil`);
   if (a.pricedGift.length) p.push(`${a.pricedGift.length} "müşteri verdi" kaydında TL tutar var`);
@@ -73,7 +73,7 @@ async function auditScreen(ctx, id) {
     ${a.fixable.length ? `<div class="card"><b>1. Bugünkü kurala uyan ama TL fiyatla yazılmış işler</b><div class="muted tiny">Bu işler gerçekten mazot karşılığı yapıldıysa kurala bağlanabilir. Anlaşma doğrulanmadan dönüştürmeyin.</div>
       ${a.fixable.map((w) => row(w, `<label class="history-check" style="display:inline"><input type="checkbox" data-fix="${esc(w.id)}"> </label>`)).join("")}
       <div data-fixprev style="margin-top:8px"></div>
-      <label class="history-check small" data-okwrap hidden style="margin-top:6px"><input type="checkbox" data-agree> Seçilen işlerin <b>o tarihteki gerçek anlaşmasının</b> yukarıdaki litre kuralı olduğunu doğruladım (belge / müşteriyle mutabakat)</label>
+      <label class="history-check small" data-okwrap hidden style="margin-top:6px"><input type="checkbox" data-agree> Bu işlerin <b>gerçek (geçmiş) anlaşmasının</b> aşağıdaki mevcut kuralla aynı olduğunu kendim doğruladım (belge / müşteriyle mutabakat). Mevcut kural kaydı bunun kanıtı değildir.</label>
       <button class="btn primary block" data-fixgo disabled style="margin-top:6px">Onayla ve uygula</button></div>` : ""}
     ${a.tlWorks.filter((w) => !w.wouldMatch).length ? `<div class="card"><b>2. Bugünkü kurala uymayan TL işler</b><div class="muted tiny">Yalnız bilgi. Kural kelimesi / birimi / tarihi tutmuyor. Bu işler gerçekten mazot karşılığıysa önce anlaşmayı doğrulayın; kuralı bakiyeyi düşürmek için genişletmeyin.</div>
       ${a.tlWorks.filter((w) => !w.wouldMatch).map((w) => row(w)).join("")}</div>` : ""}
@@ -96,10 +96,12 @@ async function auditScreen(ctx, id) {
     const P = fixPreview(d, id, sel);
     box.innerHTML = `<div class="small"><b>Önizleme (henüz bir şey yazılmadı)</b></div>` + P.rows.map((r) => `<div class="small" style="padding:6px 0;border-top:1px dashed var(--border)">
         <div><b>Kayıt:</b> ${esc(r.record)}</div>
-        <div><b>O tarihte geçerli anlaşma (kural kaydına göre):</b> ${esc(r.atDate.join(" | "))} <span class="muted tiny">— kural değişiklik geçmişi tutulmuyor; gerçek anlaşmayı doğrulayın</span></div>
+        <div><b>Mevcut kurala göre öneri:</b> ${esc(r.current.join(" | "))} <span class="muted tiny">— kural geçmişi tutulmuyor; tarih aralığının uyması, kuralın o tarihte bu içerikte olduğunu kanıtlamaz. Geçmiş anlaşmayı siz doğrulayın.</span></div>
         <div><b>Bugünkü kuraldan fark:</b> ${esc(r.diff)}</div>
-        <div><b>Değişecek:</b> ${esc(r.changes.join("; "))}</div></div>`).join("") +
-      `<div class="small" style="padding-top:6px;border-top:1px solid var(--border)"><b>TL alacak:</b> ${tl(bal)} → ${tl(bal + P.tl.delta)} ₺ · <b>Litre hakkı:</b> ${P.litre.earnedOld} → ${P.litre.earnedNew} L · <b>Alınan:</b> ${P.litre.received} L (değişmez) · <b>Kalan:</b> ${P.litre.remainingOld} → ${P.litre.remainingNew} L</div>`;
+        <div><b>Değişecek:</b> ${esc(r.changes.join("; "))}</div>
+        <div><b>Tutar (bu iş):</b> net ${tl(r.money.old.net)} → ${tl(r.money.new.net)} ₺ · KDV${r.money.old.rate != null ? " %" + r.money.old.rate : ""} ${tl(r.money.old.kdv)} → ${tl(r.money.new.kdv)} ₺ · brüt ${tl(r.money.old.gross)} → ${tl(r.money.new.gross)} ₺ <span class="muted tiny">(fiyat KDV ${r.money.old.basis || "—"} girilmiş; carinin topladığı: ${tl(r.money.old.booked)} → ${tl(r.money.new.booked)} ₺)</span></div></div>`).join("") +
+      `<div class="small" style="padding-top:6px;border-top:1px solid var(--border)"><b>Toplam etki:</b> net ${P.money.net >= 0 ? "+" : ""}${tl(P.money.net)} ₺ · KDV ${P.money.kdv >= 0 ? "+" : ""}${tl(P.money.kdv)} ₺ · brüt ${P.money.gross >= 0 ? "+" : ""}${tl(P.money.gross)} ₺</div>
+      <div class="small"><b>Müşteri ekranındaki TL alacak</b> <span class="muted tiny">(hakedişe girmemiş işlerde fiyat nasıl girildiyse o tutar — KDV hariç girildiyse net; hesap yöntemi bu düzeltmeyle değişmez)</span>: ${tl(bal)} → ${tl(bal + P.money.booked)} ₺ · <b>Litre hakkı:</b> ${P.litre.earnedOld} → ${P.litre.earnedNew} L · <b>Alınan:</b> ${P.litre.received} L (değişmez) · <b>Kalan:</b> ${P.litre.remainingOld} → ${P.litre.remainingNew} L</div>`;
   };
   root.querySelectorAll("[data-fix],[data-agree]").forEach((x) => x.addEventListener("change", sync));
   qs("[data-fixgo]", root)?.addEventListener("click", async () => {

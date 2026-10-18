@@ -23,13 +23,14 @@
   - Açmak hiçbir kaydı değiştirmez; audit dahil, ekran testiyle doğrulandı.
 - **Düzeltme yalnız seçilen işte yapılır.** Önce ayrı ayrı gösterilir:
   - gerçek kayıt (tarih, araç, miktar, malzeme, fiyat, mevcut litre hakkı);
-  - o tarihte geçerli kural (kural kaydının tarih aralığına göre; değişiklik geçmişi tutulmadığı da yazılır);
+  - mevcut kurala göre öneri (kural geçmişi tutulmuyor; tarih aralığının uyması, kuralın o tarihte bu içerikte olduğunu kanıtlamaz; geçmiş anlaşmayı kullanıcı doğrular);
+  - tutar ayrımı: net, KDV, brüt ve carinin topladığı tutar, eski → yeni;
   - bugünkü kuraldan fark;
   - değişecek alanlar;
   - TL alacak eski → yeni;
   - litre hakkı eski → yeni, alınan (değişmez), kalan eski → yeni.
 - **Onay koşulları:**
-  - "O tarihteki gerçek anlaşmayı doğruladım" işaretlenmeden uygulanmaz.
+  - "Gerçek (geçmiş) anlaşmanın mevcut kuralla aynı olduğunu kendim doğruladım" işaretlenmeden uygulanmaz.
   - Litre hakkı zaten olan işe dokunulmaz (eski hak yeniden hesaplanmaz).
   - Hakedişteki ya da toplu fişe bağlı iş değişmez.
   - Koşul, yazma ve audit tek transaction'da (`db.updateIf`).
@@ -59,4 +60,5 @@
 ## Yapılmayanlar
 - "TL borcuna karşılık mazot" (mutabakat fiyatı, cari mahsup): model doğrulanmadığı için yapılmadı ve varsayılmadı.
 - Gerçek kayıtlar için kesin teşhis: kullanıcı inceleme ekranında kendi kayıtlarına bakmalı.
-- Kural değişiklik geçmişi: tutulmuyor. "O tarihteki anlaşma" bugünkü kural kaydının tarih aralığından türetilir.
+- Kural değişiklik geçmişi tutulmuyor. Ekran yalnız "mevcut kurala göre öneri" sunar; geçmiş anlaşmayı kanıtlamaz.
+- Cari hesap yöntemi (hakedişe girmemiş işte fiyat nasıl girildiyse o tutar; KDV hariç girildiyse net) bu turda değiştirilmedi.

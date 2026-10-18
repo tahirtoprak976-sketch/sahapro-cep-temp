@@ -44,7 +44,7 @@ with sync_playwright() as p:
     check("1. Bugünkü kurala uyan" in t and "2. Bugünkü kurala uymayan" in t and "Olası neden" in t and "doğrulanmaz" in t, "adaylar ayrı ve 'olası neden' olarak gösteriliyor; sözleşme modeli açık bırakılıyor")
     pg.check(f"[data-fix='{ids['w1']}']"); pg.wait_for_timeout(300)
     pv = pg.inner_text("[data-fixprev]")
-    check(all(x in pv for x in ["Kayıt:", "09.10.2026".split(".")[0] and "2026-10-09", "O tarihte geçerli anlaşma", "Bugünkü kuraldan fark", "Değişecek:", "21.000 → 6.000", "140 → 515", "Alınan: 200 L", "-60 → 315"]), f"önizleme: kayıt, o tarihteki anlaşma, fark, TL ve litre eski/yeni, değişecek alanlar\n{pv}")
+    check(all(x in pv for x in ["Kayıt:", "2026-10-09", "Mevcut kurala göre öneri", "kanıtlamaz", "Bugünkü kuraldan fark", "Değişecek:", "21.000 → 6.000", "140 → 515", "Alınan: 200 L", "-60 → 315"]), f"önizleme: kayıt, o tarihteki anlaşma, fark, TL ve litre eski/yeni, değişecek alanlar\n{pv}")
     check(pg.is_disabled("[data-fixgo]"), "anlaşma doğrulanmadan uygula düğmesi kapalı")
     check(state() == s0, "önizleme hiçbir şey yazmadı")
     # İki sekmeden onay → tek düzeltme

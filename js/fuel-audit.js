@@ -13,6 +13,7 @@
 import { isActive } from "./core.js";
 import { fuelRulesOf, workHay, applyFuelPay, customerFuelLedger } from "./assistant-rules.js";
 import { workAmount } from "./collect-core.js";
+import { workMoney } from "./vat-contract.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
@@ -69,8 +70,8 @@ export function fuelAudit(d, customerId) {
     clean: !tlWorks.length && !lockedTl.length && !mixed.length && !unlinkedFuel.length && !pricedGift.length };
 }
 
-// Bir tarihte geçerli sayılan kurallar (birim + tarih aralığı). Kural değişiklik geçmişi tutulmadığı için bugünkü kural kaydının
-// tarih aralığına göre hesaplanır; gerçek anlaşma kullanıcı tarafından doğrulanmalıdır.
+// MEVCUT kural kayıtlarından, tarih aralığı ve birimi bu işi kapsayanlar. Kural değişiklik geçmişi TUTULMAZ: tarih aralığının uyması,
+// kuralın o tarihte bu içerikte olduğunun kanıtı değildir. Yalnız "mevcut kurala göre öneri"dir; geçmiş anlaşmayı kullanıcı doğrular.
 export function rulesAt(c, date, unit) {
   return fuelRulesOf(c).filter((r) => (r.unit || "Sefer") === unit && (!r.from || date >= r.from) && (!r.to || date <= r.to));
 }
@@ -82,20 +83,26 @@ export function fixPreview(d, customerId, workIds) {
   const ws = live(d, "work_records").filter((w) => workIds.includes(w.id));
   const veh = (id) => live(d, "vehicles").find((v) => v.id === id)?.name || "";
   let dTL = 0, dL = 0;
+  const money = { net: 0, kdv: 0, gross: 0, booked: 0 };
   const rows = ws.map((w) => {
     const f = applyFuelPay(d, w, "");
     const oldAmt = workAmount(w), newAmt = Number(f.price_snapshot?.amount ?? oldAmt) || 0, newL = Number(f.customer_fuel_allowance_l) || 0, oldL = Number(w.customer_fuel_allowance_l) || 0;
     dTL += newAmt - oldAmt; dL += newL - oldL;
     const at = rulesAt(c, w.date, w.unit), today = fuelRulesOf(c).find((r) => r.id === f.fuel_rule_id);
+    // Tutar ayrımı: net (KDV hariç), KDV, brüt (KDV dahil) ve bugünkü cari hesabının topladığı tutar (fiyat neyse o)
+    const mm = (x) => { const m = workMoney(x); return m ? { net: m.net, kdv: m.kdv, gross: m.gross, booked: m.booked, rate: m.rate, basis: m.basis } : { net: 0, kdv: 0, gross: 0, booked: 0, rate: null, basis: null }; };
+    const m0 = mm(w), m1 = mm({ ...w, price_snapshot: f.price_snapshot });
+    for (const k of ["net", "kdv", "gross", "booked"]) money[k] += m1[k] - m0[k];
     return {
       id: w.id,
       record: `${w.date} · ${veh(w.vehicle_id)} · ${w.quantity} ${String(w.unit || "").toLocaleLowerCase("tr-TR")} ${[w.material, w.work_type].filter(Boolean).join(" · ")} · fiyat ${w.price_snapshot?.unit_price ?? "—"} ₺ (${w.price_snapshot?.price_source || "fiyatsız"}) = ${oldAmt} ₺ · litre hakkı ${oldL || "yok"}`,
-      atDate: at.length ? at.map(ruleText) : ["Bu tarihte geçerli kural kaydı yok"],
+      current: at.length ? at.map(ruleText) : ["Mevcut kurallardan hiçbirinin tarih aralığı bu işi kapsamıyor"],
+      money: { old: m0, new: m1 },
       diff: today ? (oldL ? `İşte ${oldL} L kayıtlı; bugünkü kural ${newL} L verir${oldL !== newL ? " (FARKLI — eski hak değiştirilmez)" : ""}` : `İşte litre hakkı yok, ${oldAmt} ₺ TL fiyatlı; bugünkü kural (${ruleText(today)}) uygulanırsa ${newL} L hak${f.price_snapshot?.price_source === "Mazot karşılığı" ? ", TL tutar 0" : ", TL tutar aynı kalır"}`) : "Bugünkü kural bu işe uymuyor",
       changes: [`İş ${String(w.id).slice(0, 8)}: TL tutar ${oldAmt} → ${newAmt} ₺, litre hakkı ${oldL || 0} → ${newL} L${f.price_snapshot?.price_source !== w.price_snapshot?.price_source ? `, fiyat kaynağı "${w.price_snapshot?.price_source || "—"}" → "${f.price_snapshot?.price_source}"` : ""}`],
       ok: newL > 0 && !oldL,
     };
   });
   const r1 = (n) => Math.round(n * 100) / 100;
-  return { rows, tl: { delta: r1(dTL) }, litre: { earnedOld: L0.earned, earnedNew: r1(L0.earned + dL), received: L0.received, remainingOld: L0.balance, remainingNew: r1(L0.balance + dL) } };
+  return { rows, tl: { delta: r1(dTL) }, money: Object.fromEntries(Object.entries(money).map(([k, v]) => [k, r1(v)])), litre: { earnedOld: L0.earned, earnedNew: r1(L0.earned + dL), received: L0.received, remainingOld: L0.balance, remainingNew: r1(L0.balance + dL) } };
 }

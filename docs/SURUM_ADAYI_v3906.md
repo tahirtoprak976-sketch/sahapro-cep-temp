@@ -22,7 +22,7 @@
 | #123, `js/db.js` `updateIf` ↔ #121 `saveExisting` iyimser kilit | Metin çakışması yok, davranış etkileşimi var | `updateIf` `updated_at`'i günceller. Açık formdan gelen eski kayıt #121 tarafından STALE olarak reddedilir; ekran testiyle doğrulandı |
 
 ## Testler
-Uygulama kodu `f9113b9`'ten sonra değişmedi; sonraki commit'ler yalnız test ve belge.
+Tam takım `f9113b9` üzerinde koşuldu. Teslim düzeltmesinde yalnız `js/fuel-audit.js` ve `js/fuel-pay.js` değişti (metin ve net / KDV / brüt gösterimi). Bunlardan sonra birim testleri, `mazot.py`, `telefon.py`, `birlesik.py` ve `denetim.py` yeniden koşuldu.
 
 - **Birim:** 66 / 66 dosya.
 - **Ekran (yerel sunucu, test verisi, taklit Gemini):**
@@ -40,7 +40,7 @@ Uygulama kodu `f9113b9`'ten sonra değişmedi; sonraki commit'ler yalnız test v
 | `mazot.py` | #123 | 15/15 |
 | `sim.py` | ortak, tohum 7 ve 42 | 72/72, 72/72 |
 | `birlesik.py` | yeni, PR'lar arası | 8/8 |
-| `telefon.py` | yeni, telefon adımı 3–5 provası | 10/10 |
+| `telefon.py` | yeni, telefon adımı 3–5 provası (müşteri ekranı tutarı, net / KDV / brüt, iş kaydının korunması dahil) | 12/12 |
 
 - **`birlesik.py` neyi doğruluyor:**
   - #122 anahtarı #121 işlem kaydına yazılıyor;
@@ -50,33 +50,45 @@ Uygulama kodu `f9113b9`'ten sonra değişmedi; sonraki commit'ler yalnız test v
   - bütünlük denetimi yeni alanlarla çalışıyor.
 - **Denenmeyenler:** gerçek telefon, gerçek Gemini, gerçek kayıtlar.
 
-## Telefon kabulü (en fazla 5 adım, yalnız örnek veri)
-Önizleme paketi ayrı bir adreste açılır. "ÖNİZLEME" şeridi görünmeli; Ayarlar → Sürüm: **v3.9.06**.
+## Kılıç örneğinde tutarlar (5 sefer × 3.000 ₺, KDV %20 hariç)
+- **Net 15.000 ₺, KDV 3.000 ₺, brüt 18.000 ₺.**
+- **Müşteri ekranı ve toplam alacak 15.000 ₺ gösterir.** Hakedişe girmemiş işte cari, fiyat nasıl girildiyse o tutarı toplar; KDV hariç girildiyse net. 18.000 ₺ (brüt) yalnız hakediş kesinleşince cari harekete girer.
+- **Bu turda değişmedi:** cari hesap yöntemi değiştirilmedi. KDV karar notu: `docs/KDV_CARI_KARAR_NOTU.md`.
+- **Düzeltme önizlemesi** her iş için eski → yeni ayrı gösterir: net, KDV (oranıyla), brüt, carinin topladığı tutar, litre hakkı / alınan / kalan.
+
+## Bilinen sınırlar (çözülmüş sayılmaz)
+- **Eşit öncelikli iki fiyat kuralı:** yalnız asistan kaydı sorar. **Elle iş formu ve hakediş ekranı hâlâ sessizce birini seçer.** Telefon testinde bu yüzden müşteri başına **tek ve açık** fiyat kuralı kullanılır.
+- **Kural geçmişi tutulmuyor:** inceleme ekranı "mevcut kurala göre öneri" verir. Geçmiş anlaşmayı kullanıcı doğrular; tarih aralığının uyması kanıt değildir.
+- **Çözülen inceleme adayı** adaylar listesinden çıkar; **iş kaydı silinmez, korunur.**
+
+## Telefon kabulü (5 adım, yalnız uydurma örnek veri)
+Önizleme: "ÖNİZLEME" şeridi görünmeli; Ayarlar → Sürüm **SAHAPRO SOLO v3.9.06** olmalı. Gerçek yedek, gerçek şoför bağlantısı ve gerçek kayıt kullanılmaz. Gemini için yalnız test amaçlı bir anahtar kullanılır.
 
 1. **Ödeme fiyat olmuyor.**
-   - Hazırlık: müşteri "Kaya Test" ve "Leda Test" açın; Kaya Test için 3.200 ₺/sefer kural ekleyin.
+   - Hazırlık: müşteri "Kaya Test" ve "Leda Test" açın. Fiyat listesine **yalnız bir** kural ekleyin: Kaya Test, Sefer, 3.200 ₺, KDV hariç %20.
    - Asistana yazın: `<plaka> Kaya Test 5 sefer moloz, Leda Test 20000 ödeme geldi`.
-   - Beklenen: iş kartında birim fiyat boş; altında "Fiyat listesinden … 3.200 … 16.000" yazar. Tahsilat kartı işaretsiz ve Leda Test adına gelir.
+   - Beklenen: iş kartında birim fiyat boş; altında "Fiyat listesinden … Birim 3.200 … Tutar 5 × 3.200 = 16.000" yazar. Tahsilat kartı **işaretsiz** ve Leda Test adına gelir.
    - İş ve tahsilatı işaretleyip kaydedin.
 2. **Aynı ödeme tekrar yazılmıyor.**
    - Aynı mesajı tekrar gönderin, tahsilatı işaretleyip kaydedin.
    - Beklenen: "Tekrar mı, yeni ödeme mi?" sorusu çıkar. "Tekrar — yazma" deyin.
-   - Kasa → Leda Test'te tek 20.000 ₺ kalmalı.
+   - Kasa'da Leda Test için tek 20.000 ₺ kalmalı.
 3. **Müşteriden alınan yakıt doğru litre hesabına bağlanıyor.**
    - Hazırlık:
      - Müşteri "Kılıç Test" açın (henüz kural yok).
-     - İş formundan bir iş girin: Kılıç Test, malzeme "gravak", 5 sefer, elle fiyat 3.000 ₺, KDV %20.
-     - Sonra müşteri kartında "Mazotla ödeme kuralları" → 75 L / Sefer, kelime "gravak", yalnız mazot.
+     - İşler → + İş: Kılıç Test, malzeme "gravak", 5 sefer, elle fiyat 3.000 ₺, KDV %20.
+     - Müşteri ekranında TL alacak **15.000 ₺** (net) görünmeli, 18.000 değil.
+     - Sonra müşteri kartında "Mazotla ödeme kuralları": 75 L / Sefer, kelime "gravak", yalnız mazot.
    - Yakıt → + Yakıt Kaydı → Kaynak "Müşteri Verdi". Beklenen: müşteri alanı **boş** gelir. Kılıç Test'i seçip 300 L kaydedin.
-   - Mazotla Ödeme Hesapları'nda Kılıç Test: 300 L alındı görünmeli.
-4. **İnceleme salt okunur çalışıyor.**
-   - Kılıç Test satırının altındaki "İnceleme adayı"na dokunun. Beklenen: kural sonradan eklendiği için 3. adımdaki iş "TL fiyatla yazılmış" diye aday olarak görünür, kesin hata diye değil.
-   - Ekranı açıp kapatmak hiçbir şeyi değiştirmemeli: müşterinin TL alacağı ve litre rakamları aynı kalmalı.
-   - İşi seçin. Önizlemede şunlar görünmeli: kayıt, o tarihteki anlaşma, bugünkü kuraldan fark, TL ve litre eski/yeni, değişecek alanlar.
-   - "Onayla ve uygula" düğmesi, "anlaşmayı doğruladım" işaretlenmeden kapalı kalmalı.
+   - Mazotla Ödeme Hesapları'nda Kılıç Test: alınan 300 L.
+4. **İnceleme salt okunur.**
+   - Kılıç Test altındaki "İnceleme adayı"na dokunun. Açıp kapatmak hiçbir rakamı değiştirmemeli.
+   - İşi seçin. Önizlemede şunlar görünmeli:
+     - "Mevcut kurala göre öneri" ve "geçmiş anlaşmayı siz doğrulayın" notu;
+     - bu iş için net 15.000 → 0, KDV %20 3.000 → 0, brüt 18.000 → 0, carinin topladığı 15.000 → 0;
+     - litre hakkı 0 → 375, alınan 300 (değişmez), kalan −300 → 75.
+   - "Onayla ve uygula" düğmesi, doğrulama kutusu işaretlenmeden kapalı kalmalı.
 5. **Onaylı düzeltme tekrar uygulanmıyor.**
-   - "Anlaşmayı doğruladım"ı işaretleyin → Onayla ve uygula → Uygula.
-   - Beklenen: TL alacak 15.000 düşer; litre hakkı +375.
-   - Ekranı yenileyin: iş artık listede değil, ikinci kez uygulanamaz.
-
-Gerçek kayıtlar, yedekler, şoför bağlantıları ve gerçek Gemini anahtarı önizlemeye konmaz. Gemini gerektiren adım (1–2) için ayrı, test amaçlı bir anahtar kullanın ya da bu adımları canlı geçişten sonra gerçek telefonda ayrıca deneyin.
+   - Kutuyu işaretleyin → Onayla ve uygula → Uygula.
+   - Beklenen: müşteri TL alacağı 15.000 düşer; litre 375 / 300 / 75 olur.
+   - Sayfayı yenileyin: iş **inceleme adayları listesinden çıkar**. İş kaydı İşler'de **durur**; açtığınızda "Mazot karşılığı" yazar.
