@@ -10,7 +10,7 @@ def check(c, m):
     if not c: FAIL.append(m)
 with sync_playwright() as p:
     b = p.chromium.launch(); errs = []
-    ctx = b.new_context(viewport={'width': 412, 'height': 900}); ctx.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
+    ctx = b.new_context(viewport={'width': 412, 'height': 900}); ctx.add_init_script("try{localStorage.setItem('sp_role','boss');localStorage.setItem('spx_role','boss')}catch(e){}")
     PLANS = []
     def gem(route):
         plan = PLANS.pop(0) if PLANS else {}
