@@ -125,7 +125,10 @@ export async function screen(ctx) {
   qs("[data-ask]", root).addEventListener("click", async () => {
     const typed = qs("[data-msg]", root).value.trim();
     // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
-    const refine = prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message ? prev : null;
+    // Uzun ya da WhatsApp dışa aktarımı gibi görünen metin YENİ mesajdır: düzeltme kutusu işaretli kalmış olsa bile önceki taslağa eklenmez
+    const looksNew = typed.length > 160 || /^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}:\d{2}/m.test(typed);
+    const refine = prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message && !looksNew ? prev : null;
+    if (prev && !prev.v._done && qs("[data-refine]", root).checked && looksNew) toast("Yeni mesaj olarak gönderildi (önceki sonucun düzeltmesi sayılmadı)", "ok");
     if (prev && !prev.v._done && !refine && !typed) return toast("Düzeltme yazın ya da yeni mesaj girin", "err");
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
@@ -206,6 +209,7 @@ export async function screen(ctx) {
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
       if (drvRejected.length) {
         v.driverReject = drvRejected.map((x) => `${x.p.n || "Şoför"}: ${x.reject}`);
         // Yeni imzalı bağlantı oluşturma yolu (kişi kartı varsa)
@@ -573,7 +577,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
       .join("") +
-    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
+    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked ? "" : fallbackHtml(v, d, message));
   // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
   for (const b of qsa("[data-pickcust]", out))
     b.addEventListener("click", () => {
@@ -1477,3 +1481,29 @@ export async function rereadSlips(db, v, imgParts, d, today) {
       w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup);
   }
 }
+
+// Gemini hiç kayıt çıkarmadıysa: yerel okumanın gördüğü olası satırlar, eksikleriyle. Hiçbiri kendiliğinden kaydedilmez.
+function fallbackHtml(v, d, message) {
+  const fb = localCandidatesSync(message, d);
+  const nm = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || "";
+  window.__fallback = fb;
+  if (!fb.works.length && !fb.fuel.length) return notice("warn", `Gemini bu mesajdan kayıt çıkarmadı${v.rawCount === 0 ? " (0 satır döndü)" : ""} ve yerel okuma da iş / yakıt satırı görmedi. Mesajı daha açık yazıp (müşteri, araç, miktar) tekrar deneyin ya da formdan girin.`);
+  return `<div class="card" data-fallback style="border-left:4px solid #c98a00"><div class="small"><b>Gemini bu mesajdan kayıt çıkarmadı${v.rawCount === 0 ? " (0 satır döndü)" : ""}.</b> Yerel okuma mesajda şunları gördü — eksik bilgiler uydurulmadı; formda tamamlayıp kaydedin:</div>
+    ${fb.works.map((w, i) => `<div class="small" style="padding:6px 0;border-top:1px solid var(--border)">⚒ <b>${esc(w.date ? trDate(w.date) : "")} · ${esc(w.label)}</b>${w.quantity ? ` · ${esc(String(w.quantity))} ${esc(w.unit || "")}` : ""}<div class="muted tiny">Eksik: ${esc(w.missing.join(", ") || "—")}</div><button class="btn sm" data-fb-work="${i}" style="margin-top:4px">İş formunda tamamla</button></div>`).join("")}
+    ${fb.fuel.map((f, i) => `<div class="small" style="padding:6px 0;border-top:1px solid var(--border)">⛽ <b>${esc(String(f.liters))} L yakıt</b>${f.customer_id ? ` · ${esc(nm("customers", f.customer_id))}` : ""}<div class="muted tiny">${esc(f.hint)}. Eksik: ${esc(f.missing.join(", "))}</div><button class="btn sm" data-fb-fuel="${i}" style="margin-top:4px">Yakıt formunda tamamla</button></div>`).join("")}
+    <div class="muted tiny" style="margin-top:6px">İsterseniz eksik bilgiyi mesaja ekleyip ("Hitachi 210 ile 6 saat yıkım, 160 L mazotu Mustafa Bey verdi") yeniden gönderin.</div></div>`;
+}
+let localCandidatesSync = () => ({ works: [], fuel: [] });
+import("./assistant-fallback.js").then((m) => { localCandidatesSync = (msg, d) => m.localCandidates(msg, d, todayStr()); });
+document.addEventListener("click", (e) => {
+  const w = e.target.closest?.("[data-fb-work]"), f = e.target.closest?.("[data-fb-fuel]");
+  if (w && window.__fallback) {
+    const r = window.__fallback.works[Number(w.dataset.fbWork)];
+    window.__prefill = { date: r.date, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, personnel_id: r.personnel_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit, description: r.description };
+    location.hash = "#/isler/new";
+  }
+  if (f && window.__fallback) {
+    const r = window.__fallback.fuel[Number(f.dataset.fbFuel)];
+    location.hash = `#/yakit/new?litre=${encodeURIComponent(r.liters)}&tarih=${encodeURIComponent(r.date)}${r.customer_id ? "&musteri=" + encodeURIComponent(r.customer_id) : ""}`;
+  }
+});

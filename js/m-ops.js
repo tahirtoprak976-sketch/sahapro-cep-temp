@@ -143,12 +143,16 @@ async function fuelForm(ctx) {
     db.listActive("customers"),
   ]);
   const { hasFuelRules } = await import("./assistant-rules.js");
-  const fuelCustomers = allCust.filter(hasFuelRules);
+  // Asistanın yerel okumasından gelindiyse: litre ve tarih dolu gelir; KAYNAK ve ARAÇ kullanıcıya seçtirilir (tahmin edilmez)
+  const fromAsst = Number(ctx.query?.litre) > 0;
+  const askedCust = fromAsst && ctx.query?.musteri ? allCust.find((c) => c.id === ctx.query.musteri) : null;
+  const fuelCustomers = [...allCust.filter(hasFuelRules), ...(askedCust && !hasFuelRules(askedCust) ? [askedCust] : [])];
   root.innerHTML =
     appbar("+ Yakıt", "Litre zorunlu; fiyat/tutar opsiyonel") +
+    (fromAsst ? notice("info", `Asistan mesajda ${Number(ctx.query.litre)} L yakıt gördü. Aracı ve kaynağı (depo, istasyon, müşteri verdi) siz seçin.${askedCust ? " Mesaja göre " + askedCust.name + " vermiş olabilir." : ""}`) : "") +
     `
     <form data-form novalidate>
-      ${fDate("Tarih", "date", todayStr())}
+      ${fDate("Tarih", "date", /^\d{4}-\d{2}-\d{2}$/.test(ctx.query?.tarih || "") ? ctx.query.tarih : todayStr())}
       <div class="formgrid2">
         ${fSelect(
           "Araç / Makine",
@@ -165,12 +169,12 @@ async function fuelForm(ctx) {
         )}
       </div>
       <div class="formgrid2">
-        ${fNum("Litre", "liters", "", { req: true, step: "any" })}
+        ${fNum("Litre", "liters", Number(ctx.query?.litre) > 0 ? String(Number(ctx.query.litre)) : "", { req: true, step: "any" })}
         ${fNum("Birim Fiyat (₺, ops.)", "unit_price", "", { step: "any" })}
       </div>
       <div class="formgrid2">
         ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}${fNum("KDV % (biliniyorsa; toplam KDV dahil)", "kdv_rate", "", { step: "any" })}
-        ${fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
+        ${fromAsst ? fSelect("Kaynak (seçin)", "fuel_source", FUEL_SOURCES, "", { emptyText: "— kaynağı seçin —" }) : fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
       </div>
       <div data-fcust hidden>${fSelect("Mazotu veren müşteri (sefer karşılığı)", "customer_id", fuelCustomers.map((c) => ({ v: c.id, t: c.name })), "", { emptyText: "— müşteriyi seçin —" })}</div>
       <div class="formgrid2">
@@ -211,6 +215,7 @@ async function fuelForm(ctx) {
       toast("Litre girin", "err");
       return;
     }
+    if (!val.fuel_source) return toast("Yakıtın kaynağını seçin", "err");
     const byCust = val.fuel_source === "Müşteri Verdi";
     if (byCust && !val.customer_id) return toast("Mazotu veren müşteriyi seçin", "err");
     await db.saveNew(
