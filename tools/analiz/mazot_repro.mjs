@@ -55,3 +55,28 @@ const show = (title, d, cid) => {
   d.fuel_records.push(rec({ date: T, vehicle_id: "V", liters: 200, fuel_source: "Depo Tankı" })); // depodan araca çıkış (müşteri ödemesi DEĞİL)
   show("Depoya müşteriden 200 L, sonra depodan araca 200 L (litre bir kez düşmeli: kalan 175 L)", d, "D");
 }
+
+// ---- Sefer başı litre anlaşmasında (Model B) "mazot alacaktan düşmedi" görüntüsünün olası nedenleri ----
+import { fuelAudit } from "../../js/fuel-audit.js";
+const pb = [{ id: "PB", unit: "Sefer", price: 3000, kdv_rate: 20, active: true }];
+const leak = (title, setup) => {
+  const d = base(); d.price_book = pb;
+  const c = { id: "X", name: "Kılıç Test", fuel_rules: [{ id: "r1", per: 75, unit: "Sefer", match: "gravak", only_pay: true, created_at: "2026-10-08T00:00:00Z" }] };
+  d.customers.push(c); setup(d);
+  show(title, d, "X");
+  const a = fuelAudit(d, "X");
+  console.log(`  Denetim: TL yazılmış iş ${a.tlWorks.length} (${a.tlTotal} ₺) ${a.tlWorks.map((w) => "[" + w.why.join("; ") + "]").join(" ")} · bağlanmamış yakıt ${a.unlinkedFuel.length}`);
+};
+const work = (o) => rec({ date: "2026-10-09", customer_id: "X", vehicle_id: "V", work_type: "Moloz Nakliye", unit: "Sefer", quantity: 5, ...o });
+leak("B-1: işte kuralın kelimesi yok ('gravak' yazılmamış) → iş fiyat listesinden 15.000 ₺; 200 L alındı", (d) => {
+  d.work_records.push(applyFuelPay(d, priced("X", 5, 3000, "2026-10-09"), "moloz"));
+  d.fuel_records.push(customerFuel("X", 200));
+});
+leak("B-2: iş kural eklenmeden önce kaydedilmiş (TL fiyatlı) → 200 L alındı", (d) => {
+  d.work_records.push({ ...priced("X", 5, 3000, "2026-10-01"), material: "gravak", created_at: "2026-10-01T09:00:00Z" });
+  d.fuel_records.push(customerFuel("X", 200));
+});
+leak("B-3: kurala uyan iş, ama mazot depoya müşteri seçilmeden girilmiş (açıklamada adı var)", (d) => {
+  d.work_records.push(applyFuelPay(d, work({ material: "gravak" }), "gravak"));
+  d.fuel_tank_movements.push(rec({ date: T, move_type: "GİRİŞ", liters: 200, note: "Kılıç'tan mazot" }));
+});

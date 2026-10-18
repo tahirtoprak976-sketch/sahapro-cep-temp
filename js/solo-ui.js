@@ -1441,14 +1441,23 @@ export async function augment(ctx) {
         root.querySelector("[data-fuelapply]")?.addEventListener("click", async () => {
           const d = await db.dumpAll();
           const mine = (d.work_records || []).filter((x) => !x.deleted_at && x.customer_id === id);
-          let n = 0, fail = 0, matched = 0;
-          const miss = [];
+          let n = 0, fail = 0, matched = 0, kept = 0;
+          const miss = [], plan = [];
           for (const w of mine) {
             const f = R.applyFuelPay(d, w, "");
             if (f.customer_fuel_allowance_l) matched++;
             else if (miss.length < 5) miss.push(`${w.date} · ${w.quantity} ${w.unit || ""} · ${w.material || w.work_type || ""}`);
+            // Kurala bugün uymayan işin VAR OLAN litre hakkı sessizce silinmez (kayıt mesaj metniyle eşleşmiş olabilir)
+            if (!f.customer_fuel_allowance_l && Number(w.customer_fuel_allowance_l) > 0) { kept++; continue; }
             const same = Number(f.customer_fuel_allowance_l || 0) === Number(w.customer_fuel_allowance_l || 0) && f.price_snapshot?.amount === w.price_snapshot?.amount;
-            if (same) continue;
+            if (same || w.price_snapshot?.locked) continue;
+            plan.push({ w, f });
+          }
+          // Toplu değişiklik önce gösterilir, onaysız yazılmaz
+          const tlBefore = plan.reduce((s2, x) => s2 + (Number(x.w.price_snapshot?.amount) || 0), 0), tlAfter = plan.reduce((s2, x) => s2 + (Number(x.f.price_snapshot?.amount) || 0), 0);
+          const lDelta = plan.reduce((s2, x) => s2 + (Number(x.f.customer_fuel_allowance_l) || 0) - (Number(x.w.customer_fuel_allowance_l) || 0), 0);
+          if (plan.length && !(await (await import("./ui.js")).confirmDialog("Kural uygulansın mı?", `${plan.length} iş değişecek: bu işlerin TL tutarı ${tlBefore.toLocaleString("tr-TR")} → ${tlAfter.toLocaleString("tr-TR")} ₺, litre hakkı ${lDelta >= 0 ? "+" : ""}${Math.round(lDelta * 10) / 10} L.${kept ? ` ${kept} işin mevcut litre hakkı korunacak.` : ""} Ayrıntı için Mazotla Ödeme Hesapları → Denetim.`, "Uygula"))) return;
+          for (const { w, f } of plan) {
             try {
               await db.saveExisting("work_records", w, { customer_fuel_allowance_l: f.customer_fuel_allowance_l || null, fuel_rule_id: f.fuel_rule_id || null, price_snapshot: f.price_snapshot }, "Mazot karşılığı uygulandı");
               n++;
