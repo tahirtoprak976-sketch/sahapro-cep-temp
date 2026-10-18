@@ -1,6 +1,6 @@
 // Sefer başı litre anlaşması (Model B) denetimi — TEST VERİSİ.
 import assert from "node:assert/strict";
-import { fuelAudit, whyNoRule } from "../js/fuel-audit.js";
+import { fuelAudit, whyNoRule, fixPreview, rulesAt } from "../js/fuel-audit.js";
 import { applyFuelPay, customerFuelLedger } from "../js/assistant-rules.js";
 import { customerBalances } from "../js/collect-core.js";
 
@@ -65,7 +65,7 @@ test("müşteriye bağlanmamış depo girişi / istasyon alışı: listelenir; b
   d.fuel_records.push(rec({ date: T, vehicle_id: "V", liters: 50, fuel_source: "Akaryakıt İstasyonu", description: "kılıç şantiyesi yanı istasyon" }));
   d.fuel_tank_movements.push(rec({ date: T, move_type: "GİRİŞ", liters: 300, customer_id: "Y", note: "Kılıç" }));
   const a = fuelAudit(d, "X");
-  assert.deepEqual(a.unlinkedFuel.map((x) => [x.store, x.liters]), [["fuel_records", 50], ["fuel_tank_movements", 200]]);
+  assert.deepEqual(a.unlinkedFuel.map((x) => [x.store, x.liters, x.linkable]), [["fuel_records", 50, false], ["fuel_tank_movements", 200, true]], "istasyon alışı bağlanamaz, yalnız bilgi");
   assert.equal(customerFuelLedger(d, "X").received, 0, "bağlanmadan litre düşmez (sessiz atama yok)");
 });
 test("depo girişi + depodan araca çıkış: tek alım (çift sayılmaz); aynı miktarda iki gerçek teslim ikisi de", () => {
@@ -80,5 +80,33 @@ test("ücret yalnız mazot iken işte TL de varsa 'karışık' uyarısı", () =>
   const d = base();
   d.work_records.push(priced({ material: "gravak", customer_fuel_allowance_l: 375, fuel_rule_id: "r1" }));
   assert.equal(fuelAudit(d, "X").mixed.length, 1);
+});
+test("300 L 'müşteri verdi' kaydı müşterisi boş: mevcut kayıt bağlanabilir aday; yeni kayıt önerilmez", () => {
+  const d = base();
+  d.fuel_records.push(rec({ date: T, vehicle_id: "V", liters: 300, fuel_source: "Müşteri Verdi", customer_id: null, total: null }));
+  const a = fuelAudit(d, "X");
+  assert.deepEqual(a.unlinkedFuel.map((x) => [x.store, x.liters, x.linkable]), [["fuel_records", 300, true]]);
+  assert.equal(d.fuel_records.length, 1); assert.equal(d.cash_records, undefined, "denetim kayıt açmaz");
+});
+test("düzeltme önizlemesi: kayıt, o tarihteki kural, bugünkü kuraldan fark, TL ve litre eski/yeni, değişecek alanlar", () => {
+  const d = base({ from: "2026-10-01" });
+  const w = priced({ material: "gravak" }); d.work_records.push(w); d.fuel_records.push(gift(200));
+  const before = JSON.stringify(d);
+  const P = fixPreview(d, "X", [w.id]);
+  assert.equal(JSON.stringify(d), before, "önizleme yazmaz");
+  const r = P.rows[0];
+  assert.match(r.record, /2026-10-09 · 34 KM 101 · 5 sefer gravak/); assert.match(r.record, /= 15000 ₺/);
+  assert.match(r.atDate[0], /75 L \/ sefer \("gravak" işleri\), ücret yalnız mazot · 2026-10-01 – …/);
+  assert.match(r.diff, /litre hakkı yok, 15000 ₺ TL fiyatlı/); assert.match(r.changes[0], /TL tutar 15000 → 0 ₺, litre hakkı 0 → 375 L/);
+  assert.deepEqual([P.tl.delta, P.litre.earnedOld, P.litre.earnedNew, P.litre.received, P.litre.remainingOld, P.litre.remainingNew], [-15000, 0, 375, 200, -200, 175]);
+  assert.deepEqual(rulesAt(d.customers[0], "2026-09-01", "Sefer"), [], "kural başlangıcından önceki tarihte geçerli kural yok");
+});
+test("eski litre hakkı bugünkü kuralla değişmiş görünse de önizleme bunu FARKLI diye gösterir, düzeltilebilir saymaz", () => {
+  const d = base({ per: 80 });
+  const w = rec({ date: "2026-10-09", customer_id: "X", vehicle_id: "V", unit: "Sefer", quantity: 5, material: "gravak", customer_fuel_allowance_l: 375, fuel_rule_id: "r1", price_snapshot: { unit_price: 0, amount: 0, kdv_rate: 0, price_source: "Mazot karşılığı" } });
+  d.work_records.push(w);
+  assert.equal(fuelAudit(d, "X").fixable.length, 0);
+  const r = fixPreview(d, "X", [w.id]).rows[0];
+  assert.match(r.diff, /İşte 375 L kayıtlı; bugünkü kural 400 L verir \(FARKLI — eski hak değiştirilmez\)/); assert.equal(r.ok, false);
 });
 console.log(`fuel-audit: ${n} test geçti`);

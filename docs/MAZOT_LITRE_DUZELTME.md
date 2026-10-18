@@ -1,65 +1,62 @@
-# v3.9.04.2: sefer başı litre anlaşmasında "alınan mazot alacaktan düşmüyor"
+# v3.9.04.2: mazot hesabı incelemesi ("alınan mazot alacaktan düşmüyor")
 
 - **Taban:** canlı `gh-pages` = `1eaebf1` (v3.9.04).
-- **Dal:** `sahapro-mazot-b`.
-- **İlgili dal:** PR #122 (v3.9.04.1, ödeme/fiyat). İkisi aynı dosyalara dokunmuyor; sürüm satırı (`core.js`, `m-dash.js`, `sw.js`) birleştirmede elle seçilir.
-- **Kullanıcının modeli (2026-10-18 cevabı):** sefer başı litre anlaşması (Model B). Model A (TL borcuna karşılık mazot) bu PR'da **yapılmadı**.
+- **Dal:** `sahapro-mazot-b` (PR #123).
+- **Sözleşme modeli: AÇIK.**
+  - Kullanıcı sefer başı litre anlaşması olduğunu belirtti.
+  - "TL borcuna karşılık mazot" modelinin hiç kullanılmadığı **doğrulanmadı**.
+  - Uygulama bu PR'da hiçbir müşteri için modeli varsaymaz.
+- **Kılıç Hafriyat 300 L olayı:** kök neden **doğrulanmadı**. Gerçek kayıtlar incelenmedi. Aşağıdakiler test verisiyle yeniden üretilmiş **olası** nedenlerdir.
 
-## Kök neden
-Model B hesabı tek başına doğru çalışıyor. `customerFuelLedger` 5 sefer × 75 L = 375 L hak, 200 L alındı, 175 L kalan veriyor. TL alacak 0. Şikâyet ancak şu durumlarda görülür (`node tools/analiz/mazot_repro.mjs`, B-1…B-3):
+## Olası nedenler (`node tools/analiz/mazot_repro.mjs`)
 
-| Durum | Ne görünür | Neden |
-|---|---|---|
-| **B-1:** İşte kuralın kelimesi yok (kural "gravak" işleri için, iş "moloz" yazılmış), birim farklı ya da tarih aralık dışında | İş fiyat listesinden **TL** fiyatlandı → toplam alacakta 15.000 ₺. Alınan mazot litre hesabına "−200 L" olarak düşüyor, TL'ye dokunmuyor | `assistant-rules.js` `matchFuelRule` uymazsa `applyFuelPay` işi değiştirmez; fiyat listesi uygulanır |
-| **B-2:** İş, kural müşteri kartına eklenmeden önce kaydedilmiş | Aynı: TL alacak, litre hakkı yok | Kural geriye dönük uygulanmaz. Müşteri kartındaki "kuralı uygula" düğmesi önizlemesiz ve toplu çalışıyordu |
-| **B-3:** Mazot depoya müşteri seçilmeden girilmiş | Litre kalanı düşmüyor | Depo girişinde `customer_id` yok |
-| Ek risk: Yakıt formunda "mazotu veren müşteri" ilk müşteriyle **ön seçili** geliyordu | Yanlış müşterinin hesabından düşebilir | `m-ops.js` varsayılan değer |
-| Ek risk: Toplu "kuralı uygula", bugün kurala uymayan bir işin **var olan litre hakkını siliyordu** | Hak edilen litre sessizce azalabilir | `solo-ui.js`: eşleşme yoksa `customer_fuel_allowance_l: null` yazılıyordu |
-
-Gerçek kayıtlara bakılmadı, bu yüzden hangisinin sizde olduğunu bilmiyorum. Yeni denetim ekranı bunu gösterir.
+| Durum | Görünen |
+|---|---|
+| İş, bugünkü kuralın kelimesine / birimine / tarihine uymuyor, ya da kural sonradan eklenmiş | İş TL fiyatlı görünür; alınan mazot yalnız litre hesabından düşer |
+| Mazot kaydı müşteriye bağlanmamış ("müşteri verdi" ama müşteri alanı boş, ya da depoya müşterisiz giriş) | Litre kalanı düşmez |
+| Yakıt formunda müşteri ön seçili geliyordu | Yanlış müşteriye bağlanabilir |
+| Toplu "eski işlere uygula" ve iş düzenleme, eski litre hakkını bugünkü kuralla yeniden hesaplıyordu | Eski hak sessizce değişebilir |
 
 ## Değişiklik
-- **`js/fuel-audit.js` (yeni, saf, kayıt yazmaz).** Kurallı her müşteri için şunları listeler:
-  1. Kurala uyan ama TL yazılmış işler (düzeltilebilir).
-  2. Kurala uymayan TL işler ve **nedeni**: kelime / birim / tarih / kural sonradan.
-  3. Kesinleşmiş hakedişteki TL işler.
-  4. Hem litre hem TL yazılmış işler.
-  5. Müşteri adı geçen ama müşteriye bağlanmamış yakıt / depo girişi.
-  6. TL tutarlı "müşteri verdi" kayıtları.
-- **#/mazot-hesaplari:** her müşterinin altında denetim özeti. **#/mazot-hesaplari/<müşteri>:** ayrıntı.
-  - **1. grup:** yalnız **seçilen** işler düzeltilir. Önce önizleme: TL alacak eski → yeni, litre hakkı ve kalan eski → yeni. Sonra onay istenir.
-  - Koşul, yazma ve audit tek transaction'da yapılır (`db.updateIf`). İş üzerinde kalıcı işlem kimliği `fuel_fix_op` tutulur.
-  - İkinci kez işleme ya da iki sekmeden onay tek düzeltme üretir. Hakedişe girmiş ya da toplu fişe bağlı iş değişmez.
-  - **5. grup:** yalnız petrolcüsüz ve tutarsız depo girişi "Bu müşteriye bağla" ile bağlanabilir (önizleme + onay). İstasyon alışı ve depodan araca çıkış müşteri ödemesi sayılmaz; yalnız listelenir.
-  - **2, 3, 4, 6. gruplar:** yalnız listelenir. Kendiliğinden değişmez.
-- **Müşteri kartı "kuralı geçmiş işlere uygula":**
-  - Önce önizleme gösterir: kaç iş, TL eski → yeni, litre farkı. Onaysız yazmaz.
-  - Var olan litre hakkını silmez. Kilitli işe dokunmaz.
-- **Yakıt formu:** "Mazotu veren müşteri" artık boş gelir ve seçilmesi zorunludur.
+- **İnceleme ekranı** (#/mazot-hesaplari ve #/mazot-hesaplari/<müşteri>):
+  - Sonuçlar **"inceleme adayı"** olarak gösterilir, kesin hata olarak değil.
+  - Açmak hiçbir kaydı değiştirmez; audit dahil, ekran testiyle doğrulandı.
+- **Düzeltme yalnız seçilen işte yapılır.** Önce ayrı ayrı gösterilir:
+  - gerçek kayıt (tarih, araç, miktar, malzeme, fiyat, mevcut litre hakkı);
+  - o tarihte geçerli kural (kural kaydının tarih aralığına göre; değişiklik geçmişi tutulmadığı da yazılır);
+  - bugünkü kuraldan fark;
+  - değişecek alanlar;
+  - TL alacak eski → yeni;
+  - litre hakkı eski → yeni, alınan (değişmez), kalan eski → yeni.
+- **Onay koşulları:**
+  - "O tarihteki gerçek anlaşmayı doğruladım" işaretlenmeden uygulanmaz.
+  - Litre hakkı zaten olan işe dokunulmaz (eski hak yeniden hesaplanmaz).
+  - Hakedişteki ya da toplu fişe bağlı iş değişmez.
+  - Koşul, yazma ve audit tek transaction'da (`db.updateIf`).
+  - Kalıcı `fuel_fix_op` var; iki sekme ya da yeniden işleme tek sonuç verir.
+- **Mevcut yakıt kaydını bağlama:** müşterisi boş "müşteri verdi" kaydı ya da petrolcüsüz, tutarsız depo girişi. Yalnız müşteri alanı doldurulur. Önizleme ve onay istenir. **Yeni yakıt, tahsilat ya da cari kaydı açılmaz.** İstasyon alışı ve depodan araca çıkış yalnız listelenir.
+- **Müşteri kartındaki toplu "eski işlere uygula" kaldırıldı.** Yerine inceleme ekranına giden düğme var. TL işi, anlaşma doğrulanmadan "yalnız mazot"a çevrilmez.
+- **İş düzenleme:** müşteri ve birim aynıysa kayıtlı litre hakkı korunur. Miktar değiştiyse kayıtlı litre/birim oranı kullanılır, bugünkü kural değil.
+- **Yakıt formu:** "Mazotu veren müşteri" boş gelir ve seçilmesi zorunludur.
+- **Kural genişletme önerilmez:** ekran, kuralı yalnız bakiyeyi düşürmek için değiştirmemeyi açıkça yazar.
 
 ## Testler
-- **Birim:** `tests/fuel-audit.test.mjs` (8 grup):
-  - litre hakkı 375/200/175;
-  - kelime yok;
-  - kural sonradan (düzeltme sonrası TL 0, kalan 175, ikinci denetimde listede yok);
-  - birim / tarih nedeni;
-  - hakedişte kilitli;
-  - bağlanmamış depo / istasyon (başka müşteri karışmaz, sessiz atama yok);
-  - depo giriş + çıkış tek alım, iki eşit gerçek teslim ikisi de;
-  - karışık.
-- **Ekran:** `tools/e2e/mazot.py`:
-  - başlangıçta 21.000 ₺ / −200 L görüntüsü;
-  - ekranı açmak hiçbir şey yazmaz;
-  - nedenler ayrı ayrı görünür;
-  - önizleme 21.000 → 6.000 ₺, kalan −200 → 175 L;
-  - iki sekmeden onay tek düzeltme;
-  - yeniden işleme yok;
-  - depo girişi bağlama 175 → 75 L;
-  - toplu uygulamada önizleme ve "Vazgeç" ile değişiklik yok;
+- **Birim:** `tests/fuel-audit.test.mjs` (11 grup). Yeni gruplar:
+  - müşterisi boş 300 L kaydı bağlanabilir aday (yeni kayıt önerilmez);
+  - önizleme içeriği yazmaz;
+  - eski hak "FARKLI" diye gösterilir, düzeltilmez.
+- **Ekran:** `tools/e2e/mazot.py` (16 kontrol, 3 koşu):
+  - inceleme adayı etiketi;
+  - açmak / önizlemek yazmaz;
+  - anlaşma doğrulaması olmadan düğme kapalı;
+  - iki sekmeden tek düzeltme;
+  - tekrar uygulanmaz;
+  - 300 L mevcut kayda bağlanır (ikinci yakıt / tahsilat / cari yok);
+  - düzenlemede eski hak korunur;
+  - toplu uygulama yok;
   - yakıt formunda ön seçim yok.
-  - Bu test, düzeltmeden önce üç koşudan ikisinde iki sekme yarışını yakaladı.
 
 ## Yapılmayanlar
-- Model A ("mazotla TL tahsilatı", mutabakat fiyatı, cari mahsup, iptal ters kaydı). Kullanıcı Model B kullanıyor; gerekirse ayrı iş olarak yapılır.
-- Kesinleşmiş hakedişteki TL işin düzeltilmesi (hakediş iptali / düzeltme kaydı) kendiliğinden yapılmaz.
-- #/mazot-hesaplari'daki "toplam alacak ≈ … ₺", kalan litreyi maliyet fiyatıyla çevirir. Bu yalnız gösterimdir, cariye girmez; ekrandaki notta yazıyor.
+- "TL borcuna karşılık mazot" (mutabakat fiyatı, cari mahsup): model doğrulanmadığı için yapılmadı ve varsayılmadı.
+- Gerçek kayıtlar için kesin teşhis: kullanıcı inceleme ekranında kendi kayıtlarına bakmalı.
+- Kural değişiklik geçmişi: tutulmuyor. "O tarihteki anlaşma" bugünkü kural kaydının tarih aralığından türetilir.

@@ -1429,7 +1429,7 @@ export async function augment(ctx) {
           <p style="font-size:17px">${L.balance > 0 ? `Kalan mazot alacağı: <b>${L.balance} L</b>` : L.balance < 0 ? `Fazla alınan: <b>${-L.balance} L</b>` : "Hesap kapalı ✓"}</p>
           <p class="muted small">Mazot alınca: Yakıt → kaynak "Müşteri Verdi" (araca) ya da Depo Tankı → GİRİŞ "Müşteriden" (depoya). Asistana "${esc(me.name)}'tan 300 litre mazot aldık" yazabilirsiniz.</p>
           <button class="btn block" data-fuelshare>📤 Mazot ekstresini paylaş (WhatsApp)</button>
-          ${rules.length ? '<button class="btn block" style="margin-top:6px" data-fuelapply>Eski işlere uygula (kurala uyanları hesapla)</button><div data-fuelapply-out class="small" style="margin-top:6px"></div>' : ""}</section>`;
+          ${rules.length ? `<button class="btn block" style="margin-top:6px" data-go="#/mazot-hesaplari/${esc(id)}">🔎 Eski işleri incele (toplu uygulama yok; tek tek önizleme ve onay)</button>` : ""}</section>`;
         const tabs = root.querySelector("[data-tabs]");
         if (tabs) tabs.insertAdjacentHTML("beforebegin", html);
         else root.insertAdjacentHTML("beforeend", html);
@@ -1438,36 +1438,7 @@ export async function augment(ctx) {
           if (navigator.share) { try { await navigator.share({ text: t }); return; } catch (e) { if (e.name === "AbortError") return; } }
           location.href = "https://wa.me/?text=" + encodeURIComponent(t);
         });
-        root.querySelector("[data-fuelapply]")?.addEventListener("click", async () => {
-          const d = await db.dumpAll();
-          const mine = (d.work_records || []).filter((x) => !x.deleted_at && x.customer_id === id);
-          let n = 0, fail = 0, matched = 0, kept = 0;
-          const miss = [], plan = [];
-          for (const w of mine) {
-            const f = R.applyFuelPay(d, w, "");
-            if (f.customer_fuel_allowance_l) matched++;
-            else if (miss.length < 5) miss.push(`${w.date} · ${w.quantity} ${w.unit || ""} · ${w.material || w.work_type || ""}`);
-            // Kurala bugün uymayan işin VAR OLAN litre hakkı sessizce silinmez (kayıt mesaj metniyle eşleşmiş olabilir)
-            if (!f.customer_fuel_allowance_l && Number(w.customer_fuel_allowance_l) > 0) { kept++; continue; }
-            const same = Number(f.customer_fuel_allowance_l || 0) === Number(w.customer_fuel_allowance_l || 0) && f.price_snapshot?.amount === w.price_snapshot?.amount;
-            if (same || w.price_snapshot?.locked) continue;
-            plan.push({ w, f });
-          }
-          // Toplu değişiklik önce gösterilir, onaysız yazılmaz
-          const tlBefore = plan.reduce((s2, x) => s2 + (Number(x.w.price_snapshot?.amount) || 0), 0), tlAfter = plan.reduce((s2, x) => s2 + (Number(x.f.price_snapshot?.amount) || 0), 0);
-          const lDelta = plan.reduce((s2, x) => s2 + (Number(x.f.customer_fuel_allowance_l) || 0) - (Number(x.w.customer_fuel_allowance_l) || 0), 0);
-          if (plan.length && !(await (await import("./ui.js")).confirmDialog("Kural uygulansın mı?", `${plan.length} iş değişecek: bu işlerin TL tutarı ${tlBefore.toLocaleString("tr-TR")} → ${tlAfter.toLocaleString("tr-TR")} ₺, litre hakkı ${lDelta >= 0 ? "+" : ""}${Math.round(lDelta * 10) / 10} L.${kept ? ` ${kept} işin mevcut litre hakkı korunacak.` : ""} Ayrıntı için Mazotla Ödeme Hesapları → Denetim.`, "Uygula"))) return;
-          for (const { w, f } of plan) {
-            try {
-              await db.saveExisting("work_records", w, { customer_fuel_allowance_l: f.customer_fuel_allowance_l || null, fuel_rule_id: f.fuel_rule_id || null, price_snapshot: f.price_snapshot }, "Mazot karşılığı uygulandı");
-              n++;
-            } catch (e) { fail++; }
-          }
-          const out = root.querySelector("[data-fuelapply-out]");
-          out.innerHTML = `${mine.length} işten ${matched} tanesi kurala uydu; ${n} iş güncellendi${fail ? `, ${fail} iş hakedişe bağlı olduğu için değişmedi` : ""}.` +
-            (miss.length ? `<div class="muted tiny" style="margin-top:4px">Kurala uymayan örnekler (birim veya kelimeler tutmuyor): ${miss.map(esc).join(" | ")}</div>` : "");
-          if (n) setTimeout(() => location.reload(), 1800);
-        });
+        // Toplu kural uygulama kaldırıldı: TL işi anlaşma doğrulanmadan "yalnız mazot"a çevrilmez, eski litre hakkı bugünkü kuralla yeniden hesaplanmaz (bkz. #/mazot-hesaplari/<müşteri>)
       }
     } catch (e) {}
   }
