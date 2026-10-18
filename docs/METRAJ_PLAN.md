@@ -19,8 +19,8 @@ Tahminler hiçbir zaman cariye girmez.
 | Paket | İçerik | Durum |
 |---|---|---|
 | 1 | Filo: dingil, dara, yasal toplam ağırlık, kasa m³ → araç kartında sefer başı yerinde m³ tahmini. Malzeme katsayıları ekranı. Döküm sahasında kantar var/yok. | v3.9.14 (bu PR) |
-| 2 | İş sözleşmesi (sefer / m³). Kapsam içi / ekstra ayrımı, çift fiyatlamaya karşı koruma (ekskavatör saati sefer veya m³ fiyatına dahilse ayrıca fiyatlanmaz). Sefer kaydında malzeme ve kantar tonu; şoför ekranında ton alanı. | bekliyor |
-| 3 | Metraj: ara ödemeler avans olarak; iş sonu ölçümü; hakediş = m³ × fiyat + ekstralar − avanslar; ekskavatör saati (saat sayacı) ile verim (m³/saat) ve maliyet; katsayıyı onayla öğrenme (kantarlı seferlerin ortalaması kantarsızlara uygulanır). | bekliyor |
+| 2 | İş sözleşmesi (sefer / m³). Kapsam içi / ekstra ayrımı, çift fiyatlamaya karşı koruma (ekskavatör saati sefer veya m³ fiyatına dahilse ayrıca fiyatlanmaz). Sefer kaydında malzeme ve kantar tonu; şoför ekranında ton alanı. | v3.9.14 (bu PR) |
+| 3 | Metraj: ara ödemeler avans olarak; iş sonu ölçümü; hakediş = m³ × fiyat + ekstralar − avanslar; ekskavatör saati (saat sayacı) ile verim (m³/saat) ve maliyet; katsayıyı onayla öğrenme (kantarlı seferlerin ortalaması kantarsızlara uygulanır). | v3.9.14 (bu PR) |
 
 ## Paket 1 ayrıntısı
 - `js/haul-core.js` yalnız hesap yapar, kayıt yazmaz:
@@ -42,4 +42,47 @@ Tahminler hiçbir zaman cariye girmez.
 ## Bilinen sınırlar
 - Gerçek araç darası ve kasa ölçüsü kullanıcı girişidir; uygulama doğrulamaz.
 - Kaya değerleri doğrulanmamıştır; kilde kabarma kaynaklara göre %22–43 arasında değişir.
+- Gerçek telefonda test edilmedi.
+
+## Paket 2–3 ayrıntısı
+- Anlaşma şantiye kartında durur (`sites.deal`): yeni veritabanı deposu yoktur, sürüm geri dönüşü bozulmaz.
+  - Alanlar: `basis` (m³ / Sefer), `price`, `kdv_rate`, `kdv_included`, `start_date`, `material`, `status` (Açık → Ölçüldü → Kapandı), `measurement`.
+- İşin hangi anlaşmaya bağlanacağı (`job-core.js` → `jobFor`):
+  - Şantiye seçiliyse o şantiyenin anlaşması.
+  - Şantiye seçili değilse müşterinin TEK açık işi; iş o şantiyeye kaydedilir ve bu kayıttan önce gösterilir.
+  - Müşterinin birden çok açık işi varsa hiçbir şey uygulanmaz ve şantiye seçilmesi istenir.
+- Fiyat (`applyJob`):
+  - m³ anlaşmasında tüm kapsam içi işler `Sözleşmeye dahil` (0 ₺).
+  - Sefer anlaşmasında sefer işleri sözleşme fiyatıyla; makine saati dahil (0 ₺).
+  - "Ekstra" seçilirse ya da fiyat elle yazıldıysa fiyat listesi uygulanır.
+  - Mazot karşılığı, iç iş ve kilitli işlere dokunulmaz.
+- Uygulandığı yerler:
+  - elle iş formu (`[data-jobbox]`, kayıttan önce dahil/ekstra seçimi)
+  - asistan iş kartı (önizleme + "Sözleşme dışı ekstra iş" kutusu)
+  - asistan döküm fişi
+  - toplu satırlar
+- Fiyatsız iş uyarıları `Sözleşmeye dahil` işleri saymaz: ana ekran, cari "fiyatsız" grupları, müşteri ve detaylı raporlar.
+- Tahmin (`jobReport`), güven sırasıyla:
+  1. Kantar fişli sefer (ton ÷ yerinde yoğunluk)
+  2. Aynı işte aynı aracın kantar ortalaması
+  3. Önceki işlerden onayla öğrenilmiş sefer başı m³ (meta `haul_calib`)
+  4. Yük / kasa tahmini (paket 1)
+
+  Ekstra seferler metraja girmez.
+- Ölçüm (`db.saveJobMeasurement`):
+  - Şantiye ve cari tek işlemde yazılır; ölçüm zaten varsa ya da iş açık değilse hiçbir şey yazılmaz.
+  - Cari hareketi: `type: Hakedis`, `source: metraj`, `ref_id`: şantiye; tutar brüttür (net + KDV).
+  - Ölçüm sonradan değiştirilemez, şantiye silinemez; yanlışsa caride düzeltme açılır.
+  - Veri Sağlığı `metraj-cari` / `metraj-cari-amount` ile denetler.
+- Ara ödemeler: carideki normal tahsilatlardır. İş ekranı müşterinin başlangıçtan beri ödemelerini (tüm işleri) gösterir.
+- Kapatma: makine saati olup hiç ekstra yoksa "ekstra iş var mıydı?" diye bir kez sorulur.
+- Mevcut işler (`#/is-sozlesmesi/<id>/bagla`):
+  - yalnız seçilenler bağlanır, tutar farkıyla onay alınır, `updateIf` ile yazılır, geçmişe kaydedilir
+  - hakedişli ya da kilitli iş listede yer almaz
+- Testler: `tests/job.test.mjs` (12 grup), `tools/e2e/metraj.py`.
+
+## Henüz yok
+- Yıkım anlaşmaları (işletme sahibinden bilgi bekleniyor).
+- m³ başına mazot / operatör maliyeti: yakıt kaydı işe bağlanmadığı için hesaplanmıyor; yalnız makine saati ve m³/saat gösteriliyor.
+- Ara ödemeyi belirli bir işe bağlama: ödemeler müşteri carisindedir.
 - Gerçek telefonda test edilmedi.

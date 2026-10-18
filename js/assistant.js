@@ -7,6 +7,7 @@ import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { priceDecision, priceSummary } from "./price-decision.js";
+import * as JOB from "./job-core.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, answerMetricIssues, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
@@ -379,6 +380,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const quarries = live("quarries").map((x) => [x.id, x.name]);
   const personnel = live("personnel").map((p) => [p.id, p.name]);
   const dumpSites = live("dump_sites").map((x) => [x.id, x.name]);
+  const hasJobs = live("sites").some((x) => x.deal?.status === "Açık");
   const banks = live("bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]);
   const nameOf = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || id || "—";
   out.innerHTML =
@@ -442,6 +444,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> mazot hak edildi → müşterinin mazot hesabına eklenir (ücret yalnız mazotsa hakedişe 0 ₺ yazılır)</div>` : ""}
         ${r.src && (r.src.customer || r.src.vehicle || r.src.price) ? `<div class="muted tiny" data-src style="margin-top:4px">Kaynak: ${[r.src.customer ? "müşteri — " + esc(r.src.customer) : "", r.src.vehicle ? "araç — " + esc(r.src.vehicle) : "", r.src.price ? "fiyat — " + esc(r.src.price) : ""].filter(Boolean).join(" · ")}</div>` : ""}
         <div class="small" data-price-preview style="margin-top:4px"></div>
+        ${hasJobs ? `<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:4px"><input type="checkbox" name="job_extra" value="1"> Sözleşme dışı ekstra iş (ayrı fiyatlanır)</label>` : ""}
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
         ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
@@ -636,14 +639,18 @@ function render(ctx, out, v, d, { message, files, ms }) {
         if (cust.startsWith("new:")) { box.innerHTML = "💰 Yeni müşteri: fiyat listesinde kuralı yok — fiyat boş kalır"; return; }
         const veh = (d.vehicles || []).find((x) => x.id === g("vehicle"));
         const site = g("site").startsWith("new:") ? null : g("site") || null;
+        const jp = JOB.jobPreview(d, { customer_id: cust || null, site_id: site, date: g("date"), unit: g("unit"), quantity: q }, { extra: !!qs("[name=job_extra]", card)?.checked });
+        if (jp && jp.kind !== "ambiguous" && jp.kind !== "extra" && !r0.fuelAllowance) { card.dataset.priceAmb = ""; box.innerHTML = "📐 <b>" + esc(jp.text) + "</b>" + (jp.kind === "sefer" ? ` = <b>${fmtTL(Number(JOB.dealOf(jp.site).price) * q)} ₺</b>` : ""); return; }
+        const jpNote = jp ? `<div class="small">📐 ${esc(jp.text)}</div>` : "";
         const dateSure = !(r0.dateUnsure && g("date") === r0.date);
         const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
         card.dataset.priceAmb = dec.ambiguous ? "1" : "";
         box.innerHTML = dec.rule ? `💰 <b>Fiyat listesinden</b> — ${esc(priceSummary(dec.rule, { date: g("date"), quantity: q, unit: g("unit") }))}${r0.fuelAllowance?.only_pay ? " · <b>Bu müşteride ücret yalnız mazot: hakedişe 0 ₺ yazılır</b>" : ""}`
           : dec.ambiguous ? `❓ <b>Fiyat seçimi gerekli:</b> ${esc(dec.reason)} — kaydederken sorulacak`
           : `💰 ${esc(dec.reason)}`;
+        box.innerHTML += jpNote;
       };
-      for (const n of ["date", "customer", "site", "vehicle", "work_type", "quantity", "unit", "material", "unit_price"]) { const el = qs(`[name=${n}]`, card); el?.addEventListener("change", show); el?.addEventListener("input", show); }
+      for (const n of ["date", "customer", "site", "vehicle", "work_type", "quantity", "unit", "material", "unit_price", "job_extra"]) { const el = qs(`[name=${n}]`, card); el?.addEventListener("change", show); el?.addEventListener("input", show); }
       show();
     }
   }
@@ -970,6 +977,7 @@ async function save(ctx, out, v, d, { message, files }) {
             quarry: "", slip_status: null, slip_no: no, customer_note: "", distance_km: null, source: "asistan",
           };
           f.price_snapshot = priceSnapshot(f, prices, crane);
+          Object.assign(f, JOB.applyJob(await db.dumpAll(), f));
           workId = (await db.saveNew("work_records", f, "Asistan: döküm fişi")).id;
           done.work++;
         }
@@ -1122,6 +1130,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const up = Number(val(c, "unit_price"));
         const kdDef = (await import("./core.js")).kdvRateOf(await db.metaGet("kdv_default"));
         if (up > 0) fields.price_snapshot = { unit_price: up, kdv_rate: kdDef ?? 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() };
+        else if ((() => { const j = JOB.jobFor(d, fields); return j && !j.ambiguous && !qs("[name=job_extra]", c)?.checked && !wr0?.fuelAllowance; })()) fields.price_snapshot = null; // iş sözleşmesi fiyatlar (aşağıda)
         else {
           // Fiyat listesi: eşit öncelikli birden çok kural ya da tarihe göre değişen fiyat + kesin olmayan tarih → SESSİZ SEÇİM YOK
           const wr1 = v.works[Number(c.dataset.i)] || {};
@@ -1135,7 +1144,9 @@ async function save(ctx, out, v, d, { message, files }) {
           } else fields.price_snapshot = priceSnapshot(fields, prices, crane);
         }
         // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
-        { const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields)); }
+        { const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields));
+          Object.assign(fields, JOB.applyJob(dNow, fields, { extra: !!qs("[name=job_extra]", c)?.checked }));
+          if (fields.job_extra && !fields.price_snapshot) fields.price_snapshot = priceSnapshot(fields, prices, crane); }
         // Aynı gün/araç/müşteri/miktar: gerçekten aynı iş mi? İki şoför kaydı (ayrı kimlik) ya da farklı fiş no → ayrı iştir, sorulmaz
         const slipK = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity

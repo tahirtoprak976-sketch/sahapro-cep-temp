@@ -210,7 +210,7 @@ export function unpricedGroups(d, customerId) {
   const groups = new Map();
   for (const w of live(d, "work_records")) {
     if (w.customer_id !== customerId || billed.has(w.id) || w.price_snapshot?.locked) continue;
-    if (workAmount(w) > 0 || Number(w.customer_fuel_allowance_l) > 0 || w.price_snapshot?.price_source === "Mazot karşılığı" || w.price_snapshot?.price_source === "İç iş (kendi depo)") continue;
+    if (workAmount(w) > 0 || Number(w.customer_fuel_allowance_l) > 0 || w.price_snapshot?.price_source === "Mazot karşılığı" || w.price_snapshot?.price_source === "İç iş (kendi depo)" || w.price_snapshot?.price_source === "Sözleşmeye dahil") continue;
     const key = (w.work_type || "Diğer") + "|" + (w.unit || "");
     const g = groups.get(key) || { key, work_type: w.work_type || "Diğer", unit: w.unit || "", works: [], qty: 0, vehicles: new Set() };
     g.works.push(w);

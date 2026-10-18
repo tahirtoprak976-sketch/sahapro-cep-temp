@@ -236,6 +236,7 @@ async function workForm(ctx, editId) {
         ${fSelect("Araç / Makine", "vehicle_id", [...vehOpts, { v: "__new__", t: "➕ Yeni…" }], v.vehicle_id)}
         ${fSelect("Şoför / Operatör", "personnel_id", [...perOpts, { v: "__new__", t: "➕ Yeni…" }], v.personnel_id)}
       </div>
+      <div data-jobbox></div>
       ${fSelect("İş Türü", "work_type", WORK_TYPES, v.work_type || "")}
       <div class="formgrid2">
         ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
@@ -274,6 +275,24 @@ async function workForm(ctx, editId) {
     </div>`;
 
   const form = qs("[data-form]", root);
+  // İş sözleşmesi: müşterinin açık sefer / m³ anlaşması varsa bu iş dahil mi ekstra mı (kayıttan önce açıkça gösterilir)
+  const J = await import("./job-core.js");
+  const dJob = await db.dumpAll();
+  const jobInit = rec ? (rec.job_extra ? "ekstra" : J.isJobPriced(rec) ? "dahil" : "") : "";
+  const jobDraw = () => {
+    const box = qs("[data-jobbox]", form);
+    const g = (n) => qs(`[name=${n}]`, form)?.value || "";
+    const cur = qs("[name=job_scope]", form)?.value || jobInit || "dahil";
+    const w = { customer_id: g("customer_id"), site_id: g("site_id").startsWith("__") ? "" : g("site_id"), date: g("date"), unit: g("unit"), quantity: Number(g("quantity")) || 0 };
+    const p = J.jobPreview(dJob, w, { extra: cur === "ekstra" });
+    if (!p || rec?.price_snapshot?.locked) { box.innerHTML = ""; return; }
+    if (p.kind === "ambiguous") { box.innerHTML = notice("warn", "📐 " + p.text); return; }
+    box.innerHTML = `<div class="notice ${p.kind === "extra" ? "warn" : "info"}" style="display:block"><div>📐 ${esc(p.text)}</div>
+      ${fSelect("Bu iş", "job_scope", [{ v: "dahil", t: "Sözleşmeye dahil" }, { v: "ekstra", t: "Ekstra iş (sözleşme dışı, ayrı fiyat)" }], cur, { empty: false })}</div>`;
+    qs("[name=job_scope]", box).addEventListener("change", jobDraw);
+  };
+  for (const n of ["customer_id", "site_id", "date", "unit", "quantity"]) qs(`[name=${n}]`, form)?.addEventListener("change", jobDraw);
+  jobDraw();
   let draftTimer,
     saving = false;
   // ---- Fiş fotoğrafı: işe eklenir; Gemini tonu ve fiş bilgisini okuyup boş alanları doldurur ----
@@ -648,6 +667,18 @@ async function workForm(ctx, editId) {
       const { applyYard } = await import("./yard-core.js");
       Object.assign(fields, applyYard(dAll, fields));
       if (!fields.customer_fuel_allowance_l) fields.customer_fuel_allowance_l = null;
+      const jobScope = val.job_scope || "";
+      if (!editId) Object.assign(fields, J.applyJob(dAll, fields, { extra: jobScope === "ekstra" }));
+      else if (jobScope && jobScope !== jobInit) {
+        // Düzenlemede yalnız kullanıcı seçimi değiştirdiyse: dahil → sözleşme fiyatı; ekstra → fiyat listesi (yoksa fiyatsız)
+        const base = { ...rec, ...fields };
+        if (jobScope === "dahil") Object.assign(fields, J.applyJob(dAll, { ...base, price_snapshot: null }, { extra: false }));
+        else {
+          const { priceSnapshot } = await import("./business.js");
+          const j = J.jobFor(dAll, base);
+          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: priceSnapshot(base, await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
+        }
+      }
       const extras = batchActive() ? extraRows() : [];
       if (!editId && extras.length) {
         const { priceSnapshot } = await import("./business.js");
@@ -701,7 +732,7 @@ async function workForm(ctx, editId) {
               snapshot_at: new Date().toISOString(),
             };
           }
-          rows.push(applyYard(dAll, applyFuelPay(dAll, r, fuelText(r))));
+          { const rr = applyYard(dAll, applyFuelPay(dAll, r, fuelText(r))); rows.push({ ...rr, ...J.applyJob(dAll, rr, { extra: (val.job_scope || "") === "ekstra" }) }); }
         }
         const sameDay = await db.listActive("work_records");
         if (
@@ -789,6 +820,7 @@ async function workForm(ctx, editId) {
   });
 }
 
+const jobKv = (w, t) => `<div class="kv"><span class="k">İş sözleşmesi</span><span class="v"><a href="#/is-sozlesmesi/${esc(w.site_id || "")}">${esc(t)}</a></span></div>`;
 async function workDetail(ctx, id) {
   const { root, db, names } = ctx;
   const w = await db.get("work_records", id);
@@ -822,6 +854,7 @@ async function workDetail(ctx, id) {
       ${kv("Tarih", trDate(w.date) + (w.time ? " " + w.time : ""))}
       ${kv("Müşteri", names.customers[w.customer_id] || "—")}
       ${kv("Şantiye", names.sites[w.site_id] || "—")}
+      ${w.price_snapshot?.price_source === "Sözleşmeye dahil" ? jobKv(w, "Fiyata dahil — cariye ayrıca yazılmaz") : w.price_snapshot?.price_source === "İş sözleşmesi (sefer)" ? jobKv(w, "Sefer başı sözleşme fiyatı") : w.job_extra ? jobKv(w, "Ekstra iş (sözleşme dışı)") : ""}
       ${kv("Araç/Makine", names.vehicles[w.vehicle_id] || "—")}
       ${kv("Personel", names.personnel[w.personnel_id] || "—")}
       ${w.material ? kv("Malzeme", w.material) : ""}

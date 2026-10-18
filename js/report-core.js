@@ -57,7 +57,7 @@ function workInfo(d, w, nm) {
     type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
     from: nm("quarries", w.quarry_id) || w.quarry || "", to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
     ton: Number(w.tonnage) || 0, slip: [w.slip_no, w.digital_slip_no && w.digital_slip_no !== w.slip_no ? "dijital " + w.digital_slip_no : ""].filter(Boolean).join(" · "),
-    unitPrice: Number(w.price_snapshot?.unit_price) || 0, amount: workAmount(w), fuelL: Number(w.customer_fuel_allowance_l) || 0,
+    unitPrice: Number(w.price_snapshot?.unit_price) || 0, amount: workAmount(w), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
     dump: fee?.amount || 0, dumpEst: !!fee?.estimated, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
   };
 }
@@ -118,7 +118,7 @@ function workKpis(infos, { dump = true } = {}) {
   for (const x of infos) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
   const amount = r2(infos.reduce((n, x) => n + x.amount, 0)), ton = r2(infos.reduce((n, x) => n + x.ton, 0));
   const fuelL = r2(infos.reduce((n, x) => n + x.fuelL, 0)), dumpT = r2(infos.reduce((n, x) => n + x.dump, 0));
-  const unpriced = infos.filter((x) => !x.amount && !x.fuelL).length, slips = infos.filter((x) => x.slip).length;
+  const unpriced = infos.filter((x) => !x.amount && !x.fuelL && !x.included).length, slips = infos.filter((x) => x.slip).length;
   return [
     ["İş sayısı", String(infos.length)], ["Miktar", unitsText(units)],
     ...(ton ? [["Toplam ton (fiş)", num(ton) + " ton"]] : []),

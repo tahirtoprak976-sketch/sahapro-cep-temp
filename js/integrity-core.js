@@ -181,6 +181,12 @@ export function integrityCheck(d, { today, attachments = [], restoreSets = [] } 
       if (toKurus(re) !== toKurus(h.grand_total)) add("error", "hakedis-total", `Hakediş #${h.hakedis_no}: kalemlerin toplamı ${re} ₺, kayıtlı toplam ${h.grand_total} ₺`, "", "#/hakedis/" + h.id);
     } else if (mv.length) add("error", "hakedis-cari-draft", `Hakediş #${h.hakedis_no} (${h.status}) kesinleşmemiş ama cariye yazılmış`, "", "#/hakedis/" + h.id);
   }
+  // İş sözleşmesi metraj hakedişi ↔ şantiyedeki ölçüm
+  for (const m of cari.filter((m) => m.type === "Hakedis" && m.source === "metraj")) {
+    const st = live(d, "sites").find((x) => x.id === m.ref_id), M = st?.deal?.measurement;
+    if (!M || M.cari_id !== m.id) add("error", "metraj-cari", `Metraj hakedişi ${m.date} · ${Number(m.amount).toLocaleString("tr-TR")} ₺: şantiyedeki ölçümle eşleşmiyor`, "", st ? "#/is-sozlesmesi/" + st.id : "");
+    else if (toKurus(M.gross) !== toKurus(m.amount)) add("error", "metraj-cari-amount", `${st.name}: ölçüm ${M.gross} ₺, caride ${m.amount} ₺`, "", "#/is-sozlesmesi/" + st.id);
+  }
   { const { bal } = customerBalances(d);
     for (const c of live(d, "customers")) {
       const oi = customerOpenItems(d, c.id, today);

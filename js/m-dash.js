@@ -807,6 +807,8 @@ async function more(ctx) {
     ["#/taseron", "🤝", "Taşeron"],
     ["#/musteriler", "🏢", "Müşteriler"],
     ["#/santiyeler", "📍", "Şantiyeler"],
+    ["#/is-sozlesmeleri", "📐", "İş Sözleşmeleri"],
+    ["#/malzeme-katsayilari", "⚖", "Malzeme Katsayıları"],
     ["#/raporlar", "📊", "Raporlar"],
     ["#/detayli-rapor", "📑", "Detaylı Raporlar"],
     ["#/nakit", "📈", "Nakit Tahmini"],

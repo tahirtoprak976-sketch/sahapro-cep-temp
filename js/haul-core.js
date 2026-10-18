@@ -76,7 +76,7 @@ export function tripEstimate(v, m, { ton = null, payloadTon = null } = {}) {
     loose: r1(loose), bank: bank == null ? null : r1(bank), ton: r1(carriedTon), limit: measured ? "kantar" : limit,
     overBody: !!(measured && body && byWeight > body * 1.05),
     overLegal: !!(lp && carriedTon > lp + 0.05),
-    bodyPlain: body ? r1(body) : null,
+    bodyPlain: body ? r1(body) : null, bankRaw: bank, tonRaw: carriedTon,
   };
 }
 
