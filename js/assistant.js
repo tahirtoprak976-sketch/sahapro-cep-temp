@@ -48,6 +48,17 @@ export async function screen(ctx) {
       bindUndo(ctx, box);
     }
   }
+  {
+    const cx = readCtx();
+    const cn = cx.customer_id ? (await db.get("customers", cx.customer_id))?.name : null;
+    if (cn) {
+      const box = document.createElement("div");
+      box.className = "small"; box.dataset.ctxchip = "1"; box.style.margin = "4px 2px 8px";
+      box.innerHTML = `Bağlam: <b>${esc(cn)}</b> ("bu müşteri", "mazot hesabını göster" bu müşteri için) <button class="btn sm ghost" data-ctxclear>✕ temizle</button>`;
+      qs("[data-out]", root).before(box);
+      qs("[data-ctxclear]", box).onclick = () => { try { sessionStorage.removeItem("sp_asst_ctx"); } catch (e) {} box.remove(); };
+    }
+  }
   let prev = null; // son sonuç (kaydedilmediyse düzeltme için)
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
   let files = [];
@@ -131,6 +142,22 @@ export async function screen(ctx) {
     if (prev && !prev.v._done && qs("[data-refine]", root).checked && looksNew) toast("Yeni mesaj olarak gönderildi (önceki sonucun düzeltmesi sayılmadı)", "ok");
     if (prev && !prev.v._done && !refine && !typed) return toast("Düzeltme yazın ya da yeni mesaj girin", "err");
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
+    // Yerel komut (ekran aç, listele, düzeltilecek kaydı bul): Gemini'ye gitmez, internetsiz çalışır
+    if (!refine && !files.length && typed) {
+      const { routeCommand } = await import("./command-router.js");
+      const cx = readCtx();
+      const cmd = routeCommand(typed, await db.dumpAll(), todayStr(), cx);
+      if (cmd) {
+        await db.metaSet("assistant_draft", "");
+        if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
+        const out = qs("[data-out]", root);
+        if (cmd.kind === "open") { out.innerHTML = notice("info", "Açılıyor: " + cmd.label); toast("Açılıyor: " + cmd.label, "ok"); location.hash = cmd.hash; return; }
+        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` +
+          (cmd.kind === "candidates" ? `<div class="muted small" style="margin:0 2px 6px">${cmd.empty ? "Bu bilgilerle iş bulunamadı. Tarihi, aracı ya da müşteriyi ekleyip yeniden yazın." : "Rastgele seçilmez: düzeltmek istediğiniz işi seçin. Değişiklik formda yapılır, siz Kaydet'e basınca yazılır."}</div>` : "") +
+          cmd.items.map((it) => `<div class="li" data-go="${esc(it.hash)}"><div class="grow"><div class="t1">${esc(it.label)}</div></div><div class="end">›</div></div>`).join("");
+        return;
+      }
+    }
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
@@ -1507,3 +1534,13 @@ document.addEventListener("click", (e) => {
     location.hash = `#/yakit/new?litre=${encodeURIComponent(r.liters)}&tarih=${encodeURIComponent(r.date)}${r.customer_id ? "&musteri=" + encodeURIComponent(r.customer_id) : ""}`;
   }
 });
+
+// Konuşma bağlamı: son komuttaki müşteri (30 dk). Yeni müşteri adı geçince değişir; ✕ ile temizlenir.
+function readCtx() {
+  try {
+    const c = JSON.parse(sessionStorage.getItem("sp_asst_ctx") || "null");
+    const r = JSON.parse(sessionStorage.getItem("sp_last_record") || "null");
+    return { ...(c && Date.now() - c.at < 1800000 ? c : {}), ...(r && Date.now() - r.at < 1800000 ? { last_record: r } : {}) };
+  } catch (e) { return {}; }
+}
+function writeCtx(c) { try { sessionStorage.setItem("sp_asst_ctx", JSON.stringify({ ...c, at: Date.now() })); } catch (e) {} }

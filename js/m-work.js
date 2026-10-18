@@ -82,6 +82,10 @@ async function workList(ctx) {
     const fs = from.toISOString().slice(0, 10);
     rows = rows.filter((r) => r.date >= fs);
   }
+  // Tarih aralığı (asistan komutu ya da grafik dokunuşu): ?from=YYYY-MM-DD&to=YYYY-MM-DD
+  const isD = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
+  const dFrom = isD(query.from) ? query.from : null, dTo = isD(query.to) ? query.to : dFrom;
+  if (dFrom) rows = rows.filter((r) => r.date >= dFrom && r.date <= dTo);
   if (filter === "noslip") rows = rows.filter((r) => !r.slip_id);
   if (filter === "fiyatsiz") {
     const { workAmount } = await import("./collect-core.js");
@@ -99,7 +103,7 @@ async function workList(ctx) {
   );
 
   root.innerHTML =
-    appbar("İş Kayıtları", `${rows.length} kayıt`, {
+    appbar("İş Kayıtları", `${rows.length} kayıt${dFrom ? " · " + trDate(dFrom) + (dTo !== dFrom ? " – " + trDate(dTo) : "") : ""}`, {
       right: '<button class="iconbtn" data-go="#/whatsapp">💬</button>',
     }) +
     `
@@ -787,6 +791,8 @@ async function workForm(ctx, editId) {
 async function workDetail(ctx, id) {
   const { root, db, names } = ctx;
   const w = await db.get("work_records", id);
+  // Asistan "bu kayda fiş fotoğrafı ekle" için son açılan kayıt
+  try { sessionStorage.setItem("sp_last_record", JSON.stringify({ hash: "#/isler/" + id + "?foto=1", at: Date.now() })); } catch (e) {}
   if (!w) {
     root.innerHTML = appbar("İş") + emptyState("⚒", "Kayıt bulunamadı");
     return;
@@ -867,6 +873,7 @@ async function workDetail(ctx, id) {
     } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
     b.disabled = false;
   });
+  if (ctx.query?.foto && qs("[data-watt]", root)) { const el = qs("[data-watt]", root); el.scrollIntoView({ block: "center" }); (el.closest("label") || el).style.outline = "3px solid var(--brand-orange,#f5a623)"; (el.closest("label") || el).scrollIntoView({ block: "center" }); }
   qs("[data-watt]", root)?.addEventListener("change", async (e) => {
     for (const f of [...e.target.files].slice(0, 10)) await db.addAttachment("work", id, f, { kind: "slip_photo" });
     toast("Eklendi", "ok");
