@@ -279,7 +279,15 @@ export async function screen(ctx) {
     }
     btn.disabled = false;
   });
-  // Her ekrandaki 🎤 düğmesi: kayıt hemen başlar, bitince kendiliğinden asistana gider
+  // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)
+  if (ctx.query?.hazir) {
+    let t = "";
+    try { t = sessionStorage.getItem("sp_hero_msg") || ""; sessionStorage.removeItem("sp_hero_msg"); } catch (e) {}
+    if (t) { msgEl.value = t; if (g.ready && navigator.onLine) qs("[data-ask]", root).click(); else msgEl.focus(); }
+  }
+  if (ctx.query?.yapistir) { msgEl.focus(); msgEl.scrollIntoView({ block: "center" }); msgEl.placeholder = "WhatsApp mesajını buraya yapıştırın (uzun basın → Yapıştır)"; }
+  if (ctx.query?.foto) { const ph = qs("[data-photos]", root); ph.scrollIntoView({ block: "center" }); ph.closest(".field").style.outline = "2px solid var(--brand-orange,#f5a623)"; ph.focus(); }
+  // 🎤 Sesle anlat: kayıt hemen başlar, bitince kendiliğinden asistana gider
   if (ctx.query?.mic) {
     autoSend = true;
     qs("[data-rec]", root).scrollIntoView({ block: "center" });

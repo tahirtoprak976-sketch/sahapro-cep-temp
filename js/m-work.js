@@ -126,21 +126,33 @@ async function workList(ctx) {
       "Kayıt yok",
       '<button class="btn primary" data-go="#/isler/new">+ İş Kaydı</button>',
     );
-  else
-    pagedRender(listEl, rows, (w) =>
+  else {
+    // Gerçek iş tarihine göre gruplu (en yeni üstte); sayfalama tarih grubunu bölmez
+    const { groupByDate, pageGroups } = await import("./date-groups.js");
+    const pages = pageGroups(groupByDate(rows), 30);
+    const row = (w) =>
       li({
         ic: "⚒",
         href: "#/isler/" + w.id,
-        t1: `${esc(names.customers[w.customer_id] || "—")} · ${esc(w.work_type || "İş")}`,
-        t2: `${trDate(w.date)} · ${esc(names.vehicles[w.vehicle_id] || "—")} — ${esc(names.personnel[w.personnel_id] || "—")}${w.site_id ? " · " + esc(names.sites[w.site_id]) : ""}`,
-        badgeHtml: w.slip_id
-          ? badge("Fişli", "ok")
-          : w.slip_status === "Fiş Var"
-            ? badge("Fiş Var", "info")
-            : "",
-        end: `<div class="amt nowrap">${fmtNum(w.quantity)} ${esc(w.unit || "")}</div>`,
-      }),
-    );
+        t1: `<span class="strong">${esc(names.customers[w.customer_id] || "Müşteri yok")}</span>`,
+        t2: `${esc(w.work_type || "İş")} · ${esc(names.vehicles[w.vehicle_id] || "araç yok")} — ${esc(names.personnel[w.personnel_id] || "personel yok")}${w.site_id ? " · " + esc(names.sites[w.site_id]) : ""}`,
+        badgeHtml: w.slip_id ? badge("Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : "",
+        end: `<div class="amt nowrap" style="font-size:16px">${fmtNum(w.quantity)} ${esc(w.unit || "")}</div>`,
+      });
+    let shown = 0;
+    const more = () => {
+      qs("[data-more]", listEl)?.remove();
+      for (const g of pages[shown] || [])
+        listEl.insertAdjacentHTML("beforeend", `<div class="section-title" data-dgroup="${esc(g.key)}" style="margin-top:12px;display:flex;justify-content:space-between;gap:8px"><span>${esc(g.label)}</span><span class="muted small nowrap">${g.items.length} iş</span></div>` + g.items.map(row).join(""));
+      shown++;
+      if (shown < pages.length) {
+        const left = pages.slice(shown).reduce((n, p) => n + p.reduce((m, g) => m + g.items.length, 0), 0);
+        listEl.insertAdjacentHTML("beforeend", `<button class="btn ghost block" data-more>Daha eski tarihler (${left} iş kaldı)</button>`);
+      }
+    };
+    listEl.addEventListener("click", (e) => { if (e.target.closest("[data-more]")) { e.preventDefault(); more(); } });
+    more();
+  }
 
   let st;
   qs("[data-search]", root).addEventListener("input", (e) => {

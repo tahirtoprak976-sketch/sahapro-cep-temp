@@ -70,6 +70,7 @@ const MODULES = {
 };
 const SECTION = {
   "": "ana",
+  "akilli-asistan": "asistan",
   gunsonu: "ana",
   isler: "isler",
   whatsapp: "isler",
@@ -98,6 +99,7 @@ const SECTION = {
 const NAV = [
   { sec: "ana", hash: "#/", ic: "⌂", t: "ANA SAYFA" },
   { sec: "isler", hash: "#/isler", ic: "⚒", t: "İŞLER" },
+  { sec: "asistan", hash: "#/akilli-asistan", ic: "🤖", t: "ASİSTAN" },
   { sec: "fisler", hash: "#/fisler", ic: "🧾", t: "FİŞLER" },
   { sec: "finans", hash: "#/finans", ic: "₺", t: "FİNANS" },
   { sec: "daha", hash: "#/daha", ic: "⋯", t: "DAHA FAZLA" },
@@ -267,17 +269,8 @@ function renderBrandShell(first) {
 function renderNav(first) {
   const nav = qs("#bottomnav");
   nav.hidden = false;
-  // Her ekranda Akıllı Asistan: dokun → konuş → kartlar gelir
-  let fab = qs("#ai-fab");
-  if (!fab) {
-    fab = document.createElement("div");
-    fab.id = "ai-fab";
-    fab.className = "ai-fab";
-    fab.innerHTML = '<button data-go="#/akilli-asistan?mic=1" aria-label="Sesle asistana söyle">🎤</button><button data-go="#/akilli-asistan" aria-label="Akıllı asistan">🤖</button>';
-    document.body.appendChild(fab);
-  }
-  // Form ekranlarında Kaydet düğmesini örtmesin
-  fab.hidden = first === "akilli-asistan" || /\/(new|edit|duzenle)(\b|\?|$)/.test(location.hash);
+  // Akıllı Asistan alt menüde (her ekranda, içeriği örtmez). Eski yüzen düğme kaldırıldı.
+  qs("#ai-fab")?.remove();
   const cur = SECTION[first] || "daha";
   nav.innerHTML = NAV.map(
     (n) =>
@@ -461,13 +454,14 @@ const ICON_PATHS = {
   people:
     "M8 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8M2 21v-3a6 6 0 0 1 12 0v3M17 4a3 3 0 1 1 0 6M17 14a5 5 0 0 1 5 5v2",
   chart: "M3 3v18h18M7 17V9M12 17V5M17 17v-7",
+  assistant: "M4 5h16v11H9l-5 4zM8 10h.01M12 10h.01M16 10h.01",
 };
 function iconSvgFor(href = "") {
   const route = href.split("/")[1]?.split("?")[0] || "";
   const key =
     route === "ayarlar"
       ? "settings"
-      : route === "ara" ? "search" : route === ""
+      : route === "ara" ? "search" : route === "akilli-asistan" ? "assistant" : route === ""
       ? "home"
       : route === "daha"
         ? "more"
