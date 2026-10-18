@@ -16,21 +16,22 @@ const LABEL = {
 export async function screen(ctx) {
   if (ctx.parts[0] !== "kart-birlestir") return false;
   const { root, db } = ctx;
-  const store = { arac: "vehicles", personel: "personnel" }[ctx.query?.tur] || "customers";
+  const store = { arac: "vehicles", personel: "personnel", santiye: "sites" }[ctx.query?.tur] || "customers";
   const K = CARD_KINDS[store];
   const isCust = store === "customers";
   const d = await db.dumpAll();
   const customers = (d[store] || []).filter(isActive);
   const works = (id) => (d.work_records || []).filter((w) => isActive(w) && w[K.key] === id).length;
-  const show = (c) => c.name + (c.plate && c.plate !== c.name ? ` · ${c.plate}` : "");
+  const custName = (id) => (d.customers || []).find((c) => c.id === id)?.name || "müşterisiz";
+  const show = (c) => store === "sites" ? `${c.name} · ${custName(c.customer_id)}${c.deal ? " · 📐 sözleşmeli" : ""}` : c.name + (c.plate && c.plate !== c.name ? ` · ${c.plate}` : "");
   const list = customers.map((c) => ({ ...c, works: works(c.id), name: show(c) })).sort((a, b) => a.name.localeCompare(b.name, "tr"));
   const groups = suggestCardGroups(d, store).map((g) => ({ ...g, customers: g.customers.map((c) => ({ ...c, name: show(c) })) }));
   const tab = (t, s, label) => `<button class="chip ${store === s ? "on" : ""}" data-go="#/kart-birlestir?tur=${t}">${label}</button>`;
   root.innerHTML =
     appbar("Kartları Birleştir", `${customers.length} ${K.label.toLocaleLowerCase("tr-TR")} kartı`) +
     `<div style="height:10px"></div>
-    <div class="row" style="gap:6px;margin-bottom:8px">${tab("musteri", "customers", "Müşteri")}${tab("arac", "vehicles", "Araç / makine")}${tab("personel", "personnel", "Personel")}</div>
-    ${notice("info", isCust ? "Aynı firma birden çok kart olarak açıldıysa tek karta toplayın. Şantiyesi ayrı müşteri gibi açılmışsa \"şantiye olarak ekle\"yi işaretleyin. Kayıtlar silinmez; eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir." : "Aynı plaka / aynı kişi iki kart olarak açıldıysa tek karta toplayın: işler, yakıt, belgeler, bakım hepsi kalan karta geçer; kalan kartta boş olan plaka, tür, telefon gibi bilgiler tamamlanır. Eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir.")}
+    <div class="row" style="gap:6px;margin-bottom:8px">${tab("musteri", "customers", "Müşteri")}${tab("arac", "vehicles", "Araç / makine")}${tab("personel", "personnel", "Personel")}${tab("santiye", "sites", "Şantiye")}</div>
+    ${notice("info", store === "sites" ? "Aynı şantiye iki kart olarak açıldıysa (ör. “Kadıköy” ve “Kadıköy Yıkım”) tek karta toplayın: işler, fiyatlar, belgeler kalan şantiyeye geçer; adres, telefon gibi boş bilgiler tamamlanır. Yalnız aynı müşterinin şantiyeleri birleşir; iş sözleşmesi olan şantiye kalacak kart olmalıdır. Eski ad hafızaya yazılır. Önce yedek almanız önerilir." : isCust ? "Aynı firma birden çok kart olarak açıldıysa tek karta toplayın. Şantiyesi ayrı müşteri gibi açılmışsa \"şantiye olarak ekle\"yi işaretleyin. Kayıtlar silinmez; eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir." : "Aynı plaka / aynı kişi iki kart olarak açıldıysa tek karta toplayın: işler, yakıt, belgeler, bakım hepsi kalan karta geçer; kalan kartta boş olan plaka, tür, telefon gibi bilgiler tamamlanır. Eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir.")}
     ${groups.length ? `<div class="section-title">Benzer görünenler (${groups.length})</div>` + groups.map((g, i) => `<div class="card tap" data-group="${i}"><div class="small">${g.level === "güçlü" ? "🔴" : "🟡"} ${g.customers.map((c) => `<b>${esc(c.name)}</b> <span class="muted">(${c.works} iş)</span>`).join(" · ")}</div><div class="muted tiny" style="margin-top:4px">Dokunun → aşağıda seçilsin</div></div>`).join("") : ""}
     ${isCust ? '<button class="btn block" data-go="#/kime-kontrol">🔎 Benzer adlı ama farklı müşteriler: işleri tek tek kontrol et</button>' : ""}
     <div class="section-title">Birleştirme</div>
@@ -66,7 +67,7 @@ export async function screen(ctx) {
     }
     out.innerHTML = `<div class="card">
       <div class="strong">${plan.sources.map((s) => esc(show(s))).join(", ")} → <span style="color:var(--accent,#f5a623)">${esc(show(plan.target))}</span></div>
-      ${plan.patch && Object.keys(plan.patch).length ? `<div class="small" style="margin-top:4px">Kalan karta eklenecek: ${Object.entries(plan.patch).map(([k, v]) => esc(({ plate: "Plaka", type: "Tür", tank_capacity: "Depo hacmi", ownership: "Sahiplik", contractor_id: "Taşeron", next_maintenance_date: "Sonraki bakım", phone: "Telefon", role: "Görev", vehicle_id: "Zimmetli araç" }[k] || k) + ": " + v)).join(" · ")}</div>` : ""}
+      ${plan.patch && Object.keys(plan.patch).length ? `<div class="small" style="margin-top:4px">Kalan karta eklenecek: ${Object.entries(plan.patch).map(([k, v]) => esc(({ address: "Adres", location: "Konum", contact: "Yetkili", plate: "Plaka", type: "Tür", tank_capacity: "Depo hacmi", ownership: "Sahiplik", contractor_id: "Taşeron", next_maintenance_date: "Sonraki bakım", phone: "Telefon", role: "Görev", vehicle_id: "Zimmetli araç" }[k] || k) + ": " + v)).join(" · ")}</div>` : ""}
       <div class="small" style="margin-top:6px">${Object.entries(plan.counts).map(([k, n]) => `${esc(LABEL[k] || k)}: <b>${n}</b>`).join(" · ") || "Taşınacak kayıt yok"}</div>
       ${plan.newSites.length ? `<div class="small" style="margin-top:6px">Yeni şantiye: ${plan.newSites.map((s) => esc(s.name)).join(", ")}</div>` : ""}
       <div class="muted tiny" style="margin-top:6px">Eski adlar hafızaya yazılır; mesajda geçince doğru karta gider.</div>
