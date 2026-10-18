@@ -41,6 +41,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
       from: nm("quarries", w.quarry_id) || w.quarry || "", site: nm("sites", w.site_id), to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
       tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: Number(w.price_snapshot?.unit_price) || 0, amount: workAmount(w),
       fuelL: Number(w.customer_fuel_allowance_l) || 0, locked: !!w.price_snapshot?.locked, note: w.description || "",
+      kdv_included: w.price_snapshot ? !!w.price_snapshot.kdv_included : null, kdv_rate: w.price_snapshot?.kdv_rate ?? null,
     }));
   const units = {};
   for (const w of works) units[w.unit] = r2((units[w.unit] || 0) + w.qty);
@@ -81,6 +82,31 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   };
 }
 
+// ---- Pano SUNUMU (hesap değiştirmez; yalnız mevcut rakamları anlamlarıyla ayırır) ----
+// Mazot: tüm zamanların güncel litre hesabı (customerFuelLedger) ile seçili dönemde hak edilen litre AYRI.
+// TL: seçili dönem toplamları ile bugünkü (tüm zamanlar) TL bakiye AYRI. İş tutarının KDV temeli: fiyat nasıl girildiyse.
+export function panelModel(R, label = "") {
+  const rules = fuelRulesOf(R.customer);
+  let fuel = null;
+  if (R.fuel) {
+    const units = Object.entries(R.fuel.units || {}).filter(([, q]) => q > 0);
+    const perTxt = rules.length === 1 && units.length === 1 && (rules[0].unit || "Sefer") === units[0][0] && Math.abs(units[0][1] * Number(rules[0].per) - R.fuel.earned) < 0.05
+      ? `${fmt(units[0][1])} ${String(units[0][0]).toLocaleLowerCase("tr-TR")} × ${fmt(rules[0].per)} L` : units.map(([u, q]) => `${fmt(q)} ${String(u).toLocaleLowerCase("tr-TR")}`).join(", ");
+    fuel = {
+      earned: R.fuel.earned, received: R.fuel.received, balance: R.fuel.balance, basis: perTxt,
+      onlyPay: rules.length > 0 && rules.every((r) => r.only_pay !== false), mixedPay: rules.some((r) => r.only_pay === false),
+      periodEarned: R.totals.fuelL, periodLabel: label,
+    };
+  }
+  const priced = R.works.filter((w) => w.amount > 0);
+  const inc = priced.filter((w) => w.kdv_included === true).length, exc = priced.filter((w) => w.kdv_included !== true).length;
+  const basis = !priced.length ? null : !inc ? "net" : !exc ? "brut" : "mixed";
+  const basisText = basis === "net" ? "KDV hariç (net) — fiyatlar KDV hariç girilmiş"
+    : basis === "brut" ? "KDV dahil (brüt) — fiyatlar KDV dahil girilmiş"
+    : basis === "mixed" ? `karışık: ${exc} iş KDV hariç, ${inc} iş KDV dahil fiyatla — girildiği gibi toplandı` : "";
+  return { fuel, basis, basisText };
+}
+
 const unitsText = (u) => Object.entries(u).map(([k, q]) => `${fmt(q)} ${String(k).toLocaleLowerCase("tr-TR")}`).join(", ") || "—";
 
 // PDF tanımı (document-engine bölümleri)
@@ -95,7 +121,7 @@ export function customerReportSpec(R, { audience = "customer", chart = null, pho
   S.push({ title: "Özet", layout: "totals", pairs: [
     ["İş sayısı", String(R.totals.works)], ["Miktar", unitsText(R.units)],
     ...(R.totals.tonnage ? [["Toplam ton (fiş)", fmt(R.totals.tonnage) + " ton"]] : []),
-    ...(R.totals.fuelL ? [["Mazot karşılığı", fmt(R.totals.fuelL) + " L"]] : []),
+    ...(R.totals.fuelL ? [["Dönemde hak edilen mazot", fmt(R.totals.fuelL) + " L"]] : []),
     ["İş tutarı (dönem)", tl(R.totals.workTotal)], ["Tahsilat (dönem)", tl(R.totals.collected)],
     ["Dönem başı devir", tl(R.statement.opening)], ["Dönem sonu bakiye", tl(R.statement.closing)],
   ] });
@@ -119,7 +145,7 @@ export function customerReportSpec(R, { audience = "customer", chart = null, pho
   if (internal && (R.aging.b30 || R.aging.b60 || R.aging.b90 || R.aging.b0))
     S.push({ title: "Yaşlandırma", pairs: [["0–30 gün", tl(R.aging.b0)], ["31–60 gün", tl(R.aging.b30)], ["61–90 gün", tl(R.aging.b60)], ["90+ gün", tl(R.aging.b90)]] });
   if (R.fuel)
-    S.push({ title: "Mazot hesabı (ücreti mazotla ödenen işler)", pairs: [["Hak edilen", fmt(R.fuel.earned) + " L"], ["Alınan", fmt(R.fuel.received) + " L"], [R.fuel.balance >= 0 ? "Kalan alacak" : "Fazla alınan", fmt(Math.abs(R.fuel.balance)) + " L"]] });
+    S.push({ title: "Mazot hesabı (tüm zamanlar, bugün itibarıyla; TL bakiyeye dahil değildir)", pairs: [["Hak edilen", fmt(R.fuel.earned) + " L"], ["Alınan", fmt(R.fuel.received) + " L"], [R.fuel.balance >= 0 ? "Kalan alacak" : "Fazla alınan", fmt(Math.abs(R.fuel.balance)) + " L"]] });
   if (R.cheques.length)
     S.push({ title: "Çek / senet", headers: ["Tür", "No", "Vade", "Durum", "Tutar"], widths: [15, 20, 20, 25, 20], rows: R.cheques.map((q) => [q.kind, q.document_no, trDate(q.due_date), q.status, tl(q.amount)]) });
   for (const p of photos) S.push({ title: p.title, image: p.blob, image_width: 520, max_h: 340 });
