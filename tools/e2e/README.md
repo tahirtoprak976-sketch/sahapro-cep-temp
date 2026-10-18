@@ -10,3 +10,9 @@ Gemini çağrıları sahte (page.route); şoför kodları Gemini'siz işlenir. P
 - `node tests/syntax.test.mjs` — tüm js dosyalarının **gerçek** ES modülü sözdizimi denetimi (düz `node --check` bu projede bozuk modülü de geçiyor; güvenmeyin).
 - `python3 tools/e2e/denetim.py` — **v3.9.04 denetimi** (test verisi, taklit Gemini): yarım kalan kayıtta tekrar Kaydet çift yazmaz; KDV %0 korunur, boş KDV sessizce dolmaz; asistan fiyat kuralı güncellemesi KDV hariç; Gemini onay metni gönderilenleri anlatır; internetsiz yerel kayıt; imzasız / tanınmayan / iptal edilmiş şoför kodu işaretsiz; imzalı dijital fiş imzadan sonra değişirse PDF imzalanan hâli basar ve uyarı çıkar; şifresiz yedekte şoför anahtarı yok. `SONUÇ: BAŞARILI` beklenir.
 - `node tests/jcb-regression.test.mjs` — gerçek mesaj regresyonu (JCB / Şenol / Ağırtaş / Mahir Bey) yazım varyantlarıyla; şantiye kendiliğinden seçilmez, makine+saat nakliye sayılmaz, tek süre bölünmez, uydurma personel yazılmaz.
+- `python3 tools/preview/build.py <klasör>` — **önizleme** derlemesi (örnek verili işlevsel test alanı): veritabanı, önbellek, localStorage/sessionStorage adları `onizleme` önekiyle ayrılır; paylaşım hedefi kaldırılır; ekranda "ÖNİZLEME" şeridi. Canlı adlardan biri kalırsa ya da depoda yedek dosyası varsa derleme durur. Aynı origin'de (aynı kullanıcı.github.io) bu bir güvenlik izolasyonu DEĞİLDİR — bkz. docs/ONIZLEME.md.
+- `python3 tools/e2e/onizleme.py` — canlı ve önizleme aynı origin'de çalışırken kazara veri / önbellek / ayar karışmadığını doğrular (güvenlik izolasyonu kanıtı değildir).
+- `python3 tools/e2e/eski_preview.py` — canlıdaki eski /preview/ (v3.7) çalışanının güvenli geçişi (`NOUPDATE=1` ile yalnız gezinme güncellemesi).
+- `python3 tools/e2e/yedek_matris.py` — parçalı yedek hata matrisi.
+- `python3 tools/e2e/kismi.py` — tek işlemde yazılmayan yollar ve geri alma.
+- `python3 tools/e2e/geri_donus.py` — v3.9.05 verisiyle v3.9.04 koduna gerçek geri dönüş ve ileri dönüş.

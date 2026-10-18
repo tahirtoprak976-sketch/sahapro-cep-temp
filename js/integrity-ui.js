@@ -8,7 +8,8 @@ const COLOR = { error: "#d9534f", warn: "#e0a030", info: "#3b82f6" };
 export async function runIntegrity(db) {
   const d = await db.dumpAll();
   const attachments = await db.getAll("attachments");
-  return integrityCheck(d, { today: todayStr(), attachments });
+  const restoreSets = (await db.getAll("meta")).filter((m) => m.key.startsWith("restore_set:")).map((m) => m.value);
+  return integrityCheck(d, { today: todayStr(), attachments, restoreSets });
 }
 
 export async function screen(ctx) {

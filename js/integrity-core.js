@@ -5,6 +5,8 @@ import { duplicateDocuments, calcHakedisTotals, toKurus } from "./core.js";
 import { customerBalances, customerOpenItems, customerLedgerMovements } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
 import { signedSlipChanges } from "./driver-core.js";
+import { vatContractReport } from "./vat-contract.js";
+import { leaveDays as leaveDaysOf } from "./leave-core.js";
 
 const live = (d, s) => (d[s] || []).filter((r) => r && !r.deleted_at);
 const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "")) && !isNaN(new Date(String(s) + "T12:00:00Z"));
@@ -19,7 +21,7 @@ const OWNER_STORE = { vehicle: "vehicles", personnel: "personnel", customer: "cu
 const HREF = { work_records: "#/isler/", fuel_records: "#/yakit/", expense_records: "#/gider/", maintenance_records: "#/bakim/", cash_records: "#/kasa/", documents: "#/belgeler/", hakedis: "#/hakedis/" };
 const LABEL = { work_records: "İş", fuel_records: "Yakıt", fuel_tank_movements: "Depo hareketi", expense_records: "Gider", maintenance_records: "Arıza/bakım", cash_records: "Kasa", personnel_events: "Personel hareketi", documents: "Belge", payables: "Esnaf borcu", sites: "Şantiye", hakedis: "Hakediş" };
 
-export function integrityCheck(d, { today, attachments = [] } = {}) {
+export function integrityCheck(d, { today, attachments = [], restoreSets = [] } = {}) {
   const out = [];
   const add = (sev, code, text, sub = "", href = "", fix = null) => out.push({ sev, code, text, sub, href, fix });
   const idx = {};
@@ -89,6 +91,20 @@ export function integrityCheck(d, { today, attachments = [] } = {}) {
   const dupBy = (rows, key, make) => { const m = new Map(); for (const r of rows) { const k = key(r); if (!k) continue; if (m.has(k)) make(m.get(k), r); else m.set(k, r); } };
   for (const s of ["work_records", "fuel_records", "expense_records", "maintenance_records"])
     dupBy(live(d, s), (r) => r.driver_entry_id, (a, b) => add("error", "dup-driver", `${lbl(s, b)}: aynı şoför kaydı iki kez işlenmiş`, `${lbl(s, a)} ile aynı`, HREF[s] ? HREF[s] + b.id : ""));
+  // Parçalı yedek geri yüklemesi yarım: eksik parça ve eki gelmemiş kayıtlar (sessizce "tamam" sayılmaz)
+  for (const st of restoreSets || []) {
+    const missing = Array.from({ length: st.of }, (_, i) => i + 1).filter((n) => !(st.done || []).includes(n));
+    const waiting = Object.values(st.pending || {});
+    if (missing.length || waiting.length) {
+      const recs = [...new Set(waiting.map((x) => x[0] + ":" + x[1]))];
+      add("error", "restore-incomplete", `Yedek geri yüklemesi tamamlanmadı: ${(st.done || []).length}/${st.of} parça`, `Eksik parça: ${missing.join(", ") || "—"} · eki bekleyen kayıt: ${recs.length}${st.created_at ? " · yedek tarihi " + String(st.created_at).slice(0, 10) : ""}`);
+    }
+  }
+  // KDV / cari tutar sözleşmesi: aynı müşterinin cari toplamında KDV dahil ve hariç fiyatlı işler karışıyor mu (hesap değiştirilmez, işaretlenir)
+  for (const r of vatContractReport(d)) {
+    if (r.mixedBasis) add("warn", "vat-mixed", `${r.customer}: cari toplamında KDV dahil (${r.dahil}) ve hariç (${r.haric}) fiyatlı işler karışık`, `Bugünkü toplam ${r.booked} · net ${r.net} · brüt ${r.gross} ₺ (karar notu: KDV/cari)`);
+    else if (r.ambiguous) add("warn", "vat-ambiguous", `${r.customer}: ${r.ambiguous} işte KDV oranı / temeli kayıtlı değil`, `Bugünkü toplam ${r.booked} ₺; varsayımla net ${r.net} · brüt ${r.gross} ₺`);
+  }
   // İmzalı dijital fiş: kayıt, müşterinin imzaladığı içerikten sonra değişmiş mi
   for (const w of live(d, "work_records")) {
     const ch = signedSlipChanges(w, { customers: Object.fromEntries((d.customers || []).map((x) => [x.id, x.name])), vehicles: Object.fromEntries((d.vehicles || []).map((x) => [x.id, x.name])), sites: Object.fromEntries((d.sites || []).map((x) => [x.id, x.name])) });
@@ -123,6 +139,14 @@ export function integrityCheck(d, { today, attachments = [] } = {}) {
   // ---- 5. İş kuralları ----
   const forms = new Map(live(d, "documents").filter((x) => x.category === "İzin Formu").map((x) => [x.id, x]));
   const badLeave = live(d, "personnel_events").filter((e) => e.leave_form_id && (!forms.get(e.leave_form_id) || forms.get(e.leave_form_id).status !== "Onaylandı"));
+  // Onaylı formun günlerinin bir kısmı puantaja yazılmamış (onay ile gün kayıtları tek işlem değil — yarım kalmış olabilir)
+  for (const f of forms.values()) {
+    if (f.status !== "Onaylandı" || !f.leave?.from || !f.leave?.to) continue;
+    const want = leaveDaysOf(f.leave.from, f.leave.to);
+    const have = new Set(live(d, "personnel_events").filter((e) => e.leave_form_id === f.id).map((e) => e.date));
+    const miss = want.filter((x) => !have.has(x));
+    if (miss.length) add("error", "leave-partial", `İzin formu ${f.doc_no || ""} onaylı ama ${miss.length}/${want.length} günü puantajda yok`, "Onay yarım kalmış olabilir: eksik günler " + miss.slice(0, 5).join(", "), "#/izinler");
+  }
   if (badLeave.length) add("error", "leave-form", `${badLeave.length} izin günü onaylı olmayan forma bağlı`, "Form reddedilmiş/iptal ya da silinmiş; günler puantajda izin görünüyor", "#/izinler", { kind: "leave-orphan", ids: badLeave.map((e) => e.id) });
   // İzinli gün iş kaydı
   const leaveDay = new Set(live(d, "personnel_events").filter((e) => e.event_type === "İzin" || e.event_type === "Rapor").map((e) => e.personnel_id + "|" + e.date));

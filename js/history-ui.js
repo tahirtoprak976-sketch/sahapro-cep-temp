@@ -19,7 +19,6 @@ import {
   prepareHistory,
 } from "./history-core.js";
 import { loadHistoryData, commitHistory } from "./history-db.js";
-import { fullBackup } from "./backup.js";
 const canonical = (s) => normKey(s || "").replace(/[^a-z0-9çğıöşü]/g, "");
 export async function screen(ctx) {
   const { root, db } = ctx;
@@ -269,15 +268,9 @@ export async function screen(ctx) {
   });
   qs("[data-history-backup]", root).addEventListener("click", async () => {
     try {
-      const b = await fullBackup(db);
-      downloadBlob(
-        new Blob([JSON.stringify(b)], { type: "application/json" }),
-        "SAHAPRO_aktarim_oncesi_tam_yedek.json",
-      );
-      toast(
-        "Tam yedek indirme başlatıldı. Dosyanın kaydedildiğini kontrol edin.",
-        "ok",
-      );
+      // Ayarlar'daki yedekle aynı yol: sıkıştırılmış, şifre varsa şifreli, gerekirse parçalı; şifresizde şoför anahtarı yok
+      const { doBackup } = await import("./m-crm.js");
+      await doBackup({ db });
     } catch (e) {
       toast(e.message, "err");
     }

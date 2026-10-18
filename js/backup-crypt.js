@@ -10,7 +10,9 @@ async function streamBytes(bytes, stream) {
 }
 const gzip = (b) => streamBytes(b, new CompressionStream("gzip"));
 // Sınırlar: bozuk / kötü niyetli dosya telefonu kilitlemesin (sıkıştırma bombası). Gerçek yedekler bunun çok altındadır.
-export const MAX_BACKUP_FILE = 300 * 1024 * 1024, MAX_BACKUP_JSON = 800 * 1024 * 1024;
+// Okuma sınırları: eski (parçasız) yedekler de okunabilsin diye üretimdeki parça bütçesinden (120 MB) geniştir;
+// JS metin üst sınırının (~512 M karakter) altında kalır. Üretici bu sınırı aşan dosya üretmez (encodeBackup denetler).
+export const MAX_BACKUP_FILE = 300 * 1024 * 1024, MAX_BACKUP_JSON = 400 * 1024 * 1024;
 async function gunzip(b, limit = MAX_BACKUP_JSON) {
   const reader = new Blob([b]).stream().pipeThrough(new DecompressionStream("gzip")).getReader();
   const parts = []; let n = 0;
@@ -30,7 +32,10 @@ async function keyFrom(password, salt) {
 const cat = (...parts) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
 
 export async function encodeBackup(obj, password = "") {
-  const z = await gzip(enc.encode(JSON.stringify(obj)));
+  const json = enc.encode(JSON.stringify(obj));
+  if (json.length > MAX_BACKUP_JSON) throw Error(`Yedek parçası okunabilir sınırı aşıyor (${Math.round(json.length / 1048576)} MB) — parçalı yedek kullanılmalı`);
+  const z = await gzip(json);
+  if (z.length + 64 > MAX_BACKUP_FILE) throw Error("Yedek dosyası okunabilir sınırı aşıyor — parçalı yedek kullanılmalı");
   if (!password) return cat(enc.encode(MAGIC0), z);
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await keyFrom(password, salt), z));

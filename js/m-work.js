@@ -747,6 +747,14 @@ async function workForm(ctx, editId) {
         go("#/isler/" + created.id);
       }
     } catch (e) {
+      if (e?.code === "STALE" && e.current) {
+        // Çakışma: kayıttaki güncel değerle sizin girdiğinizi karşılaştır; yenileyince güncel hâl açılır
+        const L = { date: "Tarih", quantity: "Miktar", unit: "Birim", work_type: "İş türü", customer_id: "Müşteri", vehicle_id: "Araç", site_id: "Şantiye" };
+        const nm = (k, v) => (k === "customer_id" ? ctx.names.customers[v] : k === "vehicle_id" ? ctx.names.vehicles[v] : k === "site_id" ? ctx.names.sites[v] : v) ?? "—";
+        const diff = Object.keys(L).filter((k) => String(e.current[k] ?? "") !== String(e.mine?.[k] ?? "")).map((k) => `${L[k]}: kayıtta ${nm(k, e.current[k])} · sizde ${nm(k, e.mine?.[k])}`);
+        if (await confirmDialog("Kayıt başka yerde değişti", (diff.length ? diff.join(" | ") + ". " : "") + "Değişikliğiniz YAZILMADI (eski ekran yeni değişikliği ezmesin). Güncel hâli açıp yeniden düzenleyin.", "Güncel hâli aç")) ctx.reload();
+        return;
+      }
       toast(e.message || "Kayıt kaydedilemedi", "err");
     } finally {
       saving = false;
@@ -770,7 +778,8 @@ async function workDetail(ctx, id) {
     : [];
   const slip = w.slip_id ? await db.get("slips", w.slip_id) : null;
   const atts = await db.attachmentsFor("work", id);
-  const slipChanges = w.digital_slip_no ? (await import("./driver-core.js")).signedSlipChanges(w, names) : [];
+  const sst = w.digital_slip_no ? (await import("./driver-core.js")).slipState(w, atts, names) : { kind: "none", changes: [], original: null };
+  const slipChanges = sst.changes;
   const inHakedis = (await db.getAll("hakedis")).some(
     (h) =>
       isActive(h) &&
@@ -802,9 +811,11 @@ async function workDetail(ctx, id) {
       ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
       ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
     </div>
-    ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid ${slipChanges.length ? "#d9534f" : "#2e9e6b"}">${slipChanges.length ? notice("warn", "Bu iş, müşterinin imzaladığı fişten SONRA değiştirildi: " + slipChanges.join(" · ") + ". İmzalı fiş PDF'i imzalanan hâli gösterir; yeni hâl için müşteriden yeniden imza alın.") : ""}<div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${atts.some((a) => a.kind === "signature") ? "ok" : "warn"}">${atts.some((a) => a.kind === "signature") ? "imzalı" : "imza yok"}</span></div>
+    ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid ${slipChanges.length || sst.kind === "legacy" ? "#d9534f" : "#2e9e6b"}">${slipChanges.length ? notice("warn", "Bu iş, müşterinin imzaladığı fişten SONRA değiştirildi: " + slipChanges.join(" · ") + ". İmzalı fiş PDF'i imzalanan hâli gösterir; yeni hâl için revizyon fişiyle müşteriden yeniden imza alın.") : ""}${sst.kind === "legacy" ? notice("warn", "İmza anındaki içerik doğrulanamıyor (bu iş, imzalanan içerik saklanmadan kaydedildi). İmzalı fiş üretilemez; " + (sst.original ? "aşağıdaki orijinal PDF'e bakın ya da " : "") + "revizyon fişiyle yeniden imza alın.") : ""}<div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${sst.kind === "signed" && !slipChanges.length ? "ok" : "warn"}">${sst.kind === "signed" ? (slipChanges.length ? "imza sonrası değişti" : "imzalı") : sst.kind === "legacy" ? "imza içeriği doğrulanamıyor" : "imza yok"}</span></div>
       <div class="small muted">${esc(w.slip_receiver ? "Teslim alan: " + w.slip_receiver : "")}${w.slip_signed_at ? " · " + esc(new Date(w.slip_signed_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })) : ""} · şoför sahada imzalattı</div>
-      <button class="btn block" style="margin-top:8px" data-dslip>📄 İmzalı fiş PDF (indir / gönder)</button></div>` : ""}
+      ${sst.original ? `<a class="btn block" style="margin-top:8px" href="${URL.createObjectURL(sst.original.blob)}" target="_blank" rel="noopener">📎 Orijinal fiş PDF (şoförün telefonunda üretilen)</a>` : ""}
+      ${sst.kind === "signed" || sst.kind === "unsigned" ? `<button class="btn block" style="margin-top:8px" data-dslip>📄 ${sst.kind === "signed" ? "İmzalı fiş PDF — imzalanan hâl" : "Fiş PDF (imzasız taslak)"}</button>` : ""}
+      ${sst.kind === "legacy" || slipChanges.length ? `<button class="btn block" style="margin-top:8px" data-dslip-rev>📄 Revizyon fişi — güncel hâl (imzasız, yeniden imza için)</button>` : ""}</div>` : ""}
     <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/*,application/pdf" multiple data-watt hidden></label></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${atts.map((a) => (String(a.type).startsWith("image/") ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>` : `<a class="chip" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name)}</a>`)).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
@@ -822,6 +833,17 @@ async function workDetail(ctx, id) {
       const sig = atts.find((a) => a.kind === "signature")?.blob || null;
       const photo = atts.find((a) => a.kind === "slip_photo" && String(a.type).startsWith("image/"))?.blob || null;
       await exportDocument(workSlipSpec(w, names, { company: COMPANY_NAME, sigBlob: sig, photo }), "share");
+    } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
+    b.disabled = false;
+  });
+  qs("[data-dslip-rev]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    try {
+      const { workSlipSpec } = await import("./driver-core.js");
+      const { exportDocument } = await import("./document-engine.js");
+      const { COMPANY_NAME } = await import("./core.js");
+      const photo = atts.find((a) => a.kind === "slip_photo" && String(a.type).startsWith("image/"))?.blob || null;
+      await exportDocument(workSlipSpec(w, names, { company: COMPANY_NAME, sigBlob: null, photo, revision: true }), "share");
     } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
     b.disabled = false;
   });

@@ -405,7 +405,7 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
       w.issues = w.issues.filter((x) => !/^Araç ".*" mesajda yazmıyor/.test(x));
     }
     if ("ok" in w)
-      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess);
+      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup);
     if (w.unit === "Ton" && t.tonnage && Math.abs((Number(w.quantity) || 0) - w.tonnage) > 0.05) w.issues.push(`Fişte ${w.tonnage} ton yazıyor, işte ${w.quantity} ton`);
     w.merged_ticket = true;
   }

@@ -198,18 +198,22 @@ export async function formScreen(ctx) {
     if (leaveClash.length && !(await confirmDialog("Bu günlerde başka izin var", `${[...new Set(leaveClash.map((e) => trDate(e.date)))].join(", ")} zaten izinli/raporlu yazılmış. Bu formdakiyle değiştirilsin mi?`, "Değiştir"))) return;
     if (!sig.employee && !scans && !(await confirmDialog("Personel imzası yok", "Personel formu imzalamadı ve ıslak imzalı nüsha eklenmedi. Yine de onaylansın mı?", "Onayla"))) return;
     const s0 = p ? leaveSummary(fresh, p, { today }) : null;
+    // Önce form onaylanır (sürüm denetimli): iki sekme / iki kişi aynı formu onaylarsa yalnız biri geçer, günler bir kez yazılır
+    try {
+      await db.saveExisting("documents", f, { status: "Onaylandı", approver_name: name, approved_at: new Date().toISOString(),
+        snap: s0?.ready && L.kind === "Yıllık izin" ? { earned: s0.earned, used: s0.used + s0.planned, after: s0.remaining - days.length } : null }, "İzin onaylandı");
+    } catch (e) { toast(e.code === "STALE" ? "Bu form başka yerde değiştirildi / onaylandı — sayfa yenilendi, kontrol edin" : e.message, "err"); ctx.reload(); return; }
     for (const e of clash) await db.softDelete("personnel_events", e.id, "İzin formu onaylandı");
     for (const x of days) await db.saveNew("personnel_events", { date: x, personnel_id: f.owner_id, event_type: eventTypeOf(L.kind), leave_kind: L.kind, leave_group: f.id, leave_form_id: f.id, amount: null, hours_days: 1, description: `${L.kind} · ${f.doc_no}`, source: "izin formu" }, "İzin formu onayı");
     await db.metaSet("leave_approver", name);
-    await db.saveExisting("documents", f, { status: "Onaylandı", approver_name: name, approved_at: new Date().toISOString(),
-      snap: s0?.ready && L.kind === "Yıllık izin" ? { earned: s0.earned, used: s0.used + s0.planned, after: s0.remaining - days.length } : null }, "İzin onaylandı");
     toast(`Onaylandı · ${days.length} gün puantaja işlendi`, "ok"); ctx.reload();
   });
   qs("[data-rej]", root)?.addEventListener("click", async () => {
     const why = await promptDialog("Red gerekçesi", "Gerekçe", "");
     if (why == null) return;
     const name = qs("[data-apn]", root).value.trim();
-    await db.saveExisting("documents", f, { status: "Reddedildi", reject_reason: why.trim() || "Belirtilmedi", approver_name: name || null, approved_at: new Date().toISOString() }, "İzin reddedildi");
+    try { await db.saveExisting("documents", f, { status: "Reddedildi", reject_reason: why.trim() || "Belirtilmedi", approver_name: name || null, approved_at: new Date().toISOString() }, "İzin reddedildi"); }
+    catch (e) { toast(e.code === "STALE" ? "Bu form başka yerde değiştirildi / onaylandı — sayfa yenilendi, kontrol edin" : e.message, "err"); ctx.reload(); return; }
     toast("Reddedildi", "ok"); ctx.reload();
   });
   qs("[data-cancel]", root)?.addEventListener("click", async () => {
