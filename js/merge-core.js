@@ -123,6 +123,7 @@ export const CARD_KINDS = {
   customers: { label: "Müşteri", key: "customer_id", alias: "customer" },
   vehicles: { label: "Araç / makine", key: "vehicle_id", alias: "vehicle", fill: ["plate", "type", "tank_capacity", "ownership", "contractor_id", "next_maintenance_date"] },
   personnel: { label: "Personel", key: "personnel_id", alias: "personnel", fill: ["phone", "role", "vehicle_id"] },
+  sites: { label: "Şantiye", key: "site_id", alias: "site", fill: ["address", "location", "contact", "phone"] },
 };
 const plateKey = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -135,6 +136,12 @@ export function planMergeCards(d, store, srcIds, targetId) {
   if (!target) throw Error("Kalacak kart bulunamadı");
   const sources = cards.filter((c) => srcIds.includes(c.id) && c.id !== targetId);
   if (!sources.length) throw Error("Birleştirilecek kart seçin");
+  if (store === "sites") {
+    // Şantiye yalnız aynı müşterinin şantiyesiyle birleşir; iş sözleşmesi (bedel / ölçüm / cari) yalnız kalacak kartta olabilir
+    if (sources.some((x) => (x.customer_id || "") !== (target.customer_id || ""))) throw Error("Farklı müşterilerin şantiyeleri birleştirilemez");
+    const withDeal = sources.filter((x) => x.deal);
+    if (withDeal.length) throw Error(`İş sözleşmesi olan şantiye (${withDeal.map((x) => x.name).join(", ")}) birleşen kart olamaz; onu kalacak kart seçin`);
+  }
   const from = new Set(sources.map((s) => s.id));
   const updates = [], counts = {}, aliases = [];
   // ID'ler benzersiz (uuid): bu kartlara işaret eden her alan hedefe çevrilir
@@ -143,6 +150,7 @@ export function planMergeCards(d, store, srcIds, targetId) {
     let changed = false;
     const out = { ...o };
     for (const k of KEYS) if (typeof out[k] === "string" && from.has(out[k])) { out[k] = targetId; changed = true; }
+    if (store === "sites" && out.price_snapshot && from.has(out.price_snapshot.job_site_id)) { out.price_snapshot = { ...out.price_snapshot, job_site_id: targetId }; changed = true; }
     return { out, changed };
   };
   for (const s of ENTITY_STORES) {
@@ -175,6 +183,7 @@ export function suggestCardGroups(d, store) {
   const cards = live(d, store);
   const keyOf = (c) => {
     if (store === "vehicles") { const p = plateKey(c.plate) || plateKey(c.name); return /^\d{2}[A-Z]{1,3}\d{2,4}$/.test(p) ? p : "n:" + norm(c.name); }
+    if (store === "sites") return (c.customer_id || "-") + ":" + norm(c.name).split(" ")[0];
     return "n:" + norm(c.name).split(" ")[0];
   };
   const by = new Map();
