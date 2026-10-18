@@ -82,6 +82,11 @@ export async function screen(ctx) {
     const b = ev.currentTarget;
     if (rec) return rec.stop();
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return toast("Bu tarayıcı ses kaydını desteklemiyor; WhatsApp sesli mesajını dosya olarak ekleyin", "err");
+    // Ses kaydı dış servise (Google Gemini) gider: ilk kullanımda açıkça söylenir ve onay alınır
+    if (!(await db.metaGet("voice_notice_ok"))) {
+      if (!(await confirmDialog("Sesli komut — veri aktarımı", "Kaydettiğiniz ses, yazıya çevrilip okunması için Google Gemini'ye gönderilir (yazılı mesajlar gibi). Ses kaydı bu telefonda saklanmaz. Sesli komut da yazılı komutla aynı kurallara tabidir: kontrol kartı gelir, siz onaylamadan kayıt yazılmaz.", "Anladım, kaydet"))) return;
+      await db.metaSet("voice_notice_ok", new Date().toISOString());
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"].find((t) => MediaRecorder.isTypeSupported?.(t)) || "";
@@ -152,7 +157,7 @@ export async function screen(ctx) {
         if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
         const out = qs("[data-out]", root);
         if (cmd.kind === "open") { out.innerHTML = notice("info", "Açılıyor: " + cmd.label); toast("Açılıyor: " + cmd.label, "ok"); location.hash = cmd.hash; return; }
-        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer>${esc(cmd.text)}<div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div></div>` : "") +
+        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer><span data-speaktext>${esc(cmd.text)}</span><div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak style="margin-top:4px">🔊 Sesli oku</button>' : ""}</div>` : "") +
           (cmd.kind === "candidates" ? `<div class="muted small" style="margin:0 2px 6px">${cmd.empty ? "Bu bilgilerle iş bulunamadı. Tarihi, aracı ya da müşteriyi ekleyip yeniden yazın." : "Rastgele seçilmez: düzeltmek istediğiniz işi seçin. Değişiklik formda yapılır, siz Kaydet'e basınca yazılır."}</div>` : "") +
           cmd.items.map((it) => `<div class="li" data-go="${esc(it.hash)}"><div class="grow"><div class="t1">${esc(it.label)}</div></div><div class="end">›</div></div>`).join("");
         return;
@@ -379,7 +384,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   out.innerHTML =
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     summaryHtml(v, d) +
-    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
+    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="row between"><div class="strong small">🤖 Cevap</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak>🔊 Sesli oku</button>' : ""}</div><div style="white-space:pre-wrap;margin-top:6px" data-speaktext>${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
     (v.driverReject ? notice("danger", "🚫 İŞLENMEDİ — " + v.driverReject.join(" · ") + ". Bu paketten kayıt yazılamaz.") +
       (v.restSkipped ? notice("warn", "Mesajdaki diğer yazı da işlenmedi (reddedilen şoför kaydı yazıdan geri gelmesin). Gerekliyse yalnız o yazıyı ayrıca yapıştırın.") : "") +
@@ -1519,6 +1524,10 @@ function fallbackHtml(v, d, message) {
   const fb = localCandidatesSync(message, d);
   const nm = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || "";
   window.__fallback = fb;
+  if (v.heard && !fb.works.length && !fb.fuel.length) {
+    const cmd = routeHeard(v.heard, d);
+    if (cmd && cmd.hash) return `<div class="card small">Duyulan: “${esc(v.heard)}”<div style="margin-top:6px">Bunu mu demek istediniz? <button class="btn sm" data-go="${esc(cmd.hash)}">${esc(cmd.label)}</button></div><div class="tiny muted">Sesli komut da yazılı komutla aynı kurallara tabidir; dokunmadan hiçbir şey açılmaz.</div></div>`;
+  }
   if (!fb.works.length && !fb.fuel.length) return notice("warn", `Gemini bu mesajdan kayıt çıkarmadı${v.rawCount === 0 ? " (0 satır döndü)" : ""} ve yerel okuma da iş / yakıt satırı görmedi. Mesajı daha açık yazıp (müşteri, araç, miktar) tekrar deneyin ya da formdan girin.`);
   return `<div class="card" data-fallback style="border-left:4px solid #c98a00"><div class="small"><b>Gemini bu mesajdan kayıt çıkarmadı${v.rawCount === 0 ? " (0 satır döndü)" : ""}.</b> Yerel okuma mesajda şunları gördü — eksik bilgiler uydurulmadı; formda tamamlayıp kaydedin:</div>
     ${fb.works.map((w, i) => `<div class="small" style="padding:6px 0;border-top:1px solid var(--border)">⚒ <b>${esc(w.date ? trDate(w.date) : "")} · ${esc(w.label)}</b>${w.quantity ? ` · ${esc(String(w.quantity))} ${esc(w.unit || "")}` : ""}<div class="muted tiny">Eksik: ${esc(w.missing.join(", ") || "—")}</div><button class="btn sm" data-fb-work="${i}" style="margin-top:4px">İş formunda tamamla</button></div>`).join("")}
@@ -1526,6 +1535,8 @@ function fallbackHtml(v, d, message) {
     <div class="muted tiny" style="margin-top:6px">İsterseniz eksik bilgiyi mesaja ekleyip ("Hitachi 210 ile 6 saat yıkım, 160 L mazotu Mustafa Bey verdi") yeniden gönderin.</div></div>`;
 }
 let localCandidatesSync = () => ({ works: [], fuel: [] });
+let routeHeard = () => null;
+import("./command-router.js").then((m) => { routeHeard = (t, d) => m.routeCommand(t, d, todayStr(), {}); });
 import("./assistant-fallback.js").then((m) => { localCandidatesSync = (msg, d) => m.localCandidates(msg, d, todayStr()); });
 document.addEventListener("click", (e) => {
   const w = e.target.closest?.("[data-fb-work]"), f = e.target.closest?.("[data-fb-fuel]");
@@ -1549,3 +1560,16 @@ function readCtx() {
   } catch (e) { return {}; }
 }
 function writeCtx(c) { try { sessionStorage.setItem("sp_asst_ctx", JSON.stringify({ ...c, at: Date.now() })); } catch (e) {} }
+
+// Sesli okuma yalnız kullanıcı "🔊 Sesli oku"ya dokununca (cihazda, tr-TR); uygulama kendiliğinden finansal bilgi okumaz
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-speak]");
+  if (!b || !("speechSynthesis" in window)) return;
+  const t = b.closest(".card")?.querySelector("[data-speaktext]")?.textContent || "";
+  speechSynthesis.cancel();
+  if (b.dataset.on) { delete b.dataset.on; b.textContent = "🔊 Sesli oku"; return; }
+  const u = new SpeechSynthesisUtterance(t.slice(0, 600)); u.lang = "tr-TR";
+  u.onend = () => { delete b.dataset.on; b.textContent = "🔊 Sesli oku"; };
+  b.dataset.on = "1"; b.textContent = "⏹ Durdur";
+  speechSynthesis.speak(u);
+});
