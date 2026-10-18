@@ -49,7 +49,8 @@ const d2 = { ...d, bank_accounts: [{ id: 'B1', name: 'Ziraat' }], maintenance_re
   work_records: [{ id: 'W1', date: '2026-10-13', customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 4, unit: 'Sefer' }],
   cari_movements: [{ id: 'm', customer_id: 'CA', date: '2026-10-01', type: 'Hakedis', amount: 50000 }] };
 let x = validateExtras({ collections: [{ customer_id: 'CA', amount: 20000, method: 'Havale', bank_account_id: 'B1' }, { customer_id: 'CA', amount: 25000, method: 'Nakit' }] }, { message: 'Ahmet Bey 20 bin havale yaptı', d: d2, today });
-assert.equal(x.collections[0].ok, true); assert.equal(x.collections[1].ok, false);
+// v3.9.04.1: tahsilat kartı her zaman işaretsiz gelir (finansal onay); veri geçerliliği okData'da
+assert.equal(x.collections[0].okData, true); assert.equal(x.collections[0].ok, false); assert.equal(x.collections[1].okData, false);
 x = validateExtras({ collections: [{ customer_id: 'CA', amount: 20000, method: 'Havale' }] }, { message: 'Ahmet Bey 20 bin havale', d: d2, today });
 assert.equal(x.collections[0].ok, false);
 x = validateExtras({ maintenance: [{ vehicle_id: 'J', maint_type: 'Hidrolik', status: 'Serviste', description: 'hidrolik hortum patladı', cost: 3500, supplier_id: 'S', credit: true }] }, { message: 'jcb hidrolik hortum patladı Mesut usta 3500 veresiye', d: d2, today });

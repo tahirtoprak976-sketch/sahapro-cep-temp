@@ -83,3 +83,47 @@ console.log('ai-gemini-schema PASS');
   assert.deepEqual(usageAdd(u, "2026-10-18", "gemini-2.5-flash", true), { date: "2026-10-18", counts: { "gemini-2.5-flash": 1 }, failed: 0 });
   console.log("usage-counter ok");
 }
+// v3.9.04 kapı 4: yerel sert günlük sınır — istekten ÖNCE ayrılır; dolu / izin yok / sayaç yazılamıyor → ağa çıkılmaz
+{
+  const { gatedFetch, withModelFallback, geminiJson, listModels, findWorkingModel } = await import("../js/ai-gemini.js");
+  const mk = (extra = {}) => { const meta = new Map([["gemini_key", "K"], ["gemini_model", "gemini-3.8-flash"], ["gemini_consent", true], ["gemini_daily_limit", 3], ...Object.entries(extra)]);
+    return { meta, metaGet: async (k) => meta.get(k) ?? null, metaSet: async (k, v) => meta.set(k, v) }; };
+  let net = 0;
+  const ok = async () => { net++; return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"a":1}' }] } }], models: [{ name: "models/gemini-3.8-flash", supportedGenerationMethods: ["generateContent"] }] }) }; };
+  const db = mk();
+  for (let i = 0; i < 3; i++) await withModelFallback(db, (o) => geminiJson([{ text: "x" }], o), { fetchFn: ok });
+  assert.equal(net, 3);
+  await assert.rejects(() => withModelFallback(db, (o) => geminiJson([{ text: "x" }], o), { fetchFn: ok }), (e) => e.code === "LOCAL_LIMIT");
+  assert.equal(net, 3, "sınır doluyken ağa istek çıkmadı");
+  // model listesi ve çalışan model araması da bütçeden
+  const db2 = mk({ gemini_daily_limit: 2 }); net = 0;
+  const gf = gatedFetch(db2, ok);
+  await listModels("K", gf); await findWorkingModel("K", [{ id: "gemini-3.8-flash" }], gf);
+  await assert.rejects(() => listModels("K", gf), (e) => e.code === "LOCAL_LIMIT");
+  assert.equal(net, 2);
+  // izin kaldırıldı → yeni çağrı yok
+  const db3 = mk({ gemini_daily_limit: 100 }); net = 0;
+  const gf3 = gatedFetch(db3, ok);
+  await listModels("K", gf3); db3.meta.set("gemini_consent", false);
+  await assert.rejects(() => listModels("K", gf3), (e) => e.code === "NO_CONSENT");
+  assert.equal(net, 1);
+  // sayaç yazılamıyor → istek gönderilmez (kapalı hata)
+  const db4 = mk({ gemini_daily_limit: 100 }); db4.metaSet = async () => { throw new Error("disk dolu"); }; net = 0;
+  await assert.rejects(() => listModels("K", gatedFetch(db4, ok)), /disk dolu/);
+  assert.equal(net, 0);
+  // başarısız istek de bütçeden düşer
+  const db5 = mk({ gemini_daily_limit: 100 }); const bad = async () => ({ ok: false, status: 503, json: async () => ({ error: { message: "busy" } }) });
+  await assert.rejects(() => listModels("K", gatedFetch(db5, bad)));
+  assert.equal(Object.values(db5.meta.get("gemini_usage").counts).reduce((a, b) => a + b, 0), 1); assert.equal(db5.meta.get("gemini_usage").failed, 1);
+  console.log("local-limit ok");
+}
+// Üretim kodu Gemini'ye bütçesiz (ham fetch) istek göndermez: fetchFn yalnız ai-gemini.js içinde dolaşır
+{
+  const { readdirSync, readFileSync } = await import("node:fs");
+  const dir = new URL("../js/", import.meta.url).pathname;
+  for (const f of readdirSync(dir).filter((x) => x.endsWith(".js") && x !== "ai-gemini.js")) {
+    const src = readFileSync(dir + f, "utf8");
+    assert.ok(!/fetchFn\s*:/.test(src) && !/generativelanguage/.test(src), f + " Gemini'ye bütçe dışı yol açıyor");
+  }
+  console.log("no-ungated-path ok");
+}

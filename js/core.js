@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.04";
+export const APP_VERSION = "SAHAPRO SOLO v3.9.06";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -396,6 +396,13 @@ export function priceVehicleScope(entry, vehicleNames = {}) {
   return "Tüm araç / makineler";
 }
 export function resolvePrice(entries, ctx) {
+  const result = rankPrices(entries, ctx);
+  if (!result.length) return null;
+  const x = result[0];
+  return { ...x.e, price_source: x.tier === 3 ? "Şantiyeye Özel Fiyat" : x.tier === 2 ? "Müşteriye Özel Fiyat" : "Genel Liste" };
+}
+// Uyan bütün kurallar, öncelik sırasıyla (tier: şantiye 3 / müşteri 2 / genel 1). opts.ignoreDate: tarih süzgeci uygulanmaz
+export function rankPrices(entries, ctx, opts = {}) {
   const cands = (entries || []).filter(
     (e) => isActive(e) && e.active !== false && e.unit === ctx.unit,
   );
@@ -420,8 +427,9 @@ export function resolvePrice(entries, ctx) {
     )
       continue;
     if (
-      (e.valid_from && (!ctx.date || e.valid_from > ctx.date)) ||
-      (e.valid_to && (!ctx.date || e.valid_to < ctx.date))
+      !opts.ignoreDate &&
+      ((e.valid_from && (!ctx.date || e.valid_from > ctx.date)) ||
+        (e.valid_to && (!ctx.date || e.valid_to < ctx.date)))
     )
       continue;
     if (
@@ -459,17 +467,7 @@ export function resolvePrice(entries, ctx) {
       ) ||
       String(a.e.id || "").localeCompare(String(b.e.id || "")),
   );
-  if (!result.length) return null;
-  const x = result[0];
-  return {
-    ...x.e,
-    price_source:
-      x.tier === 3
-        ? "Şantiyeye Özel Fiyat"
-        : x.tier === 2
-          ? "Müşteriye Özel Fiyat"
-          : "Genel Liste",
-  };
+  return result;
 }
 export function priceForQuantity(entry, quantity, craneDefaults) {
   if (!entry) return null;

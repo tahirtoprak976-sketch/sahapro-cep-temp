@@ -6,12 +6,14 @@ import { parseAiJson, receiptPrompt, validateReceipt } from "./ai-assist.js";
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export async function geminiSettings(db) {
-  const [key, model, consent] = await Promise.all([
+  const [key, model, consent, lim] = await Promise.all([
     db.metaGet("gemini_key"),
     db.metaGet("gemini_model"),
     db.metaGet("gemini_consent"),
+    db.metaGet("gemini_daily_limit"),
   ]);
-  return { key: key || "", model: model || "", consent: !!consent, ready: !!(key && model && consent) };
+  const limit = lim == null ? DEFAULT_DAILY_LIMIT : Number(lim);
+  return { key: key || "", model: model || "", consent: !!consent, limit, ready: !!(key && model && consent && limit > 0) };
 }
 
 // Her HTTP isteği sayılır (başarısız, tekrar, model listesi, araçlı soruların ara adımları dahil) — Google'ın ücretsiz
@@ -23,21 +25,50 @@ export function usageAdd(u, today, model, ok) {
   return day;
 }
 const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-// İstekleri sayan fetch (withModelFallback içindeki her HTTP isteği; db.metaUpdate varsa iki sekmede de kayıpsız)
-function countingFetch(db, fetchFn = fetch) {
-  return async (url, init) => {
+// ---- Yerel günlük istek sınırı (sert) ----
+// Her Gemini HTTP isteğinden ÖNCE bütçeden bir istek ayrılır (model listesi, çalışan model araması, yeniden deneme,
+// araçlı soruların her turu dahil). Sınır doluysa, izin kaldırıldıysa ya da sayaç yazılamazsa istek GÖNDERİLMEZ.
+// İki sekme aynı bütçeyi tek transaction'la paylaşır. Bu, Google'ın ücretlendirmesine karşı bir garanti DEĞİLDİR:
+// yalnız bu telefondan çıkan istekleri sınırlar (anahtar başka yerde de kullanılıyorsa onları görmez).
+export const DEFAULT_DAILY_LIMIT = 300;
+export function usageTotal(u, today) { return u && u.date === today ? Object.values(u.counts || {}).reduce((n, x) => n + x, 0) : 0; }
+export function reserveDecision(vals, today, model) {
+  if (!vals.gemini_consent) throw Object.assign(new Error("Gemini izni kapalı (Ayarlar → Yapay Zeka). İstek gönderilmedi."), { code: "NO_CONSENT" });
+  const lim = vals.gemini_daily_limit == null ? DEFAULT_DAILY_LIMIT : Number(vals.gemini_daily_limit);
+  const used = usageTotal(vals.gemini_usage, today);
+  if (!(lim > 0) || used >= lim)
+    throw Object.assign(new Error(`Bu telefonun günlük Gemini sınırı doldu (${used} / ${lim}). İstek gönderilmedi; yerel kayıtlar çalışmaya devam eder. Sınır Ayarlar → Yapay Zeka'dan değiştirilebilir.`), { code: "LOCAL_LIMIT" });
+  return { set: { gemini_usage: usageAdd(vals.gemini_usage, today, model, true) }, result: used + 1 };
+}
+const modelOf = (url) => decodeURIComponent((String(url).match(/\/models\/([^:?/]+):/) || [])[1] || "model listesi");
+// Bütçeli fetch: db.metaTxn (tek transaction) ile ayır → gönder → başarısızsa "failed" artır
+export function gatedFetch(db, fetchFn = fetch) {
+  const g = async (url, init) => {
+    const today = localDay(), model = modelOf(url);
+    if (db.metaTxn) await db.metaTxn(["gemini_consent", "gemini_daily_limit", "gemini_usage"], (vals) => reserveDecision(vals, today, model));
+    else { // test/yedek yol: oku-karar-yaz
+      const vals = { gemini_consent: await db.metaGet("gemini_consent"), gemini_daily_limit: await db.metaGet("gemini_daily_limit"), gemini_usage: await db.metaGet("gemini_usage") };
+      await db.metaSet("gemini_usage", reserveDecision(vals, today, model).set.gemini_usage);
+    }
     let ok = false;
     try { const r = await fetchFn(url, init); ok = !!r?.ok; return r; }
     finally {
-      try {
-        const model = decodeURIComponent((String(url).match(/\/models\/([^:?/]+):/) || [])[1] || "model listesi");
-        if (db.metaUpdate) await db.metaUpdate("gemini_usage", (u) => usageAdd(u, localDay(), model, ok));
-        else await db.metaSet("gemini_usage", usageAdd(await db.metaGet("gemini_usage"), localDay(), model, ok));
+      if (!ok) try {
+        const bump = (u) => (u && u.date === today ? { ...u, failed: (u.failed || 0) + 1 } : u);
+        if (db.metaUpdate) await db.metaUpdate("gemini_usage", bump); else await db.metaSet("gemini_usage", bump(await db.metaGet("gemini_usage")));
       } catch {}
     }
   };
+  g.__gated = true;
+  return g;
 }
-async function call(path, key, body, fetchFn = fetch) {
+// Varsayılan (gerçek ağ) yol: fetchFn verilmediyse istek mutlaka bütçeden geçer
+async function defaultGated() {
+  const db = await import("./db.js");
+  return gatedFetch(db, fetch);
+}
+async function call(path, key, body, fetchFn) {
+  if (!fetchFn) fetchFn = await defaultGated();
   const res = await fetchFn(BASE + path, {
     method: body ? "POST" : "GET",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
@@ -101,7 +132,7 @@ export async function withModelFallback(db, run, { fetchFn, onSwitch } = {}) {
   const g = await geminiSettings(db);
   if (!g.ready) throw new Error("Gemini ayarları eksik (Ayarlar → Yapay Zeka)");
   const tried = new Set();
-  fetchFn = countingFetch(db, fetchFn);
+  fetchFn = fetchFn?.__gated ? fetchFn : gatedFetch(db, fetchFn || fetch);
   let model = g.model, lastErr = null;
   let pool = null;
   for (let attempt = 0; attempt < 5; attempt++) {

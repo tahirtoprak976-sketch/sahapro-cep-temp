@@ -44,7 +44,7 @@ d = base(); d.documents.push({ id: "x1", category: "Fatura", owner_type: "custom
 // ---- Para ----
 const money = () => { const x = base(); x.cash_records = [{ id: "k1", date: "2026-10-12", cash_type: "Müşteriden Para Alındı", amount: 5000, customer_id: "c1" }];
   x.cari_movements = [{ id: "cm1", date: "2026-10-12", customer_id: "c1", type: "Tahsilat", amount: -5000, ref_id: "k1" }];
-  x.work_records[0].price_snapshot = { unit_price: 3000, amount: 9000 }; return x; };
+  x.work_records[0].price_snapshot = { unit_price: 3000, amount: 9000, kdv_rate: 20, kdv_included: false }; return x; };
 assert.deepEqual(codes(money()), [], JSON.stringify(integrityCheck(money(), { today: T, attachments: atts }).issues));
 d = money(); d.cari_movements = []; assert.ok(codes(d).includes("cash-cari"));
 d = money(); d.cari_movements.push({ ...d.cari_movements[0], id: "cm2" }); assert.ok(codes(d).includes("cash-cari"));

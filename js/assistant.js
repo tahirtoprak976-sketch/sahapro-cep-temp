@@ -1,11 +1,12 @@
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
 // giderleri, yakıtı çıkarır → doğrulanmış kartlar → tek dokunuşla kaydet. Yeni müşteri/şantiye,
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
-import { qs, qsa, esc, appbar, toast, notice, confirmDialog, fmtTL, todayStr, trDate } from "./ui.js";
+import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
+import { priceDecision, priceSummary } from "./price-decision.js";
 import { ACTIONS_PROMPT, actionsSchemaProps, actionsContext, validateActions, validateSettings, validateOpen } from "./assistant-actions.js";
 import { planTotals, applyFuelPay } from "./assistant-rules.js";
 import { assistantContext, assistantSystem, validatePlan, validateExtras, validateCards, validateMemory, businessFacts, checkAnswer, answerMetricIssues, ASSIST_UNITS, assistantSchema, pickExamples, addExample, measureCorrection, addQuality } from "./assistant-core.js";
@@ -157,11 +158,12 @@ export async function screen(ctx) {
       const drvPayloads = drvSec.filter((x) => !x.reject).map((x) => x.p);
       const drvRejected = drvSec.filter((x) => x.reject), drvSecWarn = drvSec.filter((x) => x.warn);
       const drvRest = drvAll.length ? drv.stripDriverBlocks(message) : message;
-      if (drvAll.length && !drvPayloads.length && drvRest.replace(/[^\p{L}\d]/gu, "").length <= 8 && !audios.length)
-        throw new Error("Şoför mesajı işlenmedi: " + drvRejected.map((x) => `${x.p.n || "şoför"} — ${x.reject}`).join(" · ") + ". Güvenlik ekranından bağlantıyı kontrol edin; gerekiyorsa şoföre yeni bağlantı gönderin.");
+      // Reddedilen şoför paketi varsa mesajın geri kalan yazısı da Gemini'ye GİTMEZ: reddedilen kaydın okunur satırları
+      // (WhatsApp biçimi değişmiş olsa bile) yazıdan alternatif kayıt olarak geri gelmesin. Yazı gerekiyorsa ayrıca yapıştırılır.
+      const restSkipped = drvRejected.length > 0 && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8;
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
-      const useGemini = !drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0;
+      const useGemini = !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
@@ -204,7 +206,12 @@ export async function screen(ctx) {
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
-      if (drvRejected.length) v.driverReject = drvRejected.map((x) => `${x.p.n || "Şoför"}: ${x.reject}`);
+      if (drvRejected.length) {
+        v.driverReject = drvRejected.map((x) => `${x.p.n || "Şoför"}: ${x.reject}`);
+        // Yeni imzalı bağlantı oluşturma yolu (kişi kartı varsa)
+        v.relink = [...new Map(drvRejected.filter((x) => x.relink && (d.personnel || []).some((p) => p.id === x.p.p && !p.deleted_at)).map((x) => [x.p.p, x.p.n || "şoför"])).entries()];
+        if (restSkipped) v.restSkipped = true;
+      }
       if (drvSecWarn.length) v.driverSecWarn = [...new Set(drvSecWarn.map((x) => `${x.p.n || "Şoför"}: ${x.warn}`))];
       Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
       if (drvPlan) {
@@ -331,7 +338,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
-    (v.driverReject ? notice("danger", "🚫 İŞLENMEDİ — " + v.driverReject.map(esc).join(" · ") + ". Güvenlik ekranından bağlantıyı kontrol edin.") : "") +
+    (v.driverReject ? notice("danger", "🚫 İŞLENMEDİ — " + v.driverReject.join(" · ") + ". Bu paketten kayıt yazılamaz.") +
+      (v.restSkipped ? notice("warn", "Mesajdaki diğer yazı da işlenmedi (reddedilen şoför kaydı yazıdan geri gelmesin). Gerekliyse yalnız o yazıyı ayrıca yapıştırın.") : "") +
+      (v.relink || []).map(([pid, n]) => `<button class="btn block" style="margin-top:6px" data-go="#/sofor-kur?pid=${esc(pid)}">🔗 ${esc(n)} için yeni imzalı bağlantı oluştur</button>`).join("") : "") +
     (v.driverSecWarn ? notice("warn", "🛡 " + v.driverSecWarn.map(esc).join(" · ")) : "") +
     (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Şoförün fotoğrafını ekle${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/*" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
@@ -383,6 +392,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${(r.photos || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${r.photos.filter((p) => files[p]).map((p) => `<img src="${URL.createObjectURL(files[p])}" alt="Fiş" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`).join("")}<span class="muted tiny" style="align-self:center">🧾 fiş bu işe eklenecek</span></div>` : ""}
         ${r.reporter ? `<div class="muted tiny">Bildiren: ${esc(r.reporter)}</div>` : ""}
         ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> mazot hak edildi → müşterinin mazot hesabına eklenir (ücret yalnız mazotsa hakedişe 0 ₺ yazılır)</div>` : ""}
+        <div class="small" data-price-preview style="margin-top:4px"></div>
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
         ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
       })
@@ -565,6 +575,29 @@ function render(ctx, out, v, d, { message, files, ms }) {
       qs("[data-pick]", card).checked = true;
       for (const x of qsa("[data-pickcust]", card)) x.classList.toggle("on", x === b);
     });
+  // Fiyat önizlemesi (kayıttan ÖNCE): uygulanacak kural, iş tarihi, birim fiyat, KDV esası/oranı ve tutar — kart değiştikçe güncellenir
+  {
+    for (const card of qsa('.card[data-kind="work"]', out)) {
+      const box = qs("[data-price-preview]", card), r0 = v.works[Number(card.dataset.i)] || {};
+      const show = () => {
+        const g = (n) => qs(`[name=${n}]`, card)?.value || "";
+        const up = Number(g("unit_price")), q = Number(g("quantity")) || 0;
+        if (up > 0) { box.innerHTML = `💰 <b>Fiyat: elle / mesajdan</b> ${fmtTL(up)} ₺ × ${q} = <b>${fmtTL(up * q)} ₺</b> (KDV ayarlardaki varsayılan oranla hesaplanır)${r0.unit_price_src ? ` · kaynak: “${esc(r0.unit_price_src)}”` : ""}`; return; }
+        const cust = g("customer");
+        if (cust.startsWith("new:")) { box.innerHTML = "💰 Yeni müşteri: fiyat listesinde kuralı yok — fiyat boş kalır"; return; }
+        const veh = (d.vehicles || []).find((x) => x.id === g("vehicle"));
+        const site = g("site").startsWith("new:") ? null : g("site") || null;
+        const dateSure = !(r0.dateUnsure && g("date") === r0.date);
+        const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
+        card.dataset.priceAmb = dec.ambiguous ? "1" : "";
+        box.innerHTML = dec.rule ? `💰 <b>Fiyat listesinden</b> — ${esc(priceSummary(dec.rule, { date: g("date"), quantity: q, unit: g("unit") }))}${r0.fuelAllowance?.only_pay ? " · <b>Bu müşteride ücret yalnız mazot: hakedişe 0 ₺ yazılır</b>" : ""}`
+          : dec.ambiguous ? `❓ <b>Fiyat seçimi gerekli:</b> ${esc(dec.reason)} — kaydederken sorulacak`
+          : `💰 ${esc(dec.reason)}`;
+      };
+      for (const n of ["date", "customer", "site", "vehicle", "work_type", "quantity", "unit", "material", "unit_price"]) { const el = qs(`[name=${n}]`, card); el?.addEventListener("change", show); el?.addEventListener("input", show); }
+      show();
+    }
+  }
   // Müşteri değişince önerilen "yeni şantiye" o müşteriye ait olmayabilir: temizle
   for (const card of qsa('.card[data-kind="work"]', out)) {
     const cs = qs("[name=customer]", card), ss = qs("[name=site]", card);
@@ -638,7 +671,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
-  const done = { action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
+  const done = { already: 0, conflict: 0, action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -677,6 +710,30 @@ async function save(ctx, out, v, d, { message, files }) {
     const existingWorks = (d.work_records || []).filter(isActive);
     // Şoför kaydı başka sekmede / aynı anda kaydedildiyse veritabanı ikinciyi reddeder: kart atlanır, kalanlar kaydedilir
     const skipDup = async (pr) => { try { return await pr; } catch (e) { if (e?.code === "DUP_DRIVER") { toast("Şoför kaydı zaten alınmış — atlandı", "err"); return null; } throw e; } };
+    // Kalıcı işlem kimliği: aynı mesajın aynı satırı (uygulama kapanıp açılsa, iki sekmede de) ikinci kez yazılmaz.
+    // Kimlik = mesaj + kart türü + satırın kaynağı (Gemini alıntısı ya da sıra) + tarih; içerik özeti ayrıca saklanır.
+    const nrm = (x) => String(x || "").replace(/\s+/g, " ").trim().toLocaleLowerCase("tr-TR");
+    const msgKey = await db.opHash({ m: nrm(message) });
+    // Satır anahtarı plandan türetilir (işaretlenen kartların sırasından DEĞİL): alıntı varsa alıntı + aynı alıntının
+    // kaçıncı tekrarı ("Kaya 3 sefer" iki kez yazıldıysa iki ayrı iş), yoksa plandaki sıra. Her Kaydet'te yeni kimlik üretilmez.
+    const LISTS = { work: v.works, expense: v.expenses, collection: v.collections, maintenance: v.maintenance, fuel: v.fuel };
+    const rowKey = (kind, i) => {
+      const list = LISTS[kind] || [], q = nrm(list[i]?.quote);
+      if (!q) return "#" + i;
+      let occ = 0;
+      for (let j = 0; j < i; j++) if (nrm(list[j]?.quote) === q) occ++;
+      return q + "@" + occ;
+    };
+    const opGate = async (kind, idx, content, label) => {
+      const op = { id: await db.opHash({ msgKey, kind, row: rowKey(kind, Number(idx)), date: content.date || "" }), hash: await db.opHash(content) };
+      const prior = await db.opLookup(op.id);
+      if (!prior) return { op, existing: null, forced: false };
+      if (prior.hash !== op.hash) { toast(`${label}: bu mesaj satırı daha önce FARKLI bilgilerle kaydedilmiş — o kaydı açıp düzeltin. Atlandı.`, "err"); done.conflict++; return null; }
+      if (await confirmDialog("Bu satır zaten kaydedildi", `${label} bu mesajdan daha önce kaydedilmiş; tekrar yazılmadı. Aynı mesaj ikinci kez gönderildiyse "Vazgeç" deyin. Gerçekten AYRI bir kayıt mı?`, "Ayrı kayıt olarak kaydet"))
+        return { op: { id: op.id + ":" + Date.now(), hash: op.hash }, existing: null, forced: true };
+      done.already++;
+      return { op: null, existing: prior.record, forced: false };
+    };
     // İşlenen kart işaretten çıkar ve kilitlenir: arada hata olursa "Kaydet"e yeniden basmak kaydedilenleri ikinci kez yazmaz
     const markDone = (x) => { const pk = qs("[data-pick]", x); if (pk) { pk.checked = false; pk.disabled = true; } x.dataset.saved = "1"; x.style.opacity = "0.55"; };
     for (const c of cards) {
@@ -1015,9 +1072,19 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         const up = Number(val(c, "unit_price"));
         const kdDef = (await import("./core.js")).kdvRateOf(await db.metaGet("kdv_default"));
-        fields.price_snapshot = up > 0
-          ? { unit_price: up, kdv_rate: kdDef ?? 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() }
-          : priceSnapshot(fields, prices, crane);
+        if (up > 0) fields.price_snapshot = { unit_price: up, kdv_rate: kdDef ?? 20, kdv_included: false, amount: up * fields.quantity, price_source: "Manuel", snapshot_at: new Date().toISOString() };
+        else {
+          // Fiyat listesi: eşit öncelikli birden çok kural ya da tarihe göre değişen fiyat + kesin olmayan tarih → SESSİZ SEÇİM YOK
+          const wr1 = v.works[Number(c.dataset.i)] || {};
+          const dec = priceDecision(prices, fields, { dateSure: !(wr1.dateUnsure && fields.date === wr1.date) });
+          if (dec.ambiguous) {
+            const pick = await choiceDialog("Hangi fiyat kuralı uygulansın?", `${fields.date} · ${(d.customers || []).find((x) => x.id === fields.customer_id)?.name || ""} · ${fields.quantity} ${fields.unit}: ${dec.reason}`,
+              [...dec.candidates.map((x) => [x.id, `${fmtTL(x.price)} ₺ · ${x.price_source}${x.valid_from ? " · " + x.valid_from + "'den" : ""}${x.valid_to ? " " + x.valid_to + "'e kadar" : ""} · KDV ${x.kdv_included ? "dahil" : "hariç"} %${x.kdv_rate}`]), ["", "Fiyatsız kaydet (sonra fiyatlandırırım)"]]);
+            if (pick == null) continue;
+            fields.price_snapshot = pick ? priceSnapshot(fields, prices.filter((x) => x.id === pick).map((x) => ({ ...x, valid_from: null, valid_to: null })), crane) : null;
+            if (fields.price_snapshot) fields.price_snapshot.price_choice = "kullanıcı seçti: " + dec.reason;
+          } else fields.price_snapshot = priceSnapshot(fields, prices, crane);
+        }
         // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
         { const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields)); }
         // Aynı gün/araç/müşteri/miktar: gerçekten aynı iş mi? İki şoför kaydı (ayrı kimlik) ya da farklı fiş no → ayrı iştir, sorulmaz
@@ -1025,9 +1092,21 @@ async function save(ctx, out, v, d, { message, files }) {
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity
           && !(fields.driver_entry_id && w.driver_entry_id && w.driver_entry_id !== fields.driver_entry_id)
           && !(slipK(fields.slip_no) && slipK(w.slip_no) && slipK(fields.slip_no) !== slipK(w.slip_no)));
-        if (dup && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
-        const savedWork = await skipDup(db.saveNew("work_records", fields, "Asistan"));
+        let wg = null;
+        if (!fields.driver_entry_id) {
+          wg = await opGate("work", c.dataset.i, { date: fields.date, customer_id: fields.customer_id, site_id: fields.site_id || null, vehicle_id: fields.vehicle_id, work_type: fields.work_type, quantity: fields.quantity, unit: fields.unit },
+            `İş ${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit}`);
+          if (!wg) continue;
+        }
+        if (wg?.existing) {
+          // Daha önce yazılmış iş: yeniden oluşturulmaz; eksik kalan fotoğraflar (aynı dosya ikinci kez eklenmez) tamamlanır
+          for (const p of wr0.photos || []) if (files[p]) await db.addAttachment("work", wg.existing.id, files[p], { kind: "slip_photo" });
+          continue;
+        }
+        if (dup && !wg?.forced && !(await confirmDialog("Olası mükerrer iş", `${fields.date} · ${veh.name} · ${fields.quantity} ${fields.unit} zaten kayıtlı görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
+        const savedWork = await skipDup(db.saveNew("work_records", fields, "Asistan", { op: wg?.op || null }));
         if (!savedWork) continue;
+        if (savedWork._existing) { done.already++; for (const p of wr0.photos || []) if (files[p]) await db.addAttachment("work", savedWork.id, files[p], { kind: "slip_photo" }); continue; }
         batchWorks[c.dataset.i] = savedWork;
         for (const p of v.works[Number(c.dataset.i)].photos || []) if (files[p]) await db.addAttachment("work", savedWork.id, files[p], { kind: "slip_photo" });
         {
@@ -1096,7 +1175,9 @@ async function save(ctx, out, v, d, { message, files }) {
         if (supId) {
           const { createCreditBill } = await import("./esnaf.js");
           const s = fresh.suppliers.find((x) => x.id === supId);
-          const res = await createCreditBill(ctx, fresh, s, f);
+          // Esnaf borcunun istek anahtarı kalıcı işlem kimliğinden: aynı satır yeniden kaydedilince ikinci borç yazılmaz
+          const key = "op-" + (await db.opHash({ msgKey, kind: "credit-bill", row: rowKey("expense", Number(c.dataset.i)), date: f.date }));
+          const res = await createCreditBill(ctx, fresh, s, f, { key });
           if (res) done.expense++;
         } else {
           const { findDuplicates } = await import("./esnaf.js");
@@ -1113,14 +1194,21 @@ async function save(ctx, out, v, d, { message, files }) {
           const D = r.detail;
           if (D?.no && fresh.expense_records.some((x) => isActive(x) && x.invoice_no === D.no && (!D.seller_tax_no || !x.seller_tax_no || x.seller_tax_no === D.seller_tax_no))
             && !(await confirmDialog("Bu fatura zaten girilmiş", `${D.no} numaralı fatura gider olarak kayıtlı. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
+          let eg = null;
+          if (!r.driver_entry_id) {
+            eg = await opGate("expense", c.dataset.i, { date: f.date, amount: f.amount, category: f.category, vehicle_id: f.vehicle_id || null, payer: payer || pay }, `Gider ${f.date} · ${fmtTL(f.amount)} ₺`);
+            if (!eg) continue;
+            if (eg.existing) { if (file) await db.addAttachment("expense", eg.existing.id, file); continue; }
+          }
           const rec = await skipDup(db.saveNew("expense_records", {
             ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
             ...(dsite ? { dump_site_id: dsite.id, dump_deposit: true } : {}),
             date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: payer, vehicle_id: f.vehicle_id,
             payment_method: payer ? "Personel Ödedi" : pay, receipt: file ? "Evet" : "Hayır", reimbursement_status: payer ? "Bekliyor" : null,
             company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
-          }, "Asistan"));
+          }, "Asistan", { op: eg?.op || null }));
           if (!rec) continue;
+          if (rec._existing) { done.already++; if (file) await db.addAttachment("expense", rec.id, file); continue; }
           if (file) await db.addAttachment("expense", rec.id, file);
           // Kalemlerde filtre/yağ/balata… varsa ve araç seçiliyse: bakım kaydı (maliyet giderde; bakım takvimi için)
           if (D?.items?.length && f.vehicle_id && qs("[data-mhint]", c)?.checked) {
@@ -1134,19 +1222,57 @@ async function save(ctx, out, v, d, { message, files }) {
         }
       } else if (k === "collection") {
         const customer = await ensureCustomer(val(c, "customer"));
-        const amount = Number(val(c, "amount")), date = val(c, "date") || todayStr();
+        const amount = Number(val(c, "amount")), date = val(c, "date") || todayStr(), method = val(c, "method") === "Havale" ? "Havale" : "Nakit";
+        const ck = await import("./collection-key.js");
+        const cr = v.collections[Number(c.dataset.i)] || {};
+        // Kaynak kimliği: mesajdaki ödeme ifadesinden (WhatsApp satırı varsa o satır, yoksa mesaj metni) + tutar + sıra.
+        // Fotoğraftan gelen ya da mesajda bulunamayan tutarda kaynak = mesaj + kart sırası (tutar düzenlenirse çakışma verir)
+        const src = cr.src || { source: "txt:" + ck.normText(message), amount: cr.amount ?? amount, occ: "kart" + c.dataset.i, quote: "" };
+        const key0 = await ck.collectionKey(src);
+        const fieldsC = { customer_id: customer, amount, date, payment_method: method, bank_account_id: method === "Havale" ? val(c, "bank") : null };
         const fresh = await db.dumpAll();
-        const same = (fresh.cash_records || []).filter((x) => isActive(x) && x.cash_type === "Müşteriden Para Alındı" && x.customer_id === customer && x.date === date && Number(x.amount) === amount);
-        if (same.length && !(await confirmDialog("Aynı tahsilat kayıtlı olabilir", `${date} · ${fmtTL(amount)} ₺ bu müşteriden zaten alınmış görünüyor. Yine de kaydedilsin mi?`, "Kaydet"))) continue;
-        if (val(c, "method") === "Havale") {
-          const { customerBankReceipt } = await import("./enterprise-db.js");
-          await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source }, ctx.core.uuid());
+        const cash = (fresh.cash_records || []).filter(isActive);
+        const dec = ck.collectionDecision(cash, key0, fieldsC, src.source);
+        let reqId = key0, rel = {};
+        if (dec.kind === "conflict") {
+          toast(`Çakışma: bu mesaj satırından ${dec.old.date} · ${fmtTL(dec.old.amount)} ₺ tahsilat zaten kayıtlı; farklı tutar/müşteri/tarihle ikinci kez yazılmadı`, "err");
+          done.conflict++; continue;
+        }
+        if (dec.kind === "repeat") { toast("Bu WhatsApp satırındaki tahsilat daha önce kaydedilmiş — ikinci kez yazılmadı", "err"); done.already++; continue; }
+        if (dec.kind === "ask") {
+          // Elle yapıştırılan metinde kesin kaynak kimliği yok: aynı metin tekrar mı geldi, yoksa aynı tutarda yeni bir ödeme mi?
+          const ans = await repeatOrNewDialog("Bu tahsilat bu mesajdan daha önce kaydedildi",
+            `${dec.old.date} · ${fmtTL(dec.old.amount)} ₺ (kayıt: ${String(dec.old.created_at || "").slice(0, 16).replace("T", " ")}). Aynı ödemenin tekrarı mı, yoksa müşteriden gelen YENİ ve ayrı bir ödeme mi?`, { needReason: true });
+          if (!ans || ans.choice !== "new") { toast("Tekrar sayıldı — tahsilat ikinci kez yazılmadı", "ok"); done.already++; continue; }
+          reqId = ck.nextNewKey(cash, key0);
+          rel = { repeat_of: dec.old.id, new_payment_reason: ans.reason };
         } else {
-          const pid = val(c, "personnel") || null;
-          await db.saveNew("cash_records", {
-            request_id: ctx.core.uuid(), date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
-            payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI",
-          }, "Asistan tahsilat");
+          // Aynı müşteri + tarih + tutar başka kaynaktan kayıtlı: kesin tekrar SAYILMAZ, kullanıcı seçer
+          const sim = ck.similarCollections(cash, fieldsC, key0);
+          if (sim.length) {
+            const ans = await repeatOrNewDialog("Aynı gün aynı tutarda tahsilat var",
+              `${date} · ${fmtTL(amount)} ₺ bu müşteriden başka bir kayıtla alınmış görünüyor (${sim.length} kayıt). Bu aynı ödeme mi (tekrar), yoksa ikinci ve ayrı bir ödeme mi?`, { needReason: false });
+            if (!ans || ans.choice !== "new") { toast("Tekrar sayıldı — tahsilat yazılmadı", "ok"); continue; }
+            rel = { similar_to: sim.map((x) => x.id), ...(ans.reason ? { new_payment_reason: ans.reason } : {}) };
+          }
+        }
+        const srcInfo = { source_ref: src.source.startsWith("wa:") ? src.source : "elle yapıştırılan mesaj", source_quote: src.quote || "", ...rel };
+        try {
+          if (method === "Havale") {
+            const { customerBankReceipt } = await import("./enterprise-db.js");
+            const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source, extra: srcInfo }, reqId);
+            if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
+          } else {
+            const pid = val(c, "personnel") || null;
+            const r0 = await db.saveNew("cash_records", {
+              request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
+              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo,
+            }, "Asistan tahsilat", { op: { id: reqId, hash: await db.opHash(fieldsC) } }); // PR #121 işlem kaydı: kimlik = kaynak anahtarı (deterministik)
+            if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
+          }
+        } catch (e) {
+          if (e?.code === "OP_CONFLICT") { toast("Çakışma: aynı kaynak satırıyla farklı tahsilat kayıtlı — yazılmadı", "err"); done.conflict++; continue; }
+          throw e;
         }
         done.collection++;
       } else if (k === "maintenance") {
@@ -1155,6 +1281,12 @@ async function save(ctx, out, v, d, { message, files }) {
         if (mr.driver_entry_id && (await db.dumpAll()).maintenance_records.some((x) => isActive(x) && x.driver_entry_id === mr.driver_entry_id)) { toast("Şoför arıza kaydı zaten alınmış, atlandı", "err"); continue; }
         const files0 = mr.driver_entry_id ? null : files[0] && v.expenses.every((e) => e.photo !== 0) ? files[0] : null;
         const cepM = mr.driver_pay === "cep" && cost;
+        let mg = null;
+        if (!mr.driver_entry_id) {
+          mg = await opGate("maintenance", c.dataset.i, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), description: val(c, "description"), cost }, `Arıza/bakım ${val(c, "date") || todayStr()}`);
+          if (!mg) continue;
+          if (mg.existing) { if (files0) await db.addAttachment("maintenance", mg.existing.id, files0); continue; }
+        }
         const rec = await skipDup(db.saveNew("maintenance_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: mr.driver_pid || null, severity: "Normal", part: "",
           maint_type: val(c, "maint_type") || "Arıza", status: val(c, "status") || "Açık", description: val(c, "description"),
@@ -1162,8 +1294,9 @@ async function save(ctx, out, v, d, { message, files }) {
           ...(mr.km ? { km: mr.km } : {}), ...(mr.machine_hours ? { machine_hours: mr.machine_hours } : {}),
           ...(cepM ? { paid_by_personnel_id: mr.driver_pid, reimbursement_status: "Bekliyor" } : {}),
           ...(mr.driver_entry_id ? { driver_entry_id: mr.driver_entry_id, source: "şoför" } : {}),
-        }, "Asistan arıza/bakım"));
+        }, "Asistan arıza/bakım", { op: mg?.op || null }));
         if (!rec) continue;
+        if (rec._existing) { done.already++; continue; }
         if (files0) await db.addAttachment("maintenance", rec.id, files0);
         for (const pi of mr.photos || []) if (files[pi]) await db.addAttachment("maintenance", rec.id, files[pi]);
         const supId = val(c, "supplier");
@@ -1194,19 +1327,26 @@ async function save(ctx, out, v, d, { message, files }) {
         const liters = Number(val(c, "liters")), total = Number(val(c, "total")) || null;
         const src = val(c, "source") || "Depo Tankı";
         const byCustomer = src === "Müşteri Verdi";
+        let fg = null;
+        if (!r.driver_entry_id) {
+          fg = await opGate("fuel", c.dataset.i, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), liters, total, source: src }, `Yakıt ${val(c, "date") || todayStr()} · ${liters} L`);
+          if (!fg) continue;
+          if (fg.existing) { if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", fg.existing.id, files[r.photo]); continue; }
+        }
         const rec = await skipDup(db.saveNew("fuel_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
           unit_price: !byCustomer && total ? Math.round((total / liters) * 100) / 100 : null, total: byCustomer ? null : total,
           ...(byCustomer ? { customer_id: val(c, "fuel_customer") || null } : {}),
           fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: r.km || null,
           machine_hours: r.machine_hours || null, description: source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id } : {}), customer_billable: false,
-        }, "Asistan"));
+        }, "Asistan", { op: fg?.op || null }));
         if (!rec) continue;
+        if (rec._existing) { done.already++; continue; }
         if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
         done.fuel++;
       }
     }
-    const parts = [[done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.already, "kayıt bu mesajdan zaten yazılmıştı (yeniden yazılmadı)"], [done.conflict, "satır daha önce farklı bilgilerle kaydedildiği için atlandı"], [done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır
@@ -1326,6 +1466,6 @@ export async function rereadSlips(db, v, imgParts, d, today) {
     if (mat && !w.material) w.material = mat;
     if (got.length) w.issues.push("Fişten okundu: " + got.join(", "));
     if ("ok" in w)
-      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess);
+      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup);
   }
 }

@@ -1506,19 +1506,21 @@ export async function doBackup(ctx) {
   const sec = await import("./security.js");
   if (!(await sec.reauth("Yedek alma (tüm kayıtlar dışarı çıkar)"))) return;
   await sec.secLog("backup", "Yedek alındı");
-  const { fullBackup } = await import("./backup.js");
+  const { backupParts } = await import("./backup.js");
   // Sıkıştırılmış (çok daha küçük) ve şifre konduysa şifreli: WhatsApp/Drive'daki dosyayı başkası açamaz
   const pw = (await ctx.db.metaGet("backup_pw")) || "";
-  // Şifresiz yedeğe şoför bağlantı anahtarları yazılmaz
-  const backup = await fullBackup(ctx.db, { encrypted: !!pw });
+  // Şifresiz yedeğe şoför bağlantı anahtarları yazılmaz. Fotoğraflar çoksa yedek telefon belleğine sığan parçalara bölünür;
+  // her parça tek başına okunur (önce 1. parça yüklenir).
+  const parts = await backupParts(ctx.db, { encrypted: !!pw });
   const { encodeBackup } = await import("./backup-crypt.js");
-  const bytes = await encodeBackup(backup, pw);
-  const name = `SAHAPRO_YEDEK_${tsName()}${pw ? "_SIFRELI" : ""}.sahapro`;
-  const how = await shareOrDownload(
-    new Blob([bytes], { type: "application/octet-stream" }),
-    name,
-    "SAHAPRO yedek",
-  );
+  const stamp = tsName(), files = [];
+  for await (const part of parts) {
+    const bytes = await encodeBackup(part, pw);
+    files.push(new File([bytes], `SAHAPRO_YEDEK_${stamp}${pw ? "_SIFRELI" : ""}${parts.count > 1 ? `_PARCA${part.part.no}-${parts.count}` : ""}.sahapro`, { type: "application/octet-stream" }));
+  }
+  const name = files[0].name;
+  const { shareOrDownloadMany } = await import("./ui.js");
+  const how = await shareOrDownloadMany(files, "SAHAPRO yedek");
   if (how === "aborted") {
     toast("Yedek paylaşımı iptal edildi — yedek kaydedilmedi", "warn");
     return name;
@@ -1528,6 +1530,7 @@ export async function doBackup(ctx) {
     (how === "shared"
       ? "Yedek paylaşıldı — WhatsApp/Drive'a gönderdiğinizden emin olun"
       : "Yedek indirildi — dosyayı telefonun dışına (Drive/e-posta) da kopyalayın") +
+      (files.length > 1 ? `. Yedek ${files.length} parça: hepsini saklayın; geri yüklerken önce 1. parçayı yükleyin` : "") +
       (pw ? "" : ". Yedek şifresiz: şoför bağlantı anahtarları dosyaya yazılmadı; Güvenlik ekranından yedek şifresi koymanız önerilir."),
     pw ? "ok" : "warn",
   );
@@ -1848,7 +1851,7 @@ async function restorePreview(ctx, file) {
     view.innerHTML =
       notice(
         "info",
-        `${p.added} yeni / ${p.same} aynı / ${p.conflicts} çakışma / ${p.attachments} ek`,
+        `${obj.part ? `Parça ${obj.part.no}/${obj.part.of} · ` : ""}${p.added} yeni / ${p.same} aynı / ${p.conflicts} çakışma / ${p.attachments} ek`,
       ) +
       (!Array.isArray(obj.attachments)
         ? notice(
@@ -1867,8 +1870,11 @@ async function restorePreview(ctx, file) {
           ))
         )
           return;
-        await restoreBackup(ctx.db, obj, false);
-        toast("Yedek geri yüklendi", "ok");
+        const res = await restoreBackup(ctx.db, obj, false);
+        const { setStatusText } = await import("./backup.js");
+        if (res.already) toast(`Bu parça (${res.part.no}/${res.part.of}) zaten yüklenmişti — hiçbir şey değişmedi. ${setStatusText(res.set)}`, "warn");
+        else if (res.set) toast((res.set.finished_at ? "✓ " : "") + setStatusText(res.set), res.set.finished_at ? "ok" : "warn");
+        else toast("Yedek geri yüklendi", "ok");
         ctx.reload();
       } catch (error) {
         toast(error.message, "err");

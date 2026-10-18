@@ -152,6 +152,43 @@ export function confirmDialog(title, text, okLabel = "Evet", danger = false) {
     });
   });
 }
+// Seçenekli onay: options [[değer, etiket]]; seçilen değer döner, Vazgeç → null
+export function choiceDialog(title, text, options) {
+  return new Promise((resolve) => {
+    const sh = sheet(
+      `<h3>${esc(title)}</h3><p class="muted" style="margin:0 0 12px">${esc(text)}</p>
+      <div style="display:flex;flex-direction:column;gap:8px">${options.map(([v, t], i) => `<button class="btn ${i === 0 ? "" : ""} block" data-c="${i}">${esc(t)}</button>`).join("")}
+      <button class="btn ghost block" data-c="x">Vazgeç</button></div>`,
+      { modal: true },
+    );
+    sh.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-c]");
+      if (!b) return;
+      sheetClose();
+      resolve(b.dataset.c === "x" ? null : options[Number(b.dataset.c)][0]);
+    });
+  });
+}
+// Tekrar mı, yeni ödeme mi? Açık seçim. "Yeni" seçilirse gerekçe istenir (needReason). Vazgeç → null
+export function repeatOrNewDialog(title, text, { needReason = true } = {}) {
+  return new Promise((resolve) => {
+    const sh = sheet(
+      `<h3>${esc(title)}</h3><p class="muted" style="margin:0 0 12px">${esc(text)}</p>
+      <div class="field"><label>Yeni ödeme ise gerekçe${needReason ? " *" : " (isteğe bağlı)"}</label><input type="text" data-reason placeholder="Örn: ikinci taksit, ayrı havale" autocomplete="off"></div>
+      <div class="tiny muted" data-rwarn style="margin:-6px 2px 10px"></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn ghost grow" data-x="0">Vazgeç</button><button class="btn grow" data-x="repeat">Tekrar — yazma</button><button class="btn primary grow" data-x="new">Yeni ödeme — ayrı kaydet</button></div>`,
+      { modal: true },
+    );
+    sh.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-x]");
+      if (!b) return;
+      const reason = qs("[data-reason]", sh).value.trim();
+      if (b.dataset.x === "new" && needReason && !reason) { qs("[data-rwarn]", sh).textContent = "Yeni ödeme için gerekçe yazın (kayıtta tutulur)."; return; }
+      sheetClose();
+      resolve(b.dataset.x === "0" ? null : { choice: b.dataset.x, reason });
+    });
+  });
+}
 export function promptDialog(title, label, value = "", opts = {}) {
   return new Promise((resolve) => {
     const sh = sheet(
@@ -285,6 +322,19 @@ export async function shareOrDownload(blob, filename, title = "") {
     if (e && e.name === "AbortError") return "aborted";
   }
   downloadBlob(blob, filename);
+  return "downloaded";
+}
+// Birden çok dosya tek paylaşımda (ör. parçalı yedek); paylaşılamazsa hepsi indirilir
+export async function shareOrDownloadMany(files, title = "") {
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: title || files[0]?.name || "" });
+      return "shared";
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return "aborted";
+  }
+  for (const f of files) downloadBlob(f, f.name);
   return "downloaded";
 }
 export async function shareText(text) {

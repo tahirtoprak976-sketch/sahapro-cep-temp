@@ -4,9 +4,12 @@
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
-import { isActive, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
+import { isActive, resolvePrice, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
+import { moneyMentions, rolesOf, ROLE_TR, amountOwners, customerSpans, ownerOfMention } from "./money-roles.js";
+import { assignPaymentSources } from "./collection-key.js";
+import { priceDecision, priceSummary } from "./price-decision.js";
 import { tokenize } from "./message-engine.js";
 import { DOCS_PROMPT, docsSchemaProps } from "./assistant-docs.js";
 import { vehicleNamed, senderPersonnel, fuelAllowance, markPasteDuplicates, fuelRulesOf } from "./assistant-rules.js";
@@ -409,7 +412,15 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     if (w.unit_price != null && w.unit_price !== "") {
       const up = amountOk(w.unit_price, [moneyInText(message)]);
-      if (up) r.unit_price = up; else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
+      // Birim fiyat yalnız mesajdaki AÇIK birim fiyat ifadesine dayanır ("sefer fiyatı 3.000", "3.000 TL/sefer").
+      // Ödeme, ödeme sözü, toplam bedel ya da belirsiz tutar fiyat alanına yazılmaz ve miktara bölünmez (model öyle döndürse bile).
+      const roles = up ? rolesOf(moneyMentions(message), up) : [];
+      if (up && roles.includes("unit_price")) { r.unit_price = up; r.unit_price_src = moneyMentions(message).find((m) => m.n === up && m.role === "unit_price")?.clause || ""; }
+      else if (up) {
+        r.moneyQuestion = { amount: up, roles };
+        issues.push(`Mesajdaki ${up.toLocaleString("tr-TR")} TL birim fiyat olarak yazılmamış (${roles.map((x) => ROLE_TR[x] || x).join(", ") || "anlamı belirsiz"}) — fiyat BOŞ bırakıldı; fiyat listesindeki kural varsa o uygulanır. Bu tutar ödemeyse tahsilat kartındadır.`);
+      }
+      else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
     }
     if (w.date && !validDate(w.date, today)) issues.push(`Tarih ${w.date} geçersiz; bugün alındı`);
     const c = byId(customers, w.customer_id);
@@ -596,6 +607,32 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (r.quote && !quoteFound(r.quote, message)) {
       issues.push(`Kaynak alıntı mesajda bulunamadı ("${r.quote}")`);
       r.badQuote = true;
+    }
+    // Birim fiyat BU işin müşterisinin cümlesinde mi? ("Kaya'ya 5 sefer, seferi 3000; Leda'dan 20000 ödeme geldi":
+    // 3000 yalnız Kaya'nın işine fiyat olabilir). Başka müşterinin cümlesindeyse ya da sahibi belirsizse fiyat BOŞ kalır ve sorulur.
+    if (r.unit_price && !fromDriver && (r.customer_id || r.new_customer)) {
+      const myId = r.customer_id || "new:" + r.new_customer;
+      const own = amountOwners(message, r.unit_price, { customers: [...customers, ...(r.new_customer ? [{ id: myId, name: r.new_customer }] : [])], aliases: live(d, "aliases"), roles: ["unit_price"] });
+      if (!own.owners.has(myId) && (own.owners.size || own.ambiguous)) {
+        const names = [...own.owners].map((id) => customers.find((c) => c.id === id)?.name || String(id).replace(/^new:/, "")).join(", ");
+        issues.push(own.owners.size
+          ? `${r.unit_price.toLocaleString("tr-TR")} TL birim fiyatı mesajda ${names} için yazılmış; bu iş ${customers.find((c) => c.id === r.customer_id)?.name || r.new_customer} — fiyat BOŞ bırakıldı`
+          : `${r.unit_price.toLocaleString("tr-TR")} TL birim fiyatının hangi müşterinin işine ait olduğu mesajda belirsiz — fiyat BOŞ bırakıldı; doğruysa elle yazın`);
+        r.moneyQuestion = { amount: r.unit_price, roles: ["unit_price"], owner: [...own.owners] };
+        r.ownerMismatch = true;
+        r.unit_price = null; r.unit_price_src = "";
+      }
+    }
+    // Mesajda birim fiyat yoksa iş FİYATSIZ değildir: fiyat listesi uygulanır. Kaydetmeden önce kural, iş tarihi, birim fiyat,
+    // KDV esası/oranı ve tutar kartta gösterilir. Eşit öncelikli birden çok kural ya da tarihe göre değişen fiyat + kesin olmayan
+    // tarih: kural SESSİZCE seçilmez, kaydederken sorulur.
+    if (!r.unit_price && r.unit && (r.customer_id || r.new_customer)) {
+      const v0 = byId(vehicles, r.vehicle_id);
+      const dec = priceDecision(live(d, "price_book"), { unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, vehicle_type: v0?.type || null, work_type: r.work_type, date: r.date, material: r.material || null }, { dateSure: !r.dateUnsure });
+      const rule = dec.rule;
+      r.priceInfo = { ambiguous: dec.ambiguous, reason: dec.reason || "", candidates: dec.candidates, summary: rule ? priceSummary(rule, { date: r.date, quantity: r.quantity, unit: r.unit }) : "" };
+      if (dec.ambiguous) issues.push("Fiyat seçimi gerekli: " + dec.reason + " (" + dec.candidates.map((c) => `${Number(c.price).toLocaleString("tr-TR")} ₺ ${c.price_source}${c.valid_from ? " " + c.valid_from + "'den" : ""}`).join(" / ") + ")");
+      else if (r.moneyQuestion) issues.push(rule ? `Fiyat listesinden: ${Number(rule.price).toLocaleString("tr-TR")} ₺ / ${r.unit.toLocaleLowerCase("tr-TR")} (${rule.price_source}${rule.valid_from ? ", " + rule.valid_from + " tarihinden" : ""}; KDV ${rule.kdv_included ? "dahil" : "hariç"} %${rule.kdv_rate ?? 20}) — kayıtta bu uygulanır` : dec.reason);
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
@@ -862,11 +899,51 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     }
     const a = amountOk(c.amount, pools);
     if (a) r.amount = a; else issues.push(a === undefined ? `Tutar ${c.amount} mesajda yazmıyor` : "Tutar yok");
+    // Tahsilat yalnız mesajda ÖDEME olarak geçen tutardan: söz, ödenmedi, düzeltilen tutar, fiyat teklifi, toplam bedel
+    // ya da belirsiz tutar tahsilat değildir. Ödeme olsa bile kart kendiliğinden işaretlenmez (finansal onay).
+    if (r.amount && !photoTexts.some((t) => numbersInText(t).has(r.amount))) {
+      const roles = rolesOf(moneyMentions(message), r.amount);
+      r.roles = roles;
+      if (!roles.some((x) => x === "payment" || x === "payment_possible")) {
+        issues.push(`${r.amount.toLocaleString("tr-TR")} TL mesajda ödeme olarak geçmiyor (${roles.map((x) => ROLE_TR[x] || x).join(", ") || "belirsiz"}) — tahsilat yazılmaz`);
+        r.notPayment = true;
+      } else if (!roles.includes("payment")) issues.push(`"verdi" ödeme anlamına gelmeyebilir — ${r.amount.toLocaleString("tr-TR")} TL gerçekten alındı mı? Doğrulayıp işaretleyin`);
+    }
+    // Ödeme BU müşterinin cümlesinde mi? Başka müşterinin ödemesi ya da sahibi belirsiz ödeme bu müşteriye yazılmaz
+    if (r.amount && !r.notPayment && (r.customer_id || r.new_customer) && !photoTexts.some((t) => numbersInText(t).has(r.amount))) {
+      const myId = r.customer_id || "new:" + r.new_customer;
+      const own = amountOwners(message, r.amount, { customers: [...customers, ...(r.new_customer ? [{ id: myId, name: r.new_customer }] : [])], aliases: live(d, "aliases"), roles: ["payment", "payment_possible"] });
+      if (!own.owners.has(myId) && (own.owners.size || own.ambiguous)) {
+        const names = [...own.owners].map((id) => customers.find((c) => c.id === id)?.name || String(id).replace(/^new:/, "")).join(", ");
+        issues.push(own.owners.size
+          ? `${r.amount.toLocaleString("tr-TR")} TL mesajda ${names} ödemesi olarak geçiyor; kartta ${customers.find((c) => c.id === r.customer_id)?.name || r.new_customer} seçili — müşteriyi kontrol edin`
+          : `${r.amount.toLocaleString("tr-TR")} TL ödemenin hangi müşteriye ait olduğu mesajda belirsiz — müşteriyi seçip işaretleyin`);
+        r.ownerMismatch = true;
+      }
+    }
+    r.needsApproval = true;
     if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
     if (r.method === "Havale" && !r.bank_account_id) issues.push("Havale için banka hesabı seçilmeli");
     r.issues = issues;
-    r.ok = !!(r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id));
+    r.okData = !!(r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id) && !r.notPayment && !r.ownerMismatch);
+    r.ok = false; // tahsilat kartı her zaman işaretsiz gelir: kullanıcı kontrol edip işaretler
+    if (r.okData) issues.push("Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin");
     out.collections.push(r);
+  }
+  // Her tahsilat kartı mesajdaki BİR ödeme ifadesine bağlanır (kaynak kimliği bundan üretilir).
+  // Aynı tutar mesajda bir kez geçiyorsa iki karta bölünemez; iki kez geçiyorsa iki ayrı ödemedir, biri ötekini yutmaz.
+  {
+    const spans = customerSpans(message, customers, live(d, "aliases"));
+    const owns = (m, id) => !!id && ownerOfMention(message, m, spans).ids.includes(id) && ownerOfMention(message, m, spans).how !== "ambiguous";
+    const srcs = assignPaymentSources(message, out.collections.map((r) => (r.notPayment ? {} : r)), owns);
+    out.collections.forEach((r, i) => {
+      r.src = srcs[i].src;
+      if (srcs[i].extra) {
+        r.splitDup = true; r.okData = false;
+        r.issues.push(`${r.amount.toLocaleString("tr-TR")} TL mesajda bu kadar ödeme olarak geçmiyor — aynı ödeme ikinci karta yazılmış olabilir; tahsilat yazılmaz`);
+        r.issues = r.issues.filter((x) => !/^Tahsilat: tutarı ve müşteriyi/.test(x));
+      }
+    });
   }
 
   for (const m of (Array.isArray(plan.maintenance) ? plan.maintenance : []).slice(0, 10)) {
