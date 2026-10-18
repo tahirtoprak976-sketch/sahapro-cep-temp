@@ -1,6 +1,7 @@
 import { analyzeMessage, ENGINE_VERSION } from "./message-engine.js";
 // Local message assistance. Suggestions never create financial records.
 import { normKey, WORK_TYPES, WORK_UNITS, resolvePrice } from "./core.js";
+import { resolvePriceSafe } from "./price-decision.js";
 import { draftMessage, live, label, validPast } from "./solo-core.js";
 export const MEMORY_TYPES = {
   vehicle: "vehicles",
@@ -322,7 +323,8 @@ export function datedPriceSuggestion(row, d) {
       e.valid_from <= row.date &&
       /^\d{4}-\d{2}-\d{2}$/.test(e.valid_from),
   );
-  const p = resolvePrice(entries, { ...row, vehicle_type: vehicle?.type });
+  // Eşit öncelikli farklı kural varsa önerilmez (sessiz seçim yok); kullanıcı fiyatı elle yazar
+  const p = resolvePriceSafe(entries, { ...row, vehicle_type: vehicle?.type });
   return p && !p.formula && p.price != null && Number.isFinite(Number(p.price))
     ? { ...p, unit_price: Number(p.price) }
     : null;

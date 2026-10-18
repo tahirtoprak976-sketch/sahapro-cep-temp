@@ -38,6 +38,7 @@ import {
   shareText,
 } from "./ui.js";
 import { customerStatement, statementText, statementCsv } from "./statement.js";
+import { resolvePriceSafe, priceDecision, candidateLabel } from "./price-decision.js";
 import {
   isActive,
   matchSearch,
@@ -825,7 +826,7 @@ async function hakedisNew(ctx) {
                 price: w.price_snapshot.unit_price,
                 price_source: "Snapshot",
               }
-            : resolvePrice(pricebook, {
+            : resolvePriceSafe(pricebook, {
                 customer_id: w.customer_id,
                 site_id: w.site_id,
                 vehicle_id: w.vehicle_id,
@@ -850,7 +851,8 @@ async function hakedisNew(ctx) {
             ${isCrane ? '<span class="badge accent">vinç</span>' : `<input type="number" data-price="${w.id}" value="${price ? price.price : ""}" placeholder="₺" step="any" style="width:100%;min-height:40px;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);padding:6px 8px;text-align:right">`}
           </div>
         </div>
-        ${price ? "" : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'}
+        ${price ? "" : (() => { const dec = priceDecision(pricebook, { customer_id: w.customer_id, site_id: w.site_id, vehicle_id: w.vehicle_id, work_type: w.work_type, unit: w.unit, date: w.date, material: w.material, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type || w.vehicle_type, distance_km: w.distance_km });
+          return dec.ambiguous ? `<div class="tiny" style="color:var(--warn);margin-top:5px" data-amb="${w.id}">⚠ Birden çok fiyat kuralı uyuyor — seçin ya da el ile girin:</div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${dec.candidates.map((c) => `<button type="button" class="chip" data-pickprice="${w.id}" data-v="${c.price}" data-kdv="${c.kdv_rate}" data-inc="${c.kdv_included ? 1 : 0}">${esc(candidateLabel(c))}</button>`).join("")}</div>` : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'; })()}
       </div>`;
         })
         .join("");
@@ -865,7 +867,7 @@ async function hakedisNew(ctx) {
               price: w.price_snapshot.unit_price,
               price_source: "Snapshot",
             }
-          : resolvePrice(pricebook, {
+          : resolvePriceSafe(pricebook, {
               customer_id: w.customer_id,
               site_id: w.site_id,
               vehicle_id: w.vehicle_id,
@@ -891,16 +893,18 @@ async function hakedisNew(ctx) {
           quantity: Number(w.quantity) || 0,
           unit: w.unit,
           unit_price: manual ? Number(manual.value) || 0 : 0,
-          kdv_rate: price ? (price.kdv_rate ?? 20) : 20,
+          kdv_rate: price ? (price.kdv_rate ?? 20) : manual?.dataset.kdv ? Number(manual.dataset.kdv) : 20,
           formula:
             price && price.formula === "CRANE_FIRST_HOUR"
               ? "CRANE_FIRST_HOUR"
               : null,
           first_hour_price: price?.first_hour_price ?? crane.first,
           next_hour_price: price?.next_hour_price ?? crane.next,
-          kdv_included: price?.kdv_included || false,
+          kdv_included: price ? price.kdv_included || false : manual?.dataset.inc === "1",
           price_source:
-            manual && Number(manual.value) !== Number(price?.price)
+            !price && manual?.dataset.picked && Number(manual.value) === Number(manual.dataset.picked)
+              ? "Fiyat listesi (kullanıcı seçti)"
+              : manual && Number(manual.value) !== Number(price?.price)
               ? "Manuel"
               : price?.price_source || "Manuel",
         });
@@ -913,6 +917,16 @@ async function hakedisNew(ctx) {
     };
     rowsEl.onchange = upd;
     rowsEl.oninput = upd;
+    rowsEl.onclick = (ev) => {
+      const b = ev.target.closest("[data-pickprice]");
+      if (!b) return;
+      const inp = qs(`[data-price="${b.dataset.pickprice}"]`, rowsEl);
+      if (!inp) return;
+      inp.value = b.dataset.v; inp.dataset.kdv = b.dataset.kdv; inp.dataset.inc = b.dataset.inc; inp.dataset.picked = b.dataset.v;
+      for (const x of qsa(`[data-pickprice="${b.dataset.pickprice}"]`, rowsEl)) x.classList.toggle("on", x === b);
+      const chk = qs(`[data-chk="${b.dataset.pickprice}"]`, rowsEl); if (chk) chk.checked = true;
+      upd();
+    };
   });
 
   qs("[data-create]", root).addEventListener("click", async () => {

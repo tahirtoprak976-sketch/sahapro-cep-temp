@@ -453,7 +453,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       .map((r, i) => {
         const batch = v.works.map((w, j) => ["batch:" + j, `Bu mesajdaki iş${v.works.length > 1 ? " " + (j + 1) : ""}: ${nameOf("customers", w.customer_id) || w.new_customer || "—"} · ${w.quantity ?? ""} ${String(w.unit || "").toLocaleLowerCase("tr-TR")} (aynı satıra eklenir)`]);
         if (!r.link && v.works.length === 1) r.link = "batch:0";
-        const linkOpts = [...batch, ...r.works.map((id) => { const w = d.work_records.find((x) => x.id === id); return [id, `Mevcut: ${nameOf("customers", w.customer_id)} · ${w.quantity} sefer`]; }), ["new", "➕ Yeni 1 sefer iş aç"]];
+        const linkOpts = [...batch, ...r.works.map((id) => { const w = d.work_records.find((x) => x.id === id); return [id, `Mevcut: ${w.date} · ${nameOf("customers", w.customer_id)} · ${w.quantity} sefer${w.slip_no ? " · fiş " + w.slip_no : ""}${id === r.link && r.linkWhy ? " (" + r.linkWhy + ")" : ""}`]; }), ["new", "➕ Yeni 1 sefer iş aç"]];
         return `<div class="card" data-kind="ticket" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧾 Döküm / kantar fişi</b></label>
         ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Döküm fişi" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
@@ -959,6 +959,7 @@ async function save(ctx, out, v, d, { message, files }) {
           continue;
         }
         let workId = val(c, "link");
+        if (!workId) { toast(`Fiş ${no}: hangi işe bağlanacağını seçin — fiş kaydedilmedi`, "err"); continue; }
         const veh = vehicles.find((x) => x.id === vid);
         if (workId.startsWith("batch:")) {
           const w = batchWorks[workId.slice(6)];

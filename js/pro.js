@@ -1681,15 +1681,12 @@ export async function augment(ctx) {
       qs("[data-apply-price]", root)?.addEventListener("click", async () => {
         try {
           const vehicle = await db.get("vehicles", r.vehicle_id);
-          const snap = priceSnapshot(
-            { ...r, vehicle_type: vehicle?.type },
-            await db.listActive("price_book"),
-            {
-              first: await db.metaGet("crane_first_hour"),
-              next: await db.metaGet("crane_next_hour"),
-            },
-          );
-          if (!snap) throw Error("Uygun fiyat bulunamadı");
+          const { askPriceSnapshot } = await import("./price-pick.js");
+          const pr = await askPriceSnapshot(await db.listActive("price_book"), { ...r, vehicle_type: vehicle?.type },
+            { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${r.date} · ${r.quantity} ${r.unit}` });
+          if (pr.cancel) return;
+          const snap = pr.snap;
+          if (!snap) throw Error("Uygun fiyat bulunamadı ya da fiyatsız bırakıldı");
           await db.saveExisting("work_records", r, { price_snapshot: snap });
           ctx.reload();
         } catch (e) {
@@ -1718,9 +1715,12 @@ export async function augment(ctx) {
         first: await db.metaGet("crane_first_hour"),
         next: await db.metaGet("crane_next_hour"),
       };
-    let n = 0;
+    let n = 0, amb = 0;
+    const { priceDecision } = await import("./price-decision.js");
     for (const w of await db.listActive("work_records"))
       if (!w.price_snapshot) {
+        // Eşit öncelikli farklı kural: toplu uygulamada sessizce seçilmez, atlanır (iş açılıp tek tek seçilir)
+        if (priceDecision(entries, { ...w, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type }).ambiguous) { amb++; continue; }
         const snap = priceSnapshot(
           {
             ...w,
@@ -1734,7 +1734,7 @@ export async function augment(ctx) {
           n++;
         }
       }
-    toast(n + " iş fiyatlandırıldı", "ok");
+    toast(n + " iş fiyatlandırıldı" + (amb ? ` · ${amb} işte birden çok fiyat kuralı uyuyor, atlandı (işi açıp seçin)` : ""), amb ? "err" : "ok");
   });
 }
 
@@ -1819,7 +1819,10 @@ async function simpleDetail(ctx) {
     exportBar() +
     '<div class="card">' +
     spec.sections[0].pairs.map((p) => kv(...p)).join("") +
-    "</div>";
+    "</div>" +
+    (store === "price_book" && (r.price_history || []).length
+      ? `<div class="card" data-pricehist><div class="section-title" style="margin:0 0 6px">Fiyat geçmişi</div>${[...r.price_history].reverse().map((h) => `<div class="small">• ${esc(h.until ? core.trDate(core.todayStr(new Date(h.until))) : "—")} tarihine kadar: <b>${esc(core.fmtTL(h.price))} ₺</b> · KDV ${h.kdv_included ? "dahil" : "hariç"} %${esc(h.kdv_rate ?? "")}${h.valid_from || h.valid_to ? ` · geçerlilik ${esc(h.valid_from || "…")} – ${esc(h.valid_to || "…")}` : ""}</div>`).join("")}<div class="muted tiny" style="margin-top:4px">Kayıtlı işlerin fiyatı değişmez; her iş kendi tarihindeki fiyatı saklar.</div></div>`
+      : "");
   bindExports(
     root,
     () => spec,

@@ -217,7 +217,8 @@ export function validTCKN(v) {
   const d11 = d.slice(0, 10).reduce((a, b) => a + b, 0) % 10;
   return ((d10 + 10) % 10) === d[9] && d11 === d[10];
 }
-export function checkFields(docType, f, today = new Date().toISOString().slice(0, 10)) {
+const localToday = () => { const x = new Date(); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`; };
+export function checkFields(docType, f, today = localToday()) {
   const out = [];
   if (f.tax_no) {
     const t = String(f.tax_no).replace(/\D/g, "");

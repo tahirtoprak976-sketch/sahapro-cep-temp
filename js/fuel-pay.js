@@ -13,7 +13,7 @@ export async function screen(ctx) {
   const total = Math.round(rows.reduce((n, r) => n + Math.max(0, r.balance), 0) * 10) / 10;
   const { fuelPrice } = await import("./finance-chart.js");
   const ref = await db.metaGet("fuel_ref_price");
-  const price = fuelPrice(d, new Date().toISOString().slice(0, 10), ref);
+  const price = fuelPrice(d, (await import("./core.js")).todayStr(), ref);
   root.innerHTML =
     appbar("Mazotla Ödeme Hesapları", rows.length ? `toplam alacak ${total} L` : "") +
     `<div style="height:10px"></div>

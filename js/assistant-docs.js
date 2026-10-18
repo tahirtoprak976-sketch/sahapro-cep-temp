@@ -91,13 +91,21 @@ export function validateTickets(plan, { d, today = todayStr(), photoTexts = [], 
     if (key && used.has(key)) { issues.push("Aynı fiş iki kez"); r.dup = true; }
     used.add(key);
     if (key && live(d, "documents").some((x) => x.category === "Döküm Fişi" && alnum(x.doc_no) === key)) { issues.push("Bu fiş numarası zaten kayıtlı"); r.dup = true; }
-    // Bağlanacak iş: aynı gün aynı aracın sefer işi
-    const works = r.vehicle_id ? live(d, "work_records").filter((w) => w.date === r.date && w.vehicle_id === r.vehicle_id && w.unit === "Sefer") : [];
+    // Bağlanacak iş (fotoğraf ayrı mesajla geldiyse de): önce fiş no'su aynı olan iş (±3 gün); yoksa aynı gün aynı aracın sefer işi.
+    // Birden çok aday kalırsa SESSİZ SEÇİM YOK: henüz fişi olmayan tek iş varsa o önerilir, değilse kullanıcı seçer.
+    const allW = r.vehicle_id ? live(d, "work_records").filter((w) => w.vehicle_id === r.vehicle_id && w.unit === "Sefer") : [];
+    const near = (w) => w.date && Math.abs((new Date(w.date + "T12:00:00") - new Date(r.date + "T12:00:00")) / 86400000) <= 3;
+    const bySlip = key ? allW.filter((w) => near(w) && alnum(w.slip_no) === key) : [];
+    const works = bySlip.length ? bySlip : allW.filter((w) => w.date === r.date);
+    const ticketed = new Set(live(d, "documents").filter((x) => x.category === "Döküm Fişi" && x.owner_type === "work").map((x) => x.owner_id));
+    const free = works.filter((w) => !ticketed.has(w.id) && !w.slip_no);
     r.works = works.map((w) => w.id);
-    r.link = works[0]?.id || "new";
-    if (!r.customer_id && works[0]) r.customer_id = works[0].customer_id;
+    r.link = bySlip.length === 1 ? bySlip[0].id : works.length === 1 ? works[0].id : free.length === 1 ? free[0].id : works.length ? "" : "new";
+    if (works.length > 1 && r.link) r.linkWhy = bySlip.length === 1 ? "fiş no aynı" : "aynı gün bu aracın fişi olmayan tek işi";
+    if (works.length > 1 && !r.link) issues.push(`Aynı gün bu aracın ${works.length} sefer işi var — fişin hangi işe ait olduğunu seçin`);
+    if (!r.customer_id && r.link && r.link !== "new") r.customer_id = (works.find((w) => w.id === r.link) || works[0])?.customer_id || null;
     r.issues = issues;
-    r.ok = !!(photo != null && r.ticket_no && r.vehicle_id && !r.dup && !issues.some((x) => /fişte yok|görünmüyor|okunamadı/.test(x)));
+    r.ok = !!(photo != null && r.ticket_no && r.vehicle_id && !r.dup && r.link !== "" && !issues.some((x) => /fişte yok|görünmüyor|okunamadı/.test(x)));
     out.push(r);
   }
   return out;
