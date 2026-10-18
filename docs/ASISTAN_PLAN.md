@@ -72,16 +72,31 @@
  [ Daha eski tarihler (n iş kaldı) ]
 ```
 
-## 4. Paketler
+## 4. Paketler ve teslim durumu
 
-| Paket | İçerik | Durum |
-|---|---|---|
-| **1. Görünüm** | İlk ekranda asistan; alt menüde Asistan (yüzen düğme kaldırıldı); tarih gruplu iş listesi; müşteri panosu (#125) | **Bu PR** |
-| **2. İşlem yetenekleri** | Yerel komut yönlendiricisi: ekran açma, arama ve filtreleme internetsiz ve Gemini'siz. İş / yakıt / tahsilat oluşturma mevcut kartlarla. Düzeltmede **aday listesi** (tarih, araç, iş, miktar). Mevcut kayda fotoğraf ekleme. Desteklenmeyen komutta açık cevap + ekran önerisi | Sırada |
-| **3. Anlama** | Çok işli mesaj sınırları, "sa" kısaltması, Türkçe ekler ve takma ad. Bağlam: müşteri değişince eski bağlamın taşınmaması. Alan kaynağı etiketleri (mesaj / fiyat listesi / takma ad / kullanıcı) | Sırada |
-| **4. Yönetim** | Gerçek hesaplardan grafikler; dokununca filtreli liste. Kayıt temelli cevaplar (dönem, net/brüt, kayıt bağlantısı). "Dikkat isteyen işler" tek bölümde (fiyatsız iş, mesaj kontrolü, müşteri bağlantısı, yarım yedek, mazot inceleme adayı) | Sırada |
-| **5. Şoför / personel deneyimi** | Basit formlar; yarım form ve fotoğraf taslağı (IndexedDB); fotoğraf ilerleme / hata / tekrar dene; aynı işlem kimliğiyle tekrar paylaşım; durumların dürüst adları ("paylaşım ekranı açıldı" ≠ "teslim edildi"); patron tarafında eksik ek eşleştirmesi; kabul senaryoları 1–10 | Sırada |
-| **6. Ses ve kapsam genişletme** | Sesli komut aynı onay kurallarıyla; isteğe bağlı kısa sesli özet; kalan işlemlerin asistana bağlanması | Sırada |
+Her paket ayrı commit ve ayrı PR. Sonraki paket öncekileri de içerir (sürüm v3.9.08 → v3.9.13).
+
+| Paket | Commit | Yapılan | Sınır (yapılmayan) |
+|---|---|---|---|
+| **1. Görünüm** (v3.9.08) | `e6f25f0`, `0ead4f9` | **Ekranlar:** ilk ekranda asistan alanı ve 6 hızlı seçenek; alt menüde ASİSTAN (yüzen düğme kaldırıldı); tarih gruplu iş listesi; müşteri panosu (#125).<br>**"Bulunamadı" düzeltmesi:** Gemini boş dönerse yerel okumanın gördüğü satırlar eksikleriyle gösterilir; formlar dolu açılır, araç ve kaynak seçtirilir. WhatsApp metni "düzeltme" sayılmaz | — |
+| **2. İşlem** (v3.9.09) | `96ae8ca` | **Yerel komut** (internetsiz, Gemini'siz): kart / ekstre / mazot hesabı / tahsilat / fiyat listesi / araç kartı / yedek / gün sonu / listeler (bugün, dün, geçen hafta, fiyatsız, fişsiz).<br>**Düzeltilecek işi bulma:** adaylar tarih · araç · müşteri · iş · miktar ile listelenir, rastgele seçilmez, değişiklik formda yapılır.<br>**Bağlam:** müşteri 30 dk tutulur, görünür ve temizlenebilir; yeni müşteri adı gelince eskisi taşınmaz.<br>**"Bu kayda fiş fotoğrafı ekle":** son açılan işi açar; aynı fotoğraf ikinci kez eklenmez | Asistan kaydı **kendisi değiştirmez**: düzeltme formda yapılır. Komutla PDF / ekstre **üretilmez**; ekran açılır, paylaşım oradaki düğmeyle yapılır |
+| **3. Anlama** (v3.9.10) | `fab8373` | **Mesaj okuma:** "sa" = saat (sayıdan sonra); Türkçe ekli müşteri adları ("Kaya'ya", "Leda'dan", "inşaata"); tek kartta geçen ilk kelime.<br>**Kaynak etiketi:** iş kartında alanın nereden geldiği yazar (mesajdan / takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından) | Takma ad öğrenme mevcut onaylı hafıza ekranıyla. Yeni "takma ad düzelt" ekranı **yok** |
+| **4. Yönetim** (v3.9.11) | `bbb19ed` | **Ana ekran:** dikkat isteyen işler, her birinde neden ve sonraki adım (fiyatsız, müşterisiz, bekleyen mesaj, yarım yedek, mazot inceleme adayı); son 14 gün iş grafiği (dokununca o günün işleri); araçlar bu ay (saat / sefer / yevmiye / ton ayrı); mazot anlaşmaları (litre).<br>**Kayıt temelli cevaplar:** mazot kalanı, bugün araçlar, alacak listesi. Rakamı uygulama hesaplar.<br>Gemini anahtarı yokken de yerel komutlar çalışır | Dönemlere göre iş tutarı / tahsilat ve müşterilere göre açık alacak grafiği ana ekrana **eklenmedi**: yönetici ve tahsilat ekranlarında mevcut olanlar kullanılır. "Bu rakam hangi kayıtlardan geliyor?" sorusu yalnız mazot cevabında kaynakla verilir |
+| **5. Şoför / personel** (v3.9.12) | `f0ed047` | **Taslak:** yarım form ve fotoğraf (kapanma, WhatsApp'a geçiş, internet kesintisi).<br>**Fotoğraf:** ilerleme, sınırlar (10 adet / 25 MB), hata, kaldırma; yön korunur, sırayla küçültülür.<br>**Güvenlik:** çift basmada tek kayıt.<br>**Dürüst durumlar:** "telefonda kaydedildi", "paylaşım ekranı açıldı", "patronun aldığı doğrulanamaz". Paylaşılan fotoğraflar 7 gün tekrar paylaşılabilir.<br>**Patron tarafı:** anahtarsız da imzalı kodu içe alır; aynı bildirim ikinci kez kayıt olmaz | Gerçek WhatsApp'ta metin ve fotoğrafın ayrı gelmesi durumunda "eksik fotoğrafı sonradan doğru kayda ekleme" yalnız mevcut uyarı ve fotoğraf ekleme alanıyla yapılır; otomatik eşleştirme **yok**. Gerçek telefonda ve gerçek WhatsApp'ta **denenmedi** |
+| **6. Ses** (v3.9.13) | `df32a94` | **Ses kaydı:** ilk kayıtta dış servise (Gemini) aktarım açıkça yazılır ve onay alınır.<br>**Sesli okuma:** cevaplar yalnız "🔊 Sesli oku"ya dokununca okunur.<br>**Duyulan komut:** yerel komuta uyarsa öneri olarak gelir, dokunmadan açılmaz | Cihazda (çevrimdışı) konuşma tanıma **yok**; ses kaydı Gemini'ye gider |
+
+**Asistana bağlı gerçek işlemler (bugün):**
+- Gemini ile: iş, yakıt, depo girişi, gider/fatura, tahsilat, bakım, puantaj, döküm fişi, belge, kart ekle / düzelt / sil, fiyat kuralı, ayarlar.
+- Yerel (Gemini'siz): ekran açma, listeleme, düzeltilecek işi bulma, mazot kalanı ve araç özeti cevapları.
+- Hepsi kontrol kartı ya da form üzerinden; finansal kayıtlar onaysız yazılmaz.
+
+**Henüz desteklenmeyenler:**
+- Komutla kaydı doğrudan düzeltme (form açılır).
+- Hakediş kesinleştirme / iptal.
+- Geri yükleme (yalnız ekran açılır).
+- Komutla PDF üretip paylaşma.
+- Müşterilere göre rapor üretme (Gemini soru-cevabıyla).
+- Takma ad düzeltme ekranı.
 
 **Her pakette korunacaklar:**
 - ödeme–fiyat ayrımı, işlem kimliği ve mükerrer koruması;

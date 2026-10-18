@@ -276,6 +276,7 @@ export function assistantSystem(rules = "") {
     "Kurallar: Kartı listeden ID ile seç. Mesajda listede olmayan bir müşteri adı geçiyorsa customer_id=null ve new_customer=mesajda yazdığı haliyle ad.",
     "Mesajda geçen kişi/firma adı (örn. 'Süleyman Kaya', 'Ahmet Bey', 'Yıldız İnşaat') personel, araç, ocak veya döküm yeri değilse BÜYÜK İHTİMALLE MÜŞTERİDİR: listede varsa onu seç, yoksa new_customer olarak yaz. Müşteriyi boş bırakıp soru sormak yerine en olası müşteriyi yaz.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
+    "Eksik bilgi satırı ATLAMA nedeni değildir: mesajda bir iş ('yıkım yapıldı', 'kazı yapıldı') ya da yakıt ('160 lt mazot alındı') varsa satırı yine döndür, bilinmeyen alanları null bırak ve questions'a kısa soru yaz. Yakıtın kaynağı (depo / istasyon / müşteri verdi) ya da aracı yazmıyorsa tahmin etme, sor.",
     "TAŞERON: customers satırında 3. değer ana firma ID'sidir (o müşteri, ana firmanın taşeronudur). Taşeronun ADI mesajda geçmiyorsa işi ANA FİRMAYA yaz (geçmiş işlere bakarak taşeron tahmin etme); adı geçiyorsa o öder. 'X'in inşaatında/şantiyesinde Y'ye çalışıldı' → işi isteyen Y'dir: customer_id=Y (listede yoksa new_customer=Y ve new_customer_parent_id=X'in ID'si); X'in şantiyesini site_id'ye yazabilirsin. Meslek adı (kuyucu, camcı, sıvacı) tek başına geçiyorsa ve listede birden fazla benzer kart varsa tahmin etme, questions'a sor.",
     "KENDİ DEPO (own_yard varsa): işletmenin kendi deposu/stok sahası vardır, personel buna 'şantiye', 'depo', 'bizim depo', 'stok' der. 'depoya / bizim depoya / şantiyeye döküldü' → dump_site_id=own_yard.dump_site_id (müşteri yine işi veren müşteridir). 'şantiyeden / depodan / depodaki stoktan X'e N sefer çöp/moloz' → depodan çıkıştır: customer_id=own_yard.internal_customer_id, material=moloz/çöp/hafriyat, to_place=gittiği döküm sahası, to_is_dump=true.",
     "BÖLÜNMÜŞ SEFERLER: 'Müşteri X, araç Y; 1 seferi depoya, 1 seferi Göktürk dolguya döküldü' → AYNI müşteri ve araçla AYRI işler yaz (her biri 1 sefer, kendi döküm yeriyle; quote her seferin kendi parçası). Müşteri ve araç bir kez yazılıp sonraki cümlelerde tekrar edilmeyebilir; sonraki seferlere de uygula. Yalnız 'depodan / stoktan' diye başlayan cümle iç iştir.",
@@ -638,6 +639,17 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.issues = issues;
     r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt);
     r.fuelAllowance = fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
+    // Alan kaynakları (kartta görünür): mesajdan / kayıtlı takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından
+    {
+      const cName = r.customer_id ? byId(customers, r.customer_id)?.name : r.new_customer;
+      const viaAlias = (type, id) => live(d, "aliases").some((a) => a.active !== false && a.target_type === type && a.target_id === id && inMessage(a.alias, message));
+      const vName = r.vehicle_id ? byId(vehicles, r.vehicle_id) : null;
+      r.src = {
+        customer: !cName ? null : fromDriver ? "şoför ekranından" : r.hinted ? "geçmiş işlerden tahmin — doğrulayın" : inMessage(cName, message) || (r.customer_id && customerSpans(message, [byId(customers, r.customer_id)], []).length) ? "mesajdan" : r.customer_id && viaAlias("customer", r.customer_id) ? "kayıtlı takma addan" : "mesajda açık yazmıyor — doğrulayın",
+        vehicle: !vName ? null : fromDriver ? "şoför ekranından" : vehicleNamed(d, vName, message) || inMessage(vName.name, message) ? "mesajdan" : viaAlias("vehicle", vName.id) ? "kayıtlı takma addan" : "mesajda açık yazmıyor (zimmet / bağlam) — doğrulayın",
+        price: r.unit_price ? "mesajdan" : r.priceInfo?.summary ? "fiyat listesinden" : null,
+      };
+    }
     out.works.push(r);
   }
 

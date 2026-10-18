@@ -36,7 +36,7 @@ export async function screen(ctx) {
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
-      <button class="btn primary block" style="margin-top:10px" data-ask ${g.ready ? "" : "disabled"}>🤖 Asistana Gönder</button>
+      <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
     </div>
     <div data-lastundo></div>
     <div data-out></div>`;
@@ -46,6 +46,17 @@ export async function screen(ctx) {
       const box = qs("[data-lastundo]", root);
       box.innerHTML = `<div class="card"><div class="row between"><span class="small">Son asistan kaydı: ${esc(new Date(last.at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }))} · ${esc(last.label || "")}</span><button class="btn sm" data-undo>↩️ Geri al</button></div></div>`;
       bindUndo(ctx, box);
+    }
+  }
+  {
+    const cx = readCtx();
+    const cn = cx.customer_id ? (await db.get("customers", cx.customer_id))?.name : null;
+    if (cn) {
+      const box = document.createElement("div");
+      box.className = "small"; box.dataset.ctxchip = "1"; box.style.margin = "4px 2px 8px";
+      box.innerHTML = `Bağlam: <b>${esc(cn)}</b> ("bu müşteri", "mazot hesabını göster" bu müşteri için) <button class="btn sm ghost" data-ctxclear>✕ temizle</button>`;
+      qs("[data-out]", root).before(box);
+      qs("[data-ctxclear]", box).onclick = () => { try { sessionStorage.removeItem("sp_asst_ctx"); } catch (e) {} box.remove(); };
     }
   }
   let prev = null; // son sonuç (kaydedilmediyse düzeltme için)
@@ -71,6 +82,11 @@ export async function screen(ctx) {
     const b = ev.currentTarget;
     if (rec) return rec.stop();
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") return toast("Bu tarayıcı ses kaydını desteklemiyor; WhatsApp sesli mesajını dosya olarak ekleyin", "err");
+    // Ses kaydı dış servise (Google Gemini) gider: ilk kullanımda açıkça söylenir ve onay alınır
+    if (!(await db.metaGet("voice_notice_ok"))) {
+      if (!(await confirmDialog("Sesli komut — veri aktarımı", "Kaydettiğiniz ses, yazıya çevrilip okunması için Google Gemini'ye gönderilir (yazılı mesajlar gibi). Ses kaydı bu telefonda saklanmaz. Sesli komut da yazılı komutla aynı kurallara tabidir: kontrol kartı gelir, siz onaylamadan kayıt yazılmaz.", "Anladım, kaydet"))) return;
+      await db.metaSet("voice_notice_ok", new Date().toISOString());
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"].find((t) => MediaRecorder.isTypeSupported?.(t)) || "";
@@ -125,10 +141,31 @@ export async function screen(ctx) {
   qs("[data-ask]", root).addEventListener("click", async () => {
     const typed = qs("[data-msg]", root).value.trim();
     // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
-    const refine = prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message ? prev : null;
+    // Uzun ya da WhatsApp dışa aktarımı gibi görünen metin YENİ mesajdır: düzeltme kutusu işaretli kalmış olsa bile önceki taslağa eklenmez
+    const looksNew = typed.length > 160 || /^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}:\d{2}/m.test(typed);
+    const refine = prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message && !looksNew ? prev : null;
+    if (prev && !prev.v._done && qs("[data-refine]", root).checked && looksNew) toast("Yeni mesaj olarak gönderildi (önceki sonucun düzeltmesi sayılmadı)", "ok");
     if (prev && !prev.v._done && !refine && !typed) return toast("Düzeltme yazın ya da yeni mesaj girin", "err");
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
+    // Yerel komut (ekran aç, listele, düzeltilecek kaydı bul): Gemini'ye gitmez, internetsiz çalışır
+    if (!refine && !files.length && typed) {
+      const { routeCommand } = await import("./command-router.js");
+      const cx = readCtx();
+      const cmd = routeCommand(typed, await db.dumpAll(), todayStr(), cx);
+      if (cmd) {
+        await db.metaSet("assistant_draft", "");
+        if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
+        const out = qs("[data-out]", root);
+        if (cmd.kind === "open") { out.innerHTML = notice("info", "Açılıyor: " + cmd.label); toast("Açılıyor: " + cmd.label, "ok"); location.hash = cmd.hash; return; }
+        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer><span data-speaktext>${esc(cmd.text)}</span><div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak style="margin-top:4px">🔊 Sesli oku</button>' : ""}</div>` : "") +
+          (cmd.kind === "candidates" ? `<div class="muted small" style="margin:0 2px 6px">${cmd.empty ? "Bu bilgilerle iş bulunamadı. Tarihi, aracı ya da müşteriyi ekleyip yeniden yazın." : "Rastgele seçilmez: düzeltmek istediğiniz işi seçin. Değişiklik formda yapılır, siz Kaydet'e basınca yazılır."}</div>` : "") +
+          cmd.items.map((it) => `<div class="li" data-go="${esc(it.hash)}"><div class="grow"><div class="t1">${esc(it.label)}</div></div><div class="end">›</div></div>`).join("");
+        return;
+      }
+    }
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
+    // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
+    if (!g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
@@ -163,7 +200,9 @@ export async function screen(ctx) {
       const restSkipped = drvRejected.length > 0 && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8;
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
-      const useGemini = !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      // Şoför kodu Gemini'siz çözülür; anahtar yoksa kalan serbest yazı okunmaz (kullanıcıya söylenir)
+      const useGemini = g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      if (!g.ready && drvAll.length && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8) toast("Gemini anahtarı yok: şoför kodu okundu, mesajdaki diğer yazı okunmadı", "err");
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
@@ -206,6 +245,7 @@ export async function screen(ctx) {
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
       if (drvRejected.length) {
         v.driverReject = drvRejected.map((x) => `${x.p.n || "Şoför"}: ${x.reject}`);
         // Yeni imzalı bağlantı oluşturma yolu (kişi kartı varsa)
@@ -344,7 +384,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   out.innerHTML =
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     summaryHtml(v, d) +
-    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
+    (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="row between"><div class="strong small">🤖 Cevap</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak>🔊 Sesli oku</button>' : ""}</div><div style="white-space:pre-wrap;margin-top:6px" data-speaktext>${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
     (v.driverReject ? notice("danger", "🚫 İŞLENMEDİ — " + v.driverReject.join(" · ") + ". Bu paketten kayıt yazılamaz.") +
       (v.restSkipped ? notice("warn", "Mesajdaki diğer yazı da işlenmedi (reddedilen şoför kaydı yazıdan geri gelmesin). Gerekliyse yalnız o yazıyı ayrıca yapıştırın.") : "") +
@@ -400,6 +440,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${(r.photos || []).length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin:6px 0">${r.photos.filter((p) => files[p]).map((p) => `<img src="${URL.createObjectURL(files[p])}" alt="Fiş" style="width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`).join("")}<span class="muted tiny" style="align-self:center">🧾 fiş bu işe eklenecek</span></div>` : ""}
         ${r.reporter ? `<div class="muted tiny">Bildiren: ${esc(r.reporter)}</div>` : ""}
         ${r.fuelAllowance ? `<div class="small" style="margin-top:4px">⛽ ${esc(r.fuelAllowance.customer)} sefer başı ${r.fuelAllowance.per} L mazot verir → bu iş için <b>${r.fuelAllowance.liters} L</b> mazot hak edildi → müşterinin mazot hesabına eklenir (ücret yalnız mazotsa hakedişe 0 ₺ yazılır)</div>` : ""}
+        ${r.src && (r.src.customer || r.src.vehicle || r.src.price) ? `<div class="muted tiny" data-src style="margin-top:4px">Kaynak: ${[r.src.customer ? "müşteri — " + esc(r.src.customer) : "", r.src.vehicle ? "araç — " + esc(r.src.vehicle) : "", r.src.price ? "fiyat — " + esc(r.src.price) : ""].filter(Boolean).join(" · ")}</div>` : ""}
         <div class="small" data-price-preview style="margin-top:4px"></div>
         <div class="field"><label>İş açıklaması</label><textarea name="description" rows="2">${esc(r.description || "")}</textarea></div>
         ${r.ambiguous ? `<div class="small" style="margin-top:6px">❓ Kime çalışıldı?</div><div class="row" style="gap:6px;flex-wrap:wrap;margin-top:4px">${r.ambiguous.map((a) => `<button class="chip" data-pickcust="${esc(a.id)}" title="${esc(a.why || "")}">${esc(a.name)}${a.why ? " ★" : ""}</button>`).join("")}</div>` : ""}${issues(r)}</div>`;
@@ -573,7 +614,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
       .join("") +
-    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked ? "" : notice("warn", "Kaydedilecek bir şey bulunamadı. Mesajı daha açık yazıp tekrar deneyin."));
+    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked ? "" : fallbackHtml(v, d, message));
   // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
   for (const b of qsa("[data-pickcust]", out))
     b.addEventListener("click", () => {
@@ -1477,3 +1518,58 @@ export async function rereadSlips(db, v, imgParts, d, today) {
       w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup);
   }
 }
+
+// Gemini hiç kayıt çıkarmadıysa: yerel okumanın gördüğü olası satırlar, eksikleriyle. Hiçbiri kendiliğinden kaydedilmez.
+function fallbackHtml(v, d, message) {
+  const fb = localCandidatesSync(message, d);
+  const nm = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || "";
+  window.__fallback = fb;
+  if (v.heard && !fb.works.length && !fb.fuel.length) {
+    const cmd = routeHeard(v.heard, d);
+    if (cmd && cmd.hash) return `<div class="card small">Duyulan: “${esc(v.heard)}”<div style="margin-top:6px">Bunu mu demek istediniz? <button class="btn sm" data-go="${esc(cmd.hash)}">${esc(cmd.label)}</button></div><div class="tiny muted">Sesli komut da yazılı komutla aynı kurallara tabidir; dokunmadan hiçbir şey açılmaz.</div></div>`;
+  }
+  if (!fb.works.length && !fb.fuel.length) return notice("warn", `Gemini bu mesajdan kayıt çıkarmadı${v.rawCount === 0 ? " (0 satır döndü)" : ""} ve yerel okuma da iş / yakıt satırı görmedi. Mesajı daha açık yazıp (müşteri, araç, miktar) tekrar deneyin ya da formdan girin.`);
+  return `<div class="card" data-fallback style="border-left:4px solid #c98a00"><div class="small"><b>Gemini bu mesajdan kayıt çıkarmadı${v.rawCount === 0 ? " (0 satır döndü)" : ""}.</b> Yerel okuma mesajda şunları gördü — eksik bilgiler uydurulmadı; formda tamamlayıp kaydedin:</div>
+    ${fb.works.map((w, i) => `<div class="small" style="padding:6px 0;border-top:1px solid var(--border)">⚒ <b>${esc(w.date ? trDate(w.date) : "")} · ${esc(w.label)}</b>${w.quantity ? ` · ${esc(String(w.quantity))} ${esc(w.unit || "")}` : ""}<div class="muted tiny">Eksik: ${esc(w.missing.join(", ") || "—")}</div><button class="btn sm" data-fb-work="${i}" style="margin-top:4px">İş formunda tamamla</button></div>`).join("")}
+    ${fb.fuel.map((f, i) => `<div class="small" style="padding:6px 0;border-top:1px solid var(--border)">⛽ <b>${esc(String(f.liters))} L yakıt</b>${f.customer_id ? ` · ${esc(nm("customers", f.customer_id))}` : ""}<div class="muted tiny">${esc(f.hint)}. Eksik: ${esc(f.missing.join(", "))}</div><button class="btn sm" data-fb-fuel="${i}" style="margin-top:4px">Yakıt formunda tamamla</button></div>`).join("")}
+    <div class="muted tiny" style="margin-top:6px">İsterseniz eksik bilgiyi mesaja ekleyip ("Hitachi 210 ile 6 saat yıkım, 160 L mazotu Mustafa Bey verdi") yeniden gönderin.</div></div>`;
+}
+let localCandidatesSync = () => ({ works: [], fuel: [] });
+let routeHeard = () => null;
+import("./command-router.js").then((m) => { routeHeard = (t, d) => m.routeCommand(t, d, todayStr(), {}); });
+import("./assistant-fallback.js").then((m) => { localCandidatesSync = (msg, d) => m.localCandidates(msg, d, todayStr()); });
+document.addEventListener("click", (e) => {
+  const w = e.target.closest?.("[data-fb-work]"), f = e.target.closest?.("[data-fb-fuel]");
+  if (w && window.__fallback) {
+    const r = window.__fallback.works[Number(w.dataset.fbWork)];
+    window.__prefill = { date: r.date, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, personnel_id: r.personnel_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit, description: r.description };
+    location.hash = "#/isler/new";
+  }
+  if (f && window.__fallback) {
+    const r = window.__fallback.fuel[Number(f.dataset.fbFuel)];
+    location.hash = `#/yakit/new?litre=${encodeURIComponent(r.liters)}&tarih=${encodeURIComponent(r.date)}${r.customer_id ? "&musteri=" + encodeURIComponent(r.customer_id) : ""}`;
+  }
+});
+
+// Konuşma bağlamı: son komuttaki müşteri (30 dk). Yeni müşteri adı geçince değişir; ✕ ile temizlenir.
+function readCtx() {
+  try {
+    const c = JSON.parse(sessionStorage.getItem("sp_asst_ctx") || "null");
+    const r = JSON.parse(sessionStorage.getItem("sp_last_record") || "null");
+    return { ...(c && Date.now() - c.at < 1800000 ? c : {}), ...(r && Date.now() - r.at < 1800000 ? { last_record: r } : {}) };
+  } catch (e) { return {}; }
+}
+function writeCtx(c) { try { sessionStorage.setItem("sp_asst_ctx", JSON.stringify({ ...c, at: Date.now() })); } catch (e) {} }
+
+// Sesli okuma yalnız kullanıcı "🔊 Sesli oku"ya dokununca (cihazda, tr-TR); uygulama kendiliğinden finansal bilgi okumaz
+document.addEventListener("click", (e) => {
+  const b = e.target.closest?.("[data-speak]");
+  if (!b || !("speechSynthesis" in window)) return;
+  const t = b.closest(".card")?.querySelector("[data-speaktext]")?.textContent || "";
+  speechSynthesis.cancel();
+  if (b.dataset.on) { delete b.dataset.on; b.textContent = "🔊 Sesli oku"; return; }
+  const u = new SpeechSynthesisUtterance(t.slice(0, 600)); u.lang = "tr-TR";
+  u.onend = () => { delete b.dataset.on; b.textContent = "🔊 Sesli oku"; };
+  b.dataset.on = "1"; b.textContent = "⏹ Durdur";
+  speechSynthesis.speak(u);
+});
