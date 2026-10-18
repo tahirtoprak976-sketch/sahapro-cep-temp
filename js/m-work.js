@@ -619,7 +619,15 @@ async function workForm(ctx, editId) {
       const { applyFuelPay } = await import("./assistant-rules.js");
       const dAll = await db.dumpAll();
       const fuelText = (r) => [r.description, r.material, r.quarry, r.dump_area, r.internal_note].filter(Boolean).join(" ");
-      Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
+      // Düzenlemede kayıtlı litre hakkı bugünkü kuralla SESSİZCE yeniden hesaplanmaz: müşteri / birim / miktar değişmediyse eski hak ve
+      // mazot karşılığı fiyatı korunur; miktar değiştiyse kayıtlı litre/birim oranıyla hesaplanır.
+      const oldL = editId && rec ? Number(rec.customer_fuel_allowance_l) || 0 : 0;
+      if (oldL > 0 && rec.customer_id === fields.customer_id && rec.unit === fields.unit) {
+        const per = Number(rec.price_snapshot?.fuel_liters_per_unit) || (Number(rec.quantity) > 0 ? oldL / Number(rec.quantity) : 0);
+        fields.customer_fuel_allowance_l = Number(rec.quantity) === Number(fields.quantity) ? oldL : Math.round(per * Number(fields.quantity) * 10) / 10;
+        fields.fuel_rule_id = rec.fuel_rule_id || null;
+        if (rec.price_snapshot?.price_source === "Mazot karşılığı" && fields.price_snapshot?.price_source !== "Manuel") fields.price_snapshot = { ...rec.price_snapshot, fuel_liters_per_unit: per };
+      } else Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
       const { applyYard } = await import("./yard-core.js");
       Object.assign(fields, applyYard(dAll, fields));
       if (!fields.customer_fuel_allowance_l) fields.customer_fuel_allowance_l = null;

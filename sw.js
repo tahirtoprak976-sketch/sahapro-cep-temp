@@ -55,6 +55,7 @@ const ASSETS = [
   "./js/yard-core.js",
   "./js/yard.js",
   "./js/fuel-pay.js",
+  "./js/fuel-audit.js",
   "./js/collect.js",
   "./js/unzip.js",
   "./js/wa-bulk-core.js",

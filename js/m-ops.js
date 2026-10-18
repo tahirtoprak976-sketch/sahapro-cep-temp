@@ -172,7 +172,7 @@ async function fuelForm(ctx) {
         ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}${fNum("KDV % (biliniyorsa; toplam KDV dahil)", "kdv_rate", "", { step: "any" })}
         ${fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
       </div>
-      <div data-fcust hidden>${fSelect("Mazotu veren müşteri (sefer karşılığı)", "customer_id", fuelCustomers.map((c) => ({ v: c.id, t: c.name })), fuelCustomers[0]?.id || "")}</div>
+      <div data-fcust hidden>${fSelect("Mazotu veren müşteri (sefer karşılığı)", "customer_id", fuelCustomers.map((c) => ({ v: c.id, t: c.name })), "", { emptyText: "— müşteriyi seçin —" })}</div>
       <div class="formgrid2">
         ${fSelect("Fiş", "receipt", ["Evet", "Hayır"], "Evet", { empty: false })}
         ${fText("Pompa Sayaç No (ops.)", "pump_no", "")}
