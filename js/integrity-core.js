@@ -182,10 +182,10 @@ export function integrityCheck(d, { today, attachments = [], restoreSets = [] } 
     } else if (mv.length) add("error", "hakedis-cari-draft", `Hakediş #${h.hakedis_no} (${h.status}) kesinleşmemiş ama cariye yazılmış`, "", "#/hakedis/" + h.id);
   }
   // İş sözleşmesi metraj hakedişi ↔ şantiyedeki ölçüm
-  for (const m of cari.filter((m) => m.type === "Hakedis" && m.source === "metraj")) {
-    const st = live(d, "sites").find((x) => x.id === m.ref_id), M = st?.deal?.measurement;
-    if (!M || M.cari_id !== m.id) add("error", "metraj-cari", `Metraj hakedişi ${m.date} · ${Number(m.amount).toLocaleString("tr-TR")} ₺: şantiyedeki ölçümle eşleşmiyor`, "", st ? "#/is-sozlesmesi/" + st.id : "");
-    else if (toKurus(M.gross) !== toKurus(m.amount)) add("error", "metraj-cari-amount", `${st.name}: ölçüm ${M.gross} ₺, caride ${m.amount} ₺`, "", "#/is-sozlesmesi/" + st.id);
+  for (const m of cari.filter((m) => m.type === "Hakedis" && (m.source === "metraj" || m.source === "goturu"))) {
+    const st = live(d, "sites").find((x) => x.id === m.ref_id), M = m.source === "goturu" ? st?.deal?.charge : st?.deal?.measurement;
+    if (!M || M.cari_id !== m.id) add("error", "metraj-cari", `${m.source === "goturu" ? "Götürü sözleşme bedeli" : "Metraj hakedişi"} ${m.date} · ${Number(m.amount).toLocaleString("tr-TR")} ₺: şantiyedeki ölçümle eşleşmiyor`, "", st ? "#/is-sozlesmesi/" + st.id : "");
+    else if (toKurus(M.gross) !== toKurus(m.amount)) add("error", "metraj-cari-amount", `${st.name}: ${m.source === "goturu" ? "sözleşme" : "ölçüm"} ${M.gross} ₺, caride ${m.amount} ₺`, "", "#/is-sozlesmesi/" + st.id);
   }
   { const { bal } = customerBalances(d);
     for (const c of live(d, "customers")) {

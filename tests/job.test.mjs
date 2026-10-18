@@ -98,4 +98,27 @@ test("ölçüm bekleyen m³ işi uyarısı (10+ gün iş yok)", () => {
   const d = base({ sites: [s], work_records: [{ id: "b", customer_id: "c1", site_id: "s1", vehicle_id: "v4", date: "2026-10-05", unit: "Sefer", quantity: 1 }] });
   assert.equal(J.jobAttention(d, "2026-10-20").length, 1); assert.equal(J.jobAttention(d, "2026-10-10").length, 0);
 });
+const LS = { basis: "Götürü", price: 200000, kdv_rate: 20, kdv_included: false, start_date: "2026-10-01", status: "Açık", scope_in: "yıkım, moloz kaldırma", extra_rates: [{ label: "Kırıcı saati", unit: "Saat", price: 3000 }, { label: "Ek kamyon", unit: "Sefer", price: 1800 }] };
+test("götürü: doğrulama, bedel, tüm kapsam içi işler dahil", () => {
+  assert.equal(J.checkDeal(LS), null);
+  assert.match(J.checkDeal({ ...LS, price: 0 }), /Sözleşme bedeli/);
+  assert.match(J.checkDeal({ ...LS, extra_rates: [{ label: "x", unit: "Kova", price: 5 }] }), /Ekstra/);
+  assert.match(J.checkDeal({ ...LS, scrap: "kimbilir" }), /Hurda/);
+  const d = base({ sites: [site("g", "c1", LS)] });
+  assert.equal(J.applyJob(d, { customer_id: "c1", date: "2026-10-05", unit: "Sefer", quantity: 4 }).price_snapshot.amount, 0);
+  assert.deepEqual(J.dealMoney(LS, 1), { amount: 200000, net: 200000, kdv: 40000, gross: 240000, rate: 20 });
+  assert.equal(J.jobReport(d, d.sites[0], {}).money.gross, 240000);
+});
+test("ekstra iş: sözleşmedeki ekstra fiyatı (birim + ad), birden çok aday varsa sessiz seçim yok", () => {
+  const d = base({ sites: [site("g", "c1", LS)] });
+  const a = J.applyJob(d, { customer_id: "c1", date: "2026-10-05", unit: "Saat", quantity: 2, work_type: "Kırım" }, { extra: true });
+  assert.equal(a.price_snapshot.amount, 6000); assert.equal(a.price_snapshot.price_source, J.DEAL_EXTRA); assert.equal(a.job_extra, true);
+  assert.equal(J.extraRateFor(LS, { unit: "Yevmiye" }), null);
+  const two = { ...LS, extra_rates: [{ label: "Kırıcı saati", unit: "Saat", price: 3000 }, { label: "Ekskavatör saati", unit: "Saat", price: 2500 }] };
+  assert.equal(J.extraRateFor(two, { unit: "Saat", work_type: "Makine Çalışması" }), null);
+  assert.equal(J.extraRateFor(two, { unit: "Saat", work_type: "Ekskavatör kazı" }).price, 2500);
+  const b = J.applyJob(base({ sites: [site("g", "c1", two)] }), { customer_id: "c1", date: "2026-10-05", unit: "Saat", quantity: 1, work_type: "Makine Çalışması" }, { extra: true });
+  assert.deepEqual(b, { site_id: "g", job_extra: true });
+});
+test("cariye yazılmış anlaşma kilitli sayılır", () => { assert.equal(J.isLocked({ charge: {} }), true); assert.equal(J.isLocked({ measurement: {} }), true); assert.equal(J.isLocked({}), false); });
 console.log(`job: ${n} test geçti`);

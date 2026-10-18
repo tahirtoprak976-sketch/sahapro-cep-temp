@@ -81,8 +81,27 @@ Tahminler hiçbir zaman cariye girmez.
   - hakedişli ya da kilitli iş listede yer almaz
 - Testler: `tests/job.test.mjs` (12 grup), `tools/e2e/metraj.py`.
 
+## v3.9.15 — Götürü sözleşme ve sözleşmeden kurulum
+- **Anlaşma türü Götürü:** toplam bedel. Peyzaj, yıkım, bina kenarı kazısı, mıcır dolgu gibi işler; teklifin içeriğine göre.
+- **Yeni alanlar:** `scope_in` (dahil), `scope_out` (hariç), `extra_rates` [{label, unit, price}], `scrap` (fiyattan / ayrica / musteri), `payment_plan`, `deadline`, `doc_id`, `read_quotes`.
+- **Cari (işletme sahibinin seçimi A):** sözleşme bedeli imzada tamamıyla müşteri borcu olarak yazılır, ara ödemeler bundan düşer.
+  - `db.saveJobCharge` şantiye ve cariyi tek işlemde yazar (`type: Hakedis`, `source: goturu`, tutar brüt). İkinci kez yazılmaz.
+  - Bedel yazıldıktan sonra tür, bedel ve KDV değişmez, şantiye silinmez. Kapsam, ekstra fiyatları ve notlar düzenlenebilir.
+- **Kapsam içi işler:** tamamı dahil (0 ₺), yalnız maliyet için tutulur.
+- **Ekstra işler:** önce sözleşmedeki ekstra fiyatı uygulanır. Birim aynı olmalı, ad iş türünde geçiyorsa o seçilir; birden çok aday varsa sessiz seçim yapılmaz. Sözleşmede fiyat yoksa fiyat listesi uygulanır.
+- **Hurda satışı:** `scrap: ayrica` ise işin geliri olarak tutulur. Kasaya ya da cariye yazılmaz.
+- **İş özeti:** sözleşme geliri (net), ekstralar, hurda, döküm ücretleri, sefer ve makine saati. Mazot ve işçilik dahil değil.
+- **Sözleşmeden oluştur** (`#/is-sozlesmeleri/oku`):
+  1. PDF ya da fotoğraf Gemini'ye gider (`contract-read.js`: istem, şema, doğrulama).
+  2. Belgede olmayan alan null kalır ve "kontrol edin" listesine düşer.
+  3. Müşteri tek aday varsa eşleşir; yoksa yeni müşteri önerilir.
+  4. Onaylayınca müşteri / şantiye açılır, belge "Sözleşme" olarak eklenir.
+  5. Anlaşma formu belgedeki alıntılarla dolu açılır; anlaşma ancak **Kaydet** ile yazılır.
+- **Testler:** `tests/contract-read.test.mjs` (5), `tests/job.test.mjs` (15), `tools/e2e/sozlesme.py`.
+
 ## Henüz yok
-- Yıkım anlaşmaları (işletme sahibinden bilgi bekleniyor).
+- Aşama aşama hakediş (işletme sahibi götürüde bedelin tamamını imzada yazmayı seçti).
+- Gerçek sözleşme PDF'leriyle denenmedi (yalnız taklit Gemini).
 - m³ başına mazot / operatör maliyeti: yakıt kaydı işe bağlanmadığı için hesaplanmıyor; yalnız makine saati ve m³/saat gösteriliyor.
 - Ara ödemeyi belirli bir işe bağlama: ödemeler müşteri carisindedir.
 - Gerçek telefonda test edilmedi.

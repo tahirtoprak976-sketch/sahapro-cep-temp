@@ -676,7 +676,7 @@ async function workForm(ctx, editId) {
         else {
           const { priceSnapshot } = await import("./business.js");
           const j = J.jobFor(dAll, base);
-          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: priceSnapshot(base, await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
+          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: J.extraSnapshot(j.site, base) || priceSnapshot(base, await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
         }
       }
       const extras = batchActive() ? extraRows() : [];
