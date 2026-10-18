@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261018-metraj-1";
+const CACHE = "sahapro-solo-v3-20261019-sozlesme-1";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./",
@@ -91,6 +91,7 @@ const ASSETS = [
   "./js/haul-core.js",
   "./js/job-core.js",
   "./js/job-ui.js",
+  "./js/contract-read.js",
   "./js/dump-account.js",
   "./js/dump-account-ui.js",
   "./js/cashflow-core.js",

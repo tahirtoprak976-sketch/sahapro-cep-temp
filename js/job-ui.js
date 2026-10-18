@@ -1,4 +1,4 @@
-// İş sözleşmeleri (#/is-sozlesmeleri, #/is-sozlesmesi/<şantiye>, …/bagla): sefer ya da m³ anlaşması, kapsam içi / ekstra işler,
+// İş sözleşmeleri (#/is-sozlesmeleri, …/oku, #/is-sozlesmesi/<şantiye>, …/bagla): götürü, sefer ya da m³ anlaşması; sözleşme PDF'inden kurulum, kapsam içi / ekstra işler,
 // tahmini yerinde m³, ölçüm → cariye metraj hakedişi, kapanış raporu ve katsayı öğrenme. Para yazan her adım önizleme + onayla.
 import { qs, qsa, esc, appbar, toast, notice, badge, li, kv, emptyState, confirmDialog, choiceDialog, fSelect, fNum, fDate, fText, fArea, collectForm, go } from "./ui.js";
 import { todayStr, trDate, fmtTL, isActive, kdvRateOf } from "./core.js";
@@ -12,7 +12,7 @@ const statusBadge = (s) => badge(s, s === J.STATUS.OPEN ? "ok" : s === J.STATUS.
 
 export async function screen(ctx) {
   const [route, id, sub] = ctx.parts;
-  if (route === "is-sozlesmeleri") return list(ctx);
+  if (route === "is-sozlesmeleri") return id === "oku" ? readContract(ctx) : list(ctx);
   if (route !== "is-sozlesmesi" || !id) return false;
   if (sub === "bagla") return link(ctx, id);
   return detail(ctx, id);
@@ -27,10 +27,12 @@ async function list(ctx) {
   const row = (s) => {
     const D = J.dealOf(s), rep = J.jobReport(d, s, { today });
     const info = D.basis === "m³" ? (rep.measured ? `ölçülen ${n(rep.measured)} m³` : rep.est ? `tahmini ≈ ${n(rep.est)} m³` : "henüz sefer yok") : `${n(rep.trips)} sefer`;
-    return li({ ic: "📐", href: "#/is-sozlesmesi/" + s.id, t1: esc(s.name), t2: esc(`${cust(s.customer_id)} · ${D.basis === "m³" ? "m³" : "sefer"} başı ${fmtTL(D.price)} ₺ · ${info}`), badgeHtml: statusBadge(D.status) });
+    const price = D.basis === "Götürü" ? `götürü ${fmtTL(D.price)} ₺` : `${D.basis === "m³" ? "m³" : "sefer"} başı ${fmtTL(D.price)} ₺`;
+    return li({ ic: "📐", href: "#/is-sozlesmesi/" + s.id, t1: esc(s.name), t2: esc(`${cust(s.customer_id)} · ${price} · ${info}`), badgeHtml: statusBadge(D.status) });
   };
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
-  root.innerHTML = appbar("İş Sözleşmeleri", "Sefer ya da metreküp anlaşmaları") + `
+  root.innerHTML = appbar("İş Sözleşmeleri", "Götürü, metreküp ya da sefer anlaşmaları") + `
+    <div class="card tap" data-go="#/is-sozlesmeleri/oku" data-readlink><div class="row between"><span><b>📄 Sözleşmeden oluştur</b><br><span class="tiny muted">PDF ya da fotoğrafı okuyup işi kurar — siz onaylamadan kaydetmez</span></span><span class="muted">›</span></div></div>
     <div class="card" data-newjob>
       <div class="section-title" style="margin:0 0 6px">Yeni iş sözleşmesi</div>
       ${fSelect("Müşteri", "customer_id", customers.map((c) => ({ v: c.id, t: c.name })), cid)}
@@ -70,28 +72,42 @@ async function detail(ctx, id) {
   const site = (d.sites || []).find((s) => s.id === id && isActive(s));
   if (!site) { root.innerHTML = appbar("İş sözleşmesi") + emptyState("📐", "Şantiye bulunamadı"); return true; }
   const D = J.dealOf(site), custName = (d.customers || []).find((c) => c.id === site.customer_id)?.name || "—";
-  if (!D || (query.duzenle === "1" && D.status === J.STATUS.OPEN && !D.measurement)) return dealForm(ctx, site, D, custName);
+  if (!D || (query.duzenle === "1" && D.status === J.STATUS.OPEN)) return dealForm(ctx, site, D, custName);
   const matOver = (await db.metaGet("haul_materials")) || {}, calib = (await db.metaGet("haul_calib")) || {};
   const rep = J.jobReport(d, site, { matOver, calib, today });
-  const M = D.measurement, isM3 = D.basis === "m³";
+  const M = D.measurement, isM3 = D.basis === "m³", isLump = D.basis === "Götürü", C = D.charge;
   const srcLine = Object.entries(rep.src).filter(([, v]) => v).map(([k, v]) => `${n(v)} sefer ${SRC[k]}`).join(" · ");
   const money = rep.money;
   root.innerHTML = appbar(site.name, `${custName} · iş sözleşmesi`, { right: statusBadge(D.status) }) + `
     <div class="card" data-deal>
-      ${kv("Anlaşma", isM3 ? "Metreküp (yerinde, ortak ölçümcü)" : "Sefer başı")}
-      ${kv("Birim fiyat", `${fmtTL(D.price)} ₺ / ${isM3 ? "m³" : "sefer"} · KDV ${D.kdv_included ? "dahil" : "hariç"} %${D.kdv_rate}`)}
+      ${kv("Anlaşma", isLump ? "Götürü (toplam bedel)" : isM3 ? "Metreküp (yerinde, ortak ölçümcü)" : "Sefer başı")}
+      ${kv(isLump ? "Sözleşme bedeli" : "Birim fiyat", `${fmtTL(D.price)} ₺${isLump ? "" : " / " + (isM3 ? "m³" : "sefer")} · KDV ${D.kdv_included ? "dahil" : "hariç"} %${D.kdv_rate}`)}
       ${kv("Başlangıç", trDate(D.start_date))}
-      ${kv("Ana malzeme", MATERIALS.find((m) => m.key === D.material)?.name || "Toprak (genel)")}
+      ${D.deadline ? kv("Süre / teslim", D.deadline) : ""}
+      ${!isLump ? kv("Ana malzeme", MATERIALS.find((m) => m.key === D.material)?.name || "Toprak (genel)") : ""}
+      ${D.scope_in ? kvh("Dahil", esc(D.scope_in).replace(/\n/g, "<br>")) : ""}
+      ${D.scope_out ? kvh("Hariç", esc(D.scope_out).replace(/\n/g, "<br>")) : ""}
+      ${(D.extra_rates || []).length ? kvh("Ekstra fiyatları", D.extra_rates.map((r) => `${esc(r.label)}: ${fmtTL(r.price)} ₺ / ${esc(String(r.unit).toLocaleLowerCase("tr-TR"))}`).join("<br>")) : ""}
+      ${D.scrap ? kv("Hurda", J.SCRAP[D.scrap] || D.scrap) : ""}
+      ${D.payment_plan ? kv("Ödeme", D.payment_plan) : ""}
       ${D.note ? kvh("Not", esc(D.note)) : ""}
-      <div class="muted small" style="margin-top:6px">${isM3 ? "Kazı, yükleme, nakliye ve döküm fiyata dahildir; bu işteki kamyon seferleri ve makine saatleri cariye ayrıca yazılmaz." : "Ekskavatör / yükleme sefer fiyatına dahildir; makine saatleri cariye ayrıca yazılmaz."} Ekstra işler ayrıca fiyatlanır.</div>
+      ${D.doc_id ? `<button class="btn sm" style="margin-top:6px" data-go="#/belgeler/${esc(D.doc_id)}">📄 Sözleşme belgesi</button>` : ""}
+      <div class="muted small" style="margin-top:6px">${isLump ? "Sözleşmedeki işler bedele dahildir; bu işteki kamyon seferleri, makine saatleri ve işçilik cariye ayrıca yazılmaz, yalnız maliyet için tutulur." : isM3 ? "Kazı, yükleme, nakliye ve döküm fiyata dahildir; bu işteki kamyon seferleri ve makine saatleri cariye ayrıca yazılmaz." : "Ekskavatör / yükleme sefer fiyatına dahildir; makine saatleri cariye ayrıca yazılmaz."} Ekstra işler ayrıca fiyatlanır.</div>
     </div>
+    ${isLump ? `<div class="card" data-charge>
+      <div class="section-title" style="margin:0 0 6px">Sözleşme bedeli ve cari</div>
+      ${C ? `${kv("Cariye yazıldı", trDate(C.date))}${kv("Net", fmtTL(C.net) + " ₺")}${kv("KDV %" + C.kdv_rate, fmtTL(C.kdv) + " ₺")}${kvh("Brüt (müşteri borcu)", "<b>" + fmtTL(C.gross) + " ₺</b>")}`
+        : `${notice("warn", "Sözleşme bedeli henüz cariye yazılmadı. Yazınca müşteri hesabında borç olarak görünür; ara ödemeler bundan düşer.")}<button class="btn primary block" data-charge-go>Sözleşme bedelini cariye yaz</button>`}
+      ${kvh("Müşterinin " + trDate(D.start_date) + "'den beri ödemeleri", fmtTL(rep.paid) + " ₺ <span class='muted small'>(müşterinin tüm işleri)</span>")}
+      ${C ? kvh("Bu işten kalan (yaklaşık)", "<b>" + fmtTL(Math.max(0, C.gross + rep.extras.amount - rep.paid)) + " ₺</b> <span class='muted small'>(bedel + ekstralar − bu tarihten beri ödemeler)</span>") : ""}
+    </div>` : ""}
     <div class="card" data-jobsum>
       <div class="section-title" style="margin:0 0 6px">Bu işteki kayıtlar</div>
       ${kv("İş kaydı", `${rep.works} (${rep.included.count} kapsam içi, ${rep.extras.count} ekstra)`)}
       ${kv("Kamyon seferi", n(rep.trips) + (rep.extraTrips ? ` (+ ${n(rep.extraTrips)} ekstra sefer, metraja girmez)` : ""))}
       ${rep.hours || rep.yev ? kvh("Makine", rep.machines.map((m) => `${esc(m.vehicle)}: ${m.hours ? n(m.hours) + " saat" : ""}${m.yev ? " " + n(m.yev) + " yevmiye" : ""}${m.extraHours ? ` (${n(m.extraHours)} saat ekstra)` : ""}`).join(" · ")) : ""}
       ${rep.extras.count ? kvh("Ekstra işler", `${fmtTL(rep.extras.amount)} ₺ cariye yazıldı${rep.extras.unpriced ? ` · <b>${rep.extras.unpriced} ekstra işin fiyatı yok</b>` : ""}`) : ""}
-      ${!isM3 ? kv("Sefer tutarı", `${fmtTL(rep.included.amount)} ₺ — her sefer cariye iş olarak yazıldı`) : ""}
+      ${D.basis === "Sefer" ? kv("Sefer tutarı", `${fmtTL(rep.included.amount)} ₺ — her sefer cariye iş olarak yazıldı`) : ""}
       ${rep.included.notJob ? notice("warn", `${rep.included.notJob} iş bu şantiyede ama fiyat listesinden fiyatlanmış (sözleşmeye bağlanmamış). “İşleri gözden geçir”den bakın.`) : ""}
     </div>
     ${rep.trips ? `<div class="card" data-est>
@@ -111,7 +127,22 @@ async function detail(ctx, id) {
       ${M ? `${kv("Ölçüm", `${trDate(M.date)} · ${n(M.m3)} m³${M.surveyor ? " · " + M.surveyor : ""}`)}${kv("Net", fmtTL(M.net) + " ₺")}${kv("KDV %" + M.kdv_rate, fmtTL(M.kdv) + " ₺")}${kvh("Brüt (cariye yazılan)", "<b>" + fmtTL(M.gross) + " ₺</b>")}`
         : money ? `${kv("Tahmini hakediş", `≈ ${fmtTL(money.gross)} ₺ brüt (≈ ${n(rep.est)} m³ × ${fmtTL(D.price)} ₺)`)}<div class="notice warn small"><span>ℹ</span><span>Tahmindir, cariye yazılmaz. Hakediş ölçüm girilince cariye yazılır.</span></div>` : `<div class="muted small">Henüz sefer yok.</div>`}
       ${kvh("Müşterinin " + trDate(D.start_date) + "'den beri ödemeleri", fmtTL(rep.paid) + " ₺ <span class='muted small'>(müşterinin tüm işleri; ara ödemeler carideki tahsilattır)</span>")}
-    </div>` : `<div class="card">${kvh("Müşterinin " + trDate(D.start_date) + "'den beri ödemeleri", fmtTL(rep.paid) + " ₺ <span class='muted small'>(müşterinin tüm işleri)</span>")}</div>`}
+    </div>` : isLump ? "" : `<div class="card">${kvh("Müşterinin " + trDate(D.start_date) + "'den beri ödemeleri", fmtTL(rep.paid) + " ₺ <span class='muted small'>(müşterinin tüm işleri)</span>")}</div>`}
+    ${D.scrap === "ayrica" ? `<div class="card" data-scrap>
+      <div class="section-title" style="margin:0 0 6px">Hurda satışı (iş geliri)</div>
+      ${(D.scrap_sales || []).map((x) => `<div class="small">• ${trDate(x.date)} · ${esc(x.buyer || "—")} · <b>${fmtTL(x.amount)} ₺</b>${x.note ? " · " + esc(x.note) : ""}</div>`).join("") || '<div class="muted small">Henüz satış yok.</div>'}
+      ${D.status !== J.STATUS.CLOSED ? `<div class="formgrid2" style="margin-top:6px">${fDate("Tarih", "sc_date", today)}${fNum("Tutar (₺)", "sc_amount", "", { step: "any" })}</div>${fText("Alıcı", "sc_buyer", "")}<button class="btn sm" data-scrap-add>Hurda satışı ekle</button>` : ""}
+      <div class="muted small">Yalnız bu işin kârlılığında görünür; kasaya ya da cariye yazılmaz.</div>
+    </div>` : ""}
+    <div class="card" data-summary>
+      <div class="section-title" style="margin:0 0 6px">İş özeti</div>
+      ${kv("Sözleşme geliri (net)", isLump ? fmtTL(J.dealMoney(D, 1).net) + " ₺" : isM3 ? (M ? fmtTL(M.net) + " ₺" : money ? "≈ " + fmtTL(money.net) + " ₺ (tahmini)" : "—") : fmtTL(rep.included.amount) + " ₺ (sefer tutarları)")}
+      ${rep.extras.count ? kv("Ekstralar", fmtTL(rep.extras.amount) + " ₺") : ""}
+      ${rep.scrap ? kv("Hurda satışı", fmtTL(rep.scrap) + " ₺") : ""}
+      ${rep.dumpCost ? kv("Döküm ücretleri (gider)", "− " + fmtTL(rep.dumpCost) + " ₺") : ""}
+      ${kv("Harcanan", `${n(rep.trips + rep.extraTrips)} sefer · ${n(rep.hours)} makine saati${rep.yev ? " · " + n(rep.yev) + " yevmiye" : ""}`)}
+      <div class="muted small">Mazot, işçilik ve araç giderleri işe bağlı tutulmadığı için bu özete girmez.</div>
+    </div>
     ${isM3 && D.status === J.STATUS.OPEN ? `<div class="card" data-measure>
       <div class="section-title" style="margin:0 0 6px">Ölçümü gir (iş bitince)</div>
       <div class="formgrid2">${fDate("Ölçüm tarihi", "m_date", today)}${fNum("Ölçülen yerinde m³", "m_m3", "", { step: "any" })}</div>
@@ -124,7 +155,7 @@ async function detail(ctx, id) {
     <div data-calib></div>
     <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0 80px">
       ${D.status === J.STATUS.OPEN ? `<button class="btn" data-go="#/is-sozlesmesi/${esc(id)}/bagla">İşleri gözden geçir / bağla</button>` : ""}
-      ${D.status === J.STATUS.OPEN && !M ? `<button class="btn" data-go="#/is-sozlesmesi/${esc(id)}?duzenle=1">Anlaşmayı düzenle</button>` : ""}
+      ${D.status === J.STATUS.OPEN ? `<button class="btn" data-go="#/is-sozlesmesi/${esc(id)}?duzenle=1">${J.isLocked(D) ? "Kapsamı / notu düzenle" : "Anlaşmayı düzenle"}</button>` : ""}
       ${(isM3 ? D.status === J.STATUS.MEASURED : D.status === J.STATUS.OPEN) ? `<button class="btn" data-close>İşi kapat</button>` : ""}
       <button class="btn" data-go="#/santiyeler/${esc(id)}">Şantiye kartı</button>
     </div>`;
@@ -174,6 +205,20 @@ async function detail(ctx, id) {
       } catch (e) { toast(e.message || String(e), "err"); busy = false; }
     });
   }
+  let charging = false;
+  qs("[data-charge-go]", root)?.addEventListener("click", async () => {
+    if (charging) return;
+    if (!(await chargeLump(db, site, D, custName))) return;
+    ctx.reload();
+  });
+  qs("[data-scrap-add]", root)?.addEventListener("click", async () => {
+    const box = qs("[data-scrap]", root), amount = Number(String(qs("[name=sc_amount]", box).value).replace(",", ".")), date = qs("[name=sc_date]", box).value;
+    if (!(amount > 0)) return toast("Tutarı yazın", "err");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return toast("Tarihi girin", "err");
+    const fresh = await db.get("sites", site.id);
+    await db.saveExisting("sites", fresh, { deal: { ...fresh.deal, scrap_sales: [...(fresh.deal.scrap_sales || []), { date, amount, buyer: qs("[name=sc_buyer]", box).value.trim(), at: new Date().toISOString() }] } }, "Hurda satışı");
+    toast("Hurda satışı eklendi", "ok"); ctx.reload();
+  });
   qs("[data-close]", root)?.addEventListener("click", async () => {
     if (rep.hoursIncluded && !rep.extras.count) {
       const a = await choiceDialog("Ekstra iş var mıydı?", `Bu işte ${n(rep.hoursIncluded)} saat makine çalışması var ve hepsi sözleşmeye dahil sayıldı.`, [["yok", "Hayır, hepsi dahil — işi kapat"], ["var", "Evet — işleri gözden geçir"]]);
@@ -186,31 +231,148 @@ async function detail(ctx, id) {
   return true;
 }
 
+// Götürü bedelini cariye yaz: net / KDV / brüt önizleme + onay → tek işlem
+async function chargeLump(db, site, D, custName) {
+  const mo = J.dealMoney(D, 1), date = D.start_date || todayStr();
+  if (!(await confirmDialog("Sözleşme bedeli cariye yazılsın mı?", `${site.name}: net ${fmtTL(mo.net)} ₺ + KDV %${mo.rate} ${fmtTL(mo.kdv)} ₺ = ${fmtTL(mo.gross)} ₺ ${custName} carisine borç yazılır (${trDate(date)}). Ara ödemeler bundan düşer. Sonra değiştirilemez; yanlışsa caride düzeltme kaydı açılır.`, "Cariye yaz"))) return false;
+  try {
+    await db.saveJobCharge(site.id, { date, net: mo.net, kdv: mo.kdv, gross: mo.gross, kdv_rate: mo.rate, kdv_included: !!D.kdv_included, price: Number(D.price), saved_at: new Date().toISOString() },
+      { date, customer_id: site.customer_id, type: "Hakedis", amount: mo.gross, source: "goturu", ref_id: site.id, ref_store: "sites", note: `Götürü sözleşme bedeli — ${site.name} (KDV ${D.kdv_included ? "dahil" : "hariç"} %${mo.rate})` },
+      "Götürü sözleşme bedeli");
+    toast("Sözleşme bedeli cariye yazıldı", "ok");
+    return true;
+  } catch (e) { toast(e.message || String(e), "err"); return false; }
+}
+
+const RATE_ROWS = 4;
 async function dealForm(ctx, site, D, custName) {
   const { root, db } = ctx;
   const kd = kdvRateOf(await db.metaGet("kdv_default"));
-  const v = D || { basis: "m³", kdv_rate: kd ?? 20, kdv_included: false, start_date: todayStr(), material: "toprak" };
+  let pre = null;
+  try { const x = JSON.parse(sessionStorage.getItem("sp_deal_prefill") || "null"); if (x && x.site_id === site.id) pre = x.deal; } catch { /* yok */ }
+  const v = D || pre || { basis: "Götürü", kdv_rate: kd ?? 20, kdv_included: false, start_date: todayStr(), material: "toprak" };
+  const locked = J.isLocked(D);
+  const rates = [...(v.extra_rates || [])];
+  while (rates.length < RATE_ROWS) rates.push({ label: "", unit: "Saat", price: "" });
+  const q = (f) => (pre && v.quotes ? v.quotes.filter((x) => x.field === f || String(x.field || "").startsWith(f)).map((x) => `<div class="tiny muted" data-quote>📄 “${esc(x.text)}”</div>`).join("") : "");
   root.innerHTML = appbar(D ? "Anlaşmayı Düzenle" : "Yeni İş Sözleşmesi", `${custName} · ${site.name}`) + `
+    ${pre ? `<div class="notice info small" data-fromdoc><span>📄</span><span>Sözleşmeden okundu (Gemini). Alanları belgeyle karşılaştırın; <b>Kaydet</b>'e basmadan hiçbir şey yazılmaz.${(v.issues || []).length ? "<br><b>Kontrol edin:</b> " + v.issues.map(esc).join(" · ") : ""}</span></div>` : ""}
+    ${locked ? notice("info", "Bedel / ölçüm cariye yazıldığı için anlaşma türü, fiyat ve KDV değiştirilemez; kapsam, ekstra fiyatları ve notlar düzenlenebilir.") : ""}
     <form data-form class="card" style="margin-top:10px">
-      ${fSelect("Anlaşma türü", "basis", [{ v: "m³", t: "Metreküp (yerinde, ortak ölçümcü ölçer)" }, { v: "Sefer", t: "Sefer başı" }], v.basis, { empty: false })}
-      <div class="formgrid2">${fNum("Birim fiyat (₺)", "price", v.price ?? "", { step: "any" })}${fNum("KDV %", "kdv_rate", v.kdv_rate ?? "", { step: "any" })}</div>
+      ${fSelect("Anlaşma türü", "basis", [{ v: "Götürü", t: "Götürü (toplam bedel)" }, { v: "m³", t: "Metreküp (yerinde, ortak ölçümcü ölçer)" }, { v: "Sefer", t: "Sefer başı" }], v.basis, { empty: false })}${q("basis")}
+      <div class="formgrid2">${fNum("Bedel / birim fiyat (₺)", "price", v.price ?? "", { step: "any" })}${fNum("KDV %", "kdv_rate", v.kdv_rate ?? "", { step: "any" })}</div>${q("price")}${q("kdv")}
       ${fSelect("Fiyat KDV", "kdv_included", [{ v: "0", t: "KDV hariç" }, { v: "1", t: "KDV dahil" }], v.kdv_included ? "1" : "0", { empty: false })}
-      ${fDate("Başlangıç tarihi", "start_date", v.start_date)}
-      ${fSelect("Ana malzeme (tahmin için)", "material", MATERIALS.map((m) => ({ v: m.key, t: m.name })), v.material || "toprak", { empty: false })}
-      ${fArea("Not (ne dahil, ne hariç…)", "note", v.note || "")}
-      <div class="muted small">Kapsam içi işler (kamyon seferleri, ekskavatör saati) ${"fiyata dahil sayılır"}; anlaşma dışı işler kayıt sırasında “ekstra” işaretlenir ve fiyat listesinden ayrı fiyatlanır. ${D ? "Fiyat değişikliği kayıtlı işlerin fiyatını değiştirmez." : ""}</div>
+      ${fDate("Başlangıç tarihi", "start_date", v.start_date)}${q("start_date")}${q("contract_date")}
+      ${fText("Süre / teslim", "deadline", v.deadline || "")}
+      <div data-matrow>${fSelect("Ana malzeme (m³ tahmini için)", "material", MATERIALS.map((m) => ({ v: m.key, t: m.name })), v.material || "toprak", { empty: false })}</div>
+      ${fArea("İşe dahil olanlar (sözleşmedeki gibi)", "scope_in", Array.isArray(v.scope_in) ? v.scope_in.join("\n") : v.scope_in || "")}${q("scope_in")}
+      ${fArea("Hariç olanlar / müşterinin sorumlulukları", "scope_out", Array.isArray(v.scope_out) ? v.scope_out.join("\n") : v.scope_out || "")}${q("scope_out")}
+      <div class="section-title">Ekstra iş fiyatları (sözleşmede yazıyorsa)</div>
+      ${rates.map((r, i) => `<div class="formgrid2" data-rate="${i}">${fText("Ekstra iş", "r_label_" + i, r.label || "")}${fSelect("Birim", "r_unit_" + i, J.EXTRA_UNITS, r.unit || "Saat", { empty: false })}${fNum("Fiyat (₺)", "r_price_" + i, r.price ?? "", { step: "any" })}</div>`).join("")}${q("extra_rates")}
+      <div class="muted small">Ekstra işaretlenen iş önce buradaki fiyatla (birim aynıysa), yoksa fiyat listesiyle fiyatlanır.</div>
+      ${fSelect("Hurda", "scrap", Object.entries(J.SCRAP).map(([k, t]) => ({ v: k, t })), v.scrap || "", { empty: false })}${q("scrap")}
+      ${fArea("Ödeme şekli", "payment_plan", v.payment_plan || "")}${q("payment_plan")}
+      ${fArea("Not", "note", v.note || "")}
+      <div class="muted small">Kapsam içi işler (kamyon seferleri, ekskavatör saati, işçilik) fiyata dahil sayılır; anlaşma dışı işler kayıt sırasında “ekstra” işaretlenir. ${D ? "Değişiklik kayıtlı işlerin fiyatını değiştirmez." : ""}</div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const form = qs("[data-form]", root);
+  if (locked) for (const n of ["basis", "price", "kdv_rate", "kdv_included"]) qs(`[name=${n}]`, form).disabled = true;
+  const syncBasis = () => { const b = qs("[name=basis]", form).value; qs("[data-matrow]", form).hidden = b === "Götürü"; qs("[name=price]", form).closest(".field").querySelector("label").textContent = b === "Götürü" ? "Sözleşme bedeli (₺)" : "Birim fiyat (₺)"; };
+  qs("[name=basis]", form).addEventListener("change", syncBasis);
+  syncBasis();
+  let busy = false;
   qs("[data-save]", root).addEventListener("click", async () => {
-    const f = collectForm(qs("[data-form]", root));
-    const x = { basis: f.basis, price: Number(String(f.price).replace(",", ".")), kdv_rate: f.kdv_rate === "" ? "" : Number(String(f.kdv_rate).replace(",", ".")), kdv_included: f.kdv_included === "1", start_date: f.start_date, material: f.material, note: (f.note || "").trim() };
+    if (busy) return;
+    const f = collectForm(form);
+    const num = (x) => (x === "" || x == null ? "" : Number(String(x).replace(",", ".")));
+    const extra_rates = [];
+    for (let i = 0; i < RATE_ROWS; i++) { const l = (f["r_label_" + i] || "").trim(), p = num(f["r_price_" + i]); if (l || p !== "") extra_rates.push({ label: l, unit: f["r_unit_" + i], price: p }); }
+    const x = locked ? { basis: D.basis, price: D.price, kdv_rate: D.kdv_rate, kdv_included: D.kdv_included } : { basis: f.basis, price: num(f.price), kdv_rate: num(f.kdv_rate), kdv_included: f.kdv_included === "1" };
+    Object.assign(x, { start_date: f.start_date, material: f.material, note: (f.note || "").trim(), scope_in: (f.scope_in || "").trim(), scope_out: (f.scope_out || "").trim(), extra_rates, scrap: f.scrap || "", payment_plan: (f.payment_plan || "").trim(), deadline: (f.deadline || "").trim() });
     const err = J.checkDeal(x);
     if (err) return toast(err, "err");
-    const deal = { ...(D || {}), ...x, status: D?.status || J.STATUS.OPEN, created_at: D?.created_at || new Date().toISOString(), measurement: D?.measurement || null };
-    await db.saveExisting("sites", site, { deal }, D ? "İş sözleşmesi düzenlendi" : "İş sözleşmesi açıldı");
-    toast("Kaydedildi", "ok");
+    busy = true;
+    const deal = { ...(D || {}), ...x, status: D?.status || J.STATUS.OPEN, created_at: D?.created_at || new Date().toISOString(), measurement: D?.measurement || null,
+      ...(pre && !D ? { source: "belge", doc_id: pre.doc_id || null, read_quotes: (pre.quotes || []).slice(0, 40), read_at: pre.read_at || null } : {}) };
+    try {
+      await db.saveExisting("sites", await db.get("sites", site.id), { deal }, D ? "İş sözleşmesi düzenlendi" : pre ? "İş sözleşmesi belgeden açıldı" : "İş sözleşmesi açıldı");
+      try { sessionStorage.removeItem("sp_deal_prefill"); } catch { /* yok */ }
+      toast("Kaydedildi", "ok");
+      if (!D && deal.basis === "Götürü") await chargeLump(db, await db.get("sites", site.id), deal, custName);
+    } catch (e) { busy = false; return toast(e.message || String(e), "err"); }
     if (location.hash === "#/is-sozlesmesi/" + site.id) ctx.reload(); else go("#/is-sozlesmesi/" + site.id);
   });
+  return true;
+}
+
+// Sözleşme / teklif belgesinden iş kurma: Gemini okur → önizleme → onayla müşteri / şantiye / belge → anlaşma formu (Kaydet ile yazılır)
+async function readContract(ctx) {
+  const { root, db } = ctx;
+  const d = await db.dumpAll();
+  const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
+  root.innerHTML = appbar("Sözleşmeden Oluştur", "PDF ya da fotoğraf") + `
+    <div class="card" style="margin-top:10px">
+      <div class="field"><label>Sözleşme / teklif (PDF ya da fotoğraf)</label><input type="file" accept="application/pdf,image/*" data-cfile></div>
+      <button class="btn primary block" data-cread>🤖 Gemini ile oku</button>
+      <div class="muted small" style="margin-top:6px">Belge okunmak için Google Gemini'ye gönderilir (anahtar telefonunuzda). Okunan bilgiler yalnız öneridir; siz onaylamadan kayıt yazılmaz.</div>
+    </div>
+    <div data-cout></div>`;
+  let file = null, res = null;
+  qs("[data-cfile]", root).addEventListener("change", (e) => { file = e.target.files[0] || null; });
+  qs("[data-cread]", root).addEventListener("click", async (ev) => {
+    const b = ev.currentTarget, out = qs("[data-cout]", root);
+    if (!file) return toast("Önce belgeyi seçin", "err");
+    if (!/^(application\/pdf|image\/)/.test(file.type || "")) return toast("Yalnız PDF ya da fotoğraf", "err");
+    if (file.size > 15 * 1024 * 1024) return toast("Belge 15 MB'tan büyük; daha küçük bir PDF seçin", "err");
+    const G = await import("./ai-gemini.js");
+    if (!(await G.geminiSettings(db)).ready) return toast("Ayarlar → Yapay Zeka'da Gemini anahtarını ve onayını kaydedin", "err");
+    if (!navigator.onLine) return toast("İnternet yok", "err");
+    b.disabled = true; out.innerHTML = '<div class="muted small" style="padding:8px">Gemini sözleşmeyi okuyor…</div>';
+    try {
+      const CR = await import("./contract-read.js");
+      const blob = file.type.startsWith("image/") ? await G.shrink(file) : file;
+      const parts = [{ inlineData: { mimeType: blob.type || file.type, data: await G.blobToBase64(blob) } }, { text: "Belge: " + (file.name || "sözleşme") }];
+      const obj = await G.withModelFallback(db, (o) => G.geminiJson(parts, { ...o, system: CR.CONTRACT_PROMPT, schema: CR.contractSchema() }));
+      res = CR.validateContract(obj, d);
+      drawResult(out, res);
+    } catch (e) { out.innerHTML = notice("warn", "Okunamadı: " + esc(e.message || String(e))); }
+    finally { b.disabled = false; }
+  });
+  const drawResult = (out, r) => {
+    const opts = [...customers.map((c) => ({ v: c.id, t: c.name })), ...(r.customer_name ? [{ v: "__new__", t: "➕ Yeni müşteri: " + r.customer_name }] : [])];
+    out.innerHTML = `<div class="card" data-cres>
+      <div class="section-title" style="margin:0 0 6px">Okunan bilgiler</div>
+      ${kv("Anlaşma", r.basis || "bulunamadı")}${kv(r.basis === "Götürü" ? "Bedel" : "Fiyat", r.price ? fmtTL(r.price) + " ₺" : "bulunamadı")}
+      ${kv("KDV", r.kdv_rate == null ? "belgede yok" : "%" + r.kdv_rate + (r.kdv_included == null ? "" : r.kdv_included ? " dahil" : " hariç"))}
+      ${r.scope_in.length ? kvh("Dahil", r.scope_in.map(esc).join("<br>")) : ""}${r.scope_out.length ? kvh("Hariç", r.scope_out.map(esc).join("<br>")) : ""}
+      ${r.extra_rates.length ? kvh("Ekstra fiyatları", r.extra_rates.map((x) => `${esc(x.label || "?")}: ${x.price ? fmtTL(x.price) + " ₺" : "?"} / ${esc(x.unit || "?")}`).join("<br>")) : ""}
+      ${r.scrap ? kv("Hurda", J.SCRAP[r.scrap]) : ""}${r.payment_plan ? kv("Ödeme", r.payment_plan) : ""}
+      ${r.issues.length ? notice("warn", "Kontrol edin: " + r.issues.map(esc).join(" · ")) : ""}
+      ${fSelect("Müşteri", "c_customer", opts, r.customer?.id || (r.customer_name ? "__new__" : ""))}
+      ${fText("Şantiye / iş adı", "c_site", r.site_name || "")}
+      <button class="btn primary block" data-cok>Onayla — müşteri / şantiyeyi aç, belgeyi ekle, anlaşmaya geç</button>
+      <div class="muted small">Sonraki ekranda tüm alanları düzeltebilirsiniz; anlaşma <b>Kaydet</b>'e basınca yazılır.</div>
+    </div>`;
+    qs("[data-cok]", out).addEventListener("click", async (e) => {
+      const btn = e.currentTarget, box = qs("[data-cres]", out);
+      let cid = qs("[name=c_customer]", box).value; const sname = qs("[name=c_site]", box).value.trim();
+      if (!cid) return toast("Müşteriyi seçin", "err");
+      if (!sname) return toast("Şantiye / iş adını yazın", "err");
+      btn.disabled = true;
+      try {
+        if (cid === "__new__") cid = (await db.saveNew("customers", { name: r.customer_name }, "Sözleşmeden müşteri")).id;
+        const site = await db.saveNew("sites", { name: sname, customer_id: cid }, "Sözleşmeden şantiye");
+        let doc_id = null;
+        try { doc_id = (await db.saveDocument({ category: "Sözleşme", owner_type: "customer", owner_id: cid, customer_id: cid, site_id: site.id, date: r.contract_date || todayStr(), title: "Sözleşme — " + sname }, file)).id; }
+        catch (err) { toast("Belge eklenemedi: " + (err.message || err), "err"); }
+        sessionStorage.setItem("sp_deal_prefill", JSON.stringify({ site_id: site.id, deal: { basis: r.basis || "Götürü", price: r.price ?? "", kdv_rate: r.kdv_rate ?? "", kdv_included: !!r.kdv_included, start_date: r.start_date || todayStr(),
+          scope_in: r.scope_in, scope_out: r.scope_out, extra_rates: r.extra_rates.map((x) => ({ label: x.label || "", unit: x.unit || "Saat", price: x.price ?? "" })), scrap: r.scrap || "", payment_plan: r.payment_plan || "", deadline: r.deadline || "",
+          note: r.notes || "", quotes: r.quotes, issues: r.issues, doc_id, read_at: new Date().toISOString() } }));
+        go("#/is-sozlesmesi/" + site.id);
+      } catch (err) { btn.disabled = false; toast(err.message || String(err), "err"); }
+    });
+  };
   return true;
 }
 
@@ -248,8 +410,8 @@ async function link(ctx, id) {
         const w = d.work_records.find((x) => x.id === wid);
         let fields;
         if (act === "dahil") fields = { site_id: site.id, job_extra: false, price_snapshot: J.jobSnapshot(site, w) };
-        else if (act === "ekstra") fields = { site_id: site.id, job_extra: true };
-        else fields = { job_extra: true, price_snapshot: priceSnapshot({ ...w, site_id: site.id }, prices, crane) };
+        else if (act === "ekstra") { const x = J.extraSnapshot(site, w); fields = { site_id: site.id, job_extra: true, ...(x ? { price_snapshot: x } : {}) }; }
+        else fields = { job_extra: true, price_snapshot: J.extraSnapshot(site, w) || priceSnapshot({ ...w, site_id: site.id }, prices, crane) };
         const after = fields.price_snapshot !== undefined ? (() => { const p = fields.price_snapshot; const a = Number(p?.amount ?? Number(p?.unit_price) * Number(w.quantity)); return Number.isFinite(a) && a > 0 ? a : 0; })() : amt(w);
         return { w, fields, before: amt(w), after };
       });

@@ -640,7 +640,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         const veh = (d.vehicles || []).find((x) => x.id === g("vehicle"));
         const site = g("site").startsWith("new:") ? null : g("site") || null;
         const jp = JOB.jobPreview(d, { customer_id: cust || null, site_id: site, date: g("date"), unit: g("unit"), quantity: q }, { extra: !!qs("[name=job_extra]", card)?.checked });
-        if (jp && jp.kind !== "ambiguous" && jp.kind !== "extra" && !r0.fuelAllowance) { card.dataset.priceAmb = ""; box.innerHTML = "📐 <b>" + esc(jp.text) + "</b>" + (jp.kind === "sefer" ? ` = <b>${fmtTL(Number(JOB.dealOf(jp.site).price) * q)} ₺</b>` : ""); return; }
+        if (jp && jp.kind !== "ambiguous" && (jp.kind !== "extra" || jp.rate) && !r0.fuelAllowance) { card.dataset.priceAmb = ""; box.innerHTML = "📐 <b>" + esc(jp.text) + "</b>" + (jp.kind === "sefer" ? ` = <b>${fmtTL(Number(JOB.dealOf(jp.site).price) * q)} ₺</b>` : jp.rate ? ` = <b>${fmtTL(Number(jp.rate.price) * q)} ₺</b>` : ""); return; }
         const jpNote = jp ? `<div class="small">📐 ${esc(jp.text)}</div>` : "";
         const dateSure = !(r0.dateUnsure && g("date") === r0.date);
         const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
