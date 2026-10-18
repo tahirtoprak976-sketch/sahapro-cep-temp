@@ -36,7 +36,7 @@ export async function screen(ctx) {
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
-      <button class="btn primary block" style="margin-top:10px" data-ask ${g.ready ? "" : "disabled"}>🤖 Asistana Gönder</button>
+      <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
     </div>
     <div data-lastundo></div>
     <div data-out></div>`;
@@ -152,13 +152,15 @@ export async function screen(ctx) {
         if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
         const out = qs("[data-out]", root);
         if (cmd.kind === "open") { out.innerHTML = notice("info", "Açılıyor: " + cmd.label); toast("Açılıyor: " + cmd.label, "ok"); location.hash = cmd.hash; return; }
-        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` +
+        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer>${esc(cmd.text)}<div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div></div>` : "") +
           (cmd.kind === "candidates" ? `<div class="muted small" style="margin:0 2px 6px">${cmd.empty ? "Bu bilgilerle iş bulunamadı. Tarihi, aracı ya da müşteriyi ekleyip yeniden yazın." : "Rastgele seçilmez: düzeltmek istediğiniz işi seçin. Değişiklik formda yapılır, siz Kaydet'e basınca yazılır."}</div>` : "") +
           cmd.items.map((it) => `<div class="li" data-go="${esc(it.hash)}"><div class="grow"><div class="t1">${esc(it.label)}</div></div><div class="end">›</div></div>`).join("");
         return;
       }
     }
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
+    // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
+    if (!g.ready) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);

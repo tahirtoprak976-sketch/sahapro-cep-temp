@@ -87,6 +87,7 @@ async function workList(ctx) {
   const dFrom = isD(query.from) ? query.from : null, dTo = isD(query.to) ? query.to : dFrom;
   if (dFrom) rows = rows.filter((r) => r.date >= dFrom && r.date <= dTo);
   if (filter === "noslip") rows = rows.filter((r) => !r.slip_id);
+  if (filter === "musterisiz") rows = rows.filter((r) => !r.customer_id);
   if (filter === "fiyatsiz") {
     const { workAmount } = await import("./collect-core.js");
     const internal = new Set((await db.listActive("customers")).filter((c) => c.internal).map((c) => c.id));

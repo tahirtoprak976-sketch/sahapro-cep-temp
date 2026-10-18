@@ -3,6 +3,8 @@
 // Emin değilse null döner (mesaj Gemini'ye gider). Birden çok aday varsa rastgele seçmez, listeler.
 import { isActive, addDays } from "./core.js";
 import { customerSpans } from "./money-roles.js";
+import { customerFuelLedger } from "./assistant-rules.js";
+import { vehicleSummary } from "./attention.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/[’`]/g, "'").replace(/\s+/g, " ").trim();
@@ -75,6 +77,25 @@ export function routeCommand(text, d, today, ctx = {}) {
   // "Bu kayda fiş fotoğrafı ekle": son açılan kayıt açılır, fotoğraf orada kullanıcıyla eklenir
   if (/(bu|son|şu) (kayd|işe|ise)|kayda (fiş|foto)/.test(f) && /(fiş|fis|foto|resim)/.test(f) && /ekle/.test(f))
     return ctx.last_record ? { kind: "open", hash: ctx.last_record.hash, label: "Son açtığınız kayıt — fotoğrafı oradaki 📷 alanından ekleyin" } : { kind: "choose", label: "Hangi kayıt? Önce kaydı açın, sonra yeniden söyleyin", items: [{ hash: "#/isler", label: "İş kayıtları" }] };
+  // Kayıtlardan cevap (rakamı uygulama hesaplar; model üretmez): mazot kalanı, bugün araçlar
+  const isQ = /\?|(?<![\p{L}])(kaç|kac|ne kadar|hangi)(?![\p{L}])/u.test(f);
+  if (isQ && /mazot|motorin|litre/.test(f)) {
+    const c0 = findCustomer(raw, d);
+    const c = c0 && !c0.ambiguous ? c0 : null;
+    if (c) {
+      const L = customerFuelLedger(d, c.id);
+      const n1 = (x) => Number(x || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+      return { kind: "answer", customer_id: c.id, label: `${c.name} — mazot hesabı`, text: `Hak edilen ${n1(L.earned)} L · alınan ${n1(L.received)} L · ${L.balance >= 0 ? "kalan mazot alacağı " + n1(L.balance) : "fazla alınan " + n1(-L.balance)} L. Dönem: tüm zamanlar, bugün itibarıyla. Kaynak: işlerdeki litre hakkı ve "müşteri verdi" yakıt / depo girişleri. TL bakiyeye dahil değildir.`, items: [{ hash: "#/musteriler/" + c.id, label: "Müşteri kartı ve mazot ekstresi" }, { hash: "#/mazot-hesaplari/" + c.id, label: "Mazot hesabı incelemesi" }] };
+    }
+  }
+  if (isQ && /araç|arac|makine/.test(f) && /(bugün|bugun|dün|dun)/.test(f) && /(ne yaptı|ne yapti|çalıştı|calisti|iş)/.test(f)) {
+    const dw = dateWords(raw, today);
+    const vs = vehicleSummary(d, dw[0], dw[1]);
+    const n1 = (x) => Number(x || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+    const unitsTxt = (v) => [["Saat", "saat"], ["Sefer", "sefer"], ["Yevmiye", "yevmiye"], ["Ton", "ton"]].filter(([k]) => v[k]).map(([k, t]) => n1(v[k]) + " " + t).join(", ") || "birimsiz";
+    return { kind: "answer", label: `Araçlar — ${dw[2]}`, text: vs.length ? vs.map((v) => `${v.name}: ${v.works} iş (${unitsTxt(v)})`).join(" · ") + ". Birimler ayrı sayıldı." : "Bu tarihte araca bağlı iş kaydı yok.", items: [{ hash: `#/isler?from=${dw[0]}&to=${dw[1]}`, label: "İşleri listele" }, ...vs.slice(0, 6).map((v) => ({ hash: "#/filo/" + v.id, label: v.name + " — araç kartı" }))] };
+  }
+  if (isQ && /(kimden|alacağ|alacag)/.test(f)) return { kind: "open", hash: "#/tahsilat", label: "Tahsilat takibi — müşterilere göre açık alacak (TL; mazot alacağı ayrıdır)" };
   const isEdit = EDIT.test(f), isOpen = OPEN.test(f);
   if (!isEdit && !isOpen) return null;
   if (!isEdit && RECORDISH.test(f)) return null; // "3 sefer… göster" gibi kayıt içerikli mesaj Gemini'ye gider

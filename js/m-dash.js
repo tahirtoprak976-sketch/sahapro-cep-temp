@@ -72,6 +72,9 @@ async function loadAll(db) {
     "supplier_payments",
     "instruments",
     "dump_sites",
+    "inbox_messages",
+    "quarries",
+    "aliases",
   ];
   const data = {};
   for (const s of stores) data[s] = (await db.getAll(s)) || [];
@@ -195,6 +198,7 @@ async function dashboard(ctx) {
     </section>
 
     <div data-brief style="margin-top:12px"></div>
+    <div data-yonetim></div>
     ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="card tap" data-board-all><div class="row between"><span class="small">+${board.items.length - 6} madde daha</span><span class="muted small">tümü ›</span></div></div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
@@ -294,6 +298,25 @@ async function dashboard(ctx) {
     try { sessionStorage.setItem("sp_hero_msg", t); } catch (e) {}
     location.hash = "#/akilli-asistan?hazir=1";
   });
+  // Yönetim özeti: dikkat isteyen işler (mevcut denetimlerden), son 14 gün, araçlar (birimler ayrı), mazot anlaşmaları (litre)
+  try {
+    const A = await import("./attention.js");
+    const { restoreSets } = await import("./backup.js");
+    const yb = qs("[data-yonetim]", root);
+    const items = A.attentionItems(data, { restoreSets: await restoreSets(db).catch(() => []) });
+    const days = A.dailyWorks(data, today, 14), max = Math.max(1, ...days.map((x) => x.count));
+    const mStart = today.slice(0, 8) + "01", veh = A.vehicleSummary(data, mStart, today).slice(0, 8), fuel = A.fuelSummaries(data);
+    const n1 = (x) => Number(x || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+    const tr2 = (s) => s.slice(8, 10) + "." + s.slice(5, 7);
+    yb.innerHTML =
+      (items.length ? `<div class="section-title" style="margin-top:12px">Dikkat isteyen işler</div>` + items.map((i) => `<div class="card tap" data-go="${esc(i.hash)}" data-attn="${esc(i.key)}" style="padding:10px 12px"><div class="strong small">${esc(i.title)} ›</div><div class="tiny muted">Neden: ${esc(i.why)}</div><div class="tiny">Sonraki adım: ${esc(i.next)}</div></div>`).join("") : "") +
+      `<div class="section-title" style="margin-top:12px">Son 14 gün — günlük iş sayısı <span class="muted small">(dokunun: o günün işleri)</span></div>
+      <div class="card" style="padding:10px"><div data-daychart style="display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:3px;align-items:end;height:110px">${days.map((x) => `<button data-go="#/isler?from=${x.date}&to=${x.date}" aria-label="${tr2(x.date)}: ${x.count} iş${Object.keys(x.units).length ? " (" + Object.entries(x.units).map(([u, q]) => n1(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") + ")" : ""}" title="${tr2(x.date)}: ${x.count} iş" style="border:0;padding:0;background:transparent;height:100%;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer"><span class="tiny" style="text-align:center">${x.count || ""}</span><span style="display:block;background:var(--brand-orange,#f5a623);border-radius:3px 3px 0 0;height:${Math.round((x.count / max) * 80)}px;min-height:${x.count ? 3 : 0}px"></span></button>`).join("")}</div>
+      <div style="display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:3px" class="tiny muted">${days.map((x, i) => `<span style="text-align:center">${i % 2 ? "" : tr2(x.date).slice(0, 2)}</span>`).join("")}</div>
+      <div class="tiny muted">Çubuk: iş SAYISI. Saat, sefer ve ton ayrı birimlerdir; toplanmaz (çubuğa dokununca o günün işleri açılır).</div></div>` +
+      (veh.length ? `<div class="section-title" style="margin-top:12px">Araçlar — bu ay <span class="muted small">(birimler ayrı)</span></div><div class="card" style="padding:6px 10px;overflow-x:auto"><table class="tiny" style="width:100%;border-collapse:collapse"><tr class="muted"><th style="text-align:left">Araç</th><th>İş</th><th>Saat</th><th>Sefer</th><th>Yevmiye</th><th>Ton</th></tr>${veh.map((v) => `<tr data-go="#/filo/${esc(v.id)}" style="cursor:pointer;border-top:1px solid var(--border)"><td style="text-align:left;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.name)}</td><td style="text-align:center">${v.works}</td><td style="text-align:center">${v.Saat ? n1(v.Saat) : "—"}</td><td style="text-align:center">${v.Sefer ? n1(v.Sefer) : "—"}</td><td style="text-align:center">${v.Yevmiye ? n1(v.Yevmiye) : "—"}</td><td style="text-align:center">${v.Ton ? n1(v.Ton) : "—"}</td></tr>`).join("")}</table></div>` : "") +
+      (fuel.length ? `<div class="section-title" style="margin-top:12px">Mazot anlaşmaları <span class="muted small">(litre; TL bakiyeye dahil değil)</span></div>` + fuel.map((f) => `<div class="li" data-go="#/musteriler/${esc(f.id)}"><div class="grow"><div class="t1 ellipsis">${esc(f.name)}</div><div class="t2">Hak edilen ${n1(f.earned)} L · Alınan ${n1(f.received)} L</div></div><div class="end"><span class="amt">${f.balance >= 0 ? "Kalan " + n1(f.balance) : "Fazla " + n1(-f.balance)} L</span></div></div>`).join("") : "");
+  } catch (e) { console.warn(e); }
   {
     const bh = qs("[data-brief]", root);
     if (bh) (await import("./brief.js")).briefCard({ ...ctx, toast }, bh, data).catch((e) => console.warn(e));
@@ -808,7 +831,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.9.10")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.9.11")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
