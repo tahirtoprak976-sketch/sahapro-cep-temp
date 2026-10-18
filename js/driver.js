@@ -27,9 +27,11 @@ async function getPhotos(e) {
 }
 async function dropPhotos(e) { if ("caches" in self && e.ph) { const c = await caches.open(PHOTO_CACHE); for (let i = 0; i < e.ph; i++) await c.delete(`./__drv/${e.id}-${i}`); } }
 // Fotoğrafı küçült (WhatsApp ve hafıza için)
+export const PHOTO_LIMITS = { count: 10, mb: 25 };
 async function shrinkPhoto(f) {
   try {
-    const bmp = await createImageBitmap(f);
+    // Yön bilgisi korunur (EXIF); fiş yazısı okunsun diye uzun kenar 1600 px, JPEG kalite 0,8
+    const bmp = await createImageBitmap(f, { imageOrientation: "from-image" });
     const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
     const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
     cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
@@ -80,8 +82,33 @@ export async function screen(ctx) {
   const expired = cfg.exp && today > cfg.exp;
   let entries = ls.get(K_ENT, []).filter((e) => !e.sent || e.date >= new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10));
   const nm = (list, id) => (list || []).find((x) => x[0] === id)?.[1] || "";
-  let tab = "is", photos = [], slipFor = null;
+  let tab = "is", photos = [], slipFor = null, busy = false;
+  // Yarım form taslağı (uygulama kapanır / WhatsApp'a geçilir / internet kesilirse kaybolmaz): alanlar localStorage, fotoğraflar Cache
+  const K_DRAFT = "sp_driver_draft";
+  const photoListHtml = () => photos.length ? `${photos.length} fotoğraf hazır: ` + photos.map((f, i) => `<span class="chip" style="margin:2px">📷 ${i + 1} <button class="btn sm ghost" data-phrm="${i}" aria-label="Fotoğraf ${i + 1} kaldır">✕</button></span>`).join("") : "";
   const st = { vid: ls.get("sp_driver_vid") || cfg.veh || "", cid: "", cn: "", sid: "", wt: core.DRIVER_TYPES[0], q: 1, u: "Sefer", ds: "", dn: "", ton: "", slip: "", note: "", mat: "", f: {} };
+  let draftNote = "";
+  {
+    const dr = ls.get(K_DRAFT);
+    if (dr && Date.now() - (dr.at || 0) < 7 * 86400000 && dr.st) {
+      Object.assign(st, dr.st, { vid: st.vid || dr.st.vid });
+      if (dr.tab) tab = dr.tab;
+      if (dr.ph) photos = await getPhotos({ id: "draft", ph: dr.ph });
+      draftNote = `Yarım kalan form geri yüklendi (${new Date(dr.at).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})${dr.ph ? ` · ${photos.length}/${dr.ph} fotoğraf` : ""}`;
+      if (dr.ph && photos.length < dr.ph) draftNote += " — bazı fotoğraflar telefonda bulunamadı, yeniden ekleyin";
+    }
+  }
+  const saveDraft = async (withPhotos = false) => {
+    const empty = !photos.length && !String(st.note || st.slip || st.ton || st.cn || "").trim() && !Object.values(st.f || {}).some(Boolean) && !Object.values(st.x || {}).some(Boolean) && !st.cid;
+    if (empty && !withPhotos) { ls.del(K_DRAFT); return; }
+    if (withPhotos) { await dropPhotos({ id: "draft", ph: 12 }).catch(() => {}); await putPhotos("draft", photos).catch(() => toast("Fotoğraf taslağı saklanamadı (telefon hafızası dolu olabilir)", "err")); }
+    if (empty) { ls.del(K_DRAFT); return; }
+    const { f, x: xx, ...rest } = st;
+    ls.set(K_DRAFT, { at: Date.now(), tab, st: { ...rest, f: { ...f }, x: { ...xx } }, ph: photos.length });
+  };
+  const clearDraft = async () => { ls.del(K_DRAFT); await dropPhotos({ id: "draft", ph: 12 }).catch(() => {}); draftNote = ""; };
+  // Paylaşılmış kayıtların fotoğrafları 7 gün tekrar paylaşım için saklanır, sonra temizlenir (hafıza dolmasın)
+  for (const e of entries.filter((e) => e.sent && e.ph && Date.now() - Date.parse(e.sent) > 7 * 86400000)) { await dropPhotos(e).catch(() => {}); e.ph_dropped = e.ph; delete e.ph; }
   const opt = (rows, val, empty) => (empty != null ? `<option value="">${esc(empty)}</option>` : "") + rows.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(val) ? "selected" : ""}>${esc(t)}</option>`).join("");
   const big = "min-height:52px;font-size:17px";
 
@@ -120,7 +147,7 @@ export async function screen(ctx) {
       ${!isM ? `<label class="row small" style="gap:8px;margin:4px 0"><input type="checkbox" data-x-veh ${x.noVeh ? "" : "checked"}> Araçla ilgili (${esc(nm(cfg.V, st.vid) || "araç")})</label>` : `<div class="formgrid2"><div class="field"><label>Km</label><input type="number" inputmode="numeric" data-x="km" value="${esc(x.km ?? "")}"></div><div class="field"><label>Makine saati</label><input type="number" inputmode="decimal" data-x="hr" value="${esc(x.hr ?? "")}"></div></div>`}
       <div class="field"><label>Not</label><input data-x="desc2" value="${esc(x.desc2 || "")}"></div>
       <div class="field"><label>📷 ${isM ? "Fotoğraf / fiş" : "Fiş fotoğrafı"}</label><input type="file" accept="image/*" capture="environment" multiple data-photo></div>
-      <div class="small muted" data-phc>${photos.length ? photos.length + " fotoğraf eklendi" : ""}</div>
+      <div class="tiny muted">En çok ${PHOTO_LIMITS.count} fotoğraf · her biri ${PHOTO_LIMITS.mb} MB'a kadar · telefonda küçültülür, yönü korunur</div><div class="small" data-phc>${photoListHtml()}</div>
       <button class="btn primary block" data-addx style="${big};margin-top:8px">✓ Kaydet</button>
     </div>`;
   };
@@ -222,7 +249,7 @@ export async function screen(ctx) {
           <div class="field"><label>Fiş no</label><input data-k="slip" value="${esc(st.slip)}"></div>
           <div class="field"><label>Not</label><input data-k="note" value="${esc(st.note)}"></div></div>
         <div class="field"><label>📷 Fiş fotoğrafı</label><input type="file" accept="image/*" capture="environment" multiple data-photo></div>
-        <div class="small muted" data-phc>${photos.length ? photos.length + " fotoğraf eklendi" : ""}</div>
+        <div class="tiny muted">En çok ${PHOTO_LIMITS.count} fotoğraf · her biri ${PHOTO_LIMITS.mb} MB'a kadar · telefonda küçültülür, yönü korunur</div><div class="small" data-phc>${photoListHtml()}</div>
         <button class="btn primary block" data-add style="${big};margin-top:8px">✓ Kaydet</button>
       </div>` : tab === "ariza" || tab === "gider" ? xForm() : `<div class="card">
         <div class="field"><label>Tarih</label><input type="date" data-k="date" value="${esc(st.date || today)}" max="${today}"></div>
@@ -234,10 +261,10 @@ export async function screen(ctx) {
           <div class="field"><label>Makine saati</label><input type="number" inputmode="decimal" data-f="hr" value="${esc(st.f.hr ?? "")}"></div></div>
         <button class="btn primary block" data-addf style="${big};margin-top:8px">✓ Kaydet</button>
       </div>`}
-      <div class="section-title">Gönderilmemiş (${unsent.length})</div>
+      ${draftNote ? `<div class="card small" data-draftnote>📝 ${esc(draftNote)} <button class="btn sm ghost" data-draftclear>Taslağı temizle</button></div>` : ""}<div class="section-title">Telefonda bekleyen — henüz paylaşılmadı (${unsent.length})</div>
       ${unsent.map((e) => `<div class="card"><div class="row between"><span class="small">${esc(core.entryLine(e, cfg))}</span><span class="row" style="gap:4px">${!e.k ? `<button class="btn sm" data-slip="${esc(e.id)}" title="Dijital fiş">🧾</button>` : ""}<button class="btn sm ghost" data-del="${esc(e.id)}">🗑</button></span></div>${!e.k && !e.dfs ? '<div class="tiny muted">🧾 Şantiye şefine imzalı dijital fiş</div>' : ""}</div>`).join("") || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}
-      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#25d366;color:#fff;border:0;font-weight:800">📤 Patrona gönder (WhatsApp)</button>` : ""}
-      ${sent.length ? `<details class="card" style="margin-top:10px"><summary class="small">Gönderilenler (${sent.length})</summary>${sent.map((e) => `<div class="tiny muted" style="margin-top:4px">✓ ${esc(core.entryLine(e, cfg))}</div>`).join("")}<button class="btn sm" style="margin-top:6px" data-resend>Son gönderileni tekrar gönder</button></details>` : ""}
+      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#25d366;color:#fff;border:0;font-weight:800">📤 Patrona paylaş (WhatsApp)</button>` : ""}
+      ${sent.length ? `<details class="card" style="margin-top:10px"><summary class="small">Paylaşılanlar (${sent.length}) — patronun aldığı bu telefonda doğrulanamaz</summary>${sent.map((e) => `<div class="tiny muted" style="margin-top:4px">✓ ${esc(core.entryLine(e, cfg))}</div>`).join("")}<button class="btn sm" style="margin-top:6px" data-resend>Son paylaşılanı tekrar paylaş (aynı kayıt kimlikleri — patronda ikinci kayıt oluşmaz)</button></details>` : ""}
       <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><div class="field" style="margin-top:6px"><label class="tiny">Patron yeni bağlantı gönderdiyse buraya yapıştırın</label><textarea data-newlink rows="2" placeholder="Yeni bağlantı"></textarea><button class="btn sm block" data-newlink-ok style="margin-top:4px">Yeni bağlantıyı kur</button></div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
     bind();
   };
@@ -246,6 +273,7 @@ export async function screen(ctx) {
     for (const el of qsa("[data-f]", root)) st.f[el.dataset.f] = el.value;
     for (const el of qsa("[data-x]", root)) x[el.dataset.x] = el.value;
     const vb = qs("[data-x-veh]", root); if (vb) x.noVeh = !vb.checked;
+    saveDraft();
   };
   const save = () => ls.set(K_ENT, entries);
   const bind = () => {
@@ -257,8 +285,30 @@ export async function screen(ctx) {
     for (const b of qsa("[data-u]", root)) b.addEventListener("click", () => { readForm(); st.u = b.dataset.u; draw(); });
     for (const b of qsa("[data-src]", root)) b.addEventListener("click", () => { readForm(); st.src = b.dataset.src; draw(); });
     for (const b of qsa("[data-q]", root)) b.addEventListener("click", () => { readForm(); st.q = Math.max(0, (Number(st.q) || 0) + Number(b.dataset.q)); draw(); });
-    qs("[data-photo]", root)?.addEventListener("change", async (e) => { for (const f of e.target.files) photos.push(await shrinkPhoto(f)); qs("[data-phc]", root).textContent = photos.length + " fotoğraf eklendi"; });
+    root.oninput = () => { clearTimeout(root._dt); root._dt = setTimeout(() => readForm(), 600); };
+    qs("[data-photo]", root)?.addEventListener("change", async (e) => {
+      const el = qs("[data-phc]", root), list = [...e.target.files], bad = [];
+      e.target.value = "";
+      if (photos.length + list.length > PHOTO_LIMITS.count) toast(`En çok ${PHOTO_LIMITS.count} fotoğraf eklenebilir; ilk ${Math.max(0, PHOTO_LIMITS.count - photos.length)} tanesi alındı`, "err");
+      const take = list.slice(0, Math.max(0, PHOTO_LIMITS.count - photos.length));
+      for (let i = 0; i < take.length; i++) {
+        const f = take[i];
+        el.textContent = `Fotoğraf hazırlanıyor ${i + 1}/${take.length}…`;
+        if (f.type && !f.type.startsWith("image/")) { bad.push(`${f.name || i + 1}: fotoğraf değil`); continue; }
+        if (f.size > PHOTO_LIMITS.mb * 1048576) { bad.push(`${f.name || i + 1}: ${PHOTO_LIMITS.mb} MB'tan büyük`); continue; }
+        const g = await shrinkPhoto(f); // sırayla: telefonun belleği bir kerede dolmaz
+        if (g === f && f.size > 8 * 1048576) { bad.push(`${f.name || i + 1}: hazırlanamadı`); continue; }
+        photos.push(g);
+      }
+      await saveDraft(true);
+      el.innerHTML = photoListHtml() + (bad.length ? `<div class="tiny" style="color:#c0392b">Eklenemedi: ${esc(bad.join(" · "))} — yeniden deneyin</div>` : "");
+      bindPhotoRemove();
+    });
+    const bindPhotoRemove = () => { for (const b of qsa("[data-phrm]", root)) b.onclick = async (ev) => { ev.preventDefault(); photos.splice(Number(b.dataset.phrm), 1); await saveDraft(true); qs("[data-phc]", root).innerHTML = photoListHtml(); bindPhotoRemove(); }; };
+    bindPhotoRemove();
+    qs("[data-draftclear]", root)?.addEventListener("click", async () => { await clearDraft(); photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "", f: {} }); Object.keys(x).forEach((k) => delete x[k]); draw(); });
     qs("[data-add]", root)?.addEventListener("click", async () => {
+      if (busy) return; // iki kez basma: tek kayıt
       readForm();
       const q = Number(String(st.q).replace(",", "."));
       if (!st.vid) return toast("Araç seçin", "err");
@@ -270,17 +320,21 @@ export async function screen(ctx) {
         ...(st.ds && st.ds !== "__new" ? { ds: st.ds } : st.ds === "__new" && st.dn.trim() ? { dn: st.dn.trim() } : {}),
         ...(Number(st.ton) > 0 ? { ton: Number(String(st.ton).replace(",", ".")) } : {}), ...(st.slip.trim() ? { slip: st.slip.trim() } : {}),
         ...(st.mat.trim() ? { mat: st.mat.trim() } : {}), ...(st.note.trim() ? { note: st.note.trim() } : {}) };
-      e.ph = await putPhotos(e.id, photos);
-      if (!e.ph) delete e.ph;
-      entries.push(e); save();
-      photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" });
-      toast("Kaydedildi", "ok"); draw();
+      busy = true;
+      try {
+        e.ph = await putPhotos(e.id, photos);
+        if (!e.ph) delete e.ph;
+        entries.push(e); save();
+      } finally { busy = false; }
+      photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" }); await clearDraft();
+      toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
     });
     for (const b of qsa("[data-x-kind]", root)) b.addEventListener("click", () => { readForm(); if (tab === "ariza") x.mt = b.dataset.xKind; else { x.cat = b.dataset.xKind; if (x.cat === "Yemek") x.noVeh = true; } draw(); });
     for (const b of qsa("[data-x-st]", root)) b.addEventListener("click", () => { readForm(); x.st = b.dataset.xSt; draw(); });
     for (const b of qsa("[data-x-pay]", root)) b.addEventListener("click", () => { readForm(); x.pay = b.dataset.xPay; draw(); });
     qs("[data-x-sup]", root)?.addEventListener("change", (e) => { readForm(); x.sup = e.target.value; draw(); });
     qs("[data-addx]", root)?.addEventListener("click", async () => {
+      if (busy) return;
       readForm();
       const isM = tab === "ariza";
       const tl = Number(String(x.tl || "").replace(",", "."));
@@ -295,11 +349,14 @@ export async function screen(ctx) {
       const e = isM
         ? { id: core.newId(), k: "m", date: st.date || today, vid: st.vid, mt: x.mt, desc: [String(x.desc).trim(), note].filter(Boolean).join(" · "), st: x.st === "Tamamlandı" ? "Tamamlandı" : "Açık", ...(tl > 0 ? { tl, pay: x.pay } : {}), ...sup, ...(Number(x.km) > 0 ? { km: Number(x.km) } : {}), ...(Number(x.hr) > 0 ? { hr: Number(x.hr) } : {}) }
         : { id: core.newId(), k: "g", date: st.date || today, cat: x.cat, tl, pay: x.pay, ...sup, ...(x.noVeh || !st.vid ? {} : { vid: st.vid }), ...(note ? { desc: note } : {}) };
-      e.ph = await putPhotos(e.id, photos);
-      if (!e.ph) delete e.ph;
-      entries.push(e); save();
-      photos = []; Object.keys(x).forEach((k) => delete x[k]);
-      toast("Kaydedildi", "ok"); draw();
+      busy = true;
+      try {
+        e.ph = await putPhotos(e.id, photos);
+        if (!e.ph) delete e.ph;
+        entries.push(e); save();
+      } finally { busy = false; }
+      photos = []; Object.keys(x).forEach((k) => delete x[k]); await clearDraft();
+      toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
     });
     qs("[data-addf]", root)?.addEventListener("click", () => {
       readForm();
@@ -310,7 +367,7 @@ export async function screen(ctx) {
       if (!st.src) return toast("Nereden aldığınızı seçin", "err");
       if (st.src === "Müşteri Verdi" && !f.cid) return toast("Müşteriyi seçin", "err");
       entries.push({ id: core.newId(), k: "f", date: st.date || today, vid: st.vid, L, src: st.src, ...(f.cid ? { cid: f.cid } : {}), ...(Number(f.tl) > 0 ? { tl: Number(f.tl) } : {}), ...(Number(f.km) > 0 ? { km: Number(f.km) } : {}), ...(Number(f.hr) > 0 ? { hr: Number(f.hr) } : {}) });
-      st.f = {}; save(); toast("Kaydedildi", "ok"); draw();
+      st.f = {}; save(); clearDraft(); toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
     });
     for (const b of qsa("[data-slip]", root)) b.addEventListener("click", () => { readForm(); slipFor = b.dataset.slip; draw(); window.scrollTo(0, 0); });
     for (const b of qsa("[data-del]", root)) b.addEventListener("click", async () => {
@@ -377,10 +434,10 @@ export async function screen(ctx) {
         const at = new Date().toISOString();
         for (const e of done) { e.sent = at; }
         save();
-        for (const e of done) await dropPhotos(e).catch(() => {});
+        // Fotoğraflar SİLİNMEZ: paylaşım ekranının açılması mesajın gittiğini kanıtlamaz; 7 gün tekrar paylaşılabilir
         const left = list.length - done.length;
-        if (left > 0) toast(`${done.length} kayıt gönderildi. Mesaj uzun olmasın diye ${left} kayıt kaldı — "Gönder"e tekrar basın`, "ok");
-        else toast("Gönderildi ✓", "ok");
+        if (left > 0) toast(`${done.length} kayıt için paylaşım ekranı açıldı. Mesaj uzun olmasın diye ${left} kayıt kaldı — tekrar basın`, "ok");
+        else toast("Paylaşım ekranı açıldı — WhatsApp'ta gönderildiğini kontrol edin. Gitmediyse 'Son paylaşılanı tekrar paylaş'.", "ok");
         draw();
       }
     });

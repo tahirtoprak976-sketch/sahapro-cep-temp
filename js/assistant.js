@@ -160,7 +160,7 @@ export async function screen(ctx) {
     }
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
-    if (!g.ready) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
+    if (!g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
@@ -195,7 +195,9 @@ export async function screen(ctx) {
       const restSkipped = drvRejected.length > 0 && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8;
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
-      const useGemini = !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      // Şoför kodu Gemini'siz çözülür; anahtar yoksa kalan serbest yazı okunmaz (kullanıcıya söylenir)
+      const useGemini = g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      if (!g.ready && drvAll.length && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8) toast("Gemini anahtarı yok: şoför kodu okundu, mesajdaki diğer yazı okunmadı", "err");
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
