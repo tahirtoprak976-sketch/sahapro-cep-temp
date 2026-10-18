@@ -1682,7 +1682,7 @@ export function customerWorkRows(d, id, { from = "", subs = false } = {}) {
       const where = [nm("sites", w.site_id), nm("quarries", w.quarry_id) || w.quarry, nm("dump_sites", w.dump_site_id) || w.dump_area].filter(Boolean).join(" → ");
       return { id: w.id, date: w.date, vehicle: nm("vehicles", w.vehicle_id), qty: Number(w.quantity) || 0, unit: w.unit || "", type: w.work_type || "", where,
         sub: w.customer_id !== id ? nm("customers", w.customer_id) : "", amount: Number.isFinite(amt) && amt > 0 ? amt : 0,
-        fuelL: Number(w.customer_fuel_allowance_l) || 0, unpriced: !(Number.isFinite(amt) && amt > 0) && !w.customer_fuel_allowance_l,
+        fuelL: Number(w.customer_fuel_allowance_l) || 0, unpriced: !(Number.isFinite(amt) && amt > 0) && !w.customer_fuel_allowance_l && w.price_snapshot?.price_source !== "Sözleşmeye dahil", included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
         tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", material: w.material || "" };
     });
   const units = {};

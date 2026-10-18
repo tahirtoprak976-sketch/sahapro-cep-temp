@@ -17,6 +17,8 @@ import {
   groupRecords,
 } from "./business.js";
 import { exportDocument, buildDocument } from "./document-engine.js";
+import * as haul from "./haul-core.js";
+import { DEFAULT_LOAD_TON } from "./dump-fees.js";
 import {
   commercialSpec,
   COMMERCIAL_LABELS,
@@ -104,6 +106,44 @@ const OWNER_LABELS = {
 const ROUTE = Object.fromEntries(
   Object.entries(STORES).map(([route, store]) => [store, route]),
 );
+// Kamyon taşıma kapasitesi alanları (haul-core.js, tahmini m³ hesabı)
+const HAUL_NUM = {
+  axles: "Dingil sayısı (4 → yasal 32 t, 5 → 42 t)",
+  tare_ton: "Boş ağırlık / dara (ton)",
+  legal_gross_ton: "Yasal toplam ağırlık (ton) — boşsa dingil sayısına göre",
+  body_m3: "Kasa hacmi (m³)",
+};
+function scaleLabel(site) {
+  const h = haul.hasScale(site);
+  return !h ? "kantar bilinmiyor" : h.scale ? (h.inferred ? "kantarlı (ton başı ücretten)" : "kantarlı") : "kantarsız";
+}
+function haulCard(v, over) {
+  const fmt = (n) => (n == null ? "—" : core.fmtNum(n));
+  const g = haul.legalGross(v), lp = haul.legalPayload(v);
+  const pl = haul.payload(v, { defaultTon: DEFAULT_LOAD_TON[core.transportVehicleType(v.type)] || 0 });
+  const mats = haul.materials(over || {});
+  const scen = [];
+  if (lp) scen.push({ t: lp, h: `Yasal yükle (${fmt(lp)} t)` });
+  if (pl && pl.source !== "yasal") scen.push({ t: pl.ton, h: `${pl.source === "kart" ? "Ortalama yükle" : "Varsayılan yükle"} (${fmt(pl.ton)} t)` });
+  const rows = mats.map((m) => `<tr style="border-top:1px solid var(--line, #e3e7ee)"><td style="padding:4px 6px 4px 0">${esc(m.name)}${m.trust === "düşük" || m.trust === "veri yok" ? ' <span class="muted small">(' + esc(m.trust) + ")</span>" : ""}</td>${scen
+    .map((sc) => {
+      const e = haul.tripEstimate(v, m, { payloadTon: sc.t });
+      return `<td style="padding:4px 6px 4px 0">${e?.bank == null ? '— <span class="muted small">ton ile izlenir</span>' : `<span class="nowrap">${fmt(e.bank)} m³</span> <span class="muted small">${e.limit === "kasa" ? "kasa dolar" : "ağırlık"}</span>`}</td>`;
+    })
+    .join("")}</tr>`).join("");
+  return `<div class="card" data-haul>
+    <div class="section-title" style="margin:0 0 6px">Taşıma kapasitesi — tahmini</div>
+    ${kv("Kasa", v.body_m3 ? fmt(v.body_m3) + " m³" : "girilmedi")}
+    ${kv("Yasal toplam ağırlık", g ? fmt(g.ton) + " t" + (g.auto ? " (dingil sayısından)" : "") : "dingil sayısı girilmedi")}
+    ${kv("Dara", v.tare_ton ? fmt(v.tare_ton) + " t" : "girilmedi")}
+    ${kv("Yasal net yük", lp ? fmt(lp) + " t" : "dara ve dingil gerekli")}
+    ${pl && pl.source === "kart" && lp && pl.ton > lp ? `<div class="notice warn small"><span>ℹ</span><span>Kartta yazan ortalama yük (${fmt(pl.ton)} t) yasal net yükün ${fmt(Math.round((pl.ton - lp) * 10) / 10)} t üstünde. Bilgi içindir; hiçbir kayıt değişmez.</span></div>` : ""}
+    ${scen.length ? `<div class="small" style="margin:8px 0 4px"><b>Sefer başı yerinde (doğal) m³</b></div>
+    <div style="overflow-x:auto"><table class="small" style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Malzeme</th>${scen.map((sc) => `<th style="text-align:left">${esc(sc.h)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="muted small" style="margin-top:6px">Hesap için dara + dingil sayısı ya da ortalama yük girin.</div>`}
+    <div class="muted small" style="margin-top:8px">Tahmindir; kabarma payı yüzünden "sefer × kasa m³" gerçeği yaklaşık iki kat fazla gösterir. Kesin miktar ölçümcünün yerinde metrajıdır. Kasa hacmi silme/tepeleme ayrımı yapılmadan alınır.</div>
+    <button class="btn sm" style="margin-top:8px" data-go="#/malzeme-katsayilari">Malzeme katsayıları ›</button>
+  </div>`;
+}
 export const FIELD_LABELS = {
   date: "Tarih",
   name: "Ad / Ünvan",
@@ -112,6 +152,12 @@ export const FIELD_LABELS = {
   vehicle_group: "Araç grubu",
   plate: "Plaka / Kod",
   tank_capacity: "Depo kapasitesi (litre)",
+  load_ton: "Ortalama yük (ton)",
+  axles: "Dingil sayısı",
+  tare_ton: "Dara (ton)",
+  legal_gross_ton: "Yasal toplam ağırlık (ton)",
+  body_m3: "Kasa hacmi (m³)",
+  has_scale: "Kantar",
   brand: "Marka",
   model: "Model",
   model_year: "Model yılı",
@@ -243,6 +289,7 @@ async function maps(db) {
 function value(key, v, names) {
   if (REL[key]) return names[REL[key]]?.[v] || "—";
   if (v == null) return "—";
+  if (key === "has_scale") return v === "var" ? "Var (fişte net ton)" : v === "yok" ? "Yok" : String(v);
   if (typeof v === "boolean") return v ? "Evet" : "Hayır";
   if (
     [
@@ -848,6 +895,10 @@ async function master(ctx) {
             "machine_hours",
             "tank_capacity",
             "load_ton",
+            "axles",
+            "tare_ton",
+            "legal_gross_ton",
+            "body_m3",
           ]
         : store === "personnel"
           ? ["name", "role", "phone", "employment_date", "vehicle_id", "identity_number", "birth_date", "license_class", "blood_type"]
@@ -856,7 +907,7 @@ async function master(ctx) {
             : store === "contractors"
               ? ["name", "contact", "phone", "address"]
               : store === "dump_sites"
-                ? ["name", "address", "location", "contact", "phone", "fee_unit", "fee"]
+                ? ["name", "address", "location", "contact", "phone", "fee_unit", "fee", "has_scale"]
                 : store === "customers"
                   ? ["name", "tax_title", "tax_no", "tax_office", "address", "email", "contact", "phone", "kdv_withholding", "location", "unit_price"]
                   : [
@@ -913,6 +964,10 @@ async function master(ctx) {
                 )
               : k === "fee_unit"
                 ? fSelect("Döküm ücreti nasıl alınıyor?", k, [{ v: "", t: "Ücret yok / anlaşmalı (işte ayrıca)" }, { v: "Ton", t: "Ton başına" }, { v: "Sefer", t: "Sefer başına" }], r[k] || "", { empty: false })
+              : k === "has_scale"
+                ? fSelect("Kantar var mı? (fiş ton yazıyor mu)", k, [{ v: "", t: "Bilinmiyor (ton başı ücretliyse kantarlı sayılır)" }, { v: "var", t: "Var — fişte net ton yazar" }, { v: "yok", t: "Yok — toprakçı / dolgu, ton yok" }], r[k] || "", { empty: false })
+              : HAUL_NUM[k]
+                ? fNum(HAUL_NUM[k], k, r[k] ?? "", { step: "any" })
               : k === "fee" || k === "load_ton"
                 ? fNum(k === "fee" ? "Döküm ücreti (₺, KDV dahil)" : "Ortalama yük (ton) — fiş yoksa döküm ücreti buna göre (boşsa tır 27, kamyon 22)", k, r[k] ?? "", { step: "any" })
               : k === "ownership"
@@ -944,7 +999,7 @@ async function master(ctx) {
         const val = collectForm(qs("[data-form]", root));
         if (!val.name?.trim()) throw Error("Ad zorunlu");
         const fields = { ...val, active: val.active === "1" };
-        for (const k of ["fee", "load_ton"]) if (k in fields) fields[k] = fields[k] === "" ? null : Number(fields[k]);
+        for (const k of ["fee", "load_ton", ...Object.keys(HAUL_NUM)]) if (k in fields) fields[k] = fields[k] === "" ? null : Number(fields[k]);
         const created =
           id === "new"
             ? await db.saveNew(store, fields)
@@ -967,7 +1022,7 @@ async function master(ctx) {
     li({
       href: "#/" + parts[0] + "/" + r.id,
       t1: esc(r.name),
-      t2: esc([r.fee > 0 && r.fee_unit ? `${r.fee} ₺ / ${String(r.fee_unit).toLocaleLowerCase("tr-TR")} (KDV dahil)` : "", r.own_yard ? "kendi depo" : "", r.address || ""].filter(Boolean).join(" · ")),
+      t2: esc([store === "dump_sites" && !r.own_yard ? scaleLabel(r) : "", r.fee > 0 && r.fee_unit ? `${r.fee} ₺ / ${String(r.fee_unit).toLocaleLowerCase("tr-TR")} (KDV dahil)` : "", r.own_yard ? "kendi depo" : "", r.address || ""].filter(Boolean).join(" · ")),
     }),
   );
   return true;
@@ -1034,6 +1089,8 @@ async function card(ctx) {
     exportBar() +
     (DETAIL_KIND[store] ? `<button class="btn primary block" style="margin:8px 0" data-go="#/detayli-rapor?k=${DETAIL_KIND[store]}&id=${encodeURIComponent(id)}&p=all">📑 Detaylı rapor — tüm kayıtlar (PDF)</button>` : "") +
     (store === "dump_sites" && !r.own_yard ? `<button class="btn block" style="margin:0 0 8px" data-go="#/dokum-hesap/${encodeURIComponent(id)}">💳 Döküm hesabı — yatırılan para / kalan</button>` : "") +
+    (store === "sites" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmesi/${encodeURIComponent(id)}">📐 ${r.deal ? "İş sözleşmesi — " + esc(r.deal.basis === "m³" ? "metreküp" : "sefer") + " · " + esc(r.deal.status || "") : "İş sözleşmesi aç (sefer / m³)"}</button>` : "") +
+    (store === "customers" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmeleri?customer_id=${encodeURIComponent(id)}">📐 İş sözleşmeleri (sefer / m³)</button>` : "") +
     `<div class="row"><button class="btn" data-go="#/${parts[0]}/${id}/edit">Kartı Düzenle</button>${["vehicles", "personnel", "customers"].includes(store) ? `<button class="btn" data-go="#/belgeler/new?owner_type=${store === "vehicles" ? "vehicle" : store === "personnel" ? "personnel" : "customer"}&owner_id=${id}&category=${encodeURIComponent(store === "vehicles" ? "Muayene Belgesi" : store === "personnel" ? "SRC" : "Sözleşme")}">Belge Ekle</button>` : ""}</div><div class="tabs" data-tabs><button class="chip on" data-tab="general">GENEL</button>${relations.map((s) => `<button class="chip" data-tab="${s}">${LABELS[s]}</button>`).join("")}${store === "vehicles" ? '<button class="chip" data-tab="cost">MALİYET</button>' : ""}<button class="chip" data-tab="report">RAPOR</button></div><div data-card-content></div>`;
   async function tab(s) {
     const el = qs("[data-card-content]", root);
@@ -1056,7 +1113,8 @@ async function card(ctx) {
       el.innerHTML =
         '<div class="card">' +
         spec.sections[0].pairs.map((p) => kv(...p)).join("") +
-        "</div>";
+        "</div>" +
+        (store === "vehicles" && haul.isHauler(r) ? haulCard(r, await db.metaGet("haul_materials")) : "");
       return;
     }
     if (s === "report") {

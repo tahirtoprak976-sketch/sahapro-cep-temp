@@ -40,7 +40,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
       type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
       from: nm("quarries", w.quarry_id) || w.quarry || "", site: nm("sites", w.site_id), to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
       tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: Number(w.price_snapshot?.unit_price) || 0, amount: workAmount(w),
-      fuelL: Number(w.customer_fuel_allowance_l) || 0, locked: !!w.price_snapshot?.locked, note: w.description || "",
+      fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil", locked: !!w.price_snapshot?.locked, note: w.description || "",
       kdv_included: w.price_snapshot ? !!w.price_snapshot.kdv_included : null, kdv_rate: w.price_snapshot?.kdv_rate ?? null,
     }));
   const units = {};
@@ -78,7 +78,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const collected = r2(collections.reduce((n, c) => n + c.amount, 0));
   return {
     customer: me, parent, children, from, to, subs, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, cheques,
-    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), unpriced: works.filter((w) => !w.amount && !w.fuelL).length, oldestDays: open[0]?.days || 0 },
+    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), unpriced: works.filter((w) => !w.amount && !w.fuelL && !w.included).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
 

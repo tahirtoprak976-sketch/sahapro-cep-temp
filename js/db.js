@@ -171,6 +171,8 @@ export async function softDelete(store, id, reason) {
     )
       throw Error("İşletme defterine bağlı kart silinemez");
   }
+  if (store === "sites" && rec.deal?.measurement)
+    throw Error("Ölçümü cariye yazılmış iş sözleşmesi olan şantiye silinemez");
   if (
     ["contracts", "hakedis", "slips"].includes(store) &&
     ["İmzalandı", "Kesinleşti"].includes(rec.status)
@@ -829,6 +831,8 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0) 
   const current = await get(store, rec.id);
   // Şoför kaydı kimliği sonradan eklenemez / değiştirilemez (doğrulanmamış kayıt "şoför kaydı" gibi gösterilmesin)
   if ("driver_entry_id" in fields && (fields.driver_entry_id || null) !== (current?.driver_entry_id || null)) throw Error("Şoför kaydı kimliği değiştirilemez");
+  if (store === "sites" && current?.deal?.measurement && (("deal" in fields && JSON.stringify(fields.deal?.measurement || null) !== JSON.stringify(current.deal.measurement)) || ("customer_id" in fields && fields.customer_id !== current.customer_id)))
+    throw Error("Ölçümü cariye yazılmış iş değiştirilemez; yanlışsa caride düzeltme kaydı açın");
   if(store==='fuel_tank_movements'&&current?.count_id)throw Error("Sayım hareketi tek başına değiştirilemez; yeni fiziksel sayım yapın");
   if((await getAll('cost_allocations')).some(r=>isActive(r)&&r.status==='Aktif'&&r.source_store===store&&r.source_id===rec.id)&&Object.keys(fields).some(k=>['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k)))throw Error('Maliyeti değiştirmeden önce dağıtımı iptal edin');
   if (
@@ -1724,5 +1728,30 @@ export async function updateIf(store, id, pred, fields, auditReason) {
     };
     t.oncomplete = () => resolve(out);
     t.onerror = t.onabort = () => reject(t.error);
+  });
+}
+
+// İş sözleşmesi (m³) ölçümü: şantiyedeki anlaşmaya ölçüm + cariye metraj hakedişi TEK işlemde yazılır.
+// Anlaşma açık değilse ya da ölçüm zaten kayıtlıysa hiçbir şey yazılmaz (iki sekme / çift basma tek kayıt).
+export async function saveJobMeasurement(siteId, measurement, cariFields, reason) {
+  const d = await openDB();
+  const cari = newRecord(cariFields);
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["sites", "cari_movements", "audit_log"], "readwrite");
+    let out = null, error = null;
+    const q = t.objectStore("sites").get(siteId);
+    q.onsuccess = () => {
+      const s = q.result, D = s?.deal;
+      if (!s || s.deleted_at || !D || D.status !== "Açık" || D.measurement) { error = Error("Bu işin ölçümü zaten kayıtlı ya da iş açık değil"); t.abort(); return; }
+      const deal = { ...D, status: "Ölçüldü", measurement: { ...measurement, cari_id: cari.id } };
+      const rec = { ...s, deal, updated_at: nowISO() };
+      t.objectStore("sites").put(rec);
+      t.objectStore("cari_movements").put(cari);
+      t.objectStore("audit_log").put({ id: uuid(), entity: "sites", entity_id: siteId, action: "update", old: { deal: D }, new: { deal }, reason: reason || "", at: nowISO() });
+      t.objectStore("audit_log").put({ id: uuid(), entity: "cari_movements", entity_id: cari.id, action: "create", old: null, new: cariFields, reason: reason || "", at: nowISO() });
+      out = { site: rec, cari };
+    };
+    t.oncomplete = () => resolve(out);
+    t.onerror = t.onabort = () => reject(error || t.error);
   });
 }
