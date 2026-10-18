@@ -181,11 +181,8 @@ async function firstRunChoice() {
     // Daha önce şoför telefonu olarak kurulduysa: yalnız patronun verdiği çıkış koduyla yönetici olur
     let dcfg = null; try { dcfg = JSON.parse(localStorage.getItem("sp_driver_cfg") || "null"); } catch (e) {}
     if (dcfg?.xk) {
-      const { promptDialog } = await import("./ui.js");
-      const code = await promptDialog("Bu telefon şoför telefonu", "Patronun verdiği 8 haneli çıkış kodu", "", { type: "password" });
-      if (code == null) return;
-      const { verifySecret } = await import("./security-core.js");
-      if (!(await verifySecret(code.replace(/\s/g, ""), dcfg.xk))) return toast("Çıkış kodu hatalı", "err");
+      const { exitProof } = await import("./driver.js");
+      if (!(await exitProof(dcfg.xk, "Bu telefon şoför telefonu"))) return;
     }
     try { localStorage.setItem("sp_role", "boss"); } catch (e) {}
     toast("Önce yönetici kilidini kurun: telefonunuzu eline alan kimse kayıtları göremesin", "ok");

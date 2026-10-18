@@ -462,17 +462,31 @@ export async function screen(ctx) {
     qs("[data-exit]", root)?.addEventListener("click", async () => {
       // İmzalı bağlantıda çıkış yalnız patronun çıkış koduyla (şoför yönetici ekranlarına geçemez)
       if (cfg.xk) {
-        const { promptDialog } = await import("./ui.js");
-        const code = await promptDialog("Şoför modundan çıkış", "Patronun verdiği 8 haneli çıkış kodu", "", { type: "password" });
-        if (code == null) return;
-        const { verifySecret } = await import("./security-core.js");
-        if (!(await verifySecret(code.replace(/\s/g, ""), cfg.xk))) return toast("Çıkış kodu hatalı", "err");
+        if (!(await exitProof(cfg.xk))) return;
       } else if (!(await confirmDialog("Şoför modundan çıkılsın mı?", "Bu telefon patron telefonu olarak açılır. Gönderilmemiş kayıtlar telefonda kalır.", "Çık"))) return;
       try { localStorage.setItem("sp_role", "boss"); } catch (e) {}
       ls.del(K_MODE); location.replace(location.pathname.replace(/[^/]*$/, "") + "index.html#/guvenlik");
     });
   };
   draw();
+  return true;
+}
+
+// Şoför modundan çıkış kanıtı: patronun 8 haneli çıkış kodu; bu telefon patron telefonuysa (yönetici kilidi kurulu) yönetici şifresi de olur.
+// Şoför telefonunda yönetici kilidi olmadığından şoför için tek yol çıkış kodudur. Şifre denemeleri kilit ekranının bekleme süresine tabidir.
+export async function exitProof(xk, title = "Şoför modundan çıkış") {
+  const sec = await import("./security.js");
+  if (await sec.lockEnabled()) {
+    const { choiceDialog } = await import("./ui.js");
+    const how = await choiceDialog(title, "Bu telefonda yönetici kilidi kurulu. Nasıl doğrulansın?", [["sifre", "Bu telefonun yönetici şifresi (patron telefonu)"], ["kod", "Patronun verdiği 8 haneli çıkış kodu"]]);
+    if (how == null) return false;
+    if (how === "sifre") return await sec.reauth("Şoför modundan çıkış");
+  }
+  const { promptDialog } = await import("./ui.js");
+  const code = await promptDialog(title, "Patronun verdiği 8 haneli çıkış kodu", "", { type: "password" });
+  if (code == null) return false;
+  const { verifySecret } = await import("./security-core.js");
+  if (!(await verifySecret(code.replace(/\s/g, ""), xk))) { toast("Çıkış kodu hatalı", "err"); return false; }
   return true;
 }
 
