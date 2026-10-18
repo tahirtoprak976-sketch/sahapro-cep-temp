@@ -384,8 +384,13 @@ export async function customerBankReceipt(f, key = uuid()) {
       "cari_movements",
     ],
     (d, t) => {
-      const old = d.cash_records.find((r) => r.request_id === key);
-      if (old) return old;
+      const old = d.cash_records.find((r) => !r.deleted_at && r.request_id === key);
+      if (old) {
+        // Aynı kaynak kimliği + farklı içerik: çakışma (müşteri / tutar / tarih / banka)
+        if (old.customer_id !== f.customer_id || Math.round(Number(old.amount) * 100) !== Math.round(Number(f.amount) * 100) || old.date !== f.date || old.bank_account_id !== f.bank_account_id)
+          throw Object.assign(Error("Aynı kaynak kimliğiyle farklı tahsilat kayıtlı — yazılmadı"), { code: "OP_CONFLICT", old });
+        return { ...old, _existing: true };
+      }
       owner(d, "customers", f.customer_id);
       validDate(f.date);
       const amount = money(f.amount);
@@ -400,6 +405,8 @@ export async function customerBankReceipt(f, key = uuid()) {
         bank_account_id: f.bank_account_id,
         description: f.note || "",
         request_id: key,
+        // Kaynak bilgisi (asistan): kaynak satırı, alıntı, tekrar/yeni ödeme ilişkisi — aynı transaction'da
+        ...Object.fromEntries(Object.entries(f.extra || {}).filter(([k]) => ["source_ref", "source_quote", "repeat_of", "new_payment_reason", "similar_to"].includes(k))),
       });
       const bm = bankMove(
         d,

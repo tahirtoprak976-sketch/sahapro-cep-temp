@@ -1609,6 +1609,13 @@ export async function signContract(id, blobs) {
   });
 }
 
+// Tahsilat içeriği (kaynak kimliği çakışma denetimi için): müşteri, tutar, tarih, ödeme şekli, banka
+export function sameCollection(a, b) {
+  const k = (f) => [f.customer_id || null, Math.round(Number(f.amount) * 100) / 100, f.date || null, f.payment_method || null, f.payment_method === "Havale" ? f.bank_account_id || null : null].join("|");
+  return k(a) === k(b);
+}
+// Tahsilat: (1) kaynak kimliği (request_id, PR #122) ve (2) kalıcı işlem kimliği (op, PR #121) AYNI transaction'da denetlenir.
+// Aynı request_id + aynı içerik → mevcut kayıt; farklı içerik → OP_CONFLICT. op aynı kurallarla.
 export async function saveCashEvent(fields, { op = null } = {}) {
   const d = await openDB(),
     rec = newRecord(fields);
@@ -1631,14 +1638,24 @@ export async function saveCashEvent(fields, { op = null } = {}) {
           }),
         );
     };
-    if (op) {
+    const viaOp = () => {
+      if (!op) return write();
       const g = t.objectStore("meta").get(OP + op.id);
       g.onsuccess = () => {
         const st = opDecide(t, g, op, (r) => { if (r) existing = r; else write(); });
         if (st === "conflict") { error = opConflict(g.result.value); t.abort(); return; }
         if (st === "new") write();
       };
-    } else write();
+    };
+    if (fields.request_id) {
+      const q = t.objectStore("cash_records").getAll();
+      q.onsuccess = () => {
+        const old = q.result.find((x) => !x.deleted_at && x.request_id === fields.request_id) || null;
+        if (old && !sameCollection(old, fields)) { error = Object.assign(Error("Aynı kaynak kimliğiyle farklı tahsilat kayıtlı — yazılmadı"), { code: "OP_CONFLICT", old }); t.abort(); return; }
+        if (old) { existing = old; return; }
+        viaOp();
+      };
+    } else viaOp();
     t.oncomplete = () => res(existing ? { ...existing, _existing: true } : rec);
     t.onerror = t.onabort = () => rej(error || t.error);
   });
