@@ -1,6 +1,6 @@
 # GERÇEK geri dönüş testi: v3.9.05 ile veri üret → AYNI adreste dosyaları v3.9.04 (canlıdaki, 1eaebf1) ile değiştir →
 # tarayıcı güncellemesi → eski kodun yeni veriyle davranışı; sonra yeniden v3.9.05'e ileri dönüş. (Test verisi, yerel sunucu.)
-import os, sys, shutil, subprocess, socket, time, tempfile, json, io, tarfile
+import re, os, sys, shutil, subprocess, socket, time, tempfile, json, io, tarfile
 from playwright.sync_api import sync_playwright
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OLD_REF = os.environ.get("OLD_REF", "1eaebf1")
@@ -95,7 +95,8 @@ try:
         # 3) ileri dönüş: tekrar v3.9.05
         print("3) Yeniden v3.9.05 (ileri dönüş)")
         put_new(); v2, c3 = switch(pg, "ileri dönüş sonrası")
-        check("v3.9.05" in v2 and not any("denetim-1" in c for c in c3), f"yeni sürüm geri geldi, eski önbellek karışmadı ({v2})")
+        NEWV = re.search(r'APP_VERSION = "SAHAPRO SOLO (v[^"]+)"', open(os.path.join(ROOT, "js/core.js"), encoding="utf-8").read()).group(1)  # test edilen dalın sürümü (sabit yazılmaz)
+        check(NEWV in v2 and not any("denetim-1" in c for c in c3), f"yeni sürüm geri geldi, eski önbellek karışmadı ({v2})")
         r = pg.evaluate(f"""async()=>{{const db=await import('./js/db.js');const ic=await import('./js/integrity-ui.js');const w=await db.get('work_records','{made['w2']}');
           const issues=(await ic.runIntegrity(db)).issues;return {{slip:issues.some(x=>x.code==='slip-changed'),sahte:(await db.listActive('work_records')).some(x=>x.driver_entry_id==='sahte-1'),errs:issues.filter(x=>x.sev==='error').map(x=>x.code)}}}}""")
         check(r["slip"], "ileri dönüşte: eski kodla yapılan imza sonrası değişiklik Veri Sağlığı'nda görünüyor")
