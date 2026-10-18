@@ -178,12 +178,20 @@ async function dashboard(ctx) {
       <button class="iconbtn" data-go="#/ayarlar" aria-label="Ayarlar">⚙</button>
     </div>
 
-    <section class="command-hero" aria-label="Operasyon merkezi">
-      <div class="hero-eyebrow">MURATOĞLU HAFRİYAT · OPERASYON MERKEZİ</div>
-      <h2>Sahadaki iş,<br><span>yönetimde netlik.</span></h2>
-      <p>İşleri kaydedin, fişleri hazırlayın, günün kontrolünü tamamlayın.</p>
-      <div class="hero-actions"><button class="btn primary" data-go="#/isler/new">Yeni İş Kaydı</button><button class="btn" data-go="#/gunsonu">Gün Sonu Kontrol</button></div>
-      <div class="hero-foot">${trDate(today)} · Veriler bu cihazda saklanır</div>
+    <section class="card assist-hero" aria-label="Akıllı asistan" data-assist-hero>
+      <h2 style="margin:0 0 2px;font-size:20px">Ne yapmak istiyorsunuz?</h2>
+      <div class="small muted" style="margin-bottom:8px">Yazın veya söyleyin — asistan kontrol kartı hazırlar, siz onaylamadan kayıt yazılmaz.</div>
+      <textarea data-hero-msg rows="2" placeholder="Örn: 34 KM 101 Kaya İnşaat 4 sefer moloz · Kaya'dan 20 bin tahsil ettim" style="width:100%;font-size:16px"></textarea>
+      <button class="btn primary block" data-hero-go style="margin-top:8px">🤖 Asistana gönder</button>
+      <div class="assist-chips" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:8px">
+        <button class="btn sm" data-go="#/akilli-asistan?yapistir=1">📋 Mesaj yapıştır</button>
+        <button class="btn sm" data-go="#/akilli-asistan?mic=1">🎤 Sesle anlat</button>
+        <button class="btn sm" data-go="#/akilli-asistan?foto=1">📷 Fiş / fotoğraf</button>
+        <button class="btn sm" data-go="#/isler/new">⚒ İş ekle</button>
+        <button class="btn sm" data-go="#/finans/kasa/new">💰 Tahsilat gir</button>
+        <button class="btn sm" data-go="#/akilli-asistan/soru">📊 Rapor sor</button>
+      </div>
+      <div class="tiny muted" style="margin-top:6px">${navigator.onLine ? "Asistan, gönderdiğinizde Gemini'ye bağlanır (günlük sınır geçerli). Formlar ve kayıtlar internetsiz de çalışır." : "Çevrimdışı: yazdığınız metin asistanda bekler; Gemini için internet gerekir. Formlar ve kayıtlar internetsiz çalışır."}</div>
     </section>
 
     <div data-brief style="margin-top:12px"></div>
@@ -279,6 +287,13 @@ async function dashboard(ctx) {
       <button class="btn grow" data-go="#/yonetici">📊 Yönetici</button>
     </div>`;
 
+  // Ana ekrandaki asistan alanı: metin asistana taşınır ve oradan gönderilir (ekran açılışında yapay zekâ çağrısı yok)
+  qs("[data-hero-go]", root)?.addEventListener("click", () => {
+    const t = qs("[data-hero-msg]", root).value.trim();
+    if (!t) { qs("[data-hero-msg]", root).focus(); return toast("Ne yapmak istediğinizi yazın ya da 🎤 Sesle anlat'a dokunun", "err"); }
+    try { sessionStorage.setItem("sp_hero_msg", t); } catch (e) {}
+    location.hash = "#/akilli-asistan?hazir=1";
+  });
   {
     const bh = qs("[data-brief]", root);
     if (bh) (await import("./brief.js")).briefCard({ ...ctx, toast }, bh, data).catch((e) => console.warn(e));
@@ -793,7 +808,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.9.07")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.9.08")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
