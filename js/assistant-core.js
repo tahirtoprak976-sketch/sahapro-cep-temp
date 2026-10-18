@@ -639,6 +639,17 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.issues = issues;
     r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt);
     r.fuelAllowance = fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
+    // Alan kaynakları (kartta görünür): mesajdan / kayıtlı takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından
+    {
+      const cName = r.customer_id ? byId(customers, r.customer_id)?.name : r.new_customer;
+      const viaAlias = (type, id) => live(d, "aliases").some((a) => a.active !== false && a.target_type === type && a.target_id === id && inMessage(a.alias, message));
+      const vName = r.vehicle_id ? byId(vehicles, r.vehicle_id) : null;
+      r.src = {
+        customer: !cName ? null : fromDriver ? "şoför ekranından" : r.hinted ? "geçmiş işlerden tahmin — doğrulayın" : inMessage(cName, message) || (r.customer_id && customerSpans(message, [byId(customers, r.customer_id)], []).length) ? "mesajdan" : r.customer_id && viaAlias("customer", r.customer_id) ? "kayıtlı takma addan" : "mesajda açık yazmıyor — doğrulayın",
+        vehicle: !vName ? null : fromDriver ? "şoför ekranından" : vehicleNamed(d, vName, message) || inMessage(vName.name, message) ? "mesajdan" : viaAlias("vehicle", vName.id) ? "kayıtlı takma addan" : "mesajda açık yazmıyor (zimmet / bağlam) — doğrulayın",
+        price: r.unit_price ? "mesajdan" : r.priceInfo?.summary ? "fiyat listesinden" : null,
+      };
+    }
     out.works.push(r);
   }
 

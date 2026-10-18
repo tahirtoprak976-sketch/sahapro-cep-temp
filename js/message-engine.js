@@ -36,6 +36,7 @@ const units = {
   l: "L",
   sefer: "Sefer",
   saat: "Saat",
+  sa: "Saat", // WhatsApp kısaltması: "3 sa" (yalnız sayıdan sonra birim olarak)
   yevmiye: "Yevmiye",
   yovmiye: "Yevmiye",
   yovmiye: "Yevmiye",
@@ -300,7 +301,7 @@ function collapseUnit(u) {
 function nearQuantities(text, offset = 0, mola = []) {
   const out = [],
     re =
-      /(?<![\p{L}\p{N}])((?:\d+|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s+buçuk|yarım|\d+(?:[.,]\d+)?|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(?:tane\s*)?(s+e+f+e+r+|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l|kamyonet|kamyon|tır|tir)(?![\p{L}])/giu;
+      /(?<![\p{L}\p{N}])((?:\d+|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s+buçuk|yarım|\d+(?:[.,]\d+)?|bir|iki|üç|dört|beş|altı|yedi|sekiz|dokuz|on)\s*(?:tane\s*)?(s+e+f+e+r+|saat|sa|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l|kamyonet|kamyon|tır|tir)(?![\p{L}])/giu;
   let m;
   while ((m = re.exec(text))) {
     const before = clean(text.slice(Math.max(0, m.index - 25), m.index));
@@ -324,7 +325,7 @@ function nearQuantities(text, offset = 0, mola = []) {
         value: v,
         unit: units[collapseUnit(clean(m[2]))] || "Sefer",
         vehicleCount:
-          !/^(?:s+e+f+e+r+|saat|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l)$/i.test(m[2]),
+          !/^(?:s+e+f+e+r+|saat|sa|yevmiye|yovmiye|ton|m3|m³|adet|litre|lt|l)$/i.test(m[2]),
         span: { start: offset + m.index, end: offset + m.index + m[0].length },
       });
   }
@@ -451,8 +452,10 @@ function phraseMatch(text, phrase, fold = false) {
     .split(/\s+/)
     .map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("\\s+");
+  // Türkçe ek payı: "Kaya İnşaat'a", "Leda Yapı'dan", "inşaata" (yalnız ad sonuna gelen hal / iyelik ekleri)
+  const SUFFIX = "(?:['’]?(?:y?[ae]|y?[ıiuü]|n?[ıiuü]n|[dt][ae]n?|[dt][ae]ki|l[ae]r\\p{L}{0,4}))?";
   const re = new RegExp(
-    "(?<![\\p{L}\\p{N}])" + pattern + "(?![\\p{L}\\p{N}])",
+    "(?<![\\p{L}\\p{N}])" + pattern + SUFFIX + "(?![\\p{L}\\p{N}])",
     "u",
   );
   return re.exec(prep(text));
@@ -544,6 +547,15 @@ export function cardCandidates(text, store, d, tokens = tokenize(text)) {
         add(hit[0], "first_word", evidence(text, t.span.start, t.span.end, "first_word"));
     }
   if (out.length) return out.slice(0, 5);
+  // Müşteri adının ilk sözcüğü ("Kaya'ya" → "Kaya İnşaat"): yalnız TEK kartta geçiyorsa ve yaygın kelime değilse; aday olarak işaretlenir
+  if (store === "customers")
+    for (const t of tokens.filter((t) => t.type === "word")) {
+      const w = clean(String(t.raw).split(/['’]/)[0]);
+      if (w.length < 4 || /^(inşaat|insaat|yapı|yapi|hafriyat|nakliyat|beton|taahhüt|grup|bey|abi|usta)$/.test(w)) continue;
+      const hit = cards.filter((r) => clean(r.name || "").split(/\s+/)[0] === w || (String(t.raw).includes("'") || String(t.raw).includes("’") ? false : new RegExp("^" + clean(r.name || "").split(/\s+/)[0] + "(?:y?[ae]|n?[ıiuü]n|[dt][ae]n?)$", "u").test(w) && clean(r.name || "").split(/\s+/)[0].length >= 4));
+      if (hit.length === 1)
+        add(hit[0], "first_word", evidence(text, t.span.start, t.span.end, "first_word"));
+    }
   if (out.length) return out.slice(0, 5);
   // Numeric identifiers are never fuzzy matched. Word suggestions require an explicit choice.
   for (const t of tokens.filter(
