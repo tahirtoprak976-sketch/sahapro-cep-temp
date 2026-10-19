@@ -29,6 +29,7 @@ export async function screen(ctx) {
     ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Önce Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
     <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/danisman">🎓 Yönetim Danışmanı — araç / müşteri karnesi ve öneriler</button>
+    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
     <button class="btn block" style="margin-bottom:8px" data-go="#/teklif-hesap">🧮 Teklif Asistanı — kaça vermeliyim?</button>
     ${ctx.query?.wa ? "" : '<button class="btn block" style="margin-bottom:8px" data-go="#/whatsapp-toplu">💬 WhatsApp Grubu — günün tüm mesajlarını toplu işle</button>'}
     <div class="card">

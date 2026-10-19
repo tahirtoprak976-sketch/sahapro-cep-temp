@@ -25,4 +25,4 @@ Fiyatsız iş miktarı değişebilir; önizleme tutar hesaplanamadığını aç�
 - Gerçek Gemini ve fiziksel telefon denenmedi. Gerçek kullanıcı verisi kullanılmadı.
 
 ## Bağımlılık ve yayın
-Bu dal PR #141'in son commit'i 45c9ef3 üzerine kurulur. İnceleme tabanı codex/solo-v3922-asistan-tarih olmalıdır. #141 birleşmeden bu dal doğrudan gh-pages'e yayınlanmamalıdır; birleşme sonrası taban/çakışmalar ve nihai kaynak doğrulanır. Canlıya bu teslimde dokunulmaz. DB şeması v5 olarak korunur.
+İlk işlem dalı PR #141 üzerine kurulmuştur. Nihai v3.9.24 birleşik teslimi hem #141 hem #142 değişikliklerini aynı kaynakta test ederek tek PR ve tek yayında birleştirir. DB şeması v5 olarak korunur.
