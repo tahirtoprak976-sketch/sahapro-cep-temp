@@ -112,11 +112,17 @@ async function detail(ctx, id) {
     </div>
     ${rep.trips ? `<div class="card" data-est>
       <div class="section-title" style="margin:0 0 6px">${M ? "Tahmin ve ölçüm" : "Tahmini yerinde m³"}</div>
-      <div style="overflow-x:auto"><table class="small" style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Araç</th><th style="text-align:left">Malzeme</th><th style="text-align:right">Sefer</th><th style="text-align:right">≈ m³</th></tr></thead><tbody>
-        ${rep.groups.map((g) => `<tr style="border-top:1px solid var(--line,#e3e7ee)"><td style="padding:4px 6px 4px 0">${esc(g.vehicle)}</td><td>${esc(g.materialName)}</td><td style="text-align:right">${n(g.trips)}</td><td style="text-align:right">${g.unknown === g.trips ? "—" : n(g.m3)}</td></tr>`).join("")}
+      <div style="overflow-x:auto"><table class="small" style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Araç</th><th style="text-align:right">Sefer</th><th style="text-align:right">Fişli</th><th style="text-align:right">Sefer başı</th><th style="text-align:right">≈ m³</th></tr></thead><tbody>
+        ${rep.groups.map((g) => `<tr style="border-top:1px solid var(--line,#e3e7ee)"><td style="padding:4px 6px 4px 0">${esc(g.vehicle)}<div class="tiny muted">${esc(g.materialName)}</div></td><td style="text-align:right">${n(g.trips)}</td><td style="text-align:right">${n(g.kantar || 0)}</td><td style="text-align:right">${g.perTrip == null ? "—" : n(g.perTrip)}</td><td style="text-align:right">${g.unknown === g.trips ? "—" : n(g.m3)}</td></tr>`).join("")}
       </tbody></table></div>
       <div style="margin-top:6px"><b>Toplam ≈ ${n(rep.est)} m³ yerinde</b> <span class="muted small">(tahmini)</span></div>
       <div class="muted small">${esc(srcLine)}</div>
+      ${rep.suspect ? notice("warn", `${rep.suspect} kayıtta fiş tonu bir sefer için olağan dışı (5 tonun altı ya da 45 tonun üstü). İşi açıp tonu kontrol edin; yanlış ton tahmini bozar.`) : ""}
+      <details class="small" style="margin-top:6px"><summary>Nasıl hesaplandı?</summary><div class="muted" style="margin-top:4px;line-height:1.5">
+        • <b>Fişli sefer:</b> fişteki net ton ÷ malzemenin yerinde yoğunluğu (toprak ≈ 1,95 t/m³). Örnek: 21 ton ÷ 1,95 ≈ 10,8 m³.<br>
+        • Bir kayıtta birden çok sefer ve tek fiş tonu varsa, o ton aracın sefer başı yüküne göre kaç sefere denk geliyorsa o kadar sefer fişli sayılır (genelde 1). Kalan seferler aynı aracın fişli seferlerinin ortalama tonuyla hesaplanır.<br>
+        • <b>Fişi hiç olmayan araç:</b> önce önceki işlerden öğrenilen katsayı, o da yoksa araç kartındaki yük (ortalama yük ya da yasal net yük) ve kasa hacmi kullanılır.<br>
+        • Malzeme yoğunlukları Daha Fazla → Malzeme Katsayıları'ndan düzeltilebilir. Ölçüm girilince sistem farkı öğrenir.</div></details>
       ${rep.src.yok ? `<div class="muted small">Hesaplanamayan seferler: araç kartında yük / kasa bilgisi yok ya da malzemenin (moloz) yerinde yoğunluğu bilinmiyor.</div>` : ""}
       ${rep.perTrip ? `<div class="small" style="margin-top:4px">Sefer başı ≈ ${n(rep.perTrip)} m³${rep.perHour ? ` · makine saatinde ≈ ${n(rep.perHour)} m³` : ""}${M ? " (ölçüme göre)" : ""}</div>` : ""}
       ${M && rep.ratio ? `<div class="small">Ölçüm / tahmin: <b>${n(rep.ratio * 100)}%</b></div>` : ""}
