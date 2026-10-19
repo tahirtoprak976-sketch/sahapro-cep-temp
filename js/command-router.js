@@ -40,15 +40,37 @@ function findPersonnel(text, d) {
 // Tarih ifadesi → [from, to]
 export function dateWords(text, today) {
   const f = fold(text);
-  if (/\bbugün|bugun\b/.test(f)) return [today, today, "bugün"];
-  if (/\bevvelsi gün|evvelki gün|önceki gün\b/.test(f)) return [addDays(today, -2), addDays(today, -2), "evvelsi gün"];
-  if (/\bdün|dun\b|dünkü|dunku/.test(f)) return [addDays(today, -1), addDays(today, -1), "dün"];
-  if (/geçen hafta|gecen hafta/.test(f)) return [addDays(today, -13), addDays(today, -7), "geçen hafta"];
-  if (/bu hafta|son 7 gün|son yedi gün/.test(f)) return [addDays(today, -6), today, "son 7 gün"];
-  const m = f.match(/\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b/);
-  if (m) { const y = m[3] ? (m[3].length === 2 ? "20" + m[3] : m[3]) : today.slice(0, 4); const s = `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; return [s, s, s.split("-").reverse().join(".")]; }
+  const exact = (date) => {
+    const dt = new Date(date + "T12:00:00Z");
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && Number.isFinite(dt.getTime()) && dt.toISOString().slice(0, 10) === date;
+  };
+  if (!exact(today)) return null;
+  const isoMatch = f.match(/(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/);
+  const trMatch = f.match(/(?<!\d)(\d{1,2})[./](\d{1,2})(?:[./](\d{4}|\d{2}))?(?![\d./])/);
+  if (isoMatch || trMatch) {
+    const m = isoMatch || trMatch;
+    const y = isoMatch ? m[1] : m[3] ? (m[3].length === 2 ? "20" + m[3] : m[3]) : today.slice(0, 4);
+    const date = `${y}-${m[2].padStart(2, "0")}-${(isoMatch ? m[3] : m[1]).padStart(2, "0")}`;
+    return exact(date) ? [date, date, date.split("-").reverse().join(".")] : [null, null, "Geçersiz tarih — gün, ay ve yılı kontrol edin"];
+  }
+  const word = (pattern) => new RegExp(`(?<![\\p{L}])(?:${pattern})(?![\\p{L}])`, "u").test(f);
+  if (word("bugün|bugun|bugünkü|bugunku")) return [today, today, "bugün"];
+  if (word("evvelsi gün|evvelki gün|önceki gün")) return [addDays(today, -2), addDays(today, -2), "evvelsi gün"];
+  if (word("dün|dun|dünkü|dunku")) return [addDays(today, -1), addDays(today, -1), "dün"];
+  if (word("son (?:7|yedi) (?:gün|gun)(?:ün|un)?")) return [addDays(today, -6), today, "son 7 gün"];
+  const monday = addDays(today, -((new Date(today + "T12:00:00Z").getUTCDay() + 6) % 7));
+  if (word("geçen hafta|gecen hafta|geçen haftanın|gecen haftanin")) return [addDays(monday, -7), addDays(monday, -1), "geçen hafta"];
+  if (word("bu hafta|bu haftanın|bu haftanin")) return [monday, today, "bu hafta (bugüne kadar)"];
+  const monthStart = today.slice(0, 8) + "01";
+  if (word("geçen ay|gecen ay|geçen ayın|gecen ayin")) {
+    const end = addDays(monthStart, -1);
+    return [end.slice(0, 8) + "01", end, "geçen ay"];
+  }
+  if (word("bu ay|bu ayın|bu ayin")) return [monthStart, today, "bu ay (bugüne kadar)"];
+  if (word("bu yıl|bu yil|bu yılın|bu yilin")) return [today.slice(0, 4) + "-01-01", today, "bu yıl (bugüne kadar)"];
   return null;
 }
+
 const SCREEN_WORDS = [
   [/eksik fiyat|fiyat(ı|i)? eksik|fiyatsız|fiyatsiz/, "#/isler?f=fiyatsiz", "Fiyatı eksik işler"],
   [/fişsiz|fissiz|fişi olmayan/, "#/isler?f=noslip", "Fişsiz işler"],
@@ -74,6 +96,9 @@ export function routeCommand(text, d, today, ctx = {}) {
   const raw = String(text || "").trim();
   if (!raw || raw.length > 140 || raw.includes("\n")) return null;
   const f = fold(raw);
+  const requestedDate = dateWords(raw, today);
+  if (requestedDate && !requestedDate[0] && (OPEN.test(f) || EDIT.test(f)))
+    return { kind: "choose", label: requestedDate[2], items: [] };
   // "Bu kayda fiş fotoğrafı ekle": son açılan kayıt açılır, fotoğraf orada kullanıcıyla eklenir
   if (/(bu|son|şu) (kayd|işe|ise)|kayda (fiş|foto)/.test(f) && /(fiş|fis|foto|resim)/.test(f) && /ekle/.test(f))
     return ctx.last_record ? { kind: "open", hash: ctx.last_record.hash, label: "Son açtığınız kayıt — fotoğrafı oradaki 📷 alanından ekleyin" } : { kind: "choose", label: "Hangi kayıt? Önce kaydı açın, sonra yeniden söyleyin", items: [{ hash: "#/isler", label: "İş kayıtları" }] };
