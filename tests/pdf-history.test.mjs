@@ -14,7 +14,7 @@ assert.equal(fields(r,d,source).fields.price_snapshot,null,'no current price for
 assert.equal(norm({rows:[{...input,date:null}]},d).rows[0].date,'');
 assert.throws(()=>fields({...r,date:'2026-02-31'},d,source));assert.throws(()=>fields({...r,unit_price:100,kdv_rate:null},d,source));
 assert.equal(fields({...r,unit_price:100,kdv_rate:0,kdv_included:false},d,source).fields.price_snapshot.amount,200);
-assert.throws(()=>fields({...r,quantity:-2},d,source));assert.throws(()=>fields({...r,page:null},d,source));assert.throws(()=>fields({...r,kind:'summary'},d,source));
+assert.throws(()=>fields({...r,quantity:-2},d,source));assert.throws(()=>fields({...r,page:null},d,source));assert.throws(()=>fields({...r,page:1.5},d,source));assert.throws(()=>fields({...r,kind:'summary'},d,source));
 const ambiguous={...d,customers:[...d.customers,{id:'C2',name:'Örnek İnşaat'}]};assert.equal(norm({rows:[input]},ambiguous).rows[0].customer_id,'');
 const fuel={...r,kind:'fuel',liters:210,fuel_source:''};assert.throws(()=>fields(fuel,d,source));assert.throws(()=>fields({...fuel,fuel_source:'Müşteri Verdi',customer_id:''},d,source));
 assert.equal(fields({...fuel,fuel_source:'Şantiye'},d,source).fields.customer_id,null);

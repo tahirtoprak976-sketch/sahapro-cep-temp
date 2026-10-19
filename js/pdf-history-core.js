@@ -48,7 +48,7 @@ const liveId=(d,s,id)=>(d[s]||[]).some(x=>x.id===id&&isActive(x));
 export function pdfRowFields(r,d,source) {
  if(['quantity','liters','amount','unit_price','kdv_rate'].some(k=>r[k]!=null&&(!Number.isFinite(Number(r[k]))||Number(r[k])<0||Number(r[k])>1e12)))throw Error('Sayısal alan geçersiz veya sınırı aşıyor.');
  if(!['work','fuel','expense'].includes(r.kind))throw Error('Not ve özet satırları kaydedilmez.');
- if(!validPdfDate(r.date)||!r.page||!r.quote)throw Error('Gerçek tarih, kaynak sayfa ve satır metni gerekli.');
+ if(!validPdfDate(r.date)||!Number.isInteger(r.page)||r.page<1||r.page>10000||!String(r.quote||'').trim())throw Error('Gerçek tarih, kaynak sayfa ve satır metni gerekli.');
  if(!liveId(d,'vehicles',r.vehicle_id))throw Error('Araç seçin.');
  if(r.personnel_id&&!liveId(d,'personnel',r.personnel_id))throw Error('Personel bulunamadı.');
  const base={date:r.date,vehicle_id:r.vehicle_id,personnel_id:r.personnel_id||null,description:r.description||r.quote,source_document_id:source.document_id,source_pdf_hash:source.hash,source_pdf_row:r.id,source_page:r.page,source_quote:r.quote};
