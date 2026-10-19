@@ -84,8 +84,10 @@ with sync_playwright() as p:
     check(abs(bal() - b0 - 8500) < 0.01, f"cariye yalnız ekstralar yazıldı (+8.500) ({bal() - b0})")
     # 4) İş ekranı: tahmin
     pg.goto(U + f"index.html#/is-sozlesmesi/{sid}"); pg.wait_for_timeout(2500)
+    pg.click("[data-jt='kayit']"); pg.wait_for_timeout(300)
     est = pg.inner_text("[data-est]")
     check("kantar fişli" in est and "kantar ortalamasıyla" in est and "Toplam ≈" in est, f"tahmini m³ kaynağıyla ({est[est.find('Toplam'):][:120]!r})")
+    pg.click("[data-jt='soz']"); pg.wait_for_timeout(300)
     check("cariye yazılmaz" in pg.inner_text("[data-money]"), "tahmini hakediş cariye yazılmıyor")
     ov = ev("({sw:document.documentElement.scrollWidth,w:document.documentElement.clientWidth})")
     check(ov["sw"] <= ov["w"], f"iş ekranında 360 px taşma yok ({ov})")
@@ -110,6 +112,7 @@ with sync_playwright() as p:
     check(not integ, f"Veri Sağlığı hata yok ({integ})")
     # 6) Katsayı öğren + kapat
     pg.goto(U + f"index.html#/is-sozlesmesi/{sid}"); pg.wait_for_timeout(2500)
+    pg.click("[data-jt='soz']"); pg.wait_for_timeout(300)
     check(pg.query_selector("[data-calsave]") is not None, "ölçümden sonra katsayı önerisi görünüyor")
     pg.click("[data-calsave]"); pg.wait_for_timeout(2000)
     cal = ev(f"async()=>(await (await import('./js/db.js')).metaGet('haul_calib'))")

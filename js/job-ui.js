@@ -4,6 +4,8 @@ import { qs, qsa, esc, appbar, toast, notice, badge, li, kv, emptyState, confirm
 import { todayStr, trDate, fmtTL, isActive, kdvRateOf } from "./core.js";
 import * as J from "./job-core.js";
 import { MATERIALS } from "./haul-core.js";
+import { jobCosts } from "./job-cost.js";
+import { dashboardHtml, bindDashboard } from "./job-dash.js";
 
 const n = (x) => Number(x || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
 const SRC = { kantar: "kantar fişli", "kantar-ort": "aynı işin kantar ortalamasıyla", ogrenilmis: "önceki işlerden öğrenilen katsayıyla", kasa: "yük / kasa tahminiyle", yok: "hesaplanamadı" };
@@ -23,12 +25,14 @@ async function list(ctx) {
   const d = await db.dumpAll(), today = todayStr();
   const cust = (id) => (d.customers || []).find((c) => c.id === id)?.name || "—";
   const cid = query.customer_id || "";
+  const fuelRef = await db.metaGet("fuel_ref_price");
   const jobs = (d.sites || []).filter((s) => isActive(s) && J.dealOf(s) && (!cid || s.customer_id === cid));
   const row = (s) => {
     const D = J.dealOf(s), rep = J.jobReport(d, s, { today });
     const info = D.basis === "m³" ? (rep.measured ? `ölçülen ${n(rep.measured)} m³` : rep.est ? `tahmini ≈ ${n(rep.est)} m³` : "henüz sefer yok") : `${n(rep.trips)} sefer`;
     const price = D.basis === "Götürü" ? `götürü ${fmtTL(D.price)} ₺` : `${D.basis === "m³" ? "m³" : "sefer"} başı ${fmtTL(D.price)} ₺`;
-    return li({ ic: "📐", href: "#/is-sozlesmesi/" + s.id, t1: esc(s.name), t2: esc(`${cust(s.customer_id)} · ${price} · ${info}`), badgeHtml: statusBadge(D.status) });
+    let pr = ""; try { const c = jobCosts(d, s, rep, { today, fuelRef }); if (c.income > 0) pr = ` · kâr ≈ ${c.profit < 0 ? "−" : ""}${fmtTL(Math.abs(c.profit))} ₺`; } catch { /* yok */ }
+    return li({ ic: "📐", href: "#/is-sozlesmesi/" + s.id, t1: esc(s.name), t2: esc(`${cust(s.customer_id)} · ${price} · ${info}${pr}`), badgeHtml: statusBadge(D.status) });
   };
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
   root.innerHTML = appbar("İş Sözleşmeleri", "Götürü, metreküp ya da sefer anlaşmaları") + `
@@ -78,7 +82,10 @@ async function detail(ctx, id) {
   const M = D.measurement, isM3 = D.basis === "m³", isLump = D.basis === "Götürü", C = D.charge;
   const srcLine = Object.entries(rep.src).filter(([, v]) => v).map(([k, v]) => `${n(v)} sefer ${SRC[k]}`).join(" · ");
   const money = rep.money;
+  const costs = jobCosts(d, site, rep, { today, fuelRef: await db.metaGet("fuel_ref_price") });
   root.innerHTML = appbar(site.name, `${custName} · iş sözleşmesi`, { right: statusBadge(D.status) }) + `
+    <div class="tabs" data-jobtabs style="margin:10px 0"><button class="chip on" data-jt="ozet">ÖZET</button><button class="chip" data-jt="kayit">SEFER VE m³</button><button class="chip" data-jt="soz">SÖZLEŞME</button></div>
+    <div data-pane="ozet">${dashboardHtml(costs, rep, D)}</div>
     <div class="card" data-deal>
       ${kv("Anlaşma", isLump ? "Götürü (toplam bedel)" : isM3 ? "Metreküp (yerinde, ortak ölçümcü)" : "Sefer başı")}
       ${kv(isLump ? "Sözleşme bedeli" : "Birim fiyat", `${fmtTL(D.price)} ₺${isLump ? "" : " / " + (isM3 ? "m³" : "sefer")} · KDV ${D.kdv_included ? "dahil" : "hariç"} %${D.kdv_rate}`)}
@@ -165,6 +172,23 @@ async function detail(ctx, id) {
       ${(isM3 ? D.status === J.STATUS.MEASURED : D.status === J.STATUS.OPEN) ? `<button class="btn" data-close>İşi kapat</button>` : ""}
       <button class="btn" data-go="#/santiyeler/${esc(id)}">Şantiye kartı</button>
     </div>`;
+  // Sekmeler: Özet (pano) · Sefer ve m³ · Sözleşme. Mevcut bölümler sekmelere taşınır; seçim oturumda hatırlanır.
+  {
+    const panes = { kayit: ["[data-jobsum]", "[data-est]", "[data-summary]", "[data-scrap]"], soz: ["[data-deal]", "[data-charge]", "[data-money]", "[data-measure]", "[data-calib]"] };
+    for (const [k, sels] of Object.entries(panes)) {
+      const pane = document.createElement("div"); pane.dataset.pane = k;
+      const firstEl = qs(sels.map((x) => x).join(","), root);
+      (firstEl?.parentNode || root).insertBefore(pane, firstEl || null);
+      for (const sel of sels) for (const el of qsa(sel, root)) if (!el.closest("[data-pane]") || el.closest("[data-pane]") === pane) pane.appendChild(el);
+    }
+    // ödemeler kartı (adsız) sözleşme sekmesine
+    for (const el of [...root.children]) if (el.classList?.contains("card") && !el.closest("[data-pane]") && !el.matches("[data-pane]")) qs("[data-pane=soz]", root).appendChild(el);
+    let tab = "ozet"; try { tab = sessionStorage.getItem("sp_jobtab") || "ozet"; } catch { /* yok */ }
+    const show = (t) => { for (const p of qsa("[data-pane]", root)) p.hidden = p.dataset.pane !== t; for (const b of qsa("[data-jt]", root)) b.classList.toggle("on", b.dataset.jt === t); try { sessionStorage.setItem("sp_jobtab", t); } catch { /* yok */ } };
+    for (const b of qsa("[data-jt]", root)) b.addEventListener("click", () => show(b.dataset.jt));
+    show(qs(`[data-pane="${tab}"]`, root) ? tab : "ozet");
+    bindDashboard(root, costs);
+  }
   // Kapanmış / ölçülmüş işte katsayı önerisi
   if (M) {
     const props = J.calibrationProposal(rep);
