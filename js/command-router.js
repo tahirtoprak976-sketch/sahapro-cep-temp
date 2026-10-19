@@ -123,6 +123,9 @@ export function routeCommand(text, d, today, ctx = {}) {
   const raw = String(text || "").trim();
   if (!raw || raw.length > 140 || raw.includes("\n")) return null;
   const f = fold(raw);
+  // Miktarı belirsiz düzeltme komutu modelin yeniden yorumuna bırakılmaz.
+  if (/\d.*(?:saat|sa|sefer|yevmiye|ton|adet|m³)\s+(?:yap|düzelt|duzelt|değiştir|degistir|güncelle|guncelle)[.!?]?$/u.test(f) && !parseWorkQuantityChange(raw))
+    return { kind:'choose', label:'Miktar net değil. Tek pozitif sayı yazın; örneğin 1,5 saat yap. Bin için 1000 yazın.', items:[] };
   const requestedDate = dateWords(raw, today);
   if (requestedDate && !requestedDate[0] && (OPEN.test(f) || EDIT.test(f) || parseWorkQuantityChange(raw)))
     return { kind: "choose", label: requestedDate[2], items: [] };

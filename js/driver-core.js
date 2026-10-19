@@ -9,7 +9,17 @@ const b64u = (bytes) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8
 const unb64u = (s) => { const t = atob(String(s).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((String(s).length + 3) % 4)); const out = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) out[i] = t.charCodeAt(i); return out; };
 async function pipe(bytes, stream) { return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer()); }
 export async function pack(obj) { return b64u(await pipe(new TextEncoder().encode(JSON.stringify(obj)), new CompressionStream("deflate-raw"))); }
-export async function unpack(code) { return JSON.parse(new TextDecoder().decode(await pipe(unb64u(code), new DecompressionStream("deflate-raw")))); }
+// İmza kontrolünden ÖNCE kod açılır: sıkıştırma bombası ve aşırı paket sayısı burada kesilir.
+export const DRIVER_CODE_LIMIT=1024*1024,DRIVER_JSON_LIMIT=2*1024*1024;
+const driverLimit=()=>Object.assign(Error('Şoför kodu çok büyük; mesajları daha küçük gruplar halinde gönderin.'),{code:'DRIVER_LIMIT'});
+export async function unpack(code) {
+  if(typeof code!=='string'||code.length>DRIVER_CODE_LIMIT)throw driverLimit();
+  const reader=new Blob([unb64u(code)]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const parts=[];let size=0;
+  try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>DRIVER_JSON_LIMIT){await reader.cancel().catch(()=>{});throw driverLimit();}parts.push(value);}}
+  finally{reader.releaseLock();}
+  return JSON.parse(new TextDecoder().decode(await new Blob(parts).arrayBuffer()));
+}
 
 export const DRIVER_TYPES = ["Hafriyat Nakliye", "Moloz Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Çöp Nakliye", "Makine Çalışması", "Kazı", "Yükleme"].filter((t) => WORK_TYPES.includes(t));
 export const DRIVER_UNITS = ["Sefer", "Saat", "Ton", "Yevmiye"];
@@ -96,7 +106,13 @@ export function decodeStrokes(sv) {
 const CODE = /SP1:([A-Za-z0-9_-]{8,})(?:\.([A-Za-z0-9_-]{16,}))?/g;
 export async function extractPayloads(text) {
   const out = [];
-  for (const m of String(text || "").matchAll(CODE)) { try { const p = await unpack(m[1]); if (p?.v === 1 && Array.isArray(p.e)) out.push({ ...p, _code: m[1], _sig: m[2] || null }); } catch (e) { /* bozuk kod: atla */ } }
+  const input=String(text||'');if(input.length>2*1024*1024)throw driverLimit();let count=0,total=0;
+  for(const m of input.matchAll(CODE)){
+    if(++count>200)throw driverLimit();
+    try{const p=await unpack(m[1]);total+=JSON.stringify(p).length;if(total>8*1024*1024)throw driverLimit();
+      if(p?.v===1&&Array.isArray(p.e)&&p.e.length<=1000&&p.e.every(x=>x&&typeof x==='object'&&!Array.isArray(x)&&typeof x.id==='string'&&x.id))out.push({...p,_code:m[1],_sig:m[2]||null});
+    }catch(e){if(e.code==='DRIVER_LIMIT')throw e;/* bozuk kod: atla */}
+  }
   return out;
 }
 // Şoför mesajlarının okunur kısmı ve kod satırı çıkarılınca kalan serbest metin (Gemini'ye yalnız bu gider)

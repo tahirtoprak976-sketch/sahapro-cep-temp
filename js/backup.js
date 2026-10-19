@@ -57,35 +57,42 @@ export const PART_JSON_BUDGET = 120 * 1024 * 1024;
 const b64Len = (n) => Math.ceil(n / 3) * 4;
 export async function backupParts(db, { encrypted = true, budget = PART_JSON_BUDGET } = {}) {
   const head = await fullBackup(db, { encrypted, attachments: "none" });
-  const headLen = JSON.stringify(head).length;
-  if (headLen > budget) throw Error(`Kayıt verisi tek parçaya sığmıyor (${Math.round(headLen / 1048576)} MB). Lütfen bildirin.`);
-  const atts = (await db.getAll("attachments")).map(({ blob, ...m }) => ({ m, blob, est: b64Len(blob?.size || 0) + JSON.stringify(m).length + 32 }));
-  const groups = [[]];
-  let size = headLen;
-  for (const a of atts) {
-    if (a.est > budget - Math.min(1024 * 1024, budget / 10)) throw Error(`Tek dosya yedek parçasına sığmıyor: ${a.m.name || a.m.id}`);
-    if (size + a.est > budget && groups.at(-1).length) { groups.push([]); size = 2048; }
-    groups.at(-1).push(a);
-    size += a.est;
-  }
+  if(!Number.isSafeInteger(budget)||budget<1024||budget>PART_JSON_BUDGET)throw Error('Yedek parça bütçesi geçersiz');
+  const atts = (await db.getAll("attachments")).map(({ blob, ...m }) => ({ m, blob, est: b64Len(blob?.size || 0) + JSON.stringify({...m,base64:''}).length }));
   const set = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
-  const n = groups.length;
-  // Manifest (her parçada): ortak set kimliği, sıra/toplam, sınırın temeli, setin ve parçanın kayıt/ek sayıları.
-  // 1. parça ayrıca bütün eklerin dizinini taşır: hangi kaydın eki hangi parçada (ekleri gelmemiş kayıtlar işaretlenir).
   const records = Object.values(head.data || {}).reduce((k, rows) => k + (Array.isArray(rows) ? rows.length : 0), 0);
   const totals = { records, attachments: atts.length, attachment_bytes: atts.reduce((k, a) => k + (a.blob?.size || 0), 0) };
-  const index = groups.flatMap((g, i) => g.map((a) => [a.m.id, a.m.record_type, a.m.record_id, i + 1]));
+  const tail = { app:head.app,app_version:head.app_version,schema_version:head.schema_version,exported_at:head.exported_at,device_install_id:head.device_install_id,data:{},meta:[],attachments:[] };
+  // Manifest ve TÜM ek dizini de bütçenin içindedir. En büyük olası sıra/sayıları
+  // kullan: gerçek parça başlığı bu üst sınırdan büyük olamaz.
+  const maxParts=atts.length+1;
+  const manifest={set,no:maxParts,of:maxParts,created_at:head.exported_at,limit_basis:"açılmış JSON (karakter)",budget,totals,part_attachments:atts.length,part_attachment_bytes:totals.attachment_bytes};
+  const maxIndex=atts.map(a=>[a.m.id,a.m.record_type,a.m.record_id,maxParts]);
+  const firstBase=JSON.stringify({...head,part:{...manifest,index:maxIndex}}).length;
+  const tailBase=JSON.stringify({...tail,part:manifest}).length;
+  if(firstBase>budget)throw Error('Kayıt verisi ve ek dizini tek parçaya sığmıyor; daha büyük parça bütçesi gerekli.');
+  const groups=[[]];let size=firstBase;
+  for(const a of atts){
+    if(tailBase+a.est>budget)throw Error(`Tek dosya yedek parçasına sığmıyor: ${a.m.name||a.m.id}`);
+    const comma=groups.at(-1).length?1:0;
+    if(size+a.est+comma>budget){groups.push([]);size=tailBase;}
+    size+=a.est+(groups.at(-1).length?1:0);groups.at(-1).push(a);
+  }
+  const n=groups.length;
+  const index=groups.flatMap((g,i)=>g.map(a=>[a.m.id,a.m.record_type,a.m.record_id,i+1]));
   return {
     count: n, set,
     async *[Symbol.asyncIterator]() {
       for (let i = 0; i < n; i++) {
         const attachments = [];
         for (const a of groups[i]) attachments.push({ ...a.m, base64: await toB64(a.blob) });
-        yield { ...(i === 0 ? head : { app: head.app, app_version: head.app_version, schema_version: head.schema_version, exported_at: head.exported_at, device_install_id: head.device_install_id, data: {}, meta: [] }),
+        const part = { ...(i === 0 ? head : { app: head.app, app_version: head.app_version, schema_version: head.schema_version, exported_at: head.exported_at, device_install_id: head.device_install_id, data: {}, meta: [] }),
           attachments,
           part: { set, no: i + 1, of: n, created_at: head.exported_at, limit_basis: "açılmış JSON (karakter)", budget, totals,
             part_attachments: attachments.length, part_attachment_bytes: groups[i].reduce((k, a) => k + (a.blob?.size || 0), 0),
             ...(i === 0 ? { index } : {}) } };
+        if(JSON.stringify(part).length>budget)throw Error('Yedek parçası bütçeyi aşıyor; dosya üretilmedi.');
+        yield part;
         groups[i] = null;
       }
     },
@@ -101,11 +108,26 @@ export async function restoreSets(db) {
 function checkPart(obj, state) {
   const P = obj.part;
   if (!P) return;
-  if (!P.set || !(P.no >= 1) || !(P.of >= P.no)) throw Error("Yedek parçasının bilgileri bozuk (set / sıra)");
+  if (typeof P.set!=='string'||!P.set||P.set.length>200||!Number.isSafeInteger(P.no)||!Number.isSafeInteger(P.of)||P.no<1||P.of<P.no||P.of>10000) throw Error("Yedek parçasının bilgileri bozuk (set / sıra)");
   if ((obj.attachments || []).length !== P.part_attachments && P.part_attachments != null) throw Error(`Parça eksik ya da bozuk: ${P.part_attachments} ek olmalı, ${(obj.attachments || []).length} var`);
   if (P.no > 1 && !state) throw Error(`Bu, bir yedek setinin ${P.no}/${P.of}. parçası; bu setin 1. parçası bu telefonda yüklenmemiş (yanlış set ya da sıra). Önce aynı setin 1. parçasını yükleyin.`);
   if (state && state.of !== P.of) throw Error("Parça başka bir yedek setine ait (toplam parça sayısı tutmuyor)");
   if (P.no === 1 && !Array.isArray(P.index)) throw Error("1. parçada ek dizini yok — dosya bozuk");
+  if (P.no===1) {
+    const ids=new Set();
+    for(const item of P.index){
+      if(!Array.isArray(item)||item.length!==4||item.slice(0,3).some(x=>typeof x!=='string'||!x)||['__proto__','constructor','prototype'].includes(item[0])||ids.has(item[0])||!Number.isSafeInteger(item[3])||item[3]<1||item[3]>P.of)throw Error('Yedek ek dizini geçersiz veya mükerrer');
+      ids.add(item[0]);
+    }
+    if(P.totals?.attachments!=null&&P.totals.attachments!==P.index.length)throw Error('Yedek ek dizini toplamla uyuşmuyor');
+  }
+  // Yanlış parçaya ait, eksik ya da dizinden farklı ekler seti tamamlayamaz.
+  if(!state?.done?.includes(P.no)){
+    const expected=P.no===1?P.index.filter(x=>x[3]===1):Object.entries(state.pending||{}).filter(([,x])=>x[2]===P.no).map(([id,x])=>[id,...x]);
+    const incoming=obj.attachments||[];
+    if(expected.length!==incoming.length||expected.some(([id,rt,rid])=>!incoming.some(a=>a.id===id&&a.record_type===rt&&a.record_id===rid)))throw Error('Yedek parçasının ekleri dizinle uyuşmuyor');
+  }
+
 }
 export async function previewBackup(db, obj) {
   if (!isValidBackup(obj) || obj.schema_version > SCHEMA_VERSION)

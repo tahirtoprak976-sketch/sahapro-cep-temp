@@ -18,7 +18,7 @@ export function pdfSchema() {
 }
 export const validPdfDate = s => typeof s==='string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(Date.parse(s+'T12:00:00Z')) && new Date(s+'T12:00:00Z').toISOString().slice(0,10)===s;
 const text=(x,n=700)=>typeof x==='string'?x.trim().slice(0,n):'';
-const number=x=>x!==null&&x!==''&&Number.isFinite(Number(x))&&Number(x)>=0?Number(x):null;
+const number=x=>(typeof x==='number'||typeof x==='string'&&x.trim()!=='')&&Number.isFinite(Number(x))&&Number(x)>=0&&Number(x)<=1e12?Number(x):null;
 const fold=x=>String(x||'').toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i').replace(/[^a-z0-9]/g,'');
 function exact(d,store,name) {
  if(!name)return '';
@@ -27,6 +27,7 @@ function exact(d,store,name) {
 }
 export function normalizePdfHistory(raw,d={}) {
  if(!raw||!Array.isArray(raw.rows))throw Error('PDF satırları okunamadı; belgeyi daha küçük bölümlere ayırıp deneyin.');
+ if(raw.rows.some(x=>!x||typeof x!=='object'||Array.isArray(x)))throw Error('PDF yanıtındaki satır biçimi geçersiz; belgeyi yeniden okuyun.');
  if(raw.truncated||raw.rows.length>PDF_ROWS)throw Error('Belge tek okumaya sığmadı; PDF’yi daha küçük bölümlere ayırın. Kayıt yazılmadı.');
  const rows=raw.rows.map((x,i)=>{
   let kind=['work','fuel','expense','note','summary'].includes(x.kind)?x.kind:'note';
@@ -36,7 +37,7 @@ export function normalizePdfHistory(raw,d={}) {
   const priceOk=candidatePrice!=null&&rolesOf(moneyMentions(x.quote),candidatePrice).includes('unit_price');
   return {price_issue:candidatePrice!=null&&!priceOk?'Önerilen fiyat '+candidatePrice+' açık birim fiyat olarak doğrulanamadı; fiyat boş bırakıldı. PDF üzerinden kontrol edip gerekiyorsa elle girin.':'',id:String(i),kind,page:Number.isInteger(x.page)&&x.page>0?x.page:null,quote:text(x.quote,1600),date:validPdfDate(x.date)?x.date:'',customer_name:text(x.customer_name,120),vehicle_name:text(x.vehicle_name,120),personnel_name:text(x.personnel_name,120),customer_id:exact(d,'customers',x.customer_name),vehicle_id:exact(d,'vehicles',x.vehicle_name),personnel_id:exact(d,'personnel',x.personnel_name),description:text(x.description),work_type:WORK_TYPES.includes(x.work_type)?x.work_type:'',unit:WORK_UNITS.includes(x.unit)?x.unit:'',quantity:number(x.quantity),material:text(x.material,100),from_place:text(x.from_place,160),to_place:text(x.to_place,160),unit_price:priceOk?candidatePrice:null,kdv_rate:number(x.kdv_rate),kdv_included:typeof x.kdv_included==='boolean'?x.kdv_included:null,liters:number(x.liters),fuel_source:FUEL_SOURCES.includes(x.fuel_source)?x.fuel_source:'',amount:number(x.amount),category:EXPENSE_CATEGORIES.includes(x.category)?x.category:'',payment_method:text(x.payment_method,80),selected:false};
  });
- return {version:1,rows,notes:(Array.isArray(raw.notes)?raw.notes:[]).map(x=>text(x)).filter(Boolean).slice(0,30),totals:(Array.isArray(raw.totals)?raw.totals:[]).filter(x=>['work','fuel','expense'].includes(x.kind)&&number(x.value)!=null).map(x=>({kind:x.kind,unit:text(x.unit,12),value:number(x.value)})).slice(0,30)};
+ return {version:1,rows,notes:(Array.isArray(raw.notes)?raw.notes:[]).map(x=>text(x)).filter(Boolean).slice(0,30),totals:(Array.isArray(raw.totals)?raw.totals:[]).filter(x=>x&&typeof x==='object'&&['work','fuel','expense'].includes(x.kind)&&number(x.value)!=null).map(x=>({kind:x.kind,unit:text(x.unit,12),value:number(x.value)})).slice(0,30)};
 }
 export function pdfTotals(rows) {
  const out={};for(const r of rows){const key=r.kind==='work'?`work:${r.unit}`:r.kind==='fuel'?'fuel:L':r.kind==='expense'?'expense:TL':null;if(key)out[key]=Math.round(((out[key]||0)+Number(r.kind==='work'?r.quantity:r.kind==='fuel'?r.liters:r.amount||0))*100)/100;}return out;
@@ -55,7 +56,7 @@ export function pdfRowFields(r,d,source) {
  if(r.kind==='work'){
   if(!liveId(d,'customers',r.customer_id)||!WORK_TYPES.includes(r.work_type)||!WORK_UNITS.includes(r.unit)||!(r.quantity>0))throw Error('Müşteri, iş türü, birim ve pozitif miktar gerekli.');
   let price_snapshot=null;
-  if(r.unit_price!=null){if(r.unit_price<0||r.kdv_rate==null||r.kdv_rate>100||r.kdv_included==null)throw Error('Belgedeki fiyat için KDV oranı ve dahil/hariç bilgisi gerekli; bilinmiyorsa fiyatı boş bırakın.');price_snapshot={unit_price:r.unit_price,kdv_rate:r.kdv_rate,kdv_included:r.kdv_included,amount:Math.round(r.unit_price*r.quantity*100)/100,price_source:'PDF geçmiş fiyatı'};}
+  if(r.unit_price!=null){if(r.unit_price<0||r.kdv_rate==null||r.kdv_rate>100||typeof r.kdv_included!=='boolean')throw Error('Belgedeki fiyat için KDV oranı ve dahil/hariç bilgisi gerekli; bilinmiyorsa fiyatı boş bırakın.');if(!Number.isFinite(r.unit_price*r.quantity)||r.unit_price*r.quantity>1e12)throw Error('Hesaplanan iş tutarı sınırı aşıyor.');price_snapshot={unit_price:r.unit_price,kdv_rate:r.kdv_rate,kdv_included:r.kdv_included,amount:Math.round(r.unit_price*r.quantity*100)/100,price_source:'PDF geçmiş fiyatı'};}
   return {store:'work_records',fields:{...base,customer_id:r.customer_id,work_type:r.work_type,unit:r.unit,quantity:r.quantity,material:r.material,quarry:r.from_place,dump_area:r.to_place,price_snapshot,internal_note:'PDF geçmiş aktarımı; güncel fiyat listesi uygulanmadı.'}};
  }
  if(r.kind==='fuel'){
