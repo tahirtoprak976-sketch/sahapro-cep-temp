@@ -165,25 +165,20 @@ export function watchIdle() {
 
 // ---- Şoför bağlantıları kaydı ----
 export const driverLinks = async () => (await db.metaGet(K_LINKS)) || [];
-async function saveLinks(L) { await db.metaSet(K_LINKS, L); }
 export async function newDriverLink({ pid, name, vid = null, days = 180 }) {
   const lid = randomB64(9), secret = randomB64(16), exit = randomDigits(8);
   const issued = todayStr();
   const ex = new Date(issued + "T12:00:00Z"); ex.setUTCDate(ex.getUTCDate() + days);
   const link = { lid, pid, name, vid, issued, exp: ex.toISOString().slice(0, 10), secret, exit, revoked_at: null, last_seen: null, msgs: 0 };
-  const L = await driverLinks();
-  await saveLinks([link, ...L].slice(0, 300));
+  await db.updateDriverLinks(L=>[link,...L].slice(0,300));
   await secLog("link", `Şoför bağlantısı oluşturuldu: ${name} (${days} gün)`);
   // Şoför telefonuna giden: imza anahtarı + çıkış kodunun özeti (kodun kendisi gitmez)
   return { link, forDriver: { lid, ls: secret, exp: link.exp, xk: await hashSecret(exit, randomB64(16), 120000) } };
 }
 export async function revokeLink(lid, why = "İptal edildi") {
-  const L = await driverLinks();
-  const l = L.find((x) => x.lid === lid);
-  if (!l || l.revoked_at) return;
-  l.revoked_at = new Date().toISOString(); l.revoke_reason = why;
-  await saveLinks(L);
-  await secLog("revoke", `Şoför bağlantısı iptal: ${l.name} · ${why}`);
+  let revoked=null;
+  await db.updateDriverLinks(L=>{const l=L.find(x=>x.lid===lid);if(l&&!l.revoked_at){l.revoked_at=new Date().toISOString();l.revoke_reason=why;revoked=l;}return L;});
+  if(revoked)await secLog("revoke",`Şoför bağlantısı iptal: ${revoked.name} · ${why}`);
 }
 export async function revokeForPerson(pid, why) { for (const l of (await driverLinks()).filter((x) => x.pid === pid && !x.revoked_at)) await revokeLink(l.lid, why); }
 // Gelen şoför mesajlarını denetle: [{payload, verdict}] — imza, iptal, süre, kişi uyuşması
@@ -205,7 +200,10 @@ export async function checkPayloads(payloads, d) {
     link.last_seen = new Date().toISOString(); link.msgs = (link.msgs || 0) + 1; touched = true;
     out.push({ p, ok: true });
   }
-  if (touched) await saveLinks(L);
+  if(touched)await db.updateDriverLinks(current=>current.map(link=>{
+    const count=out.filter(x=>x.ok&&x.p.lid===link.lid).length;
+    return count?{...link,last_seen:new Date().toISOString(),msgs:(link.msgs||0)+count}:link;
+  }));
   // Doğrulanan kayıt kimlikleri veritabanına: yalnız bunlar şoför kaydı olarak yazılabilir
   await db.markDriverVerified(out.filter((x) => x.ok).flatMap((x) => (x.p.e || []).map((e) => ({ id: e.id, pid: x.p.p, lid: x.p.lid }))));
   for (const x of out.filter((x) => x.reject)) await secLog("reject", `Şoför mesajı reddedildi (${x.p.n || "?"}): ${x.reject}`);

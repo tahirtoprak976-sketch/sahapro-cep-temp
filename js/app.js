@@ -330,10 +330,11 @@ function showUpdateBar(reg) {
   const bar = document.createElement("div");
   bar.id = "update-bar";
   bar.style.cssText =
-    "position:fixed;left:12px;right:12px;bottom:76px;z-index:9999;background:#1d4ed8;color:#fff;border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)";
+    "position:relative;margin:12px;z-index:40;background:#1d4ed8;color:#fff;border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)";
   bar.innerHTML =
     '<span style="flex:1;font-size:14px">Yeni sürüm hazır</span><button data-upd style="background:#fff;color:#1d4ed8;border:0;border-radius:8px;padding:8px 14px;font-weight:700">Güncelle</button><button data-x style="background:transparent;color:#fff;border:0;font-size:18px" aria-label="Kapat">✕</button>';
-  document.body.appendChild(bar);
+  // Bildirim normal akışta: açık formun Kaydet düğmesini örtmez.
+  document.body.prepend(bar);
   bar.querySelector("[data-x]").onclick = () => bar.remove();
   bar.querySelector("[data-upd]").onclick = () => {
     const w = reg.waiting;

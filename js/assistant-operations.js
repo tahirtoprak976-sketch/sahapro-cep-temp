@@ -3,18 +3,21 @@ import { priceForQuantity, calcHakedisLine } from './core.js';
 const fail = (message, code = 'ACTION_BLOCKED') => { throw Object.assign(new Error(message), { code }); };
 export function parseWorkQuantityChange(text) {
   const t = String(text || '').toLocaleLowerCase('tr-TR');
-  if (/sil|iptal|ekle|art[ıi]r|azalt|daha|değil|yerine/.test(t)) return null;
+  if (/sil|iptal|ekle|art[ıi]r|azalt|daha|değil|yerine/.test(t) || /\p{Cf}/u.test(t)) return null;
   if (!/(?:yap|düzelt|duzelt|değiştir|degistir|güncelle|guncelle)[.!?]?\s*$/.test(t)) return null;
-  const matches = [...t.matchAll(/(?<![\p{L}\p{N}])(\d+(?:[.,]\d+)?)\s*(saat|sa|sefer|yevmiye|ton|adet|m³)(?![\p{L}\p{N}])/gu)];
+  const matches = [...t.matchAll(/(?<!\S)(\d+(?:[.,]\d+)?)\s*(saat|sa|sefer|yevmiye|ton|adet|m³)(?![\p{L}\p{N}])/gu)];
   if (matches.length !== 1) return null;
-  const m = matches[0], quantity = Number(m[1].replace(',', '.'));
-  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+  const m = matches[0];
+  // İşaret, kesir, aralık ve birden çok ayırıcıdaki son parçayı miktar sanma.
+  if (/(?:\d|[\p{P}\p{S}]\s*)$/u.test(t.slice(0,m.index)) || /(?:^|\s)\d{1,3}\s+$/.test(t.slice(0,m.index)) || /^\d{1,3}\.\d{3}$/.test(m[1])) return null;
+  const quantity = Number(m[1].replace(',', '.'));
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e12) return null;
   const unit = { saat:'Saat', sa:'Saat', sefer:'Sefer', yevmiye:'Yevmiye', ton:'Ton', adet:'Adet', 'm³':'m³' }[m[2]];
   return { type:'work.quantity', quantity, unit };
 }
 export function previewWorkQuantity(rec, request, d = {}) {
   if (!rec || rec.deleted_at) fail('İş kaydı bulunamadı.');
-  if (request?.type !== 'work.quantity' || !Number.isFinite(request.quantity) || request.quantity <= 0) fail('Yeni miktar pozitif sayı olmalı.');
+  if (request?.type !== 'work.quantity' || !Number.isFinite(request.quantity) || request.quantity <= 0 || request.quantity > 1e12) fail('Yeni miktar pozitif sayı olmalı.');
   if (!Number.isFinite(Number(rec.quantity)) || Number(rec.quantity) <= 0) fail('Mevcut miktar geçersiz; önce iş formundan kontrol edin.');
   if (rec.unit !== request.unit) fail('Bu işlem birimi değiştirmez. Farklı birim için iş formunu açın.');
   if (!rec.updated_at) fail('Kayıt sürümü doğrulanamıyor; iş formundan kontrol edin.');
@@ -25,11 +28,11 @@ export function previewWorkQuantity(rec, request, d = {}) {
   const p = rec.price_snapshot;
   let afterPrice = null, beforeMoney = null, afterMoney = null;
   if (p) {
-    if (p.kdv_rate == null || p.kdv_rate === '' || !Number.isFinite(Number(p.kdv_rate)) || Number(p.kdv_rate) < 0 || Number(p.kdv_rate) > 100 || p.unit_price == null || !Number.isFinite(Number(p.unit_price)) || Number(p.unit_price) < 0) fail('Fiyat/KDV bilgisi eksik; önce iş formundan kontrol edin.');
+    if (p.kdv_rate == null || p.kdv_rate === '' || !Number.isFinite(Number(p.kdv_rate)) || Number(p.kdv_rate) < 0 || Number(p.kdv_rate) > 100 || typeof p.kdv_included !== 'boolean' || p.unit_price == null || !Number.isFinite(Number(p.unit_price)) || Number(p.unit_price) < 0) fail('Fiyat/KDV bilgisi eksik; önce iş formundan kontrol edin.');
     if (p.formula && p.formula !== 'CRANE_FIRST_HOUR') fail('Bu fiyat formülü henüz desteklenmiyor.');
     if (p.formula === 'CRANE_FIRST_HOUR' && [p.first_hour_price,p.next_hour_price].some(n => n == null || !Number.isFinite(Number(n)) || Number(n) < 0)) fail('Vinç tarife bilgisi eksik.');
     afterPrice = { ...p, amount:priceForQuantity({ ...p, price:p.unit_price }, request.quantity) };
-    if (!Number.isFinite(afterPrice.amount)) fail('Hesaplanan tutar geçersiz.');
+    if (!Number.isFinite(afterPrice.amount) || Math.abs(afterPrice.amount) > 1e12) fail('Hesaplanan tutar geçersiz.');
     beforeMoney = calcHakedisLine({ ...p, quantity:rec.quantity });
     afterMoney = calcHakedisLine({ ...p, quantity:request.quantity });
   }

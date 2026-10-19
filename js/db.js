@@ -1,3 +1,4 @@
+import { linkVerdict } from "./security-core.js";
 import { ENTERPRISE_STORES, workHours } from "./enterprise-core.js";
 // SAHAPRO SOLO — IndexedDB katmanı (local-first, offline-first)
 // Backend YOK · Supabase YOK · ana SAHAPRO API YOK.
@@ -16,6 +17,7 @@ import {
   VEHICLE_OWNERSHIP,
   SCHEMA_VERSION,
   tankUnitCost,
+  todayStr,
 } from "./core.js";
 
 const DB_NAME = "sahapro_cep_db"; // v1 ile AYNI isim — veri bu DB'de
@@ -652,17 +654,35 @@ export async function markDriverVerified(entries) {
     t.onabort = t.onerror = () => reject(t.error);
   });
 }
+// Bağlantı değişiklikleri iki sekmede birbirinin iptalini/yenisini ezemez.
+export async function updateDriverLinks(change) {
+  const db=await openDB();return new Promise((resolve,reject)=>{
+    const t=db.transaction('meta','readwrite'),s=t.objectStore('meta'),q=s.get('driver_links');let out,error;
+    q.onsuccess=()=>{try{out=change(q.result?.value||[]);if(!Array.isArray(out))throw Error('Bağlantı listesi geçersiz');s.put({key:'driver_links',value:out});}catch(e){error=e;t.abort();}};
+    t.oncomplete=()=>resolve(out);t.onabort=t.onerror=()=>reject(error||t.error);
+  });
+}
+// İmza doğrulama ile Kaydet arasındaki iptal/pasifleştirme de son transaction'da görülür.
+function driverProofRequests(t,id) {
+  const marker=t.objectStore('meta').get(DRV_OK+id),links=t.objectStore('meta').get('driver_links'),people=t.objectStore('personnel').getAll();
+  return ()=>{
+    const proof=marker.result?.value;
+    if(!proof?.pid||!proof.lid)return false;
+    const link=(links.result?.value||[]).find(x=>x.lid===proof.lid&&x.pid===proof.pid),person=people.result.find(x=>x.id===proof.pid);
+    return linkVerdict(link,{today:todayStr(),personnelActive:!!person&&!person.deleted_at&&person.active!==false}).ok;
+  };
+}
 const unverifiedDriver = () => Object.assign(Error("Şoför kaydı doğrulanmamış (imzasız / tanınmayan / iptal edilmiş bağlantı) — kaydedilemez"), { code: "UNVERIFIED_DRIVER" });
 // Şoför kaydı (driver_entry_id) bir kez yazılır: denetim ve yazma TEK işlemde (IndexedDB aynı depoya yazan işlemleri sıraya koyar)
 async function putUniqueDriver(store, fields, auditReason) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction([store, "audit_log", "meta"], "readwrite");
+    const t = d.transaction([store, "audit_log", "meta", "personnel"], "readwrite");
     let rec = null, error = null;
-    const ok = t.objectStore("meta").get(DRV_OK + fields.driver_entry_id);
+    const verified = driverProofRequests(t,fields.driver_entry_id);
     const q = t.objectStore(store).getAll();
     q.onsuccess = () => {
-      if (!ok.result) { error = unverifiedDriver(); t.abort(); return; }
+      if (!verified()) { error = unverifiedDriver(); t.abort(); return; }
       if (q.result.some((x) => isActive(x) && x.driver_entry_id === fields.driver_entry_id)) { error = Object.assign(Error("Şoför kaydı zaten alınmış"), { code: "DUP_DRIVER" }); t.abort(); return; }
       rec = newRecord(fields);
       t.objectStore(store).put(rec);
@@ -1040,7 +1060,23 @@ function backupBeforeUpgrade() {
   })();
   return backupPromise;
 }
+// Form/model girişinde sayısal alanların boolean/nesne/Infinity olarak yazılmasını önle.
+function assertNumericFields(f) {
+  const keys=['quantity','liters','amount','unit_price','total','total_amount','cost','kdv_rate','price','first_hour_price','next_hour_price'];
+  for(const key of keys){const v=f?.[key];if(v==null||v==='')continue;
+    if(!['number','string'].includes(typeof v)||typeof v==='string'&&!v.trim()||!Number.isFinite(Number(v))||Math.abs(Number(v))>1e12)
+      throw Error('Sayısal alan geçersiz veya sınırı aşıyor: '+key);
+  }
+  if(f?.price_snapshot){
+    if(typeof f.price_snapshot!=='object'||Array.isArray(f.price_snapshot))throw Error('Fiyat bilgisi geçersiz');
+    for(const key of keys){const v=f.price_snapshot[key];if(v==null||v==='')continue;
+      if(!['number','string'].includes(typeof v)||typeof v==='string'&&!v.trim()||!Number.isFinite(Number(v))||Math.abs(Number(v))>1e12)throw Error('Fiyat alanı geçersiz veya sınırı aşıyor: '+key);
+    }
+    if(f.price_snapshot.kdv_included!=null&&typeof f.price_snapshot.kdv_included!=='boolean')throw Error('KDV dahil/hariç bilgisi geçersiz');
+  }
+}
 async function validateFields(store, fields) {
+  assertNumericFields(fields);
   const f = { ...fields };
   if (f.date) {
     const parsed = new Date(f.date + "T12:00:00Z");
@@ -1187,24 +1223,26 @@ async function validateFields(store, fields) {
       ),
     };
   }
+  assertNumericFields(f);
   return f;
 }
 export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {}) {
+  assertNumericFields(fields);
   if (!fields.vehicle_id || !(Number(fields.liters) > 0))
     throw Error("Araç ve pozitif litre zorunlu");
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const stores = ["fuel_records", "fuel_tank_movements", "audit_log", ...(fields.driver_entry_id || op ? ["meta"] : [])];
+    const stores = ["fuel_records", "fuel_tank_movements", "audit_log", ...(fields.driver_entry_id || op ? ["meta"] : []), ...(fields.driver_entry_id ? ["personnel"] : [])];
     const t = d.transaction(stores, "readwrite");
     let result, error, existing = null;
-    const vok = fields.driver_entry_id ? t.objectStore("meta").get(DRV_OK + fields.driver_entry_id) : null;
+    const verified = fields.driver_entry_id ? driverProofRequests(t,fields.driver_entry_id) : null;
     const opReq = op ? t.objectStore("meta").get(OP + op.id) : null;
     // Şoför kaydı tekilliği aynı işlemde denetlenir (iki sekme / çift dokunma aynı anda kaydetse de bir kez yazılır).
     // fuel_records ve fuel_tank_movements aynı istekte sıraya girer: önce yakıtlar okunur, sonra depo.
     const fr = fields.driver_entry_id ? t.objectStore("fuel_records").getAll() : null;
     const request = t.objectStore("fuel_tank_movements").getAll();
     request.onsuccess = () => {
-      if (vok && !vok.result) { error = unverifiedDriver(); t.abort(); return; }
+      if (verified && !verified()) { error = unverifiedDriver(); t.abort(); return; }
       if (fr && fr.result.some((x) => isActive(x) && x.driver_entry_id === fields.driver_entry_id)) { error = Object.assign(Error("Şoför kaydı zaten alınmış"), { code: "DUP_DRIVER" }); t.abort(); return; }
       if (op) {
         let sameRec;
@@ -1238,6 +1276,7 @@ export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {
         const up = tankUnitCost(request.result, result.date) ?? tankUnitCost(request.result);
         if (up) Object.assign(result, { unit_price: up, total: Math.round(up * result.liters * 100) / 100, cost_source: "Depo ortalaması" });
       }
+      try{assertNumericFields(result);}catch(e){error=e;t.abort();return;}
       if (tank) {
         const move = newRecord({
           date: fields.date,
@@ -1633,6 +1672,7 @@ export function sameCollection(a, b) {
 // Tahsilat: (1) kaynak kimliği (request_id, PR #122) ve (2) kalıcı işlem kimliği (op, PR #121) AYNI transaction'da denetlenir.
 // Aynı request_id + aynı içerik → mevcut kayıt; farklı içerik → OP_CONFLICT. op aynı kurallarla.
 export async function saveCashEvent(fields, { op = null } = {}) {
+  assertNumericFields(fields);
   const d = await openDB(),
     rec = newRecord(fields);
   return new Promise((res, rej) => {
