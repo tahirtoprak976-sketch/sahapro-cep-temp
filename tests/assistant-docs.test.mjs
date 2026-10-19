@@ -26,7 +26,7 @@ assert.equal(t[0].vehicle_id, "V1"); assert.equal(t[0].tonnage, 18.42); assert.e
 assert.equal(t[0].link, "W1"); assert.equal(t[0].customer_id, "C1");
 // uydurma fiş no / tarih / tonaj → işaretsiz
 t = validateTickets({ tickets: [{ photo: 0, ticket_no: "B-9", date: "2026-10-14", plate: "34 ABC 123", tonnage: 25 }] }, { d, today, photoTexts: [ticketText], photoCount: 1 });
-assert.equal(t[0].ok, false); assert.equal(t[0].ticket_no, ""); assert.equal(t[0].tonnage, null); assert.equal(t[0].date, today);
+assert.equal(t[0].ok, false); assert.equal(t[0].ticket_no, ""); assert.equal(t[0].tonnage, null); assert.equal(t[0].date, null);
 // fişteki plaka başka araç → yanlış araç seçilse bile uyarı
 t = validateTickets({ tickets: [{ photo: 0, ticket_no: "A-1042", date: "2026-10-13", vehicle_id: "V2" }] }, { d, today, photoTexts: [ticketText], photoCount: 1 });
 assert.equal(t[0].ok, false); assert.ok(t[0].issues.some((x) => /görünmüyor/.test(x)));
@@ -135,7 +135,7 @@ console.log("assistant-docs PASS");
   // Fiş tarihi okunamadıysa (bugün yazıldı) işe "fişten alındı" diye aktarılmaz
   vv = { works: [{ ...w(), date: "2026-10-15", dateUnsure: true, issues: ["İş tarihi mesajda yazmıyor — teyit edin"] }], tickets: [{ photo: 0, ticket_no: "", date: "2026-10-15", dateRead: false, vehicle_id: "V1" }], docs: [], expenses: [], fuel: [] };
   mergeTicketsIntoWorks(vv, { photoCount: 1, message: "1 sefer" });
-  assert.equal(vv.tickets.length, 0); assert.ok(!vv.works[0].issues.some((x) => /Tarih fişten alındı/.test(x))); assert.equal(vv.works[0].dateUnsure, true);
+  assert.equal(vv.tickets.length, 1); assert.ok(!vv.works[0].issues.some((x) => /Tarih fişten alındı/.test(x))); assert.equal(vv.works[0].dateUnsure, true);
   console.log("is-fis-birlesik PASS");
 }
 // malzeme: fişten okunur, işle çelişirse uyarı, boş iş türü doldurulur
