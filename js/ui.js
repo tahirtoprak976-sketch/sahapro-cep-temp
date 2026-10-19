@@ -69,11 +69,12 @@ export function li({
   end = "",
   href = "",
   badgeHtml = "",
+  id = "",
 }) {
   const inner = `<div class="ic">${ic}</div><div class="grow"><div class="t1 ellipsis">${t1}</div>${t2 ? `<div class="t2 ellipsis">${t2}</div>` : ""}</div>${badgeHtml}${end ? `<div class="end">${end}</div>` : ""}`;
   return href
     ? `<div class="li" data-go="${esc(href)}">${inner}</div>`
-    : `<div class="li">${inner}</div>`;
+    : `<div class="li"${id ? ` data-rid="${esc(id)}"` : ""}>${inner}</div>`;
 }
 export function emptyState(ic, text, ctaHtml = "") {
   return `<div class="empty"><div class="ic">${ic}</div><div class="t">${esc(text)}</div>${ctaHtml ? `<div style="margin-top:12px">${ctaHtml}</div>` : ""}</div>`;
@@ -97,7 +98,8 @@ export function toast(msg, kind = "") {
   const d = document.createElement("div");
   d.className = "toast " + (kind === "err" ? "err" : kind === "ok" ? "ok" : "");
   d.textContent = msg;
-  root.appendChild(d);
+  d.setAttribute("role", kind === "err" ? "alert" : "status");
+  root.replaceChildren(d);
   setTimeout(() => {
     d.style.opacity = "0";
     d.style.transition = "opacity .3s";
@@ -150,11 +152,48 @@ export function confirmDialog(title, text, okLabel = "Evet", danger = false) {
     });
   });
 }
-export function promptDialog(title, label, value = "") {
+// Seçenekli onay: options [[değer, etiket]]; seçilen değer döner, Vazgeç → null
+export function choiceDialog(title, text, options) {
+  return new Promise((resolve) => {
+    const sh = sheet(
+      `<h3>${esc(title)}</h3><p class="muted" style="margin:0 0 12px">${esc(text)}</p>
+      <div style="display:flex;flex-direction:column;gap:8px">${options.map(([v, t], i) => `<button class="btn ${i === 0 ? "" : ""} block" data-c="${i}">${esc(t)}</button>`).join("")}
+      <button class="btn ghost block" data-c="x">Vazgeç</button></div>`,
+      { modal: true },
+    );
+    sh.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-c]");
+      if (!b) return;
+      sheetClose();
+      resolve(b.dataset.c === "x" ? null : options[Number(b.dataset.c)][0]);
+    });
+  });
+}
+// Tekrar mı, yeni ödeme mi? Açık seçim. "Yeni" seçilirse gerekçe istenir (needReason). Vazgeç → null
+export function repeatOrNewDialog(title, text, { needReason = true } = {}) {
+  return new Promise((resolve) => {
+    const sh = sheet(
+      `<h3>${esc(title)}</h3><p class="muted" style="margin:0 0 12px">${esc(text)}</p>
+      <div class="field"><label>Yeni ödeme ise gerekçe${needReason ? " *" : " (isteğe bağlı)"}</label><input type="text" data-reason placeholder="Örn: ikinci taksit, ayrı havale" autocomplete="off"></div>
+      <div class="tiny muted" data-rwarn style="margin:-6px 2px 10px"></div>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn ghost grow" data-x="0">Vazgeç</button><button class="btn grow" data-x="repeat">Tekrar — yazma</button><button class="btn primary grow" data-x="new">Yeni ödeme — ayrı kaydet</button></div>`,
+      { modal: true },
+    );
+    sh.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-x]");
+      if (!b) return;
+      const reason = qs("[data-reason]", sh).value.trim();
+      if (b.dataset.x === "new" && needReason && !reason) { qs("[data-rwarn]", sh).textContent = "Yeni ödeme için gerekçe yazın (kayıtta tutulur)."; return; }
+      sheetClose();
+      resolve(b.dataset.x === "0" ? null : { choice: b.dataset.x, reason });
+    });
+  });
+}
+export function promptDialog(title, label, value = "", opts = {}) {
   return new Promise((resolve) => {
     const sh = sheet(
       `<h3>${esc(title)}</h3>
-      <div class="field"><label>${esc(label)}</label><input type="text" data-p value="${esc(value)}" autocomplete="off"></div>
+      <div class="field"><label>${esc(label)}</label><input type="${opts.type === "password" ? "password" : "text"}" data-p value="${esc(value)}" autocomplete="off"></div>${opts.hint ? `<div class="tiny muted" style="margin:-6px 2px 10px">${esc(opts.hint)}</div>` : ""}
       <div class="row" style="gap:8px"><button class="btn ghost grow" data-x="0">Vazgeç</button><button class="btn primary grow" data-x="1">Tamam</button></div>`,
       { modal: true },
     );
@@ -246,6 +285,16 @@ export function pagedRender(container, items, renderItem, pageSize = 30) {
       );
   }
   container.innerHTML = "";
+  if (container._pagedMoreHandler)
+    container.removeEventListener("click", container._pagedMoreHandler);
+  container._pagedMoreHandler = (event) => {
+    const button = event.target.closest("[data-more]");
+    if (button && container.contains(button)) {
+      event.preventDefault();
+      more();
+    }
+  };
+  container.addEventListener("click", container._pagedMoreHandler);
   more();
 }
 
@@ -273,6 +322,19 @@ export async function shareOrDownload(blob, filename, title = "") {
     if (e && e.name === "AbortError") return "aborted";
   }
   downloadBlob(blob, filename);
+  return "downloaded";
+}
+// Birden çok dosya tek paylaşımda (ör. parçalı yedek); paylaşılamazsa hepsi indirilir
+export async function shareOrDownloadMany(files, title = "") {
+  try {
+    if (navigator.canShare && navigator.canShare({ files })) {
+      await navigator.share({ files, title: title || files[0]?.name || "" });
+      return "shared";
+    }
+  } catch (e) {
+    if (e && e.name === "AbortError") return "aborted";
+  }
+  for (const f of files) downloadBlob(f, f.name);
   return "downloaded";
 }
 export async function shareText(text) {

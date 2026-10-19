@@ -4,9 +4,11 @@ import {
   addDays,
   resolvePrice,
   priceForQuantity,
+  priceVehicleScope,
   newRecord,
   toKurus,
   fromKurus,
+  DOC_FAMILY,
 } from "./core.js";
 export const VEHICLE_DOCS = [
   "Ruhsat",
@@ -35,9 +37,24 @@ export const PERSONNEL_DOCS = [
   "Sertifika",
   "Personel Evrakı",
 ];
+// Şirkete ait evrak (sahibi: şirket bilgileri kaydı)
+export const COMPANY_DOCS = [
+  "Vergi Levhası",
+  "Faaliyet Belgesi",
+  "Ticaret Sicil Gazetesi",
+  "İmza Sirküleri",
+  "Oda Kayıt Belgesi",
+  "SGK İşyeri Tescili",
+  "K Belgesi",
+  "İSG / Risk Değerlendirmesi",
+  "Şirket Sigortası",
+  "Şirket Evrakı",
+];
+export const COMPANY_OWNER_ID = "company_profile";
 export const DOCUMENT_TYPES = [
   ...VEHICLE_DOCS,
   ...PERSONNEL_DOCS,
+  ...COMPANY_DOCS,
   "Sözleşme",
   "Hakediş Eki",
   "Akaryakıt Fişi",
@@ -48,6 +65,8 @@ export const DOCUMENT_TYPES = [
   "İrsaliye",
   "Makbuz",
   "Fatura",
+  "Döküm Faturası",
+  "İzin Formu",
   "Diğer",
 ];
 export const OWNER_STORES = {
@@ -59,8 +78,11 @@ export const OWNER_STORES = {
   hakedis: "hakedis",
   work: "work_records",
   contract: "contracts",
+  company: "meta",
+  dump_site: "dump_sites",
 };
 export function documentOwner(category) {
+  if (COMPANY_DOCS.includes(category)) return "company";
   return VEHICLE_DOCS.includes(category)
     ? "vehicle"
     : PERSONNEL_DOCS.includes(category)
@@ -135,7 +157,8 @@ export const FIELD_METADATA = {
     entity_owner: "selected",
   },
   dump_area: {
-    applies_to: ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"],
+    // malzeme nakliyesinde (mıcır/kum/gravak) teslim / dolgu yeri olarak kullanılır
+    applies_to: ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"],
     required_when: [],
     hidden_when: ["Makine Çalışması"],
     entity_owner: "work",
@@ -157,7 +180,9 @@ export function normalizedDocument(fields) {
         ? fields.personnel_id
         : owner === "customer"
           ? fields.customer_id
-          : fields.owner_id;
+          : owner === "company"
+            ? COMPANY_OWNER_ID
+            : fields.owner_id;
   if (!id) throw Error("Belge sahibi zorunlu");
   const out = {
     ...fields,
@@ -259,6 +284,7 @@ export function priceSnapshot(w, entries, crane) {
     next_hour_price: p.next_hour_price ?? crane?.next ?? 0,
     amount: priceForQuantity(p, w.quantity, crane),
     price_source: p.price_source,
+    price_scope: priceVehicleScope(p),
     price_rule_id: p.id,
     snapshot_at: new Date().toISOString(),
   };
@@ -289,7 +315,10 @@ export function filterRecords(records, f = {}) {
         "unit",
         "ownership",
         "dump_area",
+        "dump_site_id",
+        "quarry_id",
         "quarry",
+        "vehicle_group",
         "owner_type",
         "move_type",
         "contractor_id",
@@ -311,7 +340,12 @@ export function groupRecords(records, key) {
     if (r.unit)
       g.units[r.unit] = (g.units[r.unit] || 0) + (Number(r.quantity) || 0);
     g.amount_kurus += toKurus(
-      r.grand_total ?? r.amount ?? r.total ?? r.price_snapshot?.amount ?? 0,
+      r.gross_total ??
+        r.grand_total ??
+        r.amount ??
+        r.total ??
+        r.price_snapshot?.amount ??
+        0,
     );
     g.liters += Number(r.liters) || 0;
   }
@@ -327,13 +361,10 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
       (d.vehicle_id === vehicle.id ||
         (d.owner_type === "vehicle" && d.owner_id === vehicle.id)),
   );
-  const aliases = {
-    "TÜVTÜRK / Periyodik Muayene": "Muayene Belgesi",
-    "Sigorta / Poliçe": "Zorunlu Trafik Sigortası",
-  };
+  const aliases = DOC_FAMILY;
   const truck =
     vehicle.type === "Kamyon" ||
-    /^\d{2}[A-Z]/i.test(vehicle.plate || vehicle.name || "");
+    /^\d{2}\s*[A-Z]/i.test(vehicle.plate || vehicle.name || "");
   const required =
     vehicle.required_document_types ||
     (truck

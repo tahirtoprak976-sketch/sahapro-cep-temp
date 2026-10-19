@@ -26,6 +26,7 @@ import {
   collectForm,
   pagedRender,
   downloadBlob,
+  shareOrDownload,
   go,
   fmtTL,
   fmtNum,
@@ -34,6 +35,7 @@ import {
 } from "./ui.js";
 import {
   isActive,
+  backupAgeDays,
   matchSearch,
   DOC_TYPES,
   ENTITY_STORES,
@@ -73,7 +75,8 @@ async function customers(ctx) {
   if (sub) return customerDetail(ctx, sub);
   const { root, db, query } = ctx;
   const q = query.q || "";
-  let rows = (await db.listActive("customers")).sort((a, b) =>
+  // "Kendi Depo (iç iş)" müşteri değildir: depodan çıkış seferleri Kendi Depo ekranında izlenir
+  let rows = (await db.listActive("customers")).filter((c) => !c.internal).sort((a, b) =>
     String(a.name).localeCompare(String(b.name), "tr"),
   );
   rows = rows.filter((r) =>
@@ -130,27 +133,40 @@ async function customerDetail(ctx, id) {
       db.getAll("documents"),
     ]);
   const mine = (arr) => arr.filter((r) => isActive(r) && r.customer_id === id);
-  const mSites = mine(sitesA),
+  const mCash = mine(cash),
+    mSites = mine(sitesA),
     mWorks = mine(works),
     mSlips = mine(slips),
     mQuotes = mine(quotes),
     mHaks = mine(haks),
     mDocs = mine(docs);
-  const hakSum = mHaks
-    .filter((h) => h.status === "Kesinleşti")
-    .reduce((s, h) => s + (Number(h.grand_total) || 0), 0);
+  const { customerLedgerMovements } = await import("./collect-core.js");
+  const ledger = customerLedgerMovements(await db.dumpAll(), id);
+  const hakSum = ledger
+    .filter((m) => m.type === "Hakedis" || m.type === "Is")
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const tahSum = mCash
     .filter((x) => x.cash_type === "Müşteriden Para Alındı")
     .reduce((s, x) => s + (Number(x.amount) || 0), 0);
-  const bakiye = cariBalance(mine(cari));
+  const bakiye = Math.round(ledger.reduce((s, m) => s + (Number(m.amount) || 0), 0) * 100) / 100;
+  const allCust = await db.listActive("customers");
+  const parent = c.parent_customer_id ? allCust.find((x) => x.id === c.parent_customer_id) : null;
+  const month = new Date().toISOString().slice(0, 7);
+  const subs = allCust.filter((x) => x.parent_customer_id === id).map((x) => {
+    const ws = works.filter((w) => isActive(w) && w.customer_id === x.id);
+    return { c: x, all: ws.length, month: ws.filter((w) => String(w.date).startsWith(month)).length };
+  });
   root.innerHTML =
     appbar(c.name, c.contact || "", { back: "#/musteriler" }) +
     `
     <div style="height:10px"></div>
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr)">
-      ${stat(fmtTL(hakSum), "Hakediş ₺")}${stat(fmtTL(tahSum), "Tahsilat ₺")}${stat(fmtTL(bakiye), "Bakiye ₺", bakiye > 0 ? "warn" : "ok")}
+      ${stat(fmtTL(hakSum), "İş + Hakediş ₺")}${stat(fmtTL(tahSum), "Tahsilat ₺")}${stat(fmtTL(bakiye), "Bakiye ₺", bakiye > 0 ? "warn" : "ok")}
     </div>
-    ${c.phone || c.note ? `<div class="card">${c.phone ? kv("Telefon", c.phone) : ""}${c.note ? kv("Not", c.note) : ""}</div>` : ""}
+    <div class="card tap" data-go="#/tahsilat/${esc(id)}"><div class="row between"><span>💰 Tahsilat takibi · WhatsApp hatırlatma · ödeme sözü</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/teklif-hesap?customer_id=${esc(id)}"><div class="row between"><span>🧮 Bu müşteriye teklif / fiyat hesapla</span><span class="muted small">›</span></div></div>
+    ${c.phone || c.note || parent ? `<div class="card">${parent ? `<div class="kv"><span class="k">Ana firma</span><span class="v"><a href="#/musteriler/${parent.id}">${esc(parent.name)}</a> (taşeronu)</span></div>` : ""}${c.phone ? kv("Telefon", c.phone) : ""}${c.note ? kv("Not", c.note) : ""}</div>` : ""}
+    ${subs.length ? `<div class="section-title">Taşeronları (${subs.length})</div>` + subs.map((x) => li({ ic: "🏗", href: "#/musteriler/" + x.c.id, t1: esc(x.c.name), t2: `Bu ay ${x.month} iş · toplam ${x.all} iş` })).join("") : ""}
     <div class="section-title">Şantiyeler (${mSites.length})</div>
     ${
       mSites.length
@@ -268,6 +284,20 @@ async function customerForm(ctx, editId) {
   const { root, db } = ctx;
   const rec = editId ? await db.get("customers", editId) : null;
   const v = rec || {};
+  const allC = (await db.listActive("customers")).sort((a, b) => String(a.name).localeCompare(String(b.name), "tr"));
+  // kendisi ve kendi taşeronları ana firma olamaz (döngü olmasın)
+  const parentOpts = allC.filter((c) => c.id !== editId && c.parent_customer_id !== editId).map((c) => ({ v: c.id, t: c.name }));
+  const { fuelRulesOf, FUEL_RULE_UNITS } = await import("./assistant-rules.js");
+  const ruleRow = (r = {}) => `<div class="card" data-frule style="margin:6px 0;padding:8px">
+      <div class="formgrid2">
+        <div class="field"><label>Birim başı mazot (L)</label><input type="number" step="any" data-f="per" value="${esc(r.per ?? "")}"></div>
+        <div class="field"><label>Birim</label><select data-f="unit">${FUEL_RULE_UNITS.map((u) => `<option ${u === (r.unit || "Sefer") ? "selected" : ""}>${u}</option>`).join("")}</select></div>
+        <div class="field"><label>Hangi işlerde (kelimeler; boşsa tüm işleri)</label><input data-f="match" value="${esc(r.match || "")}" placeholder="gravak maslak"></div>
+        <div class="field"><label>Ücret</label><select data-f="only_pay"><option value="1" ${r.only_pay !== false ? "selected" : ""}>Yalnız mazot (para alınmaz)</option><option value="0" ${r.only_pay === false ? "selected" : ""}>Para + mazot ayrıca</option></select></div>
+        <div class="field"><label>Başlangıç (ops.)</label><input type="date" data-f="from" value="${esc(r.from || "")}"></div>
+        <div class="field"><label>Bitiş (ops.)</label><input type="date" data-f="to" value="${esc(r.to || "")}"></div>
+      </div>
+      <input type="hidden" data-f="id" value="${esc(r.id || "")}"><button type="button" class="btn sm ghost" data-frule-del>Kuralı kaldır</button></div>`;
   root.innerHTML =
     appbar(editId ? "Müşteri Düzenle" : "+ Müşteri", "", {
       back: editId ? "#/musteriler/" + editId : "#/musteriler",
@@ -276,10 +306,22 @@ async function customerForm(ctx, editId) {
     <form data-form novalidate style="margin-top:10px">
       ${fText("Firma / Müşteri Adı", "name", v.name || "", { req: true })}
       <div class="formgrid2">${fText("Yetkili", "contact", v.contact || "")}${fText("Telefon", "phone", v.phone || "", { type: "tel" })}</div>
+      ${fSelect("Ana firma (taşeronsa — örn. Ağırtaş → Hisar Polat)", "parent_customer_id", parentOpts, v.parent_customer_id || "")}
+      <details ${fuelRulesOf(v).length ? "open" : ""} style="margin:8px 0"><summary class="strong">⛽ Mazotla ödeme kuralları (${fuelRulesOf(v).length})</summary>
+        <div class="muted tiny" style="margin:4px 0">Müşteri işin karşılığını mazotla ödüyorsa: ör. "75 L / Sefer, gravak maslak, yalnız mazot". Kelimeler işin malzemesinde, açıklamasında, şantiye/ocak/döküm yeri adında aranır.</div>
+        <div data-frules>${fuelRulesOf(v).map(ruleRow).join("")}</div>
+        <button type="button" class="btn sm" data-frule-add>+ Kural ekle</button>
+      </details>
       ${fArea("Not", "note", v.note || "")}
       ${fSelect("Durum", "active", ACTIVE_SEL, v.active === false ? "0" : "1", { empty: false })}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const bindDel = () => qsa("[data-frule-del]", root).forEach((b) => (b.onclick = () => b.closest("[data-frule]").remove()));
+  qs("[data-frule-add]", root).addEventListener("click", () => {
+    qs("[data-frules]", root).insertAdjacentHTML("beforeend", ruleRow({ unit: "Sefer", only_pay: true }));
+    bindDel();
+  });
+  bindDel();
   qs("[data-save]", root).addEventListener("click", async () => {
     const val = collectForm(qs("[data-form]", root));
     if (!val.name || !val.name.trim()) {
@@ -292,6 +334,12 @@ async function customerForm(ctx, editId) {
       phone: val.phone || "",
       note: val.note || "",
       active: val.active !== "0",
+      parent_customer_id: val.parent_customer_id || null,
+      fuel_rules: qsa("[data-frule]", root).map((el) => {
+        const g = (k) => el.querySelector(`[data-f=${k}]`).value;
+        return { id: g("id") && g("id") !== "legacy" ? g("id") : "fr-" + Math.random().toString(36).slice(2, 9), per: Number(g("per")), unit: g("unit"), match: g("match").trim(), only_pay: g("only_pay") === "1", from: g("from") || "", to: g("to") || "" };
+      }).filter((r) => r.per > 0),
+      fuel_per_trip: null, fuel_rule_match: "", fuel_only_pay: null,
     };
     if (editId) {
       await db.saveExisting("customers", rec, fields, "Müşteri düzenlendi");
@@ -533,7 +581,7 @@ async function docForm(ctx) {
       <div class="section-title">Fiziksel Arşiv (ops.)</div>
       <div class="formgrid2">${fText("Klasör", "archive_folder", "")}${fText("Raf", "archive_shelf", "")}</div>
       <div class="formgrid2">${fText("Koçan", "archive_kocan", "")}${fText("Dosya No", "archive_file_no", "")}</div>
-      <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/*"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   qs("[data-save]", root).addEventListener("click", async () => {
@@ -630,6 +678,7 @@ async function docDetail(ctx, id) {
               .join("")
           : ""
       }
+      ${(ocr.checks || []).map((c) => `<div class="notice ${c.level === "error" ? "danger" : "warn"}" style="margin-top:8px"><span>${c.level === "error" ? "⛔" : "⚠"}</span><span>${esc(c.text)}</span></div>`).join("")}
       ${ocr.searchable_text ? `<details style="margin-top:8px"><summary class="muted small">OCR metni (${ocr.searchable_text.length} kr)</summary><div class="tiny muted" style="white-space:pre-wrap;margin-top:6px">${esc(ocr.searchable_text.slice(0, 1500))}</div></details>` : ""}
       ${(ocr.status === "BEKLIYOR" || ocr.status === "HATA" || ocr.status === "YOK") && atts.length ? `<button class="btn block" style="margin-top:10px" data-ocr>🔍 OCR ${ocr.status === "YOK" ? "Çalıştır" : "Tekrar Dene"}</button><div data-prog></div>` : ""}
     </div>
@@ -638,7 +687,7 @@ async function docDetail(ctx, id) {
       <button class="btn" data-addphoto>📷 Foto Ekle</button>
       <button class="btn danger" data-del>🗑 Sil</button>
     </div>
-    <input type="file" accept="image/*" capture="environment" data-photoinput hidden>`;
+    <input type="file" accept="image/*" data-photoinput hidden>`;
   const attRoot = qs("[data-atts]", root);
   for (const a of atts) {
     if ((a.type || "").startsWith("image/")) {
@@ -703,6 +752,7 @@ async function docDetail(ctx, id) {
               status: "TAMAM",
               confidence: r.confidence,
               fields: ext.fields,
+              checks: ext.checks || [],
               confirmed_fields: ext.fields,
               searchable_text: r.text.slice(0, 6000),
               ran_at: new Date().toISOString(),
@@ -751,6 +801,34 @@ async function docDetail(ctx, id) {
 // OCR onaylı alanlardan kayıt — asla sessiz yazmaz; confirmDialog özeti gösterir
 async function createFromOcr(ctx, d, kind, f) {
   const { db, names } = ctx;
+  if (kind === "expense" || kind === "fuel") {
+    const { findDuplicates } = await import("./esnaf.js");
+    const all = await db.dumpAll();
+    const amt = f.total != null ? Number(f.total) : null;
+    const dup = amt != null ? findDuplicates(all, { date: f.date || d.date, amount: amt }) : { bills: [], expenses: [] };
+    const same = kind === "fuel"
+      ? (all.fuel_records || []).filter((x) => isActive(x) && x.date === (f.date || d.date) && Number(x.total) === amt)
+      : dup.expenses;
+    if (dup.bills.length || same.length) {
+      const ok = await confirmDialog(
+        "Benzer kayıt zaten var",
+        dup.bills.length
+          ? "Aynı gün ve tutarda Esnaf Hesabı'nda bir borç kaydı var. Aynı iş ise tekrar girmeyin."
+          : "Aynı gün ve tutarda bir " + (kind === "fuel" ? "yakıt" : "gider") + " kaydı var. Aynı fişse tekrar girmeyin.",
+        "Farklı bir kayıt, devam et",
+      );
+      if (!ok) return;
+    }
+  }
+  const errs = ((d.ocr && d.ocr.checks) || []).filter((c) => c.level === "error");
+  if ((kind === "expense" || kind === "fuel") && errs.length) {
+    const ok = await confirmDialog(
+      "Okunan tutarlar tutarsız",
+      errs.map((c) => c.text).join(" ") + " Alanları kontrol ettiniz mi?",
+      "Kontrol ettim, devam et",
+    );
+    if (!ok) return;
+  }
   const vehicles = await db.listActive("vehicles");
   let vehicle_id = d.vehicle_id || null;
   if (!vehicle_id && f.plate) {
@@ -1092,6 +1170,7 @@ async function scan(ctx) {
       `<div class="card" style="margin-top:12px">
       <div class="section-title" style="margin:0 0 8px">Alan Önerileri (düzenleyip onaylayın)</div>
       ${missingHtml}
+      ${(ext.checks || []).map((c) => `<div class="notice ${c.level === "error" ? "danger" : "warn"}" style="margin-top:8px"><span>${c.level === "error" ? "⛔" : "⚠"}</span><span>${esc(c.text)}</span></div>`).join("")}
       <div class="formgrid2">${keys.map((k) => `<div class="field"><label>${esc(FIELD_LABELS[k] || k)}</label><input data-ofield="${esc(k)}" value="${esc(String(ext.fields[k]))}"></div>`).join("")}</div>
       ${ocrText ? `<details style="margin-top:6px"><summary class="muted small">Ham OCR metni</summary><div class="tiny muted" style="white-space:pre-wrap;margin-top:6px">${esc(ocrText.slice(0, 1200))}</div></details>` : ""}
     </div>`;
@@ -1424,15 +1503,37 @@ function tsName() {
 }
 
 export async function doBackup(ctx) {
-  const { fullBackup } = await import("./backup.js");
-  const backup = await fullBackup(ctx.db);
-  const name = `SAHAPRO_TAM_YEDEK_${tsName()}.json`;
-  downloadBlob(
-    new Blob([JSON.stringify(backup)], { type: "application/json" }),
-    name,
-  );
+  const sec = await import("./security.js");
+  if (!(await sec.reauth("Yedek alma (tüm kayıtlar dışarı çıkar)"))) return;
+  await sec.secLog("backup", "Yedek alındı");
+  const { backupParts } = await import("./backup.js");
+  // Sıkıştırılmış (çok daha küçük) ve şifre konduysa şifreli: WhatsApp/Drive'daki dosyayı başkası açamaz
+  const pw = (await ctx.db.metaGet("backup_pw")) || "";
+  // Şifresiz yedeğe şoför bağlantı anahtarları yazılmaz. Fotoğraflar çoksa yedek telefon belleğine sığan parçalara bölünür;
+  // her parça tek başına okunur (önce 1. parça yüklenir).
+  const parts = await backupParts(ctx.db, { encrypted: !!pw });
+  const { encodeBackup } = await import("./backup-crypt.js");
+  const stamp = tsName(), files = [];
+  for await (const part of parts) {
+    const bytes = await encodeBackup(part, pw);
+    files.push(new File([bytes], `SAHAPRO_YEDEK_${stamp}${pw ? "_SIFRELI" : ""}${parts.count > 1 ? `_PARCA${part.part.no}-${parts.count}` : ""}.sahapro`, { type: "application/octet-stream" }));
+  }
+  const name = files[0].name;
+  const { shareOrDownloadMany } = await import("./ui.js");
+  const how = await shareOrDownloadMany(files, "SAHAPRO yedek");
+  if (how === "aborted") {
+    toast("Yedek paylaşımı iptal edildi — yedek kaydedilmedi", "warn");
+    return name;
+  }
   await ctx.db.metaSet("last_backup_at", new Date().toISOString());
-  toast("Veriler, dosyalar ve imzalar yedeklendi", "ok");
+  toast(
+    (how === "shared"
+      ? "Yedek paylaşıldı — WhatsApp/Drive'a gönderdiğinizden emin olun"
+      : "Yedek indirildi — dosyayı telefonun dışına (Drive/e-posta) da kopyalayın") +
+      (files.length > 1 ? `. Yedek ${files.length} parça: hepsini saklayın; geri yüklerken önce 1. parçayı yükleyin` : "") +
+      (pw ? "" : ". Yedek şifresiz: şoför bağlantı anahtarları dosyaya yazılmadı; Güvenlik ekranından yedek şifresi koymanız önerilir."),
+    pw ? "ok" : "warn",
+  );
   return name;
 }
 async function doCsvZip(ctx) {
@@ -1526,6 +1627,7 @@ async function settings(ctx) {
     recCount += (data[s] || []).filter(isActive).length;
   const atts = await db.getAll("attachments");
   const attBytes = atts.reduce((s, a) => s + (a.size || 0), 0);
+  const bigAtts = atts.filter((a) => a.kind !== "signature" && /^image\//.test(a.type || "") && (a.size || 0) >= 350 * 1024).length;
   let est = null;
   try {
     est = await (navigator.storage && navigator.storage.estimate
@@ -1535,24 +1637,48 @@ async function settings(ctx) {
     est = null;
   }
   const mb = (b) => (b / 1048576).toFixed(1) + " MB";
+  let persisted = false;
+  try {
+    persisted = !!(await navigator.storage?.persisted?.());
+  } catch (e) {
+    persisted = false;
+  }
 
+  const company = (await db.metaGet("company_profile")) || {};
+  const backupPw = !!(await db.metaGet("backup_pw"));
+  const CO = { title: "Ticari ünvan", tax_no: "Vergi no", tax_office: "Vergi dairesi", mersis_no: "MERSİS no", trade_reg_no: "Ticaret sicil no", nace: "Faaliyet kodu (NACE)", address: "Adres" };
   root.innerHTML =
     appbar("Ayarlar", APP_VERSION + " · şema v" + SCHEMA_VERSION) +
     `
     <div style="height:10px"></div>
+    <div class="card"><div class="row between"><span class="small">Sürüm: <b>${esc(APP_VERSION)}</b></span><button class="btn sm" data-swcheck>🔄 Güncellemeyi denetle</button></div><div class="tiny muted" data-swinfo></div></div>
+    <div class="section-title">🏢 Şirket bilgileri</div>
+    <div class="card"><div class="tiny muted" style="margin-bottom:6px">Vergi levhası, faaliyet belgesi, sicil gazetesi gibi şirket evrakını Akıllı Asistan'a fotoğrafla gönderin; buradaki bilgiler belgeden doldurulur. Elle de düzeltebilirsiniz.</div>
+      <form data-coform>${Object.entries(CO).map(([k, t]) => `<div class="field"><label>${esc(t)}</label><input name="${k}" value="${esc(company[k] || "")}"></div>`).join("")}<button type="submit" class="btn block">Şirket bilgilerini kaydet</button></form></div>
     <div class="section-title">Yedekleme</div>
     <div class="card">
-      ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") : "Hiç yedek yok")}
+      ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}
+      ${kv("Yedek şifresi", backupPw ? "🔒 Açık — yedek dosyası şifreli" : "Kapalı — dosyayı bulan açabilir")}
+      <button class="btn sm block" data-bakpw style="margin:6px 0">${backupPw ? "🔒 Yedek şifresini değiştir / kaldır" : "🔒 Yedeğe şifre koy"}</button>
+      ${kv("Kalıcı depolama", persisted ? "Korumalı ✓" : "Korumasız — tarayıcı yer açarken silebilir; düzenli yedek alın")}
       <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn primary grow" data-bak>💾 JSON Yedek</button>
+        <button class="btn primary grow" data-bak>💾 Yedek al</button>
         <button class="btn grow" data-csv>📑 CSV Paket</button>
         <button class="btn grow" data-zip>📦 Tam ZIP</button>
       </div>
       <div class="muted tiny" style="margin-top:8px">Tam ZIP: JSON + ekler (fotoğraflar). JSON'a fotoğraf GÖMÜLMEZ.</div>
     </div>
+    <div class="section-title">Kart Düzeni</div>
+    <div class="card tap" data-go="#/tahsilat"><div class="row between"><span>💰 Tahsilat takibi (kim kaç gündür borçlu, WhatsApp hatırlatma, çek/senet vadeleri)</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/mazot-hesaplari"><div class="row between"><span>⛽ Mazotla ödeme hesapları (ör. Kılıç: sefer başı 75 L)</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/kendi-depo"><div class="row between"><span>🏗 Kendi depo / stok sahası (moloz, çöp, hafriyat stoku)</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/kime-kontrol"><div class="row between"><span>🔎 Kime çalışıldı? (Kuyucu / Aydın gibi benzer adlı müşterilerin işleri)</span><span class="muted small">›</span></div></div>
+    <div class="card tap" data-go="#/kart-birlestir"><div class="row between"><span>🔗 Kartları birleştir (aynı müşteri, plaka, personel ya da şantiye iki kart olmuşsa)</span><span class="muted small">›</span></div></div>
+    <div class="section-title">Yapay Zeka (deneysel)</div>
+    <div class="card tap" data-go="#/yapay-zeka"><div class="row between"><span>🤖 Telefonda çalışan ücretsiz model — indir ve dene</span><span class="muted small">›</span></div></div>
     <div class="section-title">Geri Yükleme</div>
     <div class="card">
-      <div class="field"><label>Yedek dosyası (.json)</label><input type="file" accept="application/json,.json" data-restore></div>
+      <div class="field"><label>Yedek dosyası (.sahapro ya da eski .json)</label><input type="file" data-restore></div>
       <div data-restoreview></div>
     </div>
     <div class="section-title">Alias Listesi (WhatsApp/sesli komut)</div>
@@ -1571,25 +1697,59 @@ async function settings(ctx) {
       <button class="btn block" data-finset>Tarifeyi Kaydet</button>
       <div class="muted tiny" style="margin-top:8px">Kesinleşmiş belgeler (hakediş snapshot) bu değişiklikten ETKİLENMEZ.</div>
     </div>
-    <div class="section-title">Kilit</div>
-    <div class="card">
-      ${kv("Local PIN", pinSet ? "Kurulu" : "Yok")}
-      <div class="row" style="gap:8px;margin-top:10px">
-        <button class="btn grow" data-pinset>${pinSet ? "PIN Değiştir" : "PIN Kur"}</button>
-        ${pinSet ? '<button class="btn grow" data-pinclr>PIN Kaldır</button>' : ""}
-      </div>
-      <div class="muted tiny" style="margin-top:8px">Basit cihaz içi ekran kilididir; kriptografik güvenlik DEĞİLDİR.</div>
-    </div>
+    <div class="section-title">Kilit ve Güvenlik</div>
+    <div class="card tap" data-go="#/guvenlik"><div class="row between"><span>🛡 Yönetici kilidi, parmak izi / Face ID, şoför bağlantıları, güvenlik günlüğü</span><span class="muted">›</span></div></div>
     <div class="section-title">Sistem Durumu</div>
     <div class="card">
       ${kv("Kayıt (aktif)", fmtNum(recCount))}
       ${kv("Ek / Fotoğraf", `${atts.length} adet · ${mb(attBytes)}`)}
+      ${bigAtts ? `<button class="btn block" style="margin:6px 0" data-shrink>🗜 ${bigAtts} büyük fotoğrafı küçült (yer açar, yedek küçülür)</button><div class="tiny muted" data-shrinkinfo>Yeni fotoğraflar zaten küçültülerek kaydediliyor. Fiş yazısı okunur kalır; imza ve PDF'lere dokunulmaz.</div>` : ""}
       ${kv("Cihaz Depolama", est ? `${mb(est.usage || 0)} / ${est.quota ? mb(est.quota) : "—"}` : "—")}
       ${kv("Sürüm", APP_VERSION + " · şema v" + SCHEMA_VERSION)}
       <button class="btn ghost block" style="margin-top:8px" data-go="#/cop">🗑 Çöp Kutusu</button>
     </div>`;
 
   qs("[data-bak]", root).addEventListener("click", () => doBackup(ctx));
+  qs("[data-shrink]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    if (!(await confirmDialog("Fotoğraflar küçültülsün mü?", "Büyük fotoğraflar 1600 piksele (belgeler 2000) küçültülür. Fiş yazısı okunur kalır ama orijinal büyük hali geri gelmez. İsterseniz önce yedek alın.", "Küçült"))) return;
+    const info = qs("[data-shrinkinfo]", root);
+    b.disabled = true;
+    try {
+      const r = await db.shrinkAllAttachments((i, n) => { info.textContent = `${i} / ${n} fotoğraf…`; });
+      toast(`${r.count} fotoğraf küçültüldü · ${mb(r.before - r.after)} yer açıldı`, "ok");
+      ctx.reload();
+    } catch (e) { toast("Küçültülemedi: " + (e.message || e), "err"); b.disabled = false; }
+  });
+  qs("[data-bakpw]", root)?.addEventListener("click", async () => {
+    const pw = await promptDialog(backupPw ? "Yedek şifresi" : "Yedeğe şifre koy", backupPw ? "Yeni şifre (boş bırakıp Tamam = şifreyi kaldır)" : "Şifre (en az 6 karakter)", "", { type: "password", hint: "ÖNEMLİ: Bu şifreyi bir yere yazın. Telefon kaybolursa yedeği ancak bu şifreyle açabilirsiniz; şifre unutulursa yedek AÇILAMAZ." });
+    if (pw === null && backupPw) {
+      if (await confirmDialog("Şifre kaldırılsın mı?", "Bundan sonraki yedekler şifresiz (yalnız sıkıştırılmış) olur.", "Kaldır", true)) { await db.metaSet("backup_pw", null); toast("Yedek şifresi kaldırıldı", "ok"); ctx.reload(); }
+      return;
+    }
+    if (!pw) return;
+    if (pw.length < 6) return toast("Şifre en az 6 karakter olmalı", "err");
+    const again = await promptDialog("Şifreyi tekrar yazın", "Şifre (tekrar)", "", { type: "password" });
+    if (again !== pw) return toast("Şifreler aynı değil", "err");
+    await db.metaSet("backup_pw", pw);
+    toast("Yedek şifresi kondu — sonraki yedekler şifreli", "ok"); ctx.reload();
+  });
+  qs("[data-coform]", root)?.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const fd = new FormData(ev.currentTarget), upd = {};
+    for (const k of Object.keys(CO)) upd[k] = String(fd.get(k) || "").trim() || null;
+    await db.metaSet("company_profile", { ...((await db.metaGet("company_profile")) || {}), ...upd });
+    toast("Şirket bilgileri kaydedildi", "ok");
+  });
+  qs("[data-swcheck]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget, info = qs("[data-swinfo]", root);
+    b.disabled = true; info.textContent = "Denetleniyor…";
+    try {
+      const found = window.__swCheck ? await window.__swCheck() : false;
+      info.textContent = found ? "Yeni sürüm bulundu — alttaki/üstteki \"Güncelle\" düğmesine basın (birkaç saniye sürebilir)." : "Bu telefondaki sürüm en yenisi. Yeni güncelleme birleştirildiyse GitHub'ın yayına alması 10 dakikayı bulabilir; sonra tekrar deneyin.";
+    } catch (e) { info.textContent = "Denetlenemedi: " + (e.message || e) + " (internet?)"; }
+    b.disabled = false;
+  });
   qs("[data-csv]", root).addEventListener("click", () => doCsvZip(ctx));
   qs("[data-zip]", root).addEventListener("click", () => doFullZip(ctx));
   qs("[data-restore]", root).addEventListener("change", (e) => {
@@ -1634,7 +1794,10 @@ async function settings(ctx) {
     });
   qs("[data-finset]", root).addEventListener("click", async () => {
     const val = collectForm(root);
-    await db.metaSet("kdv_default", Number(val.kdv) || 20);
+    const { kdvRateOf } = await import("./core.js");
+    const kd = kdvRateOf(val.kdv);
+    if (kd == null) return toast("Varsayılan KDV oranı 0–100 arası olmalı (KDV'siz çalışıyorsanız 0)", "err");
+    await db.metaSet("kdv_default", kd);
     await db.metaSet("crane_first_hour", Number(val.crane_first) || 9000);
     await db.metaSet("crane_next_hour", Number(val.crane_next) || 3000);
     toast("Tarife kaydedildi", "ok");
@@ -1680,14 +1843,15 @@ async function settings(ctx) {
 // ---- Restore: önizleme + çakışma politikası (§34/§47) ----
 async function restorePreview(ctx, file) {
   const view = qs("[data-restoreview]", ctx.root);
+  { const sec = await import("./security.js"); if (!(await sec.reauth("Yedekten geri yükleme"))) return; await sec.secLog("backup", "Yedek geri yükleme açıldı: " + (file?.name || "")); }
   try {
-    const obj = JSON.parse(await file.text()),
-      { previewBackup, restoreBackup } = await import("./backup.js"),
+    const { previewBackup, restoreBackup, readBackupFile } = await import("./backup.js"),
+      obj = await readBackupFile(file),
       p = await previewBackup(ctx.db, obj);
     view.innerHTML =
       notice(
         "info",
-        `${p.added} yeni / ${p.same} aynı / ${p.conflicts} çakışma / ${p.attachments} ek`,
+        `${obj.part ? `Parça ${obj.part.no}/${obj.part.of} · ` : ""}${p.added} yeni / ${p.same} aynı / ${p.conflicts} çakışma / ${p.attachments} ek`,
       ) +
       (!Array.isArray(obj.attachments)
         ? notice(
@@ -1706,8 +1870,11 @@ async function restorePreview(ctx, file) {
           ))
         )
           return;
-        await restoreBackup(ctx.db, obj, false);
-        toast("Yedek geri yüklendi", "ok");
+        const res = await restoreBackup(ctx.db, obj, false);
+        const { setStatusText } = await import("./backup.js");
+        if (res.already) toast(`Bu parça (${res.part.no}/${res.part.of}) zaten yüklenmişti — hiçbir şey değişmedi. ${setStatusText(res.set)}`, "warn");
+        else if (res.set) toast((res.set.finished_at ? "✓ " : "") + setStatusText(res.set), res.set.finished_at ? "ok" : "warn");
+        else toast("Yedek geri yüklendi", "ok");
         ctx.reload();
       } catch (error) {
         toast(error.message, "err");

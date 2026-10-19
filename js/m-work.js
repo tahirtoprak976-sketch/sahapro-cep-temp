@@ -1,3 +1,5 @@
+import { workHours } from "./enterprise-core.js";
+import { kdvRateOf } from "./core.js";
 // SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
 import {
   qs,
@@ -77,10 +79,20 @@ async function workList(ctx) {
   if (filter === "week") {
     const from = new Date();
     from.setDate(from.getDate() - 7);
-    const fs = from.toISOString().slice(0, 10);
+    const fs = td(from); // yerel tarih (UTC değil: gece 00–03 arası bir gün kaymasın)
     rows = rows.filter((r) => r.date >= fs);
   }
+  // Tarih aralığı (asistan komutu ya da grafik dokunuşu): ?from=YYYY-MM-DD&to=YYYY-MM-DD
+  const isD = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
+  const dFrom = isD(query.from) ? query.from : null, dTo = isD(query.to) ? query.to : dFrom;
+  if (dFrom) rows = rows.filter((r) => r.date >= dFrom && r.date <= dTo);
   if (filter === "noslip") rows = rows.filter((r) => !r.slip_id);
+  if (filter === "musterisiz") rows = rows.filter((r) => !r.customer_id);
+  if (filter === "fiyatsiz") {
+    const { workAmount } = await import("./collect-core.js");
+    const internal = new Set((await db.listActive("customers")).filter((c) => c.internal).map((c) => c.id));
+    rows = rows.filter((r) => !internal.has(r.customer_id) && !workAmount(r) && !(Number(r.customer_fuel_allowance_l) > 0));
+  }
   rows = rows.filter((r) =>
     matchSearch(
       `${names.customers[r.customer_id] || ""} ${names.sites[r.site_id] || ""} ${names.vehicles[r.vehicle_id] || ""} ${names.personnel[r.personnel_id] || ""} ${r.work_type} ${r.description || ""} ${r.material || ""}`,
@@ -92,17 +104,18 @@ async function workList(ctx) {
   );
 
   root.innerHTML =
-    appbar("İş Kayıtları", `${rows.length} kayıt`, {
+    appbar("İş Kayıtları", `${rows.length} kayıt${dFrom ? " · " + trDate(dFrom) + (dTo !== dFrom ? " – " + trDate(dTo) : "") : ""}`, {
       right: '<button class="iconbtn" data-go="#/whatsapp">💬</button>',
     }) +
     `
-    <div style="height:10px"></div>
+    <div class="history-tools"><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div style="height:10px"></div>
     ${segBar(
       [
         { v: "all", t: "Tümü" },
         { v: "today", t: "Bugün" },
         { v: "week", t: "7 Gün" },
         { v: "noslip", t: "Fişsiz" },
+        { v: "fiyatsiz", t: "Fiyatsız" },
       ],
       filter,
       (v) => `#/isler?f=${v}${q ? "&q=" + encodeURIComponent(q) : ""}`,
@@ -118,21 +131,33 @@ async function workList(ctx) {
       "Kayıt yok",
       '<button class="btn primary" data-go="#/isler/new">+ İş Kaydı</button>',
     );
-  else
-    pagedRender(listEl, rows, (w) =>
+  else {
+    // Gerçek iş tarihine göre gruplu (en yeni üstte); sayfalama tarih grubunu bölmez
+    const { groupByDate, pageGroups } = await import("./date-groups.js");
+    const pages = pageGroups(groupByDate(rows), 30);
+    const row = (w) =>
       li({
         ic: "⚒",
         href: "#/isler/" + w.id,
-        t1: `${esc(names.customers[w.customer_id] || "—")} · ${esc(w.work_type || "İş")}`,
-        t2: `${trDate(w.date)} · ${esc(names.vehicles[w.vehicle_id] || "—")} — ${esc(names.personnel[w.personnel_id] || "—")}${w.site_id ? " · " + esc(names.sites[w.site_id]) : ""}`,
-        badgeHtml: w.slip_id
-          ? badge("Fişli", "ok")
-          : w.slip_status === "Fiş Var"
-            ? badge("Fiş Var", "info")
-            : "",
-        end: `<div class="amt nowrap">${fmtNum(w.quantity)} ${esc(w.unit || "")}</div>`,
-      }),
-    );
+        t1: `<span class="strong">${esc(names.customers[w.customer_id] || "Müşteri yok")}</span>`,
+        t2: `${esc(w.work_type || "İş")} · ${esc(names.vehicles[w.vehicle_id] || "araç yok")} — ${esc(names.personnel[w.personnel_id] || "personel yok")}${w.site_id ? " · " + esc(names.sites[w.site_id]) : ""}`,
+        badgeHtml: w.slip_id ? badge("Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : "",
+        end: `<div class="amt nowrap" style="font-size:16px">${fmtNum(w.quantity)} ${esc(w.unit || "")}</div>`,
+      });
+    let shown = 0;
+    const more = () => {
+      qs("[data-more]", listEl)?.remove();
+      for (const g of pages[shown] || [])
+        listEl.insertAdjacentHTML("beforeend", `<div class="section-title" data-dgroup="${esc(g.key)}" style="margin-top:12px;display:flex;justify-content:space-between;gap:8px"><span>${esc(g.label)}</span><span class="muted small nowrap">${g.items.length} iş</span></div>` + g.items.map(row).join(""));
+      shown++;
+      if (shown < pages.length) {
+        const left = pages.slice(shown).reduce((n, p) => n + p.reduce((m, g) => m + g.items.length, 0), 0);
+        listEl.insertAdjacentHTML("beforeend", `<button class="btn ghost block" data-more>Daha eski tarihler (${left} iş kaldı)</button>`);
+      }
+    };
+    listEl.addEventListener("click", (e) => { if (e.target.closest("[data-more]")) { e.preventDefault(); more(); } });
+    more();
+  }
 
   let st;
   qs("[data-search]", root).addEventListener("input", (e) => {
@@ -177,6 +202,8 @@ async function workForm(ctx, editId) {
       };
     }
   }
+  // Müşteri kartından "+ Bu müşteriye iş"
+  if (!editId && !prefill && query.customer_id) prefill = { customer_id: query.customer_id };
   // Taslak autosave
   if (!editId && !prefill) {
     const draft = await db.draftGet("work");
@@ -184,7 +211,9 @@ async function workForm(ctx, editId) {
   }
   const v = rec || prefill || {};
 
-  const custOpts = customers.map((c) => ({ v: c.id, t: c.name }));
+  // Kendi depo iç müşterisi listede müşteri gibi görünmez; ayrı ve açık bir seçenek olarak en altta durur
+  const custOpts = [...customers.filter((c) => !c.internal).map((c) => ({ v: c.id, t: c.name })),
+    ...customers.filter((c) => c.internal).map((c) => ({ v: c.id, t: "📦 Kendi depodan çıkış (iç iş — para istenmez)" }))];
   const siteOpts = sites.map((s) => ({ v: s.id, t: s.name }));
   const vehOpts = vehicles.map((x) => ({ v: x.id, t: x.name }));
   const perOpts = personnel.map((x) => ({ v: x.id, t: x.name }));
@@ -207,11 +236,13 @@ async function workForm(ctx, editId) {
         ${fSelect("Araç / Makine", "vehicle_id", [...vehOpts, { v: "__new__", t: "➕ Yeni…" }], v.vehicle_id)}
         ${fSelect("Şoför / Operatör", "personnel_id", [...perOpts, { v: "__new__", t: "➕ Yeni…" }], v.personnel_id)}
       </div>
+      <div data-jobbox></div>
       ${fSelect("İş Türü", "work_type", WORK_TYPES, v.work_type || "")}
       <div class="formgrid2">
         ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
         ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
       </div>
+      <section data-work-time hidden><h3>Saat Puantajı (opsiyonel)</h3><div class="formgrid2">${fText("Başlangıç", "time_start", v.time_start || "", { type: "time" })}${fText("Bitiş", "time_end", v.time_end || "", { type: "time" })}</div>${fNum("Mola (dk)", "break_minutes", v.break_minutes ?? 0)}<button type="button" class="btn" data-time-calculate>Saat Miktarını Hesapla</button></section>
       ${fText("Malzeme", "material", v.material || "", { ph: "mıcır, kum…" })}
       <div class="formgrid2">
         ${fSelect("Döküm Sahası", "dump_site_id", [...dumpSites.map((r) => ({ v: r.id, t: r.name })), { v: "__new__", t: "+ Yeni Döküm Sahası" }], v.dump_site_id || "")}
@@ -223,6 +254,14 @@ async function workForm(ctx, editId) {
         ${fSelect("Fiş Durumu", "slip_status", ["Fiş Var", "Fiş Yok"], v.slip_status || "")}
         ${fText("Fiş No", "slip_no", v.slip_no || "")}
       </div>
+      <div class="formgrid2">${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}${fNum("Döküm maliyeti (₺, elle — opsiyonel)", "dump_cost", v.dump_cost ?? "", { step: "any" })}</div>
+      <div class="muted tiny" style="margin:-4px 2px 8px">Döküm maliyeti: depodan çıkışta siz yazarsınız (boş = maliyet yok). Müşteri işinde boşsa döküm sahası ücretinden hesaplanır.</div>
+      <section class="card" style="margin:8px 0" data-slip-ai>
+        <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/*,application/pdf" multiple data-wfiles></div>
+        <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>
+        <button type="button" class="btn block" style="margin-top:6px" data-wai>🤖 Gemini ile fişi oku (ton, fiş no, tarih, plaka)</button>
+        <div data-wai-out></div>
+      </section>
       <div class="formgrid2">${fNum("Manuel birim fiyat (opsiyonel)", "manual_price", v.price_snapshot?.price_source === "Manuel" ? v.price_snapshot.unit_price : "", { step: "any" })}${fNum("KDV %", "manual_kdv", v.price_snapshot?.kdv_rate ?? 20, { step: "any" })}</div>
       ${fNum("Mesafe (km, opsiyonel)", "distance_km", v.distance_km ?? "", { step: "any" })}
       ${editId ? "" : '<section data-transport-batch hidden><div data-transport-rows></div><button type="button" class="btn" data-add-transport>+ Satır ekle</button><div class="notice" data-transport-total aria-live="polite"></div><p class="tiny">Ek satırda boş bırakılan araç, personel ve fiyat üstteki seçimden alınır. Her satır ayrı iş kaydı olarak saklanır.</p></section>'}
@@ -236,12 +275,102 @@ async function workForm(ctx, editId) {
     </div>`;
 
   const form = qs("[data-form]", root);
+  // İş sözleşmesi: müşterinin açık sefer / m³ anlaşması varsa bu iş dahil mi ekstra mı (kayıttan önce açıkça gösterilir)
+  const J = await import("./job-core.js");
+  const dJob = await db.dumpAll();
+  const jobInit = rec ? (rec.job_extra ? "ekstra" : J.isJobPriced(rec) ? "dahil" : "") : "";
+  const jobDraw = () => {
+    const box = qs("[data-jobbox]", form);
+    const g = (n) => qs(`[name=${n}]`, form)?.value || "";
+    const cur = qs("[name=job_scope]", form)?.value || jobInit || "dahil";
+    const w = { customer_id: g("customer_id"), site_id: g("site_id").startsWith("__") ? "" : g("site_id"), date: g("date"), unit: g("unit"), quantity: Number(g("quantity")) || 0 };
+    const p = J.jobPreview(dJob, w, { extra: cur === "ekstra" });
+    if (!p || rec?.price_snapshot?.locked) { box.innerHTML = ""; return; }
+    if (p.kind === "ambiguous") { box.innerHTML = notice("warn", "📐 " + p.text); return; }
+    box.innerHTML = `<div class="notice ${p.kind === "extra" ? "warn" : "info"}" style="display:block"><div>📐 ${esc(p.text)}</div>
+      ${fSelect("Bu iş", "job_scope", [{ v: "dahil", t: "Sözleşmeye dahil" }, { v: "ekstra", t: "Ekstra iş (sözleşme dışı, ayrı fiyat)" }], cur, { empty: false })}</div>`;
+    qs("[name=job_scope]", box).addEventListener("change", jobDraw);
+  };
+  for (const n of ["customer_id", "site_id", "date", "unit", "quantity"]) qs(`[name=${n}]`, form)?.addEventListener("change", jobDraw);
+  jobDraw();
   let draftTimer,
     saving = false;
+  // ---- Fiş fotoğrafı: işe eklenir; Gemini tonu ve fiş bilgisini okuyup boş alanları doldurur ----
+  let wfiles = [];
+  const wIn = qs("[data-wfiles]", form), wOut = qs("[data-wai-out]", form);
+  wIn.addEventListener("change", () => {
+    wfiles = [...wIn.files].slice(0, 10);
+    qs("[data-wthumbs]", form).innerHTML = wfiles.map((f) => (f.type.startsWith("image/") ? `<img src="${URL.createObjectURL(f)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : `<span class="chip">📄 ${esc(f.name)}</span>`)).join("");
+  });
+  qs("[data-wai]", form).addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    const imgs = wfiles.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) return toast("Önce fiş fotoğrafı seçin", "err");
+    const { geminiSettings, withModelFallback, geminiJson, blobToBase64, shrink } = await import("./ai-gemini.js");
+    if (!(await geminiSettings(db)).ready) return toast("Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin", "err");
+    if (!navigator.onLine) return toast("İnternet yok", "err");
+    b.disabled = true;
+    wOut.innerHTML = '<div class="muted small" style="padding:6px">Gemini fişi okuyor…</div>';
+    try {
+      const { SLIP_PROMPT, slipSchema, validateSlips, slipFill } = await import("./slip-read.js");
+      const parts = [];
+      for (const f of imgs) { const img = await shrink(f); parts.push({ inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } }); }
+      parts.push({ text: `Fotoğraf sayısı: ${imgs.length} (sıra 0'dan başlar)` });
+      const obj = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: SLIP_PROMPT, schema: slipSchema() }));
+      const d = await db.dumpAll();
+      const res = validateSlips(obj, { d, count: imgs.length });
+      const cur = collectForm(form);
+      const fill = slipFill(res, cur, { d });
+      for (const [k, val] of Object.entries(fill)) { const el = qs(`[name=${k}]`, form); if (el) el.value = val; }
+      if (fill.work_type) qs("[name=work_type]", form).dispatchEvent(new Event("change"));
+      form.dispatchEvent(new Event("change"));
+      form.dispatchEvent(new Event("input"));
+      const vName = (id) => vehicles.find((x) => x.id === id)?.name || "";
+      wOut.innerHTML = `<div class="small" style="margin-top:6px">${res.rows.map((r) => `• Fiş ${r.photo + 1}: <b>${r.net_ton != null ? fmtNum(r.net_ton) + " ton" : "ton yok"}</b>${r.slip_no ? " · No " + esc(r.slip_no) : ""}${r.date ? " · " + trDate(r.date) : ""}${r.plate ? " · " + esc(r.plate) + (r.vehicle_id ? " (" + esc(vName(r.vehicle_id)) + ")" : "") : ""}${r.issues.length ? ` <span class="muted">⚠ ${esc(r.issues.join(", "))}</span>` : ""}`).join("<br>")}</div>
+        ${res.read ? `<div class="small" style="margin-top:4px">Toplam <b>${fmtNum(res.total_ton)} ton</b> (${res.read}/${imgs.length} fiş) — Tonaj alanına yazıldı${fill.quantity != null ? ", miktar dolduruldu" : ""}.</div>` : ""}
+        ${res.read && cur.unit !== "Ton" ? `<button type="button" class="btn block" style="margin-top:6px" data-wton>Ton hesabı: birimi Ton, miktarı ${fmtNum(res.total_ton)} yap</button>` : ""}
+        ${fill.material_hint ? `<div class="small" style="margin-top:4px">⚠ ${esc(fill.material_hint)}</div>` : ""}
+        <div class="muted tiny" style="margin-top:4px">Fişte yazmayan değer doldurulmadı. Kaydetmeden önce kontrol edin.</div>`;
+      qs("[data-wton]", wOut)?.addEventListener("click", () => {
+        qs("[name=unit]", form).value = "Ton";
+        qs("[name=quantity]", form).value = res.total_ton;
+        form.dispatchEvent(new Event("change"));
+        form.dispatchEvent(new Event("input"));
+        toast("Birim Ton yapıldı", "ok");
+      });
+    } catch (e) {
+      wOut.innerHTML = notice("warn", e.message || String(e));
+    }
+    b.disabled = false;
+  });
+  const attachFiles = async (id) => {
+    for (const f of wfiles) await db.addAttachment("work", id, f, { kind: "slip_photo" });
+  };
+  const timeSection = qs("[data-work-time]", form);
+  const syncTime = () => {
+    const active = qs("[name=unit]", form).value === "Saat";
+    timeSection.hidden = !active;
+    for (const input of qsa("input,button", timeSection))
+      input.disabled = !active;
+  };
+  form.addEventListener("change", syncTime);
+  syncTime();
+  qs("[data-time-calculate]", form).onclick = () => {
+    try {
+      qs("[name=quantity]", form).value = workHours(
+        qs("[name=time_start]", form).value,
+        qs("[name=time_end]", form).value,
+        qs("[name=break_minutes]", form).value,
+      );
+      form.dispatchEvent(new Event("input"));
+    } catch (e) {
+      toast(e.message, "err");
+    }
+  };
   const batchSection = qs("[data-transport-batch]", form);
   const batchActive = () =>
     !!batchSection &&
-    ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"].includes(
+    ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
       qs("[name=work_type]", form).value,
     ) &&
     qs("[name=unit]", form).value === "Sefer";
@@ -308,9 +437,13 @@ async function workForm(ctx, editId) {
       quarry = ["Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
         type,
       );
+    // Malzeme nakliyesinde döküm alanları "teslim yeri" olur (ör. Maslak gravak → Binkılıç dolgu)
+    const setLabel = (key, txt) => { const l = qs("[name=" + key + "]", form)?.closest(".field")?.querySelector("label"); if (l) l.textContent = txt; };
+    setLabel("dump_site_id", quarry ? "Teslim / Dolgu Yeri" : "Döküm Sahası");
+    setLabel("dump_area", quarry ? "Diğer Teslim Yeri (şantiye / adres)" : "Diğer Döküm (opsiyonel)");
     for (const [key, visible] of [
-      ["dump_area", dump],
-      ["dump_site_id", dump],
+      ["dump_area", dump || quarry],
+      ["dump_site_id", dump || quarry],
       ["quarry", quarry],
       ["quarry_id", quarry],
       ["material", dump || quarry],
@@ -430,6 +563,7 @@ async function workForm(ctx, editId) {
     clearTimeout(draftTimer);
     try {
       const val = collectForm(form);
+      const priceMemo = new Map();
       if (!val.quantity || Number(val.quantity) <= 0) {
         toast("Miktar girin (0'dan büyük)", "err");
         return;
@@ -445,6 +579,12 @@ async function workForm(ctx, editId) {
       const fields = {
         date: val.date || todayStr(),
         time: val.time || null,
+        time_start: val.unit === "Saat" ? val.time_start || null : null,
+        time_end: val.unit === "Saat" ? val.time_end || null : null,
+        break_minutes:
+          val.unit === "Saat" && val.time_start
+            ? Number(val.break_minutes || 0)
+            : null,
         customer_id: val.customer_id || null,
         site_id: val.site_id || null,
         vehicle_id: val.vehicle_id || null,
@@ -473,21 +613,19 @@ async function workForm(ctx, editId) {
         customer_note: val.customer_note || "",
         internal_note: val.internal_note || "",
         distance_km: val.distance_km ? Number(val.distance_km) : null,
+        tonnage: Number(val.tonnage) > 0 ? Number(val.tonnage) : null,
+        dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
       };
       if (!editId) {
-        const { priceSnapshot } = await import("./business.js");
-        fields.price_snapshot = priceSnapshot(
-          {
-            ...fields,
-            vehicle_type: vehicles.find((v) => v.id === fields.vehicle_id)
-              ?.type,
-          },
-          await db.listActive("price_book"),
-          {
-            first: await db.metaGet("crane_first_hour"),
-            next: await db.metaGet("crane_next_hour"),
-          },
-        );
+        // Eşit öncelikli farklı fiyat kuralı varsa sessizce seçilmez: kullanıcıya sorulur
+        const jobWill = (w) => { const j = J.jobFor(dJob, w); return j && !j.ambiguous && (val.job_scope || "dahil") !== "ekstra"; }; // sözleşme fiyatlayacaksa sorma
+        if (!(val.manual_price !== "" && val.manual_price != null) && !jobWill(fields)) {
+          const { askPriceSnapshot } = await import("./price-pick.js");
+          const r = await askPriceSnapshot(await db.listActive("price_book"), { ...fields, vehicle_type: vehicles.find((v) => v.id === fields.vehicle_id)?.type },
+            { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${fields.date} · ${fields.quantity} ${fields.unit}`, memo: priceMemo });
+          if (r.cancel) return;
+          fields.price_snapshot = r.snap;
+        }
       }
       if (val.manual_price !== "" && val.manual_price != null) {
         if (
@@ -497,14 +635,46 @@ async function workForm(ctx, editId) {
           toast("Manuel fiyat geçersiz", "err");
           return;
         }
+        if (kdvRateOf(val.manual_kdv) == null) {
+          toast("Elle fiyat için KDV oranını yazın (KDV'siz iş: 0)", "err");
+          return;
+        }
         fields.price_snapshot = {
           unit_price: Number(val.manual_price),
-          kdv_rate: Number(val.manual_kdv) || 0,
+          kdv_rate: kdvRateOf(val.manual_kdv),
           kdv_included: false,
           amount: Number(val.manual_price) * fields.quantity,
           price_source: "Manuel",
           snapshot_at: new Date().toISOString(),
         };
+      }
+      // Mazot karşılığı (müşteri kartındaki sefer başı mazot kuralı)
+      const { applyFuelPay } = await import("./assistant-rules.js");
+      const dAll = await db.dumpAll();
+      const fuelText = (r) => [r.description, r.material, r.quarry, r.dump_area, r.internal_note].filter(Boolean).join(" ");
+      // Düzenlemede kayıtlı litre hakkı bugünkü kuralla SESSİZCE yeniden hesaplanmaz: müşteri / birim / miktar değişmediyse eski hak ve
+      // mazot karşılığı fiyatı korunur; miktar değiştiyse kayıtlı litre/birim oranıyla hesaplanır.
+      const oldL = editId && rec ? Number(rec.customer_fuel_allowance_l) || 0 : 0;
+      if (oldL > 0 && rec.customer_id === fields.customer_id && rec.unit === fields.unit) {
+        const per = Number(rec.price_snapshot?.fuel_liters_per_unit) || (Number(rec.quantity) > 0 ? oldL / Number(rec.quantity) : 0);
+        fields.customer_fuel_allowance_l = Number(rec.quantity) === Number(fields.quantity) ? oldL : Math.round(per * Number(fields.quantity) * 10) / 10;
+        fields.fuel_rule_id = rec.fuel_rule_id || null;
+        if (rec.price_snapshot?.price_source === "Mazot karşılığı" && fields.price_snapshot?.price_source !== "Manuel") fields.price_snapshot = { ...rec.price_snapshot, fuel_liters_per_unit: per };
+      } else Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
+      const { applyYard } = await import("./yard-core.js");
+      Object.assign(fields, applyYard(dAll, fields));
+      if (!fields.customer_fuel_allowance_l) fields.customer_fuel_allowance_l = null;
+      const jobScope = val.job_scope || "";
+      if (!editId) Object.assign(fields, J.applyJob(dAll, fields, { extra: jobScope === "ekstra" }));
+      else if (jobScope && jobScope !== jobInit) {
+        // Düzenlemede yalnız kullanıcı seçimi değiştirdiyse: dahil → sözleşme fiyatı; ekstra → fiyat listesi (yoksa fiyatsız)
+        const base = { ...rec, ...fields };
+        if (jobScope === "dahil") Object.assign(fields, J.applyJob(dAll, { ...base, price_snapshot: null }, { extra: false }));
+        else {
+          const { priceSnapshot } = await import("./business.js");
+          const j = J.jobFor(dAll, base);
+          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: J.extraSnapshot(j.site, base) || priceSnapshot(base, await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
+        }
       }
       const extras = batchActive() ? extraRows() : [];
       if (!editId && extras.length) {
@@ -539,11 +709,13 @@ async function workForm(ctx, editId) {
           };
           const manual =
             row.x_manual_price !== "" ? row.x_manual_price : val.manual_price;
-          const rate =
-            row.x_manual_kdv !== ""
-              ? Number(row.x_manual_kdv)
-              : Number(val.manual_kdv);
-          r.price_snapshot = priceSnapshot(r, prices, crane);
+          const rate = kdvRateOf(row.x_manual_kdv !== "" ? row.x_manual_kdv : val.manual_kdv) ?? NaN; // boş → geçersiz (sessizce %0 olmaz)
+          if ((manual === "" || manual == null) && !(J.jobFor(dJob, r) && !J.jobFor(dJob, r).ambiguous && (val.job_scope || "dahil") !== "ekstra")) {
+            const { askPriceSnapshot } = await import("./price-pick.js");
+            const pr = await askPriceSnapshot(prices, r, crane, { label: `${r.date} · ${r.quantity} ${r.unit}`, memo: priceMemo });
+            if (pr.cancel) return;
+            r.price_snapshot = pr.snap;
+          }
           if (manual !== "" && manual != null) {
             if (
               !Number.isFinite(Number(manual)) ||
@@ -562,7 +734,7 @@ async function workForm(ctx, editId) {
               snapshot_at: new Date().toISOString(),
             };
           }
-          rows.push(r);
+          { const rr = applyYard(dAll, applyFuelPay(dAll, r, fuelText(r))); rows.push({ ...rr, ...J.applyJob(dAll, rr, { extra: (val.job_scope || "") === "ekstra" }) }); }
         }
         const sameDay = await db.listActive("work_records");
         if (
@@ -590,6 +762,7 @@ async function workForm(ctx, editId) {
             return;
         }
         const created = await db.saveWorkBatch(rows);
+        await attachFiles(created[0].id);
         await db.draftClear("work");
         toast(
           `${created.length} satır · ${fmtNum(created.reduce((s, r) => s + r.quantity, 0))} sefer kaydedildi`,
@@ -621,15 +794,25 @@ async function workForm(ctx, editId) {
       }
       if (editId) {
         await db.saveExisting("work_records", rec, fields);
+        await attachFiles(editId);
         toast("İş güncellendi", "ok");
         go("#/isler/" + editId);
       } else {
         const created = await db.saveNew("work_records", fields);
+        await attachFiles(created.id);
         await db.draftClear("work");
         toast("İş kaydedildi", "ok");
         go("#/isler/" + created.id);
       }
     } catch (e) {
+      if (e?.code === "STALE" && e.current) {
+        // Çakışma: kayıttaki güncel değerle sizin girdiğinizi karşılaştır; yenileyince güncel hâl açılır
+        const L = { date: "Tarih", quantity: "Miktar", unit: "Birim", work_type: "İş türü", customer_id: "Müşteri", vehicle_id: "Araç", site_id: "Şantiye" };
+        const nm = (k, v) => (k === "customer_id" ? ctx.names.customers[v] : k === "vehicle_id" ? ctx.names.vehicles[v] : k === "site_id" ? ctx.names.sites[v] : v) ?? "—";
+        const diff = Object.keys(L).filter((k) => String(e.current[k] ?? "") !== String(e.mine?.[k] ?? "")).map((k) => `${L[k]}: kayıtta ${nm(k, e.current[k])} · sizde ${nm(k, e.mine?.[k])}`);
+        if (await confirmDialog("Kayıt başka yerde değişti", (diff.length ? diff.join(" | ") + ". " : "") + "Değişikliğiniz YAZILMADI (eski ekran yeni değişikliği ezmesin). Güncel hâli açıp yeniden düzenleyin.", "Güncel hâli aç")) ctx.reload();
+        return;
+      }
       toast(e.message || "Kayıt kaydedilemedi", "err");
     } finally {
       saving = false;
@@ -639,9 +822,12 @@ async function workForm(ctx, editId) {
   });
 }
 
+const jobKv = (w, t) => `<div class="kv"><span class="k">İş sözleşmesi</span><span class="v"><a href="#/is-sozlesmesi/${esc(w.site_id || "")}">${esc(t)}</a></span></div>`;
 async function workDetail(ctx, id) {
   const { root, db, names } = ctx;
   const w = await db.get("work_records", id);
+  // Asistan "bu kayda fiş fotoğrafı ekle" için son açılan kayıt
+  try { sessionStorage.setItem("sp_last_record", JSON.stringify({ hash: "#/isler/" + id + "?foto=1", at: Date.now() })); } catch (e) {}
   if (!w) {
     root.innerHTML = appbar("İş") + emptyState("⚒", "Kayıt bulunamadı");
     return;
@@ -652,6 +838,9 @@ async function workDetail(ctx, id) {
         .sort((a, b) => a.batch_row - b.batch_row)
     : [];
   const slip = w.slip_id ? await db.get("slips", w.slip_id) : null;
+  const atts = await db.attachmentsFor("work", id);
+  const sst = w.digital_slip_no ? (await import("./driver-core.js")).slipState(w, atts, names) : { kind: "none", changes: [], original: null };
+  const slipChanges = sst.changes;
   const inHakedis = (await db.getAll("hakedis")).some(
     (h) =>
       isActive(h) &&
@@ -667,24 +856,65 @@ async function workDetail(ctx, id) {
       ${kv("Tarih", trDate(w.date) + (w.time ? " " + w.time : ""))}
       ${kv("Müşteri", names.customers[w.customer_id] || "—")}
       ${kv("Şantiye", names.sites[w.site_id] || "—")}
+      ${w.price_snapshot?.price_source === "Sözleşmeye dahil" ? jobKv(w, "Fiyata dahil — cariye ayrıca yazılmaz") : w.price_snapshot?.price_source === "İş sözleşmesi (sefer)" ? jobKv(w, "Sefer başı sözleşme fiyatı") : w.job_extra ? jobKv(w, "Ekstra iş (sözleşme dışı)") : ""}
       ${kv("Araç/Makine", names.vehicles[w.vehicle_id] || "—")}
       ${kv("Personel", names.personnel[w.personnel_id] || "—")}
       ${w.material ? kv("Malzeme", w.material) : ""}
       ${w.dump_area ? kv("Döküm", w.dump_area) : ""}
       ${w.quarry ? kv("Ocak", w.quarry) : ""}
       ${w.slip_status ? kv("Fiş", w.slip_status + (w.slip_no ? " #" + w.slip_no : "")) : ""}
+      ${w.tonnage ? kv("Tonaj", fmtNum(w.tonnage) + " ton") : ""}
+      ${w.dump_cost ? kv("Döküm maliyeti", fmtNum(w.dump_cost) + " ₺ (elle)") : ""}
+      ${w.customer_fuel_allowance_l ? kv("Mazot karşılığı", fmtNum(w.customer_fuel_allowance_l) + " L" + (w.price_snapshot?.price_source === "Mazot karşılığı" ? " (ücret yalnız mazot)" : "")) : ""}
       ${w.description ? kv("Açıklama", w.description) : ""}
       ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}
       ${w.internal_note ? kv("İç Not", w.internal_note) : ""}
+      ${w.invoice_no ? kv("Fatura", w.invoice_no + (w.invoice_date ? " · " + trDate(w.invoice_date) : "")) : ""}
       ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
       ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
     </div>
+    ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid ${slipChanges.length || sst.kind === "legacy" ? "#d9534f" : "#2e9e6b"}">${slipChanges.length ? notice("warn", "Bu iş, müşterinin imzaladığı fişten SONRA değiştirildi: " + slipChanges.join(" · ") + ". İmzalı fiş PDF'i imzalanan hâli gösterir; yeni hâl için revizyon fişiyle müşteriden yeniden imza alın.") : ""}${sst.kind === "legacy" ? notice("warn", "İmza anındaki içerik doğrulanamıyor (bu iş, imzalanan içerik saklanmadan kaydedildi). İmzalı fiş üretilemez; " + (sst.original ? "aşağıdaki orijinal PDF'e bakın ya da " : "") + "revizyon fişiyle yeniden imza alın.") : ""}<div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${sst.kind === "signed" && !slipChanges.length ? "ok" : "warn"}">${sst.kind === "signed" ? (slipChanges.length ? "imza sonrası değişti" : "imzalı") : sst.kind === "legacy" ? "imza içeriği doğrulanamıyor" : "imza yok"}</span></div>
+      <div class="small muted">${esc(w.slip_receiver ? "Teslim alan: " + w.slip_receiver : "")}${w.slip_signed_at ? " · " + esc(new Date(w.slip_signed_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })) : ""} · şoför sahada imzalattı</div>
+      ${sst.original ? `<a class="btn block" style="margin-top:8px" href="${URL.createObjectURL(sst.original.blob)}" target="_blank" rel="noopener">📎 Orijinal fiş PDF (şoförün telefonunda üretilen)</a>` : ""}
+      ${sst.kind === "signed" || sst.kind === "unsigned" ? `<button class="btn block" style="margin-top:8px" data-dslip>📄 ${sst.kind === "signed" ? "İmzalı fiş PDF — imzalanan hâl" : "Fiş PDF (imzasız taslak)"}</button>` : ""}
+      ${sst.kind === "legacy" || slipChanges.length ? `<button class="btn block" style="margin-top:8px" data-dslip-rev>📄 Revizyon fişi — güncel hâl (imzasız, yeniden imza için)</button>` : ""}</div>` : ""}
+    <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/*,application/pdf" multiple data-watt hidden></label></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${atts.map((a) => (String(a.type).startsWith("image/") ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>` : `<a class="chip" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name)}</a>`)).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
     <div class="actionbar">
       ${slip ? `<button class="btn" data-go="#/fisler/${slip.id}">🧾 Fiş</button>` : `<button class="btn" data-mkslip>🧾 ${siblings.length ? "Toplam Sefer Fişi" : "Fiş Oluştur"}</button>`}
       ${inHakedis ? "" : `<button class="btn" data-go="#/isler/${id}/edit">Düzenle</button>`}
       <button class="btn danger" data-del>Sil</button>
     </div>`;
+  qs("[data-dslip]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    try {
+      const { workSlipSpec } = await import("./driver-core.js");
+      const { exportDocument } = await import("./document-engine.js");
+      const { COMPANY_NAME } = await import("./core.js");
+      const sig = atts.find((a) => a.kind === "signature")?.blob || null;
+      const photo = atts.find((a) => a.kind === "slip_photo" && String(a.type).startsWith("image/"))?.blob || null;
+      await exportDocument(workSlipSpec(w, names, { company: COMPANY_NAME, sigBlob: sig, photo }), "share");
+    } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
+    b.disabled = false;
+  });
+  qs("[data-dslip-rev]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    try {
+      const { workSlipSpec } = await import("./driver-core.js");
+      const { exportDocument } = await import("./document-engine.js");
+      const { COMPANY_NAME } = await import("./core.js");
+      const photo = atts.find((a) => a.kind === "slip_photo" && String(a.type).startsWith("image/"))?.blob || null;
+      await exportDocument(workSlipSpec(w, names, { company: COMPANY_NAME, sigBlob: null, photo, revision: true }), "share");
+    } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
+    b.disabled = false;
+  });
+  if (ctx.query?.foto && qs("[data-watt]", root)) { const el = qs("[data-watt]", root); el.scrollIntoView({ block: "center" }); (el.closest("label") || el).style.outline = "3px solid var(--brand-orange,#f5a623)"; (el.closest("label") || el).scrollIntoView({ block: "center" }); }
+  qs("[data-watt]", root)?.addEventListener("change", async (e) => {
+    for (const f of [...e.target.files].slice(0, 10)) await db.addAttachment("work", id, f, { kind: "slip_photo" });
+    toast("Eklendi", "ok");
+    ctx.reload();
+  });
   const mk = qs("[data-mkslip]", root);
   if (mk)
     mk.addEventListener("click", () =>
@@ -712,48 +942,25 @@ async function slips(ctx) {
   return slipList(ctx);
 }
 
+const slipIcon = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M7 3h8l4 4v14H5V3h2Z M14 3v5h5 M8 12h8 M8 16h6"/></svg>';
+const slipSerial = (n) => `FS-${String(n || 0).padStart(6, "0")}`;
 async function slipList(ctx) {
   const { root, db, names, query } = ctx;
   const f = query.f || "all";
-  let rows = (await db.getAll("slips"))
-    .filter(isActive)
-    .sort((a, b) => (b.slip_no || 0) - (a.slip_no || 0));
-  if (f !== "all") rows = rows.filter((r) => r.status === f);
-  root.innerHTML =
-    appbar("Dijital İş Fişleri", `${rows.length} fiş`, {
-      right: '<button class="iconbtn" data-go="#/belgeler">🗂</button>',
-    }) +
-    `
-    <div style="height:10px"></div>
-    ${segBar(
-      [
-        { v: "all", t: "Tümü" },
-        { v: "Taslak", t: "Taslak" },
-        { v: "İmzalandı", t: "İmzalandı" },
-        { v: "Revize", t: "Revize" },
-      ],
-      f,
-      (v) => `#/fisler?f=${v}`,
-    )}
-    <div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/fisler/new">+ Yeni Fiş</button></div>`;
-  const listEl = qs("[data-list]", root);
-  if (!rows.length)
-    listEl.innerHTML = emptyState(
-      "🧾",
-      "Henüz dijital fiş yok",
-      '<button class="btn primary" data-go="#/fisler/new">+ Fiş Oluştur</button>',
-    );
-  else
-    pagedRender(listEl, rows, (s) =>
-      li({
-        ic: "🧾",
-        href: "#/fisler/" + s.id,
-        t1: `#${String(s.slip_no || 0).padStart(6, "0")} · ${esc(names.customers[s.customer_id] || "—")}`,
-        t2: `${trDate(s.date)} · ${esc(names.vehicles[s.vehicle_id] || "—")} · ${fmtNum(s.quantity)} ${esc(s.unit || "")}`,
-        badgeHtml: statusBadge(s.status || "Taslak"),
-      }),
-    );
+  // Şoförün sahada imzalattığı dijital fişler iş kaydında durur; listede onlar da görünür (dokununca iş detayı ve PDF)
+  const sigIds = new Set((await db.getAll("attachments")).filter((a) => a.kind === "signature" && a.record_type === "work").map((a) => a.record_id));
+  const drv = (await db.listActive("work_records")).filter((w) => w.digital_slip_no).map((w) => ({ drv: true, id: w.id, w, date: w.date, status: sigIds.has(w.id) || w.slip_signed_at ? "İmzalandı" : "Taslak" }));
+  const own = (await db.getAll("slips")).filter(isActive);
+  const all = [...own, ...drv].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")) || (b.slip_no||0)-(a.slip_no||0));
+  const rows = f === "all" ? all : f === "sofor" ? drv : all.filter(r=>r.status===f);
+  root.innerHTML = appbar("Dijital İş Fişleri", "Hizmet, teslim ve imza takibi") + `
+    <div class="slip-overview"><div><span>Toplam fiş</span><strong>${all.length}</strong></div><div><span>İmza bekleyen</span><strong>${all.filter(r=>r.status==='Taslak').length}</strong></div><div><span>İmzalı</span><strong>${all.filter(r=>r.status==='İmzalandı').length}</strong></div></div>
+    ${segBar([{v:"all",t:"Tümü"},{v:"Taslak",t:"Taslak"},{v:"İmzalandı",t:"İmzalı"},{v:"Revize",t:"Revize"},{v:"İptal",t:"İptal"},...(drv.length?[{v:"sofor",t:"Şoför"}]:[])],f,v=>`#/fisler?f=${v}`)}
+    <div class="slip-list" data-list></div>
+    <div class="actionbar"><button class="btn primary" data-go="#/fisler/new">Yeni Fiş Oluştur</button></div>`;
+  const el = qs("[data-list]",root);
+  if (!rows.length) el.innerHTML = '<div class="slip-empty">'+slipIcon+'<h2>Bu görünümde fiş bulunmuyor</h2><p>İş kaydından veya Yeni Fiş Oluştur ile başlayabilirsiniz.</p></div>';
+  else pagedRender(el,rows,s=>s.drv?`<a class="slip-list-card" href="#/isler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${esc(s.w.digital_slip_no)}</span>${statusBadge(s.status)}</div><h2>${esc(names.customers[s.w.customer_id]||"—")}</h2><p>${esc(names.sites[s.w.site_id]||"Şantiye belirtilmedi")} · 🚚 şoför${names.personnel?.[s.w.personnel_id]?" "+esc(names.personnel[s.w.personnel_id]):""}${s.w.slip_receiver?" · imzalayan: "+esc(s.w.slip_receiver):""}</p><div class="slip-card-bottom"><span>${trDate(s.w.date)}<small>${esc(s.w.work_type||"İş")}</small></span><strong>${fmtNum(s.w.quantity)} <small>${esc(s.w.unit||"")}</small></strong></div></a>`:`<a class="slip-list-card" href="#/fisler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${slipSerial(s.slip_no)}</span>${statusBadge(s.status||"Taslak")}</div><h2>${esc(names.customers[s.customer_id]||"—")}</h2><p>${esc(names.sites[s.site_id]||"Şantiye belirtilmedi")}</p><div class="slip-card-bottom"><span>${trDate(s.date)}<small>${esc(s.work_text||"İş fişi")}</small></span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit||"")}</small></strong></div></a>`);
 }
 
 async function slipForm(ctx, editId) {
@@ -824,13 +1031,14 @@ async function slipForm(ctx, editId) {
 
   root.innerHTML =
     appbar(
-      editId ? "Fiş Düzenle" : "+ Dijital Fiş",
+      editId ? "Fiş Düzenle" : "Yeni Dijital İş Fişi",
       editId
         ? "Seri #" + String(rec.slip_no).padStart(6, "0")
         : "Seri no otomatik verilir",
     ) +
     `
-    <form data-form novalidate>
+    <form class="slip-form" data-form novalidate>
+      <section class="slip-panel"><h2><span>01</span> Müşteri ve İş Yeri</h2><p class="slip-hint">Fişin teslim edileceği müşteri ve şantiye.</p>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
         ${fSelect(
@@ -847,6 +1055,7 @@ async function slipForm(ctx, editId) {
           v.site_id,
         )}
       </div>
+      </section><section class="slip-panel"><h2><span>02</span> Araç ve Gerçekleşen Hizmet</h2>
       <div class="formgrid2">
         ${fSelect(
           "Araç / Makine",
@@ -867,9 +1076,10 @@ async function slipForm(ctx, editId) {
         ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
         ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
       </div>
-      ${fArea("Açıklama", "description", v.description || "")}
+      </section><section class="slip-panel"><h2><span>03</span> Teslim Bilgileri</h2><p class="slip-hint">Bu açıklama müşteri PDF’sinde görünür. İç not yazmayın.</p>
+      ${fArea("Müşteriye Açıklama", "description", v.description || "")}
       ${fText("Teslim Alan (ad soyad)", "receiver_name", v.receiver_name || "")}
-    </form>
+      </section></form>
     <div class="actionbar"><button class="btn primary" data-save>${editId ? "Kaydet" : "Kaydet ve İmzaya Geç"}</button></div>`;
 
   const sourceBatch = (v.work_record_ids || []).length > 1;
@@ -1000,15 +1210,16 @@ async function slipSign(ctx, id) {
     return;
   }
   root.innerHTML =
-    appbar("Parmak İmzası", "Fiş #" + String(s.slip_no).padStart(6, "0")) +
+    appbar("Teslim ve İmza", slipSerial(s.slip_no)) +
     `
-    <div class="notice info"><span>ℹ</span><span>İmzalayan ekrana parmağıyla imza atar. İmzadan sonra fiş değiştirilemez; düzeltme için revizyon oluşturulur.</span></div>
+    <section class="slip-panel"><h2>Teslim Özeti</h2>${kv("Yapılan İş", s.work_text || "—")}${kv("Miktar", fmtNum(s.quantity)+" "+(s.unit||""))}${kv("Teslim Alan", s.receiver_name || "Belirtilmedi")}</section>
+    <section class="slip-panel"><h2>Teslim Alan İmzası</h2><p class="slip-hint">Aşağıdaki alana parmağınızla imza atın. İmzalı fiş korunur; düzeltme için ayrı revizyon açılır.</p>
     <div class="sigframe"><canvas class="sigpad" data-pad></canvas></div>
     <div class="row" style="margin-top:10px;gap:8px">
       <button class="btn ghost grow" data-clear>Temizle</button>
-      <button class="btn ghost grow" data-skip>İmzasız Kaydet</button>
-      <button class="btn ok grow" data-sign>İmzala ✓</button>
-    </div>`;
+      <button class="btn ghost grow" data-skip>Taslak Olarak Bırak</button>
+      <button class="btn primary grow" data-sign>İmzayı Onayla</button>
+    </div></section>`;
   const pad = qs("[data-pad]", root);
   const rect = () => pad.getBoundingClientRect();
   pad.width = 640;
@@ -1063,6 +1274,10 @@ async function slipSign(ctx, id) {
       toast("Önce imza atın", "err");
       return;
     }
+    const button = qs("[data-sign]", root);
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
     const blob = await new Promise((r) => pad.toBlob(r, "image/png"));
     await db.signSlip(id, new File([blob], "imza.png", { type: "image/png" }));
     // Revizyon zinciri: bu fiş bir revizyon ise orijinali "Revize" işaretle
@@ -1078,6 +1293,8 @@ async function slipSign(ctx, id) {
     }
     toast("Fiş imzalandı ve kilitlendi", "ok");
     go("#/fisler/" + id);
+    } catch(e) { toast(e.message || "İmza kaydedilemedi", "err"); }
+    finally { button.disabled = false; }
   });
 }
 
@@ -1095,35 +1312,39 @@ async function slipDetail(ctx, id) {
   );
 
   root.innerHTML =
-    appbar("Fiş #" + String(s.slip_no).padStart(6, "0"), trDate(s.date), {
+    appbar("Dijital İş Fişi", slipSerial(s.slip_no) + " · " + trDate(s.date), {
       right: statusBadge(s.status || "Taslak"),
     }) +
     `
-    <div style="height:10px"></div>
-    <div class="card">
+    <div class="slip-document-banner"><span>GERÇEKLEŞEN HİZMET</span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit || "")}</small></strong><p>${esc(s.work_text || "—")}</p></div>
+    <section class="slip-panel"><h2>Müşteri ve İş Yeri</h2>
       ${kv("Müşteri", names.customers[s.customer_id] || "—")}
       ${kv("Şantiye", names.sites[s.site_id] || "—")}
-      ${kv("Araç / Plaka", (names.vehicles[s.vehicle_id] || "—") + (s.plate ? " / " + s.plate : ""))}
+      </section><section class="slip-panel"><h2>Hizmet Bilgileri</h2>
+      ${kv("Araç / Plaka", (names.vehicles[s.vehicle_id] || s.plate || "—") + (s.plate && s.plate !== names.vehicles[s.vehicle_id] ? " / " + s.plate : ""))}
       ${kv("Personel", names.personnel[s.personnel_id] || "—")}
       ${kv("Yapılan İş", s.work_text || "—")}
       ${kv("Miktar", fmtNum(s.quantity) + " " + (s.unit || ""))}
       ${s.description ? kv("Açıklama", s.description) : ""}
+      </section><section class="slip-panel"><h2>Teslim ve Belge Durumu</h2>
       ${kv("Teslim Alan", s.receiver_name || "—")}
       ${s.signed_at ? kv("İmza Zamanı", new Date(s.signed_at).toLocaleString("tr-TR")) : ""}
       ${s.revision_no > 1 ? kv("Revizyon", "v" + s.revision_no) : ""}
-    </div>
+    <p class="slip-hint">${s.status === "İmzalandı" ? "İmzalı kayıt kilitlidir. Düzeltmeler yeni revizyon olarak saklanır." : s.status === "Revize" ? "Bu kayıt korunmuştur; güncel revizyonu kontrol edin." : s.status === "İptal" ? "Bu fiş iptal edilmiştir." : "Taslak fiş: teslim alan imzası henüz alınmadı."}</p></section>
     ${sig ? `<div class="section-title">İmza</div><div class="sigframe"><img data-sig alt="İmza"></div>` : ""}
     ${revisions.length ? `<div class="section-title">Revizyonlar</div>` + revisions.map((r) => li({ ic: "🧾", href: "#/fisler/" + r.id, t1: `#${String(r.slip_no).padStart(6, "0")} (v${r.revision_no})`, badgeHtml: statusBadge(r.status) })).join("") : ""}
-    <div class="actionbar">
+    <div class="actionbar slip-actions">
       ${s.status === "Taslak" ? `<button class="btn ok" data-go="#/fisler/${id}/imza">İmzala</button><button class="btn" data-go="#/fisler/${id}/edit">Düzenle</button>` : ""}
       ${s.status === "İmzalandı" ? `<button class="btn" data-revize>Revizyon</button>` : ""}
-      <button class="btn primary" data-pdf>PDF</button>
+      <button class="btn primary" data-pdf>PDF</button><button class="btn" data-slip-share>Paylaş</button><button class="btn" data-slip-print>Yazdır</button>
       ${s.status !== "İmzalandı" ? '<button class="btn danger" data-del>İptal</button>' : ""}
     </div>`;
 
   if (sig) {
     const url = URL.createObjectURL(sig.blob);
-    qs("[data-sig]", root).src = url;
+    const img = qs("[data-sig]", root);
+    img.onload = () => URL.revokeObjectURL(url);
+    img.src = url;
   }
   const rv = qs("[data-revize]", root);
   if (rv)
@@ -1157,10 +1378,15 @@ async function slipDetail(ctx, id) {
       toast("Revizyon taslağı #" + String(no).padStart(6, "0"), "ok");
       go("#/fisler/" + created.id);
     });
-  qs("[data-pdf]", root).addEventListener("click", async () => {
-    const pdf = await import("./pdf.js");
-    await pdf.slipPdf(s, names, sig ? sig.blob : null, ctx);
-  });
+  for (const [selector, mode] of [["[data-pdf]","download"],["[data-slip-share]","share"],["[data-slip-print]","print"]]) {
+    qs(selector,root).addEventListener("click",async()=>{
+      try {
+        const {slipSpec} = await import("./pdf.js");
+        const {exportDocument} = await import("./document-engine.js");
+        await exportDocument(slipSpec(s,names,sig?.blob || null),mode);
+      } catch(e) { toast(e.message || "Belge oluşturulamadı", "err"); }
+    });
+  }
   const del = qs("[data-del]", root);
   if (del)
     del.addEventListener("click", async () => {
@@ -1193,8 +1419,9 @@ async function whatsapp(ctx) {
   root.innerHTML =
     appbar("WhatsApp Ayrıştırıcı", "Mesajı yapıştır → taslak → sen onayla") +
     `
+    <div class="card tap" data-go="#/whatsapp-toplu" style="border-left:4px solid #25d366;margin-top:10px"><div class="row between"><span><b>💬 WhatsApp grubunu toplu işle</b><br><span class="muted small">Grubu dışa aktarın; yalnız yeni mesajlar, fişleriyle birlikte asistana gider</span></span><span class="muted">›</span></div></div>
     <div class="notice info"><span>ℹ</span><span>Taslaklar otomatik kaydedilmez; her birini tek tek onaylarsın. Belirsizler "KONTROL GEREKLİ" işaretlenir. Ham mesaj saklanır.</span></div>
-    <div class="field"><label>Mesaj metni</label><textarea data-raw style="min-height:130px" placeholder="U55 sevgi sokak ahmet bey 1 yevmiye&#10;34UL9492 leda 3 sefer hafriyat"></textarea></div>
+    <div class="slip-panel"><p>Eski mesajları tarih ve fiyat kontrolüyle aktarmak için:</p><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div class="field"><label>Mesaj metni</label><textarea data-raw style="min-height:130px" placeholder="U55 sevgi sokak ahmet bey 1 yevmiye&#10;34UL9492 leda 3 sefer hafriyat"></textarea></div>
     <div class="row" style="gap:8px;margin-bottom:12px">
       <button class="btn primary grow" data-parse>Ayrıştır</button>
       ${voiceSupported() ? '<button class="btn" data-voice>🎙 Sesli</button>' : ""}

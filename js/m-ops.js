@@ -15,6 +15,7 @@ import {
   segBar,
   searchBar,
   sheet,
+  sheetClose,
   toast,
   confirmDialog,
   promptDialog,
@@ -35,6 +36,7 @@ import {
   isActive,
   matchSearch,
   calcTankBalance,
+  tankStatus,
   FUEL_SOURCES,
   MAINT_TYPES,
   MAINT_STATUS,
@@ -82,9 +84,10 @@ async function fuel(ctx) {
     pagedRender(listEl, rows, (f) =>
       li({
         ic: "⛽",
+        href: "#/yakit/" + f.id,
         t1: `${esc(names.vehicles[f.vehicle_id] || "—")} · ${fmtNum(f.liters)} Lt`,
         t2: `${trDate(f.date)} · ${esc(names.personnel[f.personnel_id] || "—")} · ${esc(f.fuel_source || "")}${f.total ? " · " + fmtTL(f.total) + " ₺" : ""}${f.km ? " · " + fmtNum(f.km) + " km" : ""}${f.machine_hours ? " · " + fmtNum(f.machine_hours) + " sa" : ""}`,
-        badgeHtml: f.receipt === "Hayır" ? badge("Fişsiz", "warn") : "",
+        badgeHtml: f.receipt === "Hayır" ? badge("Fişsiz", "warn") : f.fuel_source === "Depo Tankı" ? badge("Depo", "") : "",
       }),
     );
   let st;
@@ -97,17 +100,59 @@ async function fuel(ctx) {
   });
 }
 
+// Yakıt kaydı ekranına eklenen kart: "depodan verildi" düzeltmesi + silme (depo hareketi de geri alınır)
+export async function fuelActions(root, db, f) {
+  if (!f || !isActive(f)) return;
+  const stock = calcTankBalance((await db.getAll("fuel_tank_movements")).filter(isActive)).remaining;
+  const depo = f.fuel_source === "Depo Tankı";
+  const box = document.createElement("section");
+  box.className = "card";
+  box.innerHTML =
+    (depo ? `<div class="small">Depo tankından verildi · depoda kalan ${fmtNum(stock)} Lt</div>`
+      : `<div class="small">Bu yakıt aslında <b>depo tankından</b> verildiyse düzeltin: depo stoğundan ${fmtNum(f.liters)} Lt düşülür, "fişsiz" uyarısı kalkar.</div><div class="muted tiny" style="margin-top:4px">Depoda kayıtlı: ${fmtNum(stock)} Lt</div><button class="btn primary block" style="margin-top:8px" data-todepo>🛢 Depodan verildi olarak düzelt</button>`) +
+    `<button class="btn block" style="margin-top:8px" data-fdel>🗑 Yakıt kaydını sil</button>`;
+  root.appendChild(box);
+  qs("[data-todepo]", box)?.addEventListener("click", async () => {
+    if (Number(f.liters) > stock)
+      return toast(`Depoda kayıtlı ${fmtNum(stock)} Lt var. Önce Depo ekranından depoya yakıt girişi yapın.`, "err");
+    try {
+      await db.fuelFix(f.id, "to_tank", "Depodan verildi olarak düzeltildi");
+      toast("Düzeltildi: depodan verildi", "ok");
+      go("#/yakit");
+    } catch (e) {
+      toast(e.message || String(e), "err");
+    }
+  });
+  qs("[data-fdel]", box).addEventListener("click", async () => {
+    if (!(await confirmDialog("Yakıt kaydı silinsin mi?", `${trDate(f.date)} · ${fmtNum(f.liters)} Lt${depo ? " (depo stoğuna geri eklenir)" : ""}`, "Sil"))) return;
+    try {
+      await db.fuelFix(f.id, "delete", "Kullanıcı sildi");
+      toast("Silindi", "ok");
+      go("#/yakit");
+    } catch (e) {
+      toast(e.message || String(e), "err");
+    }
+  });
+}
+
 async function fuelForm(ctx) {
   const { root, db } = ctx;
-  const [vehicles, personnel] = await Promise.all([
+  const [vehicles, personnel, allCust] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
+    db.listActive("customers"),
   ]);
+  const { hasFuelRules } = await import("./assistant-rules.js");
+  // Asistanın yerel okumasından gelindiyse: litre ve tarih dolu gelir; KAYNAK ve ARAÇ kullanıcıya seçtirilir (tahmin edilmez)
+  const fromAsst = Number(ctx.query?.litre) > 0;
+  const askedCust = fromAsst && ctx.query?.musteri ? allCust.find((c) => c.id === ctx.query.musteri) : null;
+  const fuelCustomers = [...allCust.filter(hasFuelRules), ...(askedCust && !hasFuelRules(askedCust) ? [askedCust] : [])];
   root.innerHTML =
     appbar("+ Yakıt", "Litre zorunlu; fiyat/tutar opsiyonel") +
+    (fromAsst ? notice("info", `Asistan mesajda ${Number(ctx.query.litre)} L yakıt gördü. Aracı ve kaynağı (depo, istasyon, müşteri verdi) siz seçin.${askedCust ? " Mesaja göre " + askedCust.name + " vermiş olabilir." : ""}`) : "") +
     `
     <form data-form novalidate>
-      ${fDate("Tarih", "date", todayStr())}
+      ${fDate("Tarih", "date", /^\d{4}-\d{2}-\d{2}$/.test(ctx.query?.tarih || "") ? ctx.query.tarih : todayStr())}
       <div class="formgrid2">
         ${fSelect(
           "Araç / Makine",
@@ -124,13 +169,14 @@ async function fuelForm(ctx) {
         )}
       </div>
       <div class="formgrid2">
-        ${fNum("Litre", "liters", "", { req: true, step: "any" })}
+        ${fNum("Litre", "liters", Number(ctx.query?.litre) > 0 ? String(Number(ctx.query.litre)) : "", { req: true, step: "any" })}
         ${fNum("Birim Fiyat (₺, ops.)", "unit_price", "", { step: "any" })}
       </div>
       <div class="formgrid2">
-        ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}
-        ${fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
+        ${fNum("Toplam (₺, ops.)", "total", "", { step: "any" })}${fNum("KDV % (biliniyorsa; toplam KDV dahil)", "kdv_rate", "", { step: "any" })}
+        ${fromAsst ? fSelect("Kaynak (seçin)", "fuel_source", FUEL_SOURCES, "", { emptyText: "— kaynağı seçin —" }) : fSelect("Kaynak", "fuel_source", FUEL_SOURCES, "Depo Tankı", { empty: false })}
       </div>
+      <div data-fcust hidden>${fSelect("Mazotu veren müşteri (sefer karşılığı)", "customer_id", fuelCustomers.map((c) => ({ v: c.id, t: c.name })), "", { emptyText: "— müşteriyi seçin —" })}</div>
       <div class="formgrid2">
         ${fSelect("Fiş", "receipt", ["Evet", "Hayır"], "Evet", { empty: false })}
         ${fText("Pompa Sayaç No (ops.)", "pump_no", "")}
@@ -139,9 +185,14 @@ async function fuelForm(ctx) {
         ${fNum("KM (ops.)", "km", "")}
         ${fNum("Makine Saati (ops.)", "machine_hours", "", { step: "any" })}
       </div>
+      <label class="history-check"><input type="checkbox" name="full_tank"> Bu dolumda depo tamamen doldu (ölçümlü tüketim karşılaştırması için)</label>
       ${fArea("Açıklama", "description", "")}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const srcSel = qs("[name=fuel_source]", root);
+  const syncSrc = () => (qs("[data-fcust]", root).hidden = srcSel.value !== "Müşteri Verdi");
+  srcSel.addEventListener("change", syncSrc);
+  syncSrc();
   const lt = qs("input[name=liters]", root),
     up = qs("input[name=unit_price]", root),
     tt = qs("input[name=total]", root);
@@ -164,6 +215,9 @@ async function fuelForm(ctx) {
       toast("Litre girin", "err");
       return;
     }
+    if (!val.fuel_source) return toast("Yakıtın kaynağını seçin", "err");
+    const byCust = val.fuel_source === "Müşteri Verdi";
+    if (byCust && !val.customer_id) return toast("Mazotu veren müşteriyi seçin", "err");
     await db.saveNew(
       "fuel_records",
       {
@@ -171,6 +225,7 @@ async function fuelForm(ctx) {
         vehicle_id: val.vehicle_id,
         personnel_id: val.personnel_id || null,
         liters: Number(val.liters),
+        full_tank: !!qs("[name=full_tank]",root)?.checked,
         unit_price: val.unit_price ? Number(val.unit_price) : null,
         total: val.total ? Number(val.total) : null,
         fuel_source: val.fuel_source,
@@ -180,6 +235,11 @@ async function fuelForm(ctx) {
         machine_hours: val.machine_hours ? Number(val.machine_hours) : null,
         description: val.description || "",
         customer_billable: false,
+        ...(byCust ? { customer_id: val.customer_id, total: null, unit_price: null, receipt: "Müşteri" } : {}),
+        kdv_rate:
+          val.kdv_rate !== "" && val.kdv_rate != null
+            ? Number(val.kdv_rate)
+            : null,
       },
       "Yakıt kaydı",
     );
@@ -191,23 +251,41 @@ async function fuelForm(ctx) {
 // ============ DEPO TANKI ============
 async function tank(ctx) {
   const { root, db, names } = ctx;
-  const rows = (await db.getAll("fuel_tank_movements"))
-    .filter(isActive)
-    .sort((a, b) => (b.date < a.date ? -1 : 1));
+  // Litre fiyatı toplamla tutmayan girişleri (KDV hariç yazılmış) ve onunla maliyetlenen yakıtları düzelt
+  try {
+    const fx = await db.repairTankPrices();
+    if (fx.moves || fx.fuels) toast(`Litre fiyatı düzeltildi (KDV dahil): ${fx.moves} giriş${fx.fuels ? `, ${fx.fuels} yakıt kaydının maliyeti` : ""}`, "ok");
+  } catch {}
+  const all = await db.getAll("fuel_tank_movements");
+  const rows = all.filter(isActive).sort((a, b) => (b.date < a.date ? -1 : 1));
   const bal = calcTankBalance(rows);
-  const [vehicles, personnel] = await Promise.all([
+  const st = tankStatus(rows, todayStr());
+  const [vehicles, personnel, suppliers, fuels, custs] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
+    db.listActive("suppliers"),
+    db.getAll("fuel_records"),
+    db.listActive("customers"),
   ]);
+  const { hasFuelRules: hasFuelRulesT } = await import("./assistant-rules.js");
+  const { tankDupPairs } = await import("./tank-match.js");
+  const dupPairs = tankDupPairs(rows);
+  const uncosted = fuels.filter((f) => isActive(f) && f.fuel_source === "Depo Tankı" && !(Number(f.total) > 0)).length;
 
   root.innerHTML =
-    appbar("Depo Yakıt Tankı", "Geçici takip — finansal stok değildir") +
+    appbar("Depo Yakıt Tankı", "Giriş fiyatı girilirse depodan verilen yakıt maliyetlenir") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${stat(fmtNum(bal.in), "Giriş L", "ok")}
       ${stat(fmtNum(bal.out), "Çıkış L", "warn")}
-      ${stat(fmtNum(bal.remaining), "Kalan L", "accent")}
+      ${stat(fmtNum(bal.remaining), "Kalan L", bal.remaining < 0 ? "danger" : "accent")}
+      ${stat(st.unitCost ? fmtTL(st.unitCost) : "—", "Ort. ₺/L")}
+      ${stat(st.daily ? fmtNum(st.daily) : "—", "Günlük L (14g)")}
+      ${stat(st.daysLeft != null ? fmtNum(st.daysLeft) : "—", "Kaç gün yeter")}
     </div>
+    ${dupPairs.map((p, i) => `<div class="card" style="border-left:4px solid #e0a030"><div class="small"><b>⚠ Aynı yakıt iki kez girilmiş olabilir</b><br>${trDate(p.keep.date)} elle girilen ${fmtNum(p.keep.liters)} L ve ${trDate(p.drop.date)} faturadan gelen ${fmtNum(p.drop.liters)} L (fatura ${esc(p.drop.invoice_no)}). Aynı teslimatsa birleştirin: fatura bilgisi ve fotoğrafı elle girdiğiniz kayda geçer, fazla giriş silinir, borç bir kez kalır.</div><button class="btn block" style="margin-top:8px" data-merge="${i}">🔗 Birleştir</button></div>`).join("")}
+    ${bal.remaining < 0 ? notice("warn", "Depo eksiye düşmüş: depoya giriş kaydı eksik. Gelen yakıtı GİRİŞ olarak ekleyin.") : ""}
+    ${uncosted && st.unitCost ? `<div class="card"><div class="small">${uncosted} depo yakıtı kaydının tutarı yok. Ortalama ${fmtTL(st.unitCost)} ₺/L ile maliyet yazılsın mı? (araç maliyeti ve kâr hesabı düzelir)</div><button class="btn block" style="margin-top:8px" data-fillcost>₺ Maliyetleri Yaz</button></div>` : ""}
     <div class="card">
       <div class="section-title" style="margin:0 0 8px">Yeni Hareket</div>
       <form data-form novalidate>
@@ -224,6 +302,12 @@ async function tank(ctx) {
             "",
           )}
         </div>
+        <div class="formgrid2" data-in>
+          ${fNum("Litre fiyatı ₺ (girişte)", "unit_price", "", { step: "any" })}
+          ${fNum("Toplam ₺ (girişte)", "total", "", { step: "any" })}
+        </div>
+        <div data-in>${fSelect("Veresiye petrolcü (ops.)", "supplier_id", suppliers.map((x) => ({ v: x.id, t: x.name })), "")}</div>
+        <div data-in>${fSelect("Müşteriden (sefer karşılığı mazot, ops.)", "customer_id", custs.filter(hasFuelRulesT).map((x) => ({ v: x.id, t: x.name })), "")}</div>
         <div class="formgrid2">
           ${fSelect(
             "Personel",
@@ -246,43 +330,83 @@ async function tank(ctx) {
     vehicle.closest(".field").hidden = move.value === "GİRİŞ";
     vehicle.disabled = move.value === "GİRİŞ";
     if (vehicle.disabled) vehicle.value = "";
+    for (const el of qsa("[data-in]", root)) el.hidden = move.value !== "GİRİŞ";
   };
   move.addEventListener("change", updateMove);
   updateMove();
+  // fiyat ↔ toplam birbirinden hesaplanır
+  const L = qs("[name=liters]", root), UP = qs("[name=unit_price]", root), TT = qs("[name=total]", root);
+  UP.addEventListener("input", () => { if (Number(L.value) > 0 && Number(UP.value) > 0) TT.value = Math.round(L.value * UP.value * 100) / 100; });
+  TT.addEventListener("input", () => { if (Number(L.value) > 0 && Number(TT.value) > 0) UP.value = Math.round((TT.value / L.value) * 100) / 100; });
   const listEl = qs("[data-list]", root);
+  const attN = await db.attachmentsCountMap();
   listEl.innerHTML = rows.length
     ? rows
-        .map((m) =>
+        .map((m) => (m.move_type === "GİRİŞ" ? `<div data-tk="${esc(m.id)}" style="cursor:pointer">` : "<div>") +
           li({
             ic: m.move_type === "GİRİŞ" ? "📥" : "📤",
-            t1: `${m.move_type} · ${fmtNum(m.liters)} Lt`,
-            t2: `${trDate(m.date)} · ${esc(names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
-          }),
+            t1: `${m.move_type} · ${fmtNum(m.liters)} Lt${m.move_type === "GİRİŞ" && Number(m.total) > 0 ? " · " + fmtTL(m.total) + " ₺" : ""}${m.invoice_no || attN[m.id] ? " · 📄" : ""}`,
+            t2: `${trDate(m.date)} · ${esc(m.company || names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.unit_price ? " · " + fmtTL(m.unit_price) + " ₺/L" : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
+          }) + "</div>",
         )
         .join("")
     : emptyState("🛢", "Hareket yok");
 
+  for (const el of qsa("[data-tk]", listEl))
+    el.addEventListener("click", (ev) => { ev.preventDefault(); tankInSheet(ctx, rows.find((m) => m.id === el.dataset.tk)); });
+  for (const b of qsa("[data-merge]", root))
+    b.addEventListener("click", async () => {
+      const p = dupPairs[Number(b.dataset.merge)];
+      if (!(await confirmDialog("Birleştirilsin mi?", `Elle girilen ${fmtNum(p.keep.liters)} L kayıt kalır, faturadan gelen ikinci giriş silinir. Depo stoku ${fmtNum(p.drop.liters)} L azalır (çift sayım düzelir).`, "Birleştir"))) return;
+      try { await mergeTankDup(db, ctx, p); toast("Birleştirildi", "ok"); ctx.reload(); }
+      catch (e) { toast(e.message || String(e), "err"); }
+    });
+  qs("[data-fillcost]", root)?.addEventListener("click", async () => {
+    const n = await db.fillTankFuelCosts();
+    toast(n + " yakıt kaydına maliyet yazıldı", "ok");
+    ctx.reload();
+  });
   qs("[data-add]", root).addEventListener("click", async () => {
     const val = collectForm(qs("[data-form]", root));
     if (!(Number(val.liters) > 0)) {
       toast("Litre girin", "err");
       return;
     }
-    await db.saveNew(
-      "fuel_tank_movements",
-      {
-        date: val.date,
-        move_type: val.move_type,
-        liters: Number(val.liters),
-        vehicle_id: val.vehicle_id || null,
-        personnel_id: val.personnel_id || null,
-        pump_no: val.pump_no || "",
-        signature_name: val.signature_name || "",
-      },
-      "Tank " + val.move_type,
-    );
-    toast("Kaydedildi", "ok");
-    ctx.reload();
+    const isIn = val.move_type === "GİRİŞ";
+    const liters = Number(val.liters);
+    let unit_price = isIn ? Number(val.unit_price) || null : null;
+    let total = isIn ? Number(val.total) || null : null;
+    if (unit_price && !total) total = Math.round(unit_price * liters * 100) / 100;
+    if (total && !unit_price) unit_price = Math.round((total / liters) * 100) / 100;
+    if (isIn && val.supplier_id && !total) return toast("Veresiye için toplam tutar girin", "err");
+    if (isIn && val.supplier_id && val.customer_id) return toast("Petrolcü veya müşteri: yalnız birini seçin", "err");
+    try {
+      const rec = await db.saveNew(
+        "fuel_tank_movements",
+        {
+          date: val.date,
+          move_type: val.move_type,
+          liters,
+          vehicle_id: val.vehicle_id || null,
+          personnel_id: val.personnel_id || null,
+          pump_no: val.pump_no || "",
+          signature_name: val.signature_name || "",
+          ...(isIn ? { unit_price, total, supplier_id: val.supplier_id || null, customer_id: val.customer_id || null } : {}),
+        },
+        "Tank " + val.move_type,
+      );
+      if (isIn && val.supplier_id) {
+        const { createCreditBill } = await import("./esnaf.js");
+        const d = await db.dumpAll();
+        await createCreditBill(ctx, d, d.suppliers.find((x) => x.id === val.supplier_id),
+          { date: val.date, amount: total, description: `Depoya yakıt ${fmtNum(liters)} L`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
+          { source: { store: "fuel_tank_movements", id: rec.id } });
+      }
+      toast("Kaydedildi", "ok");
+      ctx.reload();
+    } catch (e) {
+      toast(e.message || String(e), "err");
+    }
   });
   qs("[data-pdf]", root).addEventListener("click", async () => {
     const pdf = await import("./pdf.js");
@@ -405,9 +529,13 @@ async function vehicleDetail(ctx, id) {
         ${fDate("Sonraki Bakım", "next_maintenance_date", v.next_maintenance_date || "", false)}
         ${fText("Not", "note", v.note || "")}
       </div>
+      <div class="formgrid2">
+        ${fNum("Depo kapasitesi (L)", "tank_capacity", v.tank_capacity ?? "", { step: "any" })}
+      </div>
       <button class="btn sm" data-vsave>Kartı Kaydet</button>
     </div>
     ${lastMaint ? notice("ok", `Son tamamlanan bakım: ${trDate(lastMaint.date)} — ${lastMaint.maint_type || ""}`) : ""}
+    <div class="card tap" data-go="#/bakim-takvimi/${esc(v.id)}"><div class="row between"><span>🗓 Bakım takvimi${(v.service_rules || []).length ? ` · ${(v.service_rules || []).length} kural` : " — kural ekle (yağ, filtre…)"}</span><span class="muted small">›</span></div></div>
     <div class="section-title">Son İşler</div>
     ${
       w.length
@@ -473,6 +601,7 @@ async function vehicleDetail(ctx, id) {
         machine_hours: val.machine_hours ? Number(val.machine_hours) : null,
         next_maintenance_date: val.next_maintenance_date || null,
         note: val.note || "",
+        tank_capacity: Number(val.tank_capacity) > 0 ? Number(val.tank_capacity) : null,
       },
       "Araç kartı",
     );
@@ -507,7 +636,7 @@ async function maint(ctx) {
       (v) => `#/bakim?f=${v}`,
     )}
     <div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/bakim/new">+ Arıza / Bakım</button></div>`;
+    <div class="actionbar"><button class="btn" data-go="#/bakim-takvimi">🗓 Bakım Takvimi</button><button class="btn primary" data-go="#/bakim/new">+ Arıza / Bakım</button></div>`;
   const listEl = qs("[data-list]", root);
   if (!rows.length) listEl.innerHTML = emptyState("🔧", "Kayıt yok");
   else
@@ -557,11 +686,11 @@ async function maintForm(ctx, editId) {
       ${fSelect("Önem", "severity", ["Düşük", "Normal", "Yüksek", "Kritik"], v.severity || "Normal", { empty: false })}${fText("Parça", "part", v.part || "")}
       ${fArea("Arıza / Açıklama", "description", v.description || "")}
       <div class="formgrid2">
-        ${fNum("Maliyet (₺, ops.)", "cost", v.cost ?? "", { step: "any" })}
+        ${fNum("Maliyet (₺, ops.)", "cost", v.cost ?? "", { step: "any" })}${fNum("KDV % (biliniyorsa; maliyet KDV dahil)", "kdv_rate", v.kdv_rate ?? "", { step: "any" })}
         ${fText("Servis/Firma (ops.)", "service_company", v.service_company || "")}
       </div>
       ${fText("KM / Çalışma Saati (ops.)", "km_hours", v.km_hours || "")}
-      <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/*"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   qs("[data-save]", root).addEventListener("click", async () => {
@@ -580,6 +709,10 @@ async function maintForm(ctx, editId) {
       status: val.status,
       description: val.description || "",
       cost: val.cost ? Number(val.cost) : null,
+      kdv_rate:
+        val.kdv_rate !== "" && val.kdv_rate != null
+          ? Number(val.kdv_rate)
+          : null,
       service_company: val.service_company || "",
       km_hours: val.km_hours || "",
     };
@@ -689,7 +822,7 @@ async function personnel(ctx) {
     `
     <div style="height:10px"></div>
     <div data-list></div>
-    <div class="row actionbar"><button class="btn" data-padd>+ Personel</button><button class="btn primary" data-go="#/personel/hareket">+ Hareket (Avans/Mesai/İzin)</button></div>`;
+    <div class="row actionbar"><button class="btn" data-padd>+ Kişi</button><button class="btn" data-go="#/izinler">🏖 İzin</button><button class="btn" data-go="#/puantaj">📅 Puantaj</button><button class="btn primary" data-go="#/personel/hareket">+ Hareket</button></div>`;
   qs("[data-list]", root).innerHTML = rows
     .map((p) => {
       const pending = events
@@ -789,7 +922,8 @@ async function personnelDetail(ctx, id) {
             .join("")
         : emptyState("⚒", "İş yok")
     }
-    <div class="actionbar"><button class="btn primary" data-go="#/personel/hareket?pid=${id}">+ Hareket</button></div>`;
+    <div class="card tap" data-go="#/sofor-kur?pid=${id}"><div class="row between"><span>📲 Şoför bağlantısı — kendi telefonundan iş girsin</span><span class="muted small">›</span></div></div>
+    <div class="actionbar"><button class="btn" data-go="#/izinler/${id}">🏖 İzin</button><button class="btn" data-go="#/puantaj/${id}">📅 Puantaj / Maaş</button><button class="btn primary" data-go="#/personel/hareket?pid=${id}">+ Hareket</button></div>`;
 }
 
 async function personnelEventForm(ctx) {
@@ -903,5 +1037,55 @@ async function contractors(ctx) {
     });
     toast("Eklendi", "ok");
     go("#/taseron/" + created.id);
+  });
+}
+
+// Mükerrer depo girişi: faturalı kaydın bilgisi/fotoğrafı elle girilen kayda geçer, faturalı kayıt silinir, borç tek kalır
+async function mergeTankDup(db, ctx, { keep, drop }) {
+  const { invoiceFieldsOf } = await import("./tank-match.js");
+  const edb = await import("./enterprise-db.js");
+  const d = await db.dumpAll();
+  const billOf = (id) => (d.payables || []).find((b) => !b.deleted_at && b.status !== "İptal" && b.source_store === "fuel_tank_movements" && b.source_id === id);
+  const bKeep = billOf(keep.id), bDrop = billOf(drop.id);
+  if (bDrop) await edb.cancelPayable(bDrop.id, "Mükerrer depo girişi: elle girilen girişle birleştirildi");
+  const f = invoiceFieldsOf(drop);
+  if (bKeep) delete f.supplier_id;
+  await db.saveExisting("fuel_tank_movements", await db.get("fuel_tank_movements", keep.id), f, "Faturalı girişle birleştirildi");
+  for (const a of await db.attachmentsFor("tank", drop.id)) await db.addAttachment("tank", keep.id, a.blob, { kind: a.kind || "invoice" });
+  await db.deleteTankIn(drop.id, "Mükerrer depo girişi (birleştirildi)");
+  if (bDrop && !bKeep) {
+    const { createCreditBill } = await import("./esnaf.js");
+    const fresh = await db.dumpAll();
+    await createCreditBill(ctx, fresh, fresh.suppliers.find((x) => x.id === bDrop.party_id),
+      { date: keep.date, amount: Number(bDrop.gross_total), description: `Depoya yakıt ${keep.liters} L${drop.invoice_no ? " · fatura " + drop.invoice_no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
+      { source: { store: "fuel_tank_movements", id: keep.id } });
+  }
+}
+
+// Depo girişi ayrıntısı: fatura bilgisi + fatura fotoğrafı/PDF (aç, ekle)
+async function tankInSheet(ctx, m) {
+  const { db } = ctx;
+  if (!m) return;
+  const sup = m.supplier_id ? (await db.get("suppliers", m.supplier_id))?.name : "";
+  const atts = await db.attachmentsFor("tank", m.id);
+  const row = (k, v) => (v || v === 0 ? `<div class="row between small" style="padding:3px 0;border-bottom:1px solid var(--border)"><span class="muted">${k}</span><b style="text-align:right">${esc(String(v))}</b></div>` : "");
+  const sh = sheet(`<h3>📥 Depo girişi · ${trDate(m.date)}</h3>
+    ${row("Litre", fmtNum(m.liters) + " L")}${row("Litre fiyatı", m.unit_price ? fmtTL(m.unit_price) + " ₺" : "")}${row("Toplam (KDV dahil)", m.total ? fmtTL(m.total) + " ₺" : "")}
+    ${row("KDV hariç", m.net_amount != null ? fmtTL(m.net_amount) + " ₺" : "")}${row("KDV", m.kdv_amount != null ? fmtTL(m.kdv_amount) + " ₺" : "")}
+    ${row("Petrolcü", sup || m.company)}${row("Fatura no", m.invoice_no)}${row("İrsaliye no", m.irsaliye_no)}${row("ETTN", m.ettn)}${row("Satıcı VKN", m.seller_tax_no)}
+    ${(m.items || []).length ? `<div class="tiny muted" style="margin-top:6px">Kalemler: ${m.items.map((i) => esc(`${i.desc || ""} ${i.qty ?? ""} ${i.unit || ""}`.trim())).join(" · ")}</div>` : ""}
+    <div class="section-title">Fatura / fotoğraf (${atts.length})</div>
+    <div data-att>${atts.map((a) => String(a.type).startsWith("image/")
+      ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="fatura" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:6px"></a>`
+      : `<a class="btn block" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name || "Dosya")} — aç</a>`).join("") || '<div class="muted small">Fatura eklenmemiş.</div>'}</div>
+    <div class="field" style="margin-top:8px"><label>Fatura fotoğrafı / PDF ekle</label><input type="file" accept="image/*,application/pdf" data-addf></div>
+    <button class="btn block" data-x>Kapat</button>`, { modal: true });
+  qs("[data-x]", sh).onclick = () => sheetClose();
+  qs("[data-addf]", sh).addEventListener("change", async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    await db.addAttachment("tank", m.id, f, { kind: "invoice" });
+    toast("Eklendi", "ok");
+    tankInSheet(ctx, m);
   });
 }

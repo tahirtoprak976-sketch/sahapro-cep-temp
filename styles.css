@@ -374,9 +374,11 @@ body {
   z-index: 30;
 }
 .actionbar .btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   box-shadow: var(--shadow);
 }
+@media (max-width: 420px) { .actionbar .btn { padding-left: 8px; padding-right: 8px; } }
 
 /* ---- Form ---- */
 .field {
@@ -996,3 +998,70 @@ body {
 .chip {
   min-height: 44px;
 }
+
+/* İşletme defterleri */
+.enterprise-links{display:flex;flex-wrap:wrap;gap:8px}.enterprise-links .btn{min-height:44px;white-space:normal;text-align:left}.card details summary{min-height:44px;padding:10px 0}.field select{max-width:100%}
+
+/* Digital service slips: field and office presentation */
+.slip-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0}.slip-overview>div{background:var(--card,#fff);border:1px solid #dce3eb;border-radius:12px;padding:12px}.slip-overview span{display:block;color:#617085;font-size:11px}.slip-overview strong{font-size:24px;color:#142c47;display:block;margin-top:4px}.slip-list{display:grid;gap:12px;margin:16px 0}.slip-list-card{display:block;color:inherit;text-decoration:none;background:var(--card,#fff);border:1px solid #dce3eb;border-radius:14px;padding:16px}.slip-card-top,.slip-card-bottom{display:flex;justify-content:space-between;gap:12px;align-items:center}.slip-number{display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:#34516e}.slip-list-card h2{font-size:17px;margin:12px 0 4px;overflow-wrap:anywhere}.slip-list-card p{margin:0;color:#617085;font-size:13px}.slip-card-bottom{border-top:1px solid #e5eaf0;margin-top:14px;padding-top:12px;font-size:12px}.slip-card-bottom small{display:block;margin-top:4px;color:#617085;font-weight:400}.slip-card-bottom strong{font-size:22px;text-align:right;white-space:nowrap}.slip-panel{background:var(--card,#fff);border:1px solid #dce3eb;border-radius:14px;padding:16px;margin:14px 0;min-width:0}.slip-panel h2{font-size:16px;color:#173550;margin:0 0 14px;display:flex;gap:10px;align-items:center}.slip-panel h2>span{font-size:11px;color:#b56b20;background:#fff1e0;padding:6px;border-radius:7px}.slip-hint{color:#64748b;font-size:12px;line-height:1.6;margin:8px 0 16px}.slip-document-banner{border-radius:14px;background:#142e49;color:#fff;padding:20px;margin-top:16px}.slip-document-banner>span{font-size:10px;letter-spacing:1.5px;color:#b5c6d8}.slip-document-banner strong{font-size:36px;display:block;margin:6px 0}.slip-document-banner small{font-size:18px;font-weight:400}.slip-document-banner p{margin:0;font-size:15px}.slip-panel .row{flex-wrap:wrap}.slip-panel .btn{min-height:48px}.slip-panel .sigframe{margin-top:12px}.slip-empty{text-align:center;padding:36px 16px;color:#64748b}.slip-empty h2{font-size:17px}.slip-empty p{font-size:13px;line-height:1.6}.slip-panel .kv{overflow-wrap:anywhere}
+
+.slip-panel .kv .k{flex:0 0 92px}.slip-panel .kv .v{min-width:0}.slip-actions{position:static;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:12px;background:#eef2f6;border:1px solid #dce3eb;border-radius:14px}.slip-actions .btn{min-height:48px}
+
+.history-check{display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.6;margin:14px 0;min-height:44px}.history-check input{flex:0 0 22px;width:22px;height:22px;margin:2px 0}.history-state{padding:10px 12px;border-radius:8px;background:#e9f5ee;color:#215f3f;font-size:13px;line-height:1.6;overflow-wrap:anywhere}.history-state.bad{background:#fff1df;color:#834a10}.history-source{white-space:pre-wrap;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.history-tools{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}.history-row .field{min-width:0}.history-row h2{margin-bottom:0}.history-row details{padding:12px 0}.history-row summary{cursor:pointer;min-height:44px}.history-row .field input,.history-row .field select{width:100%}
+
+/* v3.4 — SAHAPRO corporate identity: navy structure, orange actions, clear records. */
+:root{--bg:#eef2f5;--bg2:#f7f9fb;--surface:#fff;--surface2:#edf2f6;--border:#d5dfe8;--text:#142c42;--muted:#53687b;--accent:#9a4b00;--accent2:#803c00;--radius:16px;--shadow:0 5px 22px rgba(9,29,48,.06);--brand-navy:#091d30;--brand-orange:#ffac22}
+body{background:var(--bg);font-size:16px}
+.brand-shell{background:var(--brand-navy);color:#fff;padding:14px 18px;border-bottom:3px solid var(--brand-orange)}
+.brand-logo{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;font-size:26px;font-weight:900;letter-spacing:-.9px;line-height:1.05;width:fit-content}
+.brand-logo b{color:var(--brand-orange)}
+.brand-logo small{display:block;color:#bdcbd8;font-size:9px;font-weight:600;letter-spacing:1.3px;margin-top:7px}
+.brand-symbol{width:42px;height:42px;display:grid;place-items:center;background:var(--brand-orange);color:var(--brand-navy);border-radius:11px}
+.brand-symbol svg{width:27px;height:27px}.office-nav,.brand-local{display:none}
+.appbar{background:#eef2f5f5;backdrop-filter:blur(12px);border-bottom:1px solid #d5dfe8;margin-bottom:16px;min-height:76px}
+.appbar .title h1{font-size:19px;letter-spacing:-.35px}.appbar .title .sub{font-size:12px;color:#53687b}
+.iconbtn,.appbar .back{width:48px;flex:none;background:#fff;border-radius:12px}
+.command-hero{position:relative;overflow:hidden;background:linear-gradient(120deg,#091d30,#183b54);color:white;padding:24px 20px;border-radius:18px;margin:0 0 18px;border:1px solid #25475f;box-shadow:0 8px 24px #091d301c}
+.command-hero:after{content:"";position:absolute;right:-52px;top:-55px;width:130px;height:250px;border:24px solid #ffac2220;transform:rotate(27deg);pointer-events:none}
+.hero-eyebrow{font-size:10px;letter-spacing:1.3px;color:#ffca70;font-weight:700;position:relative;z-index:1}
+.command-hero h2{font-size:30px;line-height:1.15;letter-spacing:-.8px;margin:16px 0 12px}.command-hero h2 span{color:var(--brand-orange)}
+.command-hero p{font-size:13px;line-height:1.7;color:#d0dce6;max-width:440px;margin:0 0 18px}
+.hero-actions{display:flex;flex-wrap:wrap;gap:8px;position:relative;z-index:1}.hero-actions .btn{background:#ffffff0d;color:#fff;border-color:#7890a4}.hero-actions .btn.primary{background:var(--brand-orange);color:#091d30;border-color:var(--brand-orange)}
+.hero-foot{font-size:11px;color:#b6c8d8;border-top:1px solid #ffffff26;padding-top:14px;margin-top:18px}
+.btn.primary{background:var(--brand-orange);color:#091d30;border-color:#df8f0d;font-weight:750;box-shadow:0 2px 4px #091d3008}.btn.primary:active{background:#ef9712}
+.btn{border-radius:11px}.btn:focus-visible,.iconbtn:focus-visible,.bottomnav button:focus-visible,.office-nav button:focus-visible,a:focus-visible{outline:3px solid #1763a6;outline-offset:3px}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid #9a4b00;outline-offset:1px}
+.statgrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0}.stat{padding:16px 10px;text-align:left;border-top:3px solid #e4a23f;box-shadow:var(--shadow)}.stat .v{font-size:23px;overflow-wrap:anywhere;letter-spacing:-.6px}.stat .l{font-size:11px;margin-top:5px;letter-spacing:.6px}
+.quickgrid{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0}.quickgrid button{aspect-ratio:auto;min-height:88px;border-radius:14px;box-shadow:var(--shadow);font-size:13px;gap:9px}.quickgrid .ic{color:#9a4b00}
+.section-title{color:#203b52;font-weight:800;border-left:3px solid #e49110;padding-left:10px;letter-spacing:.2px}
+.card,.li,.slip-list-card,.slip-panel{border-color:var(--border)}.li-ic{background:#fff2dc;color:#935000}.slip-document-banner{background:linear-gradient(120deg,#091d30,#183b54);border-left:5px solid var(--brand-orange)}
+.bottomnav{background:#091d30f7;border-top:2px solid #d39227;color:#bdcbd8;max-width:520px}.bottomnav button{color:#c3d1de;min-height:62px;font-size:10px}.bottomnav button.on{color:var(--brand-orange);background:#ffffff09}.bottomnav button .ic svg{width:22px;height:22px}
+.badge.accent{background:#fff2dc;border-color:#e6c07b;color:#874500}.chart .bar{fill:#cf7b00}
+@media(min-width:600px){.statgrid{grid-template-columns:repeat(4,minmax(0,1fr))}.quickgrid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(min-width:1100px){.brand-shell{position:fixed;left:0;top:0;bottom:0;width:252px;z-index:60;display:flex;flex-direction:column;border-bottom:0;border-right:1px solid #244058;padding:24px 16px}.brand-logo{margin:0 0 26px;font-size:27px}.office-nav{display:flex;flex-direction:column;gap:3px;overflow:auto;flex:1}.office-nav button{display:flex;align-items:center;gap:12px;text-align:left;flex:none;width:100%;min-height:44px;background:transparent;border:0;border-radius:8px;padding:10px;color:#c5d4e1;font-size:13px;cursor:pointer}.office-nav svg{width:19px;height:19px;flex:none}.office-nav button:hover{background:#ffffff0a}.office-nav button.on{background:var(--brand-orange);color:#091d30;font-weight:750}.brand-local{display:block;color:#d2dfeb;font-size:11px;line-height:1.8;padding:16px 6px 0;border-top:1px solid #ffffff21;margin-top:12px}.brand-local span{color:#a3b8ca}body{padding-left:252px}.screen{max-width:1180px;padding:0 30px 50px}.appbar{margin:0 -30px 22px;padding-left:30px;padding-right:30px}.bottomnav{display:none}.command-hero{padding:32px}.command-hero h2{font-size:38px}.screen>form{max-width:850px}.statgrid{gap:14px}.stat{padding:20px}.stat .v{font-size:28px}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+@media print{.brand-shell,.bottomnav,.command-hero{display:none!important}body{padding-left:0;background:white}.screen{max-width:none;padding:0}.appbar{position:static;background:white}}
+.quickgrid button{min-width:0;overflow-wrap:anywhere;white-space:normal;padding:10px 5px}
+.formgrid2{grid-template-columns:repeat(2,minmax(0,1fr))}.formgrid2>.field{min-width:0}.field input,.field textarea,.field select{max-width:100%}
+.quickgrid button{aspect-ratio:auto!important}
+.iconbtn svg{width:22px;height:22px}
+
+/* SOLO business extensions */
+.solo-intro{background:#142e49;color:#e2edf5;border-left:4px solid #ffac22;border-radius:12px;padding:16px;margin:12px 0;font-size:13px;line-height:1.7}.solo-module-links h2{font-size:16px}.solo-qr{text-align:center}.solo-qr img{width:220px;max-width:100%;image-rendering:pixelated}.screen form>.btn.block{margin:18px 0}.enterprise-links{align-items:stretch}.enterprise-links .btn{overflow-wrap:anywhere;max-width:100%}
+
+/* Message review workspace: mobile first, explicit evidence and missing fields. */
+.message-review-card{padding:16px;margin:14px 0;border:1px solid #d4dfe8;border-radius:14px;background:#fff;color:#173047}.message-review-card h3{margin:0;font-size:17px}.message-status{font-size:12px;padding:6px 10px;border-radius:20px;white-space:normal}.message-status.pending{background:#fff1cd;color:#745000}.message-status.matched{background:#e2f3e9;color:#195935}.message-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.message-fields div{min-width:0}.message-fields dt{font-size:12px;color:#5c7184}.message-fields dd{margin:4px 0;overflow-wrap:anywhere;font-weight:600}.message-issues{background:#fff7e3;padding:12px 12px 12px 30px;border-radius:10px}.message-issues li{margin:6px 0}.message-review-card details{font-size:14px;overflow-wrap:anywhere}.message-block{min-width:0}@media(max-width:380px){.message-fields{grid-template-columns:1fr}}
+
+.message-review-card fieldset{border:0;padding:0;margin:0;min-width:0}.message-review-card fieldset:disabled{opacity:.8}.message-review-card .message-price{margin:12px 0;padding:12px;background:#f4f7fa;border-radius:10px}.message-review-card .message-price summary{font-weight:600;margin-bottom:10px}.message-similar{margin:14px 0;padding:14px;border-left:4px solid #ffb020;background:#fff7e3;border-radius:10px}.message-similar h4{margin:0 0 8px}.message-actionbar{margin:14px 0;padding:16px;background:#fff;border:1px solid #d4dfe8;border-radius:14px}.message-actionbar p{font-size:14px;color:#885a00}.message-review-card select{max-width:100%}
+
+.finance-stat{display:block;color:inherit;text-decoration:none;cursor:pointer;min-width:0}.finance-stat .v,.finance-stat .l{display:block}.finance-stat:focus-visible{outline:3px solid var(--brand-orange);outline-offset:3px}.finance-stat:hover{filter:brightness(.98)}
+
+/* Akıllı Asistan kısayolu (her ekranda) */
+.ai-fab{position:fixed;right:14px;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) + 14px);z-index:55;display:flex;flex-direction:column;gap:10px}
+.ai-fab[hidden]{display:none}
+.ai-fab button{width:54px;height:54px;border-radius:50%;border:0;font-size:24px;cursor:pointer;box-shadow:0 6px 18px #0006;background:var(--brand-orange,#f5a623);color:#091d30}
+.ai-fab button+button{width:44px;height:44px;font-size:20px;align-self:center;background:#1f3a55;color:#fff}
+@media(min-width:1100px){.ai-fab{bottom:24px}}
+/* Şoför telefonu: yalnız şoför ekranı */
+body.driver-mode .brand-shell,body.driver-mode .bottomnav,body.driver-mode .ai-fab{display:none!important}
+body.driver-mode{padding-left:0!important;padding-bottom:20px}

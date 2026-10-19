@@ -1,5 +1,8 @@
+import { customerBankReceipt } from "./enterprise-db.js";
+import { kdvRateOf } from "./core.js";
 import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
+import { createCreditBill, findDuplicates } from "./esnaf.js";
 import {
   qs,
   qsa,
@@ -15,6 +18,7 @@ import {
   segBar,
   searchBar,
   sheet,
+  sheetClose,
   toast,
   confirmDialog,
   promptDialog,
@@ -31,13 +35,18 @@ import {
   pagedRender,
   go,
   downloadBlob,
+  shareText,
 } from "./ui.js";
+import { customerStatement, statementText, statementCsv } from "./statement.js";
+import { resolvePriceSafe, priceDecision, candidateLabel } from "./price-decision.js";
 import {
   isActive,
   matchSearch,
   calcQuoteTotals,
   calcHakedisTotals,
   resolvePrice,
+  PRICE_VEHICLE_GROUPS,
+  priceVehicleScope,
   cariBalance,
   QUOTE_TYPES,
   PAYMENT_METHODS,
@@ -47,6 +56,7 @@ import {
   WORK_UNITS,
   WORK_TYPES,
   nextCashStatus,
+  addDays,
 } from "./core.js";
 
 export async function screen(ctx) {
@@ -60,52 +70,45 @@ export async function screen(ctx) {
   return hub(ctx);
 }
 
+function financeCard(value,label,color,route) {
+  return `<a class="stat finance-stat ${esc(color)}" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="v">${esc(value)}</span><span class="l">${esc(label)}</span></a>`;
+}
+
 // ============ FİNANS HUB ============
 async function hub(ctx) {
   const { root, db } = ctx;
   const today = todayStr();
   const from = today.slice(0, 8) + "01";
-  const [hak, cashR, exp] = await Promise.all([
-    db.getAll("hakedis"),
-    db.getAll("cash_records"),
-    db.getAll("expense_records"),
-  ]);
-  const monthH = hak
-    .filter(
-      (h) =>
-        isActive(h) &&
-        h.status === "Kesinleşti" &&
-        (h.created_date || "") >= from,
-    )
-    .reduce((s, h) => s + (Number(h.grand_total) || 0), 0);
-  const monthT = cashR
-    .filter(
-      (c) =>
-        isActive(c) &&
-        c.cash_type === "Müşteriden Para Alındı" &&
-        c.date >= from,
-    )
-    .reduce((s, c) => s + (Number(c.amount) || 0), 0);
-  const monthG = exp
-    .filter((e) => isActive(e) && e.date >= from)
-    .reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  const d = await db.dumpAll();
+  const { monthlySeries } = await import("./finance-chart.js");
+  const cur = monthlySeries(d, { today, months: 1, fuelRefPrice: await db.metaGet("fuel_ref_price") })[0];
+  const monthH = cur.work;
+  const monthT = cur.collected;
+  const monthG = cur.cost;
   const items = [
     ["#/sozlesmeler", "▤", "Sözleşmeler", "şablonlar + imzalar"],
+    ["#/teklif-hesap", "🧮", "Teklif Asistanı", "Kaça vermeliyim? Maliyet + geçmiş fiyat"],
     ["#/teklif", "📄", "Teklif", "4 teklif türü + PDF"],
     ["#/hakedis", "📑", "Hakediş", "snapshot + kesinleştirme"],
     ["#/cari", "🏦", "Cari", "müşteri bakiyeleri"],
     ["#/kasa", "💰", "Kasa", "tahsilat akışı"],
     ["#/gider", "💸", "Gider", "fişli takip"],
+    ["#/esnaf", "🔧", "Esnaf Hesabı", "usta borçları"],
     ["#/fiyat", "🏷", "Fiyat Listesi", "fiyatlar + vinç tarifesi"],
   ];
   root.innerHTML =
     appbar("Finans", "Bu ay") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-      ${stat(fmtTL(monthH), "Hakediş ₺", "accent")}
-      ${stat(fmtTL(monthT), "Tahsilat ₺", "ok")}
-      ${stat(fmtTL(monthG), "Gider ₺", "warn")}
+      ${financeCard(fmtTL(monthH), "İş değeri ₺", "accent", "#/cari")}
+      ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
+      ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
+    <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
+    <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
+    <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
+    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span class="strong ${cur.profit < 0 ? "danger" : ""}">${fmtTL(cur.profit)} ₺</span></div>
+      <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
     </div>`;
@@ -125,7 +128,7 @@ async function quotes(ctx) {
     appbar("Teklifler", `${rows.length} teklif`) +
     `
     <div style="height:10px"></div><div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/teklif/new">+ Yeni Teklif</button></div>`;
+    <div class="actionbar"><button class="btn primary" data-go="#/teklif-hesap">🧮 Teklif Asistanı</button><button class="btn" data-go="#/teklif/new">+ Boş Teklif</button></div>`;
   const listEl = qs("[data-list]", root);
   if (!rows.length)
     listEl.innerHTML = emptyState(
@@ -372,7 +375,29 @@ async function quoteDetail(ctx, id) {
       ${t.status === "Taslak" ? `<button class="btn" data-go="#/teklif/${id}/edit">Düzenle</button>` : ""}
       <button class="btn" data-status>Durum</button><button class="btn" data-revision>Teklif Revizyonu</button><button class="btn" data-go="#/teklif-karsilastir?customer_id=${t.customer_id}">Karşılaştır</button>
       ${t.status === "Kabul" ? '<button class="btn primary" data-contract>Sözleşme Oluştur</button>' : ""}
+      ${t.status === "Kabul" || t.status === "Gönderildi" ? '<button class="btn" data-qrules>🏷 Fiyat listesine yaz</button>' : ""}
     </div>`;
+  // Kabul edilen teklifin fiyatları fiyat listesine: o müşterinin yeni işleri kendiliğinden fiyatlanır
+  const writeRules = async () => {
+    const { quoteRules } = await import("./quote-core.js");
+    const pr = await import("./price-rule-core.js");
+    const rules = quoteRules(t);
+    if (!rules.length) return toast("Yazılacak birim fiyat yok (müşteri, birim ve fiyat gerekli)", "err");
+    const d0 = await db.dumpAll();
+    let n = 0;
+    for (const r of rules) {
+      const { label, ...rule } = r;
+      const old = pr.sameRule(d0, rule);
+      if (old) await db.saveExisting("price_book", old, { price: rule.price, kdv_rate: rule.kdv_rate, kdv_included: false }, "Teklif #" + t.quote_no + " kabul");
+      else await db.saveNew("price_book", { ...rule, active: true, note: "Teklif #" + t.quote_no + ": " + label }, "Teklif #" + t.quote_no + " kabul");
+      n++;
+    }
+    await db.saveExisting("quotes", await db.get("quotes", t.id), { rules_written_at: new Date().toISOString() }, "Fiyat listesine yazıldı");
+    toast(n + " fiyat kuralı yazıldı — yeni işler bu fiyatla gelir", "ok");
+  };
+  qs("[data-qrules]", root)?.addEventListener("click", async () => {
+    if (await confirmDialog("Fiyat listesine yazılsın mı?", `${names.customers[t.customer_id] || "Müşteri"} için teklifteki birim fiyatlar (KDV hariç) fiyat listesine yazılır; aynı kural varsa güncellenir.`, "Yaz")) await writeRules();
+  });
   qs("[data-pdf]", root).addEventListener("click", async () => {
     const pdf = await import("./pdf.js");
     await pdf.quotePdf(t, names, tot);
@@ -419,10 +444,11 @@ async function quoteDetail(ctx, id) {
       await db.saveExisting(
         "quotes",
         t,
-        { status: b.dataset.s },
+        { status: b.dataset.s, ...(b.dataset.s === "Gönderildi" && !t.sent_at ? { sent_at: new Date().toISOString() } : {}) },
         "Durum: " + b.dataset.s,
       );
       (await import("./ui.js")).sheetClose();
+      if (b.dataset.s === "Kabul" && !t.rules_written_at && (await confirmDialog("Teklif kabul edildi 👍", "Teklifteki fiyatlar fiyat listesine yazılsın mı? Bu müşterinin yeni işleri kendiliğinden bu fiyatla gelir.", "Evet, yaz"))) await writeRules();
       ctx.reload();
     });
   });
@@ -459,7 +485,7 @@ async function priceBook(ctx) {
           ic: "🏷",
           href: `#/fiyat/${p.id}/edit`,
           t1: esc(p.work_type || names.vehicles[p.vehicle_id] || "Genel"),
-          t2: `${p.customer_id ? esc(names.customers[p.customer_id] || "") + " · " : ""}${p.site_id ? esc(names.sites[p.site_id] || "") + " · " : ""}${p.valid_from ? trDate(p.valid_from) + "→" + (p.valid_to ? trDate(p.valid_to) : "∞") : "sürekli"} · KDV %${p.kdv_rate ?? 20}${p.kdv_included ? " dahil" : " +KDV"}`,
+          t2: `${esc(priceVehicleScope(p, names.vehicles))} · ${p.customer_id ? esc(names.customers[p.customer_id] || "") + " · " : ""}${p.site_id ? esc(names.sites[p.site_id] || "") + " · " : ""}${p.valid_from ? trDate(p.valid_from) + "→" + (p.valid_to ? trDate(p.valid_to) : "∞") : "sürekli"} · KDV %${p.kdv_rate ?? 20}${p.kdv_included ? " dahil" : " +KDV"}`,
           end:
             p.formula === "CRANE_FIRST_HOUR"
               ? '<span class="badge accent">vinç formülü</span>'
@@ -470,7 +496,7 @@ async function priceBook(ctx) {
 }
 
 async function priceForm(ctx, editId) {
-  const { root, db } = ctx;
+  const { root, db, query = {} } = ctx;
   const [customers, sites, vehicles] = await Promise.all([
     db.listActive("customers"),
     db.listActive("sites"),
@@ -482,7 +508,14 @@ async function priceForm(ctx, editId) {
     kdv_rate: 20,
     kdv_included: false,
     active: true,
+    customer_id: query.customer_id || null,
+    site_id: query.site_id || null,
   };
+  const scope = v.vehicle_id
+    ? "VEHICLE"
+    : v.vehicle_type
+      ? "TYPE"
+      : v.vehicle_group || "ALL";
   root.innerHTML =
     appbar(
       editId ? "Fiyat Düzenle" : "+ Fiyat",
@@ -491,7 +524,23 @@ async function priceForm(ctx, editId) {
     `
     <form data-form novalidate>
       ${fSelect(
-        "Araç/Makine",
+        "Fiyat uygulanacak araçlar",
+        "vehicle_scope",
+        [
+          { v: "ALL", t: "Tüm araç / makineler" },
+          ...Object.entries(PRICE_VEHICLE_GROUPS).map(([v, g]) => ({
+            v,
+            t: g.label,
+          })),
+          { v: "VEHICLE", t: "Belirli araç / plaka" },
+          { v: "TYPE", t: "Belirli araç / makine türü" },
+        ],
+        scope,
+        { empty: false },
+      )}
+      <div class="notice" data-group-help hidden>Bu fiyat, kartında Tür alanı Kamyon veya Tır/Çekici olarak tanımlı araçlara uygulanır. Plaka seçmeniz gerekmez; gruba sonradan eklenen araçlar da aynı fiyatı kullanır. Türü belirtilmemiş araçlar otomatik gruba alınmaz.</div>
+      ${fSelect(
+        "Belirli Araç / Plaka",
         "vehicle_id",
         vehicles.map((x) => ({ v: x.id, t: x.name })),
         v.vehicle_id,
@@ -557,26 +606,59 @@ async function priceForm(ctx, editId) {
       <button class="btn primary" data-save>Kaydet</button>
       ${editId ? '<button class="btn danger" data-del>Sil</button>' : ""}
     </div>`;
+  const updateScope = () => {
+    const selected = qs("[name=vehicle_scope]", root).value;
+    for (const [field, applicable] of [
+      ["vehicle_id", selected === "VEHICLE"],
+      ["vehicle_type", selected === "TYPE"],
+    ]) {
+      const input = qs("[name=" + field + "]", root);
+      input.closest(".field").hidden = !applicable;
+      input.disabled = !applicable;
+    }
+    const help = qs("[data-group-help]", root);
+    help.hidden = !PRICE_VEHICLE_GROUPS[selected];
+    if (!help.hidden)
+      help.textContent = `${PRICE_VEHICLE_GROUPS[selected].label}: araç kartındaki Tür bilgisiyle eşleşir. Plaka seçmeniz gerekmez; yeni uygun araçlar da aynı fiyatı kullanır. Türü belirtilmemiş araçlar otomatik gruba alınmaz.`;
+  };
+  qs("[name=vehicle_scope]", root).addEventListener("change", updateScope);
+  updateScope();
   qs("select[name=formula]", root).addEventListener("change", (e) => {
     qs("[data-crane]", root).style.display =
       e.target.value === "CRANE_FIRST_HOUR" ? "block" : "none";
   });
   qs("[data-save]", root).addEventListener("click", async () => {
     const val = collectForm(qs("[data-form]", root));
-    if (val.formula !== "CRANE_FIRST_HOUR" && !Number(val.price)) {
+    if (
+      val.formula !== "CRANE_FIRST_HOUR" &&
+      (val.price === "" ||
+        !Number.isFinite(Number(val.price)) ||
+        Number(val.price) < 0)
+    ) {
       toast("Fiyat girin", "err");
       return;
     }
+    if (
+      (val.vehicle_scope === "VEHICLE" && !val.vehicle_id) ||
+      (val.vehicle_scope === "TYPE" && !val.vehicle_type?.trim())
+    ) {
+      toast("Seçilen kapsam için araç veya tür seçin", "err");
+      return;
+    }
     const fields = {
-      vehicle_id: val.vehicle_id || null,
+      vehicle_id: val.vehicle_scope === "VEHICLE" ? val.vehicle_id : null,
+      vehicle_group: PRICE_VEHICLE_GROUPS[val.vehicle_scope]
+        ? val.vehicle_scope
+        : null,
       work_type: val.work_type || null,
       unit: val.unit,
-      vehicle_type: val.vehicle_type || null,
+      vehicle_type:
+        val.vehicle_scope === "TYPE" ? val.vehicle_type.trim() : null,
       material: val.material || null,
       distance_min: val.distance_min !== "" ? Number(val.distance_min) : null,
       distance_max: val.distance_max !== "" ? Number(val.distance_max) : null,
       price: Number(val.price) || 0,
-      kdv_rate: Number(val.kdv_rate) || 0,
+      kdv_rate: kdvRateOf(val.kdv_rate),
       kdv_included: val.kdv_included === "1",
       customer_id: val.customer_id || null,
       site_id: val.site_id || null,
@@ -589,11 +671,16 @@ async function priceForm(ctx, editId) {
       next_hour_price: val.next_hour_price ? Number(val.next_hour_price) : null,
       active: true,
     };
-    if (editId)
-      await db.saveExisting("price_book", rec, fields, "Fiyat güncellendi");
-    else await db.saveNew("price_book", fields, "Fiyat eklendi");
-    toast("Fiyat kaydedildi", "ok");
-    go("#/fiyat");
+    if (fields.kdv_rate == null) return toast("KDV oranını yazın (KDV'siz fiyat için 0)", "err");
+    try {
+      if (editId)
+        await db.saveExisting("price_book", rec, fields, "Fiyat güncellendi");
+      else await db.saveNew("price_book", fields, "Fiyat eklendi");
+      toast("Fiyat kaydedildi", "ok");
+      go("#/fiyat");
+    } catch (e) {
+      toast(e.message, "err");
+    }
   });
   const del = qs("[data-del]", root);
   if (del)
@@ -647,13 +734,15 @@ async function hakedis(ctx) {
 
 async function hakedisNew(ctx) {
   const { root, db, names } = ctx;
-  const [customers, sites, works, pricebook, allHak] = await Promise.all([
-    db.listActive("customers"),
-    db.listActive("sites"),
-    db.getAll("work_records"),
-    db.listActive("price_book"),
-    db.getAll("hakedis"),
-  ]);
+  const [customers, sites, works, pricebook, allHak, vehicles] =
+    await Promise.all([
+      db.listActive("customers"),
+      db.listActive("sites"),
+      db.getAll("work_records"),
+      db.listActive("price_book"),
+      db.getAll("hakedis"),
+      db.listActive("vehicles"),
+    ]);
   const today = todayStr();
   const inActiveHak = new Set();
   for (const h of allHak.filter((h) => isActive(h) && h.status !== "İptal"))
@@ -737,7 +826,7 @@ async function hakedisNew(ctx) {
                 price: w.price_snapshot.unit_price,
                 price_source: "Snapshot",
               }
-            : resolvePrice(pricebook, {
+            : resolvePriceSafe(pricebook, {
                 customer_id: w.customer_id,
                 site_id: w.site_id,
                 vehicle_id: w.vehicle_id,
@@ -745,7 +834,9 @@ async function hakedisNew(ctx) {
                 unit: w.unit,
                 date: w.date,
                 material: w.material,
-                vehicle_type: w.vehicle_type,
+                vehicle_type:
+                  vehicles.find((v) => v.id === w.vehicle_id)?.type ||
+                  w.vehicle_type,
                 distance_km: w.distance_km,
               });
           const isCrane = price && price.formula === "CRANE_FIRST_HOUR";
@@ -760,7 +851,8 @@ async function hakedisNew(ctx) {
             ${isCrane ? '<span class="badge accent">vinç</span>' : `<input type="number" data-price="${w.id}" value="${price ? price.price : ""}" placeholder="₺" step="any" style="width:100%;min-height:40px;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);padding:6px 8px;text-align:right">`}
           </div>
         </div>
-        ${price ? "" : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'}
+        ${price ? "" : (() => { const dec = priceDecision(pricebook, { customer_id: w.customer_id, site_id: w.site_id, vehicle_id: w.vehicle_id, work_type: w.work_type, unit: w.unit, date: w.date, material: w.material, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type || w.vehicle_type, distance_km: w.distance_km });
+          return dec.ambiguous ? `<div class="tiny" style="color:var(--warn);margin-top:5px" data-amb="${w.id}">⚠ Birden çok fiyat kuralı uyuyor — seçin ya da el ile girin:</div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${dec.candidates.map((c) => `<button type="button" class="chip" data-pickprice="${w.id}" data-v="${c.price}" data-kdv="${c.kdv_rate}" data-inc="${c.kdv_included ? 1 : 0}">${esc(candidateLabel(c))}</button>`).join("")}</div>` : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'; })()}
       </div>`;
         })
         .join("");
@@ -775,7 +867,7 @@ async function hakedisNew(ctx) {
               price: w.price_snapshot.unit_price,
               price_source: "Snapshot",
             }
-          : resolvePrice(pricebook, {
+          : resolvePriceSafe(pricebook, {
               customer_id: w.customer_id,
               site_id: w.site_id,
               vehicle_id: w.vehicle_id,
@@ -783,7 +875,9 @@ async function hakedisNew(ctx) {
               unit: w.unit,
               date: w.date,
               material: w.material,
-              vehicle_type: w.vehicle_type,
+              vehicle_type:
+                vehicles.find((v) => v.id === w.vehicle_id)?.type ||
+                w.vehicle_type,
               distance_km: w.distance_km,
             });
         const manual = qs(`[data-price="${w.id}"]`, rowsEl);
@@ -799,16 +893,18 @@ async function hakedisNew(ctx) {
           quantity: Number(w.quantity) || 0,
           unit: w.unit,
           unit_price: manual ? Number(manual.value) || 0 : 0,
-          kdv_rate: price ? (price.kdv_rate ?? 20) : 20,
+          kdv_rate: price ? (price.kdv_rate ?? 20) : manual?.dataset.kdv ? Number(manual.dataset.kdv) : 20,
           formula:
             price && price.formula === "CRANE_FIRST_HOUR"
               ? "CRANE_FIRST_HOUR"
               : null,
           first_hour_price: price?.first_hour_price ?? crane.first,
           next_hour_price: price?.next_hour_price ?? crane.next,
-          kdv_included: price?.kdv_included || false,
+          kdv_included: price ? price.kdv_included || false : manual?.dataset.inc === "1",
           price_source:
-            manual && Number(manual.value) !== Number(price?.price)
+            !price && manual?.dataset.picked && Number(manual.value) === Number(manual.dataset.picked)
+              ? "Fiyat listesi (kullanıcı seçti)"
+              : manual && Number(manual.value) !== Number(price?.price)
               ? "Manuel"
               : price?.price_source || "Manuel",
         });
@@ -821,6 +917,16 @@ async function hakedisNew(ctx) {
     };
     rowsEl.onchange = upd;
     rowsEl.oninput = upd;
+    rowsEl.onclick = (ev) => {
+      const b = ev.target.closest("[data-pickprice]");
+      if (!b) return;
+      const inp = qs(`[data-price="${b.dataset.pickprice}"]`, rowsEl);
+      if (!inp) return;
+      inp.value = b.dataset.v; inp.dataset.kdv = b.dataset.kdv; inp.dataset.inc = b.dataset.inc; inp.dataset.picked = b.dataset.v;
+      for (const x of qsa(`[data-pickprice="${b.dataset.pickprice}"]`, rowsEl)) x.classList.toggle("on", x === b);
+      const chk = qs(`[data-chk="${b.dataset.pickprice}"]`, rowsEl); if (chk) chk.checked = true;
+      upd();
+    };
   });
 
   qs("[data-create]", root).addEventListener("click", async () => {
@@ -955,25 +1061,33 @@ async function cari(ctx) {
   const sub = ctx.parts[1];
   const { root, db, names } = ctx;
   if (sub) return cariDetail(ctx, sub);
-  const [customers, movements] = await Promise.all([
-    db.listActive("customers"),
-    db.getAll("cari_movements"),
-  ]);
-  const bal = {};
-  for (const m of movements.filter(isActive))
-    bal[m.customer_id] = (bal[m.customer_id] || 0) + (Number(m.amount) || 0);
+  const d = await db.dumpAll();
+  const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
+  const { customerBalances, unpricedGroups } = await import("./collect-core.js");
+  const { customerFuelLedger, fuelRulesOf } = await import("./assistant-rules.js");
+  const { bal, unbilled } = customerBalances(d);
+  const rows = customers.map((c) => {
+    const fuel = fuelRulesOf(c).length ? customerFuelLedger(d, c.id) : null;
+    const np = unpricedGroups(d, c.id).reduce((n, g) => n + g.works.length, 0);
+    return { c, b: bal[c.id] || 0, u: unbilled[c.id] || 0, fuel, np };
+  }).sort((a, b) => b.b - a.b || (b.fuel?.balance || 0) - (a.fuel?.balance || 0) || b.np - a.np || a.c.name.localeCompare(b.c.name, "tr"));
+  const total = rows.reduce((n, r) => n + Math.max(0, r.b), 0);
   root.innerHTML =
     appbar("Cari", "Müşteri bakiyeleri") +
     `
-    <div style="height:10px"></div><div data-list></div>`;
-  const rows = customers.map((c) => ({ c, b: bal[c.id] || 0 }));
+    <div style="height:10px"></div>
+    <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
+    <div class="card tap" data-go="#/tahsilat"><div class="row between"><span class="muted small">Toplam alacak</span><span class="strong">${fmtTL(total)} ₺ ›</span></div>
+      <div class="muted tiny">Bakiye = hakedişler + hakedişe girmemiş fiyatlı işler − tahsilatlar. Gün gün takip ve hatırlatma için dokunun.</div></div>
+    <div data-list></div>`;
   qs("[data-list]", root).innerHTML = rows.length
     ? rows
-        .map(({ c, b }) =>
+        .map(({ c, b, u, fuel, np }) =>
           li({
             ic: "🏢",
             href: "#/cari/" + c.id,
             t1: esc(c.name),
+            t2: esc([u > 0 ? `${fmtTL(u)} ₺ hakedişe girmemiş iş` : "", fuel && fuel.balance ? `⛽ ${fuel.balance > 0 ? fuel.balance + " L mazot alacağı" : -fuel.balance + " L fazla mazot alındı"}` : "", np ? `⚠ ${np} iş fiyatsız (bakiyeye girmedi)` : ""].filter(Boolean).join(" · ")),
             end: `<span class="amt ${b > 0 ? "" : "muted"}">${b > 0 ? "+" : ""}${fmtTL(b)} ₺</span>`,
           }),
         )
@@ -984,27 +1098,81 @@ async function cari(ctx) {
 async function cariDetail(ctx, cid) {
   const { root, db, names } = ctx;
   const c = await db.get("customers", cid);
-  const movements = (await db.getAll("cari_movements"))
-    .filter((m) => isActive(m) && m.customer_id === cid)
-    .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const { customerLedgerMovements, unpricedGroups } = await import("./collect-core.js");
+  const dAll = await db.dumpAll();
+  const groups = unpricedGroups(dAll, cid);
+  const { customerFuelLedger, fuelRulesOf } = await import("./assistant-rules.js");
+  const fuel = c && fuelRulesOf(c).length ? customerFuelLedger(dAll, cid) : null;
+  const { fuelPrice } = await import("./finance-chart.js");
+  const lp = fuel ? fuelPrice(dAll, todayStr(), await db.metaGet("fuel_ref_price")) : null;
+  const movements = customerLedgerMovements(dAll, cid)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const hak = movements
-    .filter((m) => m.type === "Hakedis")
-    .reduce((s, m) => s + Number(m.amount) || 0, 0);
+    .filter((m) => m.type === "Hakedis" || m.type === "Is")
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const tah = -movements
     .filter((m) => m.type === "Tahsilat")
-    .reduce((s, m) => s + Number(m.amount) || 0, 0);
-  const balance = cariBalance(movements);
+    .reduce((s, m) => s + (Number(m.amount) || 0), 0);
+  const balance = Math.round(movements.reduce((s, m) => s + (Number(m.amount) || 0), 0) * 100) / 100;
   root.innerHTML =
     appbar(c ? c.name : "Cari", "Müşteri cari kartı") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-      ${stat(fmtTL(hak), "Hakediş ₺", "accent")}
+      ${stat(fmtTL(hak), "İş + Hakediş ₺", "accent")}
       ${stat(fmtTL(tah), "Tahsilat ₺", "ok")}
       ${stat((balance > 0 ? "+" : "") + fmtTL(balance), "Bakiye ₺", balance > 0 ? "warn" : "")}
     </div>
+    ${fuel ? `<div class="card tap" data-go="#/musteriler/${esc(cid)}"><div class="row between"><span>⛽ <b>Mazot hesabı</b> (ücreti mazotla ödüyor)</span><span class="strong">${fuel.balance > 0 ? fuel.balance + " L alacak" : fuel.balance < 0 ? -fuel.balance + " L fazla" : "kapalı"}</span></div><div class="tiny muted">${fuel.earned} L hak edildi · ${fuel.received} L alındı${lp && fuel.balance > 0 ? ` · ≈ ${fmtTL(fuel.balance * lp)} ₺ değerinde` : ""}. Mazotla ödenen işler TL bakiyeye 0 yazar; alacak litre olarak izlenir.</div></div>` : ""}
+    ${groups.length ? `<div class="section-title">⚠ Fiyatı girilmemiş işler (${groups.reduce((n, g) => n + g.works.length, 0)}) — bakiyeye girmedi</div>
+    <div class="card"><div class="tiny muted" style="margin-bottom:6px">Birim fiyatı yazıp "Uygula"ya basın: bu gruptaki tüm işlere fiyat yazılır, bakiye güncellenir. "Fiyat listesine de kaydet" işaretliyse bu müşterinin sonraki işleri de bu fiyatla gelir.</div>
+      ${groups.map((g, i) => `<div class="row between" style="gap:6px;margin:6px 0;flex-wrap:wrap"><span class="small grow"><b>${esc(g.work_type)}</b> · ${g.works.length} iş · ${g.qty} ${esc(String(g.unit).toLocaleLowerCase("tr-TR"))}</span>
+        <input type="number" step="any" data-gp="${i}" placeholder="₺ / ${esc(String(g.unit).toLocaleLowerCase("tr-TR") || "birim")}" style="width:110px">
+        <button class="btn sm primary" data-gapply="${i}">Uygula</button></div>`).join("")}
+      <label class="history-check small"><input type="checkbox" data-gsave checked> Fiyat listesine de kaydet (bu müşteri + iş türü)</label></div>` : ""}
     <div class="section-title">Hareketler</div>
-    ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti"><div class="small strong">${trDate(m.date)} · ${esc(m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
-    <div class="actionbar"><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
+    ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti ${m.type === "Is" ? "tap" : ""}" ${m.type === "Is" ? `data-go="#/isler/${esc(m.ref_id)}"` : ""}><div class="small strong">${trDate(m.date)} · ${esc({ Is: "İş", Hakedis: "Hakediş", Duzeltme: "Düzeltme" }[m.type] || m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.type === "Is" ? " · hakedişe girmedi" : m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
+    <div class="section-title">Ekstre Gönder</div>
+    <div class="card">
+      <div class="field"><label>Dönem</label><select data-stper><option value="all">Tüm hareketler</option><option value="month">Bu ay</option><option value="q">Son 3 ay</option></select></div>
+      <div class="row" style="gap:8px"><button class="btn primary grow" data-stwa>📤 WhatsApp / Paylaş</button><button class="btn grow" data-stcsv>📊 Excel (CSV)</button></div>
+      <div class="muted tiny" style="margin-top:6px">Müşteriye giden metinde iç notlar ve düzeltme nedenleri yer almaz.</div>
+    </div>
+    <div class="actionbar"><button class="btn" data-go="#/tahsilat/${esc(cid)}">💰 Tahsilat / hatırlat</button><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
+  for (const b of root.querySelectorAll("[data-gapply]"))
+    b.addEventListener("click", async () => {
+      const g = groups[Number(b.dataset.gapply)];
+      const price = Number(qs(`[data-gp="${b.dataset.gapply}"]`, root).value);
+      if (!(price > 0)) return toast("Birim fiyat yazın", "err");
+      const pr = await import("./price-rule-core.js");
+      const rule = { customer_id: cid, site_id: null, work_type: g.work_type === "Diğer" ? null : g.work_type, vehicle_id: null, unit: g.unit, price, kdv_rate: 20, kdv_included: false, valid_from: null };
+      let ruleId = null;
+      if (qs("[data-gsave]", root)?.checked && rule.unit) {
+        const old = pr.sameRule(await db.dumpAll(), rule);
+        const rec = old ? await db.saveExisting("price_book", old, { price }, "Cari: fiyat güncellendi") : await db.saveNew("price_book", { ...rule, active: true, note: "Cari ekranından" }, "Cari: fiyat kuralı");
+        ruleId = rec?.id || old?.id || null;
+      }
+      let n = 0;
+      for (const w of g.works) {
+        try { await db.saveExisting("work_records", await db.get("work_records", w.id), { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Cari: fiyatsız işe fiyat yazıldı"); n++; } catch (e) { /* kilitli */ }
+      }
+      toast(`${n} işe fiyat yazıldı`, "ok");
+      ctx.reload();
+    });
+  const stPeriod = () => {
+    const t = todayStr(), v = qs("[data-stper]", root).value;
+    if (v === "month") return { from: t.slice(0, 7) + "-01", to: t };
+    if (v === "q") return { from: addDays(t, -90), to: t };
+    return { from: "", to: "" };
+  };
+  qs("[data-stwa]", root).addEventListener("click", async () => {
+    const per = stPeriod();
+    const st = customerStatement(movements, cid, per);
+    await shareText(statementText(c ? c.name : "Müşteri", st, { ...per, today: todayStr() }));
+  });
+  qs("[data-stcsv]", root).addEventListener("click", () => {
+    const st = customerStatement(movements, cid, stPeriod());
+    downloadBlob(new Blob([statementCsv(st)], { type: "text/csv;charset=utf-8" }), `Ekstre_${(c ? c.name : "musteri").replace(/[^\wÇĞİÖŞÜçğıöşü]+/g, "_")}_${todayStr()}.csv`);
+  });
   qs("[data-duzelt]", root).addEventListener("click", async () => {
     const amt = await promptDialog(
       "Manuel Düzeltme",
@@ -1081,10 +1249,11 @@ async function cash(ctx) {
 }
 
 async function cashForm(ctx) {
-  const { root, db } = ctx;
-  const [customers, personnel] = await Promise.all([
+  const { root, db, query = {} } = ctx;
+  const [customers, personnel, banks] = await Promise.all([
     db.listActive("customers"),
     db.listActive("personnel"),
+    db.listActive("bank_accounts"),
   ]);
   root.innerHTML =
     appbar(
@@ -1095,7 +1264,7 @@ async function cashForm(ctx) {
     <form data-form novalidate>
       ${fDate("Tarih", "date", todayStr())}
       ${fSelect("İşlem Türü", "cash_type", CASH_TYPES, "Müşteriden Para Alındı", { empty: false })}
-      ${fNum("Tutar (₺)", "amount", "", { req: true, step: "any" })}
+      ${fNum("Tutar (₺)", "amount", query.amount || "", { req: true, step: "any" })}
       <div class="formgrid2">
         ${fSelect(
           "Personel",
@@ -1107,38 +1276,83 @@ async function cashForm(ctx) {
           "Müşteri",
           "customer_id",
           customers.map((c) => ({ v: c.id, t: c.name })),
-          "",
+          query.customer_id || "",
         )}
       </div>
       ${fSelect("Ödeme Şekli", "payment_method", PAYMENT_METHODS, "Nakit", { empty: false })}
+      ${fSelect(
+        "Banka Hesabı",
+        "bank_account_id",
+        banks.map((b) => ({ v: b.id, t: b.name })),
+      )}
       ${fArea("Açıklama", "description", "")}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const syncBank = () => {
+    const on =
+      qs("[name=cash_type]", root).value === "Müşteriden Para Alındı" &&
+      qs("[name=payment_method]", root).value === "Havale";
+    const bank = qs("[name=bank_account_id]", root),
+      person = qs("[name=personnel_id]", root);
+    bank.closest(".field").hidden = !on;
+    bank.disabled = !on;
+    person.closest(".field").hidden = on;
+    person.disabled = on;
+    if (on) person.value = "";
+  };
+  qs("[name=payment_method]", root).addEventListener("change", syncBank);
+  qs("[name=cash_type]", root).addEventListener("change", syncBank);
+  syncBank();
+  const requestId = ctx.core.uuid();
+  let cashSaving = false;
   qs("[data-save]", root).addEventListener("click", async () => {
-    const val = collectForm(qs("[data-form]", root));
-    if (!(Number(val.amount) > 0)) {
-      toast("Pozitif tutar girin", "err");
-      return;
+    if (cashSaving) return;
+    cashSaving = true;
+    qs("[data-save]", root).disabled = true;
+    try {
+      const val = collectForm(qs("[data-form]", root));
+      if (!(Number(val.amount) > 0)) {
+        throw Error("Pozitif tutar girin");
+      }
+      const fields = {
+        request_id: requestId,
+        date: val.date,
+        cash_type: val.cash_type,
+        amount: Number(val.amount),
+        personnel_id: val.personnel_id || null,
+        customer_id: val.customer_id || null,
+        payment_method: val.payment_method,
+        description: val.description || "",
+        cash_status:
+          val.personnel_id &&
+          ["Müşteriden Para Alındı", "Personelde Para"].includes(val.cash_type)
+            ? "PERSONELDE"
+            : val.cash_type === "Kasaya Teslim Bildirildi"
+              ? "TESLIM_BILDIRILDI"
+              : "KASAYA_TESLIM_EDILDI",
+      };
+      const created =
+        val.cash_type === "Müşteriden Para Alındı" &&
+        val.payment_method === "Havale"
+          ? await customerBankReceipt(
+              {
+                date: val.date,
+                customer_id: val.customer_id,
+                bank_account_id: val.bank_account_id,
+                amount: val.amount,
+                note: val.description,
+              },
+              requestId,
+            )
+          : await db.saveNew("cash_records", fields, "Kasa kaydı");
+      toast("Kaydedildi", "ok");
+      go("#/finans/kasa");
+    } catch (e) {
+      toast(e.message, "err");
+    } finally {
+      cashSaving = false;
+      qs("[data-save]", root) && (qs("[data-save]", root).disabled = false);
     }
-    const fields = {
-      date: val.date,
-      cash_type: val.cash_type,
-      amount: Number(val.amount),
-      personnel_id: val.personnel_id || null,
-      customer_id: val.customer_id || null,
-      payment_method: val.payment_method,
-      description: val.description || "",
-      cash_status:
-        val.personnel_id &&
-        ["Müşteriden Para Alındı", "Personelde Para"].includes(val.cash_type)
-          ? "PERSONELDE"
-          : val.cash_type === "Kasaya Teslim Bildirildi"
-            ? "TESLIM_BILDIRILDI"
-            : "KASAYA_TESLIM_EDILDI",
-    };
-    const created = await db.saveNew("cash_records", fields, "Kasa kaydı");
-    toast("Kaydedildi", "ok");
-    go("#/finans/kasa");
   });
 }
 
@@ -1148,68 +1362,127 @@ async function expenses(ctx) {
   if (sub === "new") return expenseForm(ctx);
   const { root, db, names, query } = ctx;
   const q = query.q || "";
-  let rows = (await db.getAll("expense_records"))
-    .filter(isActive)
-    .sort((a, b) => (b.date < a.date ? -1 : 1));
-  rows = rows.filter((r) =>
-    matchSearch(
-      `${r.category} ${r.description || ""} ${names.personnel[r.personnel_id] || ""}`,
-      q,
-    ),
-  );
+  const kind = query.k || "";
+  const per = query.p || "month";
+  const today = todayStr();
+  const from = per === "month" ? today.slice(0, 8) + "01" : per === "3m" ? addDays(today, -90) : "";
+  const d = await db.dumpAll();
+  const { costRows, costTotals, COST_KINDS } = await import("./costs-core.js");
+  const all = costRows(d, { from, to: today, fuelRefPrice: await db.metaGet("fuel_ref_price") });
+  const tot = costTotals(all);
+  const expenseRecs = (d.expense_records || []).filter(isActive);
+  let rows = all.filter((r) => (!kind || r.kind === kind) && matchSearch(`${r.label} ${r.sub || ""} ${COST_KINDS[r.kind]}`, q));
   const attMap = await db.attachmentsCountMap();
+  const link = (k, p) => "#/gider?" + new URLSearchParams({ ...(k ? { k } : {}), p, ...(q ? { q } : {}) }).toString();
+  const chip = (k, label, amt) => `<button class="chip ${kind === k ? "on" : ""}" data-go="${link(k, per)}">${label}${amt != null ? ` <b>${fmtTL(amt)}</b>` : ""}</button>`;
   root.innerHTML =
-    appbar("Giderler", `${rows.length} kayıt`) +
+    appbar("Masraflar", `${rows.length} kayıt · ${fmtTL(rows.reduce((n, r) => n + r.amount, 0))} ₺`) +
     `
     <div style="height:10px"></div>
-    ${searchBar("Kategori, açıklama…", q)}
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      ${[["month", "Bu ay"], ["3m", "Son 3 ay"], ["all", "Tümü"]].map(([p, t]) => `<button class="chip ${per === p ? "on" : ""}" data-go="${link(kind, p)}">${t}</button>`).join("")}
+    </div>
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}${tot.dokum ? chip("dokum", "Döküm", tot.dokum) : ""}${tot.personel ? chip("personel", "Maaş", tot.personel) : ""}
+    </div>
+    <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti + personel maaşı (puantajda ay kapatılınca; avans ayrıca sayılmaz). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
+    ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Döküm ücreti hem iş kayıtlarından hesaplanıyor hem de \"Döküm\" gideri olarak girilmiş. Aynı parayı iki kez saymamak için birini kullanın (döküm sahası kartındaki ücreti silin ya da gider kaydını silin).") : ""}
+    ${tot.personel && all.some((r) => r.kind === "gider" && /personel|maaş|maas|avans/i.test(r.label)) ? notice("warn", "Maaş puantajdan masrafa yazılıyor; giderlerde de \"Personel\" kaydı var. Aynı maaşı ya da avansı gider olarak da girdiyseniz iki kez sayılır — gider kaydını silin.") : ""}
+    ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
     <div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/gider/new">+ Gider</button></div>`;
   const listEl = qs("[data-list]", root);
-  if (!rows.length) listEl.innerHTML = emptyState("💸", "Gider yok");
+  const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾", dokum: "🚛", personel: "👷" };
+  if (!rows.length) listEl.innerHTML = emptyState("💸", per === "month" ? "Bu ay masraf yok" : "Masraf yok");
   else
-    pagedRender(listEl, rows, (e) =>
-      li({
-        ic: "💸",
-        t1: `${esc(e.category || "Gider")} · ${fmtTL(e.amount)} ₺`,
-        t2: `${trDate(e.date)} · ${esc(names.personnel[e.personnel_id] || "—")} · ${esc(e.payment_method || "")}${attMap[e.id] ? " · 📷" + attMap[e.id] : ""}${e.description ? " · " + esc(e.description) : ""}`,
-        badgeHtml:
-          e.payment_method === "Personel Ödedi"
+    pagedRender(listEl, rows, (r) => {
+      const e = r.kind === "gider" ? expenseRecs.find((x) => x.id === r.id) : null;
+      return li({
+        id: r.kind === "gider" ? r.id : "",
+        href: r.kind === "gider" ? "" : r.href,
+        ic: IC[r.kind],
+        t1: `${esc(r.label)} · ${fmtTL(r.amount)} ₺`,
+        t2: `${trDate(r.date)} · ${esc(COST_KINDS[r.kind])}${r.sub ? " · " + esc(r.sub) : ""}${e && attMap[e.id] ? " · 📷" + attMap[e.id] : ""}`,
+        badgeHtml: e
+          ? e.payment_method === "Personel Ödedi"
             ? statusBadge(e.reimbursement_status || "Bekliyor")
             : e.receipt === "Hayır"
               ? badge("Fişsiz", "warn")
-              : "",
-      }),
-    );
+              : ""
+          : "",
+      });
+    });
   let st;
   qs("[data-search]", root).addEventListener("input", (ev) => {
     clearTimeout(st);
     st = setTimeout(
-      () => go("#/gider?q=" + encodeURIComponent(ev.target.value)),
+      () => go("#/gider?" + new URLSearchParams({ ...(kind ? { k: kind } : {}), p: per, q: ev.target.value }).toString()),
       450,
     );
   });
   listEl.addEventListener("click", async (e) => {
     const card = e.target.closest(".li");
     if (!card) return;
+    const rec = expenseRecs.find((r) => r.id === card.dataset.rid);
+    if (rec) await expenseDetail(db, rec, names);
   });
+}
+
+// Gider detayı + fiş fotoğrafları (dosyalar yalnızca bu cihazdaki veritabanında durur)
+async function expenseDetail(db, e, names) {
+  const atts = await db.attachmentsFor("expense", e.id);
+  const sh = sheet(`
+    <h3>${esc(e.category || "Gider")} · ${fmtTL(e.amount)} ₺</h3>
+    ${kv("Tarih", trDate(e.date))}
+    ${kv("Ödeme", e.payment_method || "—")}
+    ${kv("Personel", names.personnel[e.personnel_id] || "—")}
+    ${e.description ? kv("Açıklama", e.description) : ""}
+    ${e.company ? kv("Firma", e.company + (e.seller_tax_no ? " · VKN " + e.seller_tax_no : "")) : ""}
+    ${e.invoice_no ? kv("Fatura / fiş no", e.invoice_no) : ""}
+    ${e.ettn ? kv("ETTN", e.ettn) : ""}
+    ${e.net_amount != null ? kv("KDV hariç / KDV", `${fmtTL(e.net_amount)} ₺ / ${e.kdv_amount != null ? fmtTL(e.kdv_amount) + " ₺" : "—"}`) : ""}
+    ${Array.isArray(e.items) && e.items.length ? `<div class="section-title" style="margin-top:8px">Kalemler (${e.items.length})</div>` + e.items.map((i) => `<div class="row between small" style="padding:4px 0;border-bottom:1px solid var(--border)"><span>${i.code ? `<span class="muted tiny">${esc(i.code)}</span> ` : ""}${esc(i.desc)} <span class="muted">× ${Number(i.qty || 1).toLocaleString("tr-TR")}</span></span><b style="white-space:nowrap">${fmtTL(i.amount)} ₺</b></div>`).join("") : ""}
+    <div data-photos style="margin-top:10px">${atts.length ? "" : '<span class="muted small">Bu giderde fiş fotoğrafı yok</span>'}</div>
+    <button class="btn block" style="margin-top:12px" data-close>Kapat</button>`);
+  const box = qs("[data-photos]", sh);
+  for (const a of atts) {
+    if ((a.type || "").startsWith("image/")) {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(a.blob);
+      img.alt = a.name || "Fiş";
+      img.style.cssText =
+        "width:100%;max-height:60vh;object-fit:contain;border-radius:10px;border:1px solid var(--border);margin-bottom:8px";
+      box.appendChild(img);
+    }
+    const b = document.createElement("button");
+    b.className = "btn sm";
+    b.style.marginRight = "6px";
+    b.textContent = "⬇ " + (a.name || "dosya");
+    b.addEventListener("click", () => downloadBlob(a.blob, a.name || "fis"));
+    box.appendChild(b);
+  }
+  qs("[data-close]", sh).addEventListener("click", () => sheetClose());
 }
 
 async function expenseForm(ctx) {
   const { root, db } = ctx;
-  const [personnel, vehicles] = await Promise.all([
+  const [personnel, vehicles, categories, suppliers] = await Promise.all([
     db.listActive("personnel"),
     db.listActive("vehicles"),
+    db.listActive("expense_categories"),
+    db.listActive("suppliers"),
   ]);
   root.innerHTML =
     appbar("+ Gider", "Fiş fotoğrafı eklenebilir") +
     `
+    <div class="notice info" style="margin-top:10px"><span>ℹ</span><span>Veresiye (açık hesap) çalıştığınız ustaysa aşağıdan ustayı seçin; borç <a href="#/esnaf">Esnaf Hesabı</a>'na yazılır. Aynı iş iki yerden girilirse sistem engeller.</span></div>
     <form data-form novalidate>
       ${fDate("Tarih", "date", todayStr())}
       <div class="formgrid2">
-        ${fSelect("Kategori", "category", EXPENSE_CATEGORIES, "Yakıt", { empty: false })}
+        ${fSelect("Kategori", "category", [...new Set([...EXPENSE_CATEGORIES, ...categories.map((c) => c.name)])], "Yakıt", { empty: false })}
         ${fNum("Tutar (₺)", "amount", "", { req: true, step: "any" })}
       </div>
+      ${fNum("KDV % (biliniyorsa; tutar KDV dahil)", "kdv_rate", "", { step: "any" })}
       <div class="formgrid2">
         ${fSelect(
           "Personel",
@@ -1229,11 +1502,57 @@ async function expenseForm(ctx) {
         ${fSelect("Fiş Var mı?", "receipt", ["Evet", "Hayır"], "Evet", { empty: false })}
       </div>
       <div class="field" data-reimb style="display:none">${fSelect("Personele Ödeme", "reimbursement_status", REIMBURSEMENT_STATUS, "Bekliyor", { empty: false })}</div>
+      ${fSelect("Veresiye usta / esnaf (ops.)", "supplier_id", suppliers.map((s) => ({ v: s.id, t: s.name })), "", { emptyText: "— peşin / veresiye değil —" })}
       ${fText("Firma", "company", "")}
       ${fArea("Açıklama", "description", "")}
-      <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*"></div>
+      <button type="button" class="btn block" data-gread hidden>🤖 Fişi Gemini ile oku ve formu doldur</button>
+      <div data-gres></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  // Gemini ile fiş okuma: yalnız formu doldurur; kaydetmek kullanıcının işidir
+  {
+    const { geminiSettings, geminiReadReceipt } = await import("./ai-gemini.js");
+    const g = await geminiSettings(db);
+    const photo = qs("input[name=photo]", root), btn = qs("[data-gread]", root), out = qs("[data-gres]", root);
+    if (g.ready) photo.addEventListener("change", () => (btn.hidden = !photo.files[0]));
+    btn.addEventListener("click", async () => {
+      const f = photo.files[0];
+      if (!f) return;
+      btn.disabled = true;
+      out.innerHTML = '<div class="muted small" style="margin:6px 0">Fiş okunuyor…</div>';
+      try {
+        const { checkFields } = await import("./ocr.js");
+        const { withModelFallback } = await import("./ai-gemini.js");
+        const r = await withModelFallback(db, (o) => geminiReadReceipt(f, o), { onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b}`, "ok") });
+        const F = r.fields, set = (name, v) => { const el = qs(`[name=${name}]`, root); if (el && v != null && v !== "") { el.value = v; el.style.outline = "2px solid var(--accent,#f5a623)"; } };
+        set("date", F.date);
+        set("amount", F.total);
+        set("kdv_rate", F.kdv_rate);
+        set("company", F.firma);
+        const cat = F.fuel_type ? "Yakıt" : F.category_suggestion;
+        if (cat && [...qs("select[name=category]", root).options].some((o) => o.value === cat)) set("category", cat);
+        if (F.plate) {
+          const hit = vehicles.find((v) => String(v.plate || v.name || "").toUpperCase().replace(/\s+/g, "") === F.plate);
+          if (hit) set("vehicle_id", hit.id);
+        }
+        const desc = qs("[name=description]", root);
+        if (desc && !desc.value && F.firma) set("description", "Fiş: " + F.firma + (F.doc_no ? " · " + F.doc_no : ""));
+        const firmKey = String(F.firma || "").toLocaleLowerCase("tr-TR").split(/\s+/)[0] || "";
+        const sup = firmKey.length >= 3 ? suppliers.find((x) => String(x.name || "").toLocaleLowerCase("tr-TR").includes(firmKey)) : null;
+        const checks = checkFields(F.fuel_type || F.liters ? "Akaryakıt Fişi" : "Gider Fişi", F);
+        out.innerHTML =
+          notice("info", "Turuncu çerçeveli alanlar fişten dolduruldu. Kontrol edin, sonra Kaydet'e basın.") +
+          (F.total == null ? notice("warn", "Toplam tutar fişte net okunamadı; elle girin.") : "") +
+          checks.map((c) => notice(c.level === "error" ? "danger" : "warn", c.text)).join("") +
+          (sup ? notice("warn", `"${sup.name}" Esnaf Hesabı'nda kayıtlı. Veresiye ise yukarıdan ustayı seçin.`) : "") +
+          (r.rejected.length ? `<div class="muted tiny">Doğrulanamayıp atlanan: ${esc(r.rejected.join("; "))}</div>` : "");
+      } catch (e) {
+        out.innerHTML = notice("warn", e.message || String(e));
+      }
+      btn.disabled = false;
+    });
+  }
   const pmSel = qs("select[name=payment_method]", root);
   pmSel.addEventListener("change", () => {
     qs("[data-reimb]", root).style.display =
@@ -1245,9 +1564,48 @@ async function expenseForm(ctx) {
       toast("Pozitif tutar girin", "err");
       return;
     }
+    if (val.supplier_id) {
+      // Veresiye: gider yeniden yazılmaz, usta hesabına borç olarak (tek kayıt) girilir.
+      const d = await db.dumpAll();
+      const s = d.suppliers.find((x) => x.id === val.supplier_id);
+      try {
+        const res = await createCreditBill(ctx, d, s, {
+          date: val.date,
+          amount: val.amount,
+          description: val.description || val.category,
+          category: val.category,
+          vehicle_id: val.vehicle_id || null,
+          kdv_rate: val.kdv_rate,
+          file: qs("input[name=photo]", root).files[0],
+        });
+        if (!res) return;
+        toast("Veresiye olarak " + s.name + " hesabına yazıldı", "ok");
+        go("#/esnaf/" + s.id);
+      } catch (e) {
+        toast(e.message || String(e), "err");
+      }
+      return;
+    }
+    {
+      const d = await db.dumpAll();
+      const dup = findDuplicates(d, { date: val.date, amount: val.amount }).bills;
+      if (dup.length) {
+        const who = d.suppliers.find((x) => x.id === dup[0].party_id)?.name || "usta";
+        const ok = await confirmDialog(
+          "Bu iş Esnaf Hesabı'nda kayıtlı",
+          `${who} · ${trDate(dup[0].date)} · ${fmtTL(dup[0].gross_total)} ₺ · ${dup[0].items?.[0]?.description || dup[0].description || ""}. Aynı iş ise gider olarak tekrar girmeyin.`,
+          "Farklı bir iş, kaydet",
+        );
+        if (!ok) return;
+      }
+    }
     const fields = {
       date: val.date,
       category: val.category,
+      kdv_rate:
+        val.kdv_rate !== "" && val.kdv_rate != null
+          ? Number(val.kdv_rate)
+          : null,
       amount: Number(val.amount),
       personnel_id: val.personnel_id || null,
       vehicle_id: val.vehicle_id || null,
