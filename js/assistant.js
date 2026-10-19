@@ -4,7 +4,7 @@
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
-import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, applyTicketReread, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { priceDecision, priceSummary } from "./price-decision.js";
 import * as JOB from "./job-core.js";
@@ -218,7 +218,7 @@ export async function screen(ctx) {
         const img = await shrink(f);
         const part = { inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } };
         imgParts.push(part);
-        if (!drvPayloads.length) parts.push(part);
+        if (!drvPayloads.length) parts.push({ text: `Fotoğraf kimliği: photo:${imgParts.length - 1}` }, part);
       }
       for (const f of audios) {
         const a = await audioToWav(f);
@@ -1501,15 +1501,25 @@ async function strokesPng(sv) {
 // İşe bağlanan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, malzeme) eksikse ayrı ve daha dikkatli bir okuma
 export async function rereadSlips(db, v, imgParts, d, today) {
   const need = (v.works || []).filter((w) => (w.photos || []).length && (!w.slip_no || !w.tonnage));
-  if (!need.length) return;
-  const idx = [...new Set(need.flatMap((w) => w.photos))].filter((i) => imgParts[i]).slice(0, 6);
+  const tickets = (v.tickets || []).filter((t) => t.photo != null && (!t.ticket_no || !t.tonnage || !t.dateRead || t.unverified));
+  const idx = [...new Set([...tickets.map((t) => t.photo), ...need.flatMap((w) => w.photos)])].filter((i) => imgParts[i]).slice(0, 6);
   if (!idx.length) return;
   const { SLIP_PROMPT, slipSchema, validateSlips } = await import("./slip-read.js");
   const { geminiJson, withModelFallback } = await import("./ai-gemini.js");
-  const raw = await withModelFallback(db, (o) => geminiJson([{ text: SLIP_PROMPT }, ...idx.map((i) => imgParts[i]), { text: `Fotoğraf sayısı: ${idx.length} (sıra 0'dan)` }], { ...o, schema: slipSchema() }));
-  const res = validateSlips(raw, { d, today, count: idx.length });
+  const res = { rows: [] };
+  // Her istek yalnız bir fotoğraf içerir: modelin sıra değiştirmesi başka fişe veri taşıyamaz.
+  for (const i of idx) {
+    try {
+      const raw = await withModelFallback(db, (o) => geminiJson([{ text: SLIP_PROMPT }, imgParts[i], { text: "Tek fotoğraf, photo: 0" }], { ...o, schema: slipSchema() }));
+      const rows = validateSlips(raw, { d, today, count: 1 }).rows;
+      res.rows.push(...rows.map((r) => ({ ...r, photo: i })));
+      applyTicketReread(v, raw, i, { d, today, photoCount: imgParts.length });
+    } catch (e) {
+      for (const t of tickets.filter((t) => t.photo === i)) t.issues.push("İkinci okuma tamamlanamadı; ilk öneriyi fotoğraftan kontrol edin");
+    }
+  }
   for (const w of need) {
-    const rows = res.rows.filter((r) => w.photos.includes(idx[r.photo]));
+    const rows = res.rows.filter((r) => w.photos.includes(r.photo));
     if (!rows.length) continue;
     const tons = rows.filter((r) => r.net_ton != null);
     const nos = rows.map((r) => r.slip_no).filter(Boolean);
