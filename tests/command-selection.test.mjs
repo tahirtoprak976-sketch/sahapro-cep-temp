@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import {routeCommand} from '../js/command-router.js';
+const T='2026-10-19';
+const d={customers:[{id:'C',name:'Kılıç Hafriyat'}],vehicles:[{id:'V1',name:'JCB',plate:'34ABC123'},{id:'V2',name:'JCB 2',plate:'34ABC1234'},{id:'V3',name:'Kato',deleted_at:'2026-01-01'}],personnel:[{id:'P1',name:'Mahir Yılmaz'},{id:'P2',name:'Mahir Kaya'}],aliases:[],work_records:[{id:'W1',date:T,vehicle_id:'V1',personnel_id:'P1',unit:'Saat',quantity:1},{id:'W2',date:T,vehicle_id:'V2',personnel_id:'P2',unit:'Saat',quantity:2}]};
+const R=(text,data=d)=>routeCommand(text,data,T,{customer_id:'C'});
+assert.equal(R('JCB 2 kartını aç').hash,'#/filo/V2');
+assert.equal(R('kart JCB 2 aç').hash,'#/filo/V2');
+assert.equal(R('34 ABC 1234 kartını aç').hash,'#/filo/V2');
+assert.equal(R('34ABC123 kartını aç').hash,'#/filo/V1');
+assert.equal(R('JCB 2 bugün işini düzelt').items[0].hash,'#/isler/W2/edit');
+const dup={...d,vehicles:[...d.vehicles,{id:'V4',name:'JCB'}]};
+assert.equal(R('JCB kartını aç',dup).kind,'choose');
+assert.deepEqual(R('JCB bugün işini düzelt',dup).items.map(x=>x.hash),['#/filo/V1','#/filo/V4']);
+assert.equal(R('JCB ve JCB 2 kartlarını aç').kind,'choose');
+assert.equal(R('Mahir Yılmaz bugün işini düzelt').items[0].hash,'#/isler/W1/edit');
+assert.equal(R('Mahir bugün işini düzelt').kind,'choose');
+assert.equal(R('mazot hesabını göster').hash,'#/musteriler/C');
+assert.equal(R('ekstresini hazırla').hash,'#/cari/C');
+assert.equal(R('bu müşterinin kartını aç').hash,'#/musteriler/C');
+for(const text of ['ekstre Yeni Firma göster','kart Yeni Firma aç','tahsilat Yeni Firma göster'])
+ assert.equal(R(text),null,text);
+assert.equal(R('Kato kartını aç'),null,'deleted vehicles are not opened');
+assert.equal(R('JCBler kartını aç').hash,'#/filo/V1');
+assert.equal(R('XJCBX kartını aç'),null,'substring inside a word must not match');
+const collision={...d,customers:[{id:'X',name:'JCB Hafriyat'}]};
+assert.equal(R('JCB kartını aç',collision).label,'Müşteri mi, araç mı?');
+const before=JSON.stringify(d);R('Mahir bugün işini düzelt');assert.equal(JSON.stringify(d),before);
+console.log('command selection: PASS');

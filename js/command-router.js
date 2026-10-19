@@ -24,18 +24,44 @@ function findCustomer(text, d) {
   return ids.length === 1 ? live(d, "customers").find((c) => c.id === ids[0]) : ids.length > 1 ? { ambiguous: ids.map((i) => live(d, "customers").find((c) => c.id === i)).filter(Boolean) } : null;
 }
 const plateKey = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function nameMatches(text, name) {
+  const n = fold(name);
+  if (!n) return [];
+  const re = new RegExp(`(?<![\\p{L}\\p{N}])${escapeRe(n)}(?:'?[\\p{L}]{0,5})?(?![\\p{L}\\p{N}])`, "gu");
+  return [...fold(text).matchAll(re)].map((m) => ({ start: m.index, end: m.index + m[0].length, length: n.length }));
+}
 function findVehicle(text, d) {
-  const t = plateKey(text);
-  const vs = live(d, "vehicles").filter((v) => (v.plate && plateKey(v.plate).length >= 5 && t.includes(plateKey(v.plate))) || (v.name && fold(text).includes(fold(v.name))));
-  return vs.length === 1 ? vs[0] : null;
+  const matches = [];
+  for (const v of live(d, "vehicles")) {
+    const spans = nameMatches(text, v.name);
+    const plate = plateKey(v.plate || "");
+    if (plate.length >= 5) {
+      const re = new RegExp(`(?<![\\p{L}\\p{N}])${[...plate].map(escapeRe).join("\\s*")}(?:'?[\\p{L}]{0,5})?(?![\\p{L}\\p{N}])`, "giu");
+      spans.push(...[...text.matchAll(re)].map((m) => ({ start: m.index, end: m.index + m[0].length, length: plate.length })));
+    }
+    matches.push(...spans.map((span) => ({ ...span, v })));
+  }
+  // JCB 2 içinde geçen JCB adı, daha uzun tam araç adını gölgelememeli.
+  const strongest = matches.filter((m) => !matches.some((n) => n.length > m.length && n.start <= m.start && n.end >= m.end));
+  const vs = [...new Map(strongest.map((m) => [m.v.id, m.v])).values()];
+  return vs.length === 1 ? vs[0] : vs.length > 1 ? { ambiguous: vs } : null;
 }
 function findPersonnel(text, d) {
-  const f = fold(text);
-  const ps = live(d, "personnel").filter((p) => {
+  const ps = live(d, "personnel");
+  const full = ps.filter((p) => nameMatches(text, p.name).length);
+  const candidates = full.length ? full : ps.filter((p) => {
     const first = fold(p.name).split(" ")[0];
-    return first.length >= 3 && new RegExp("(^|[^\\p{L}])" + first.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(['’]?\\p{L}{0,5})?(?![\\p{L}])", "u").test(f);
+    return first.length >= 3 && nameMatches(text, first).length;
   });
-  return ps.length === 1 ? ps[0] : ps.length > 1 ? { ambiguous: ps } : null;
+  return candidates.length === 1 ? candidates[0] : candidates.length > 1 ? { ambiguous: candidates } : null;
+}
+function usesCustomerContext(text) {
+  // Yalnız yalın devam komutları: yeni, tanınmayan isimler eski müşteriye bağlanmaz.
+  const f = fold(text);
+  const subject = "(?:mazot hesab(?:ı|i|ını|ini)?|ekstre(?:si|sini|yi)?|cari(?: hesap| hesap özeti| ekstresi)?|hesap özeti|fiyat liste(?:si|sini)?|kart(?:ı|i|ını|ini)?|tahsilat(?:ı|i|ını|ini)?)";
+  const action = "(?:aç|ac|göster|goster|getir|hazırla|hazirla|listele)";
+  return new RegExp(`^(?:(?:bu müşterinin|bu müşteri|bunun|onun|aynı müşterinin) )?${subject} ${action}[.!?]?$`, "u").test(f);
 }
 // Tarih ifadesi → [from, to]
 export function dateWords(text, today) {
@@ -126,12 +152,21 @@ export function routeCommand(text, d, today, ctx = {}) {
   if (!isEdit && RECORDISH.test(f)) return null; // "3 sefer… göster" gibi kayıt içerikli mesaj Gemini'ye gider
   let cust = findCustomer(raw, d);
   if (cust?.ambiguous) return { kind: "choose", label: "Hangi müşteri?", items: cust.ambiguous.map((c) => ({ hash: "#/musteriler/" + c.id, label: c.name })) };
+  const namedVehicle = findVehicle(raw, d);
+  if (!isEdit && cust && namedVehicle) {
+    const vs = namedVehicle.ambiguous || [namedVehicle];
+    return { kind: "choose", label: "Müşteri mi, araç mı?", items: [
+      { hash: "#/musteriler/" + cust.id, label: "Müşteri: " + cust.name },
+      ...vs.map((v) => ({ hash: "#/filo/" + v.id, label: "Araç: " + v.name + (v.plate ? " · " + v.plate : "") }))
+    ] };
+  }
   const named = !!cust;
-  if (!cust && ctx.customer_id && /(^|\s)(bu müşteri|bunun|onun|aynı müşteri)|^(mazot|ekstre|cari|fiyat|kart|tahsilat)/.test(f)) cust = live(d, "customers").find((c) => c.id === ctx.customer_id) || null;
+  if (!cust && ctx.customer_id && usesCustomerContext(raw)) cust = live(d, "customers").find((c) => c.id === ctx.customer_id) || null;
   const via = cust && !named ? " (önceki konuşmadaki müşteri)" : "";
   // Düzeltilecek kaydı BUL (değiştirme formda, kullanıcıyla)
   if (isEdit) {
     const per = findPersonnel(raw, d), veh = findVehicle(raw, d), dw = dateWords(raw, today);
+    if (veh?.ambiguous) return { kind: "choose", label: "Hangi araç?", items: veh.ambiguous.map((v) => ({ hash: "#/filo/" + v.id, label: v.name + (v.plate ? " · " + v.plate : "") })) };
     if (per?.ambiguous) return { kind: "choose", label: "Hangi personel?", items: per.ambiguous.map((p) => ({ hash: "#/personel/" + p.id, label: p.name })) };
     if (!per && !veh && !cust && !dw) return null;
     const ws = live(d, "work_records").filter((w) => (!per || w.personnel_id === per.id) && (!veh || w.vehicle_id === veh.id) && (!cust || w.customer_id === cust.id) && (!dw || (w.date >= dw[0] && w.date <= dw[1])))
@@ -151,6 +186,7 @@ export function routeCommand(text, d, today, ctx = {}) {
     return { kind: "open", hash: "#/musteriler/" + cust.id, label: `${cust.name} — müşteri kartı${via}`, customer_id: cust.id };
   }
   const veh = findVehicle(raw, d);
+  if (veh?.ambiguous) return { kind: "choose", label: "Hangi araç?", items: veh.ambiguous.map((v) => ({ hash: "#/filo/" + v.id, label: v.name + (v.plate ? " · " + v.plate : "") })) };
   if (veh) return { kind: "open", hash: "#/filo/" + veh.id, label: `${veh.name} — araç kartı` };
   {
     const dw = dateWords(raw, today);
