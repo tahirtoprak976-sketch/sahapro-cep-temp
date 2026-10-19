@@ -78,9 +78,12 @@ with sync_playwright() as p:
     check("Kırıcı saati: 3.000" in jt, f"ekstra seçilince sözleşmedeki fiyat gösteriliyor ({jt[:120]!r})")
     # iş ekranı: kalan, hurda, özet, kilit
     pg.goto(U + f"index.html#/is-sozlesmesi/{sid}"); pg.wait_for_timeout(2500)
+    pg.click("[data-jt='soz']"); pg.wait_for_timeout(300)
     ch = pg.inner_text("[data-charge]")
     check("246.000" in ch, f"bu işten kalan ≈ bedel + ekstra − ödemeler ({ch[ch.find('kalan'):][:60]!r})")
+    pg.click("[data-jt='kayit']"); pg.wait_for_timeout(300)
     pg.fill("[data-scrap] [name=sc_amount]", "15000"); pg.fill("[data-scrap] [name=sc_buyer]", "Test Hurdacı"); pg.click("[data-scrap-add]"); pg.wait_for_timeout(2000)
+    pg.click("[data-jt='kayit']"); pg.wait_for_timeout(300)
     sm = pg.inner_text("[data-summary]")
     check("15.000" in sm and "6.000" in sm and "200.000" in sm, f"iş özeti: gelir, ekstra, hurda ({sm[:140]!r})")
     check(abs(bal() - b0 - 246000) < 0.01, "hurda satışı cariye yazılmadı")
