@@ -3,13 +3,13 @@ import { priceForQuantity, calcHakedisLine } from './core.js';
 const fail = (message, code = 'ACTION_BLOCKED') => { throw Object.assign(new Error(message), { code }); };
 export function parseWorkQuantityChange(text) {
   const t = String(text || '').toLocaleLowerCase('tr-TR');
-  if (/sil|iptal|ekle|art[ıi]r|azalt|daha|değil|yerine/.test(t)) return null;
+  if (/sil|iptal|ekle|art[ıi]r|azalt|daha|değil|yerine/.test(t) || /\p{Cf}/u.test(t)) return null;
   if (!/(?:yap|düzelt|duzelt|değiştir|degistir|güncelle|guncelle)[.!?]?\s*$/.test(t)) return null;
-  const matches = [...t.matchAll(/(?<![\p{L}\p{N}])(\d+(?:[.,]\d+)?)\s*(saat|sa|sefer|yevmiye|ton|adet|m³)(?![\p{L}\p{N}])/gu)];
+  const matches = [...t.matchAll(/(?<!\S)(\d+(?:[.,]\d+)?)\s*(saat|sa|sefer|yevmiye|ton|adet|m³)(?![\p{L}\p{N}])/gu)];
   if (matches.length !== 1) return null;
   const m = matches[0];
   // İşaret, kesir, aralık ve birden çok ayırıcıdaki son parçayı miktar sanma.
-  if (/(?:\d|[.,/−–—+\-]\s*)$/.test(t.slice(0,m.index)) || /(?:^|\s)\d{1,3}\s+$/.test(t.slice(0,m.index)) || /^\d{1,3}\.\d{3}$/.test(m[1])) return null;
+  if (/(?:\d|[\p{P}\p{S}]\s*)$/u.test(t.slice(0,m.index)) || /(?:^|\s)\d{1,3}\s+$/.test(t.slice(0,m.index)) || /^\d{1,3}\.\d{3}$/.test(m[1])) return null;
   const quantity = Number(m[1].replace(',', '.'));
   if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1e12) return null;
   const unit = { saat:'Saat', sa:'Saat', sefer:'Sefer', yevmiye:'Yevmiye', ton:'Ton', adet:'Adet', 'm³':'m³' }[m[2]];

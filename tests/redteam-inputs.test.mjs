@@ -3,7 +3,7 @@ import {parseWorkQuantityChange as parse,previewWorkQuantity as preview} from '.
 import {routeCommand} from '../js/command-router.js';
 import {normalizePdfHistory as norm,pdfRowFields} from '../js/pdf-history-core.js';
 import {backupParts,restoreBackup} from '../js/backup.js';
-for(const value of ['-3','−3','- 3','1/2','1/ 2','2–3','1,234,5','1.234.5','1.000','1 500','1e+3','1000000000001']){
+for(const value of ['-3','−3','‐3','‑3','‒3','⁄3','1⁄2',"1'500",'1\u200b500','- 3','1/2','1/ 2','2–3','1,234,5','1.234.5','1.000','1 500','1e+3','1000000000001']){
  const text=`İşi ${value} saat yap`;assert.equal(parse(text),null,text);
  assert.notEqual(routeCommand(text,{},'2026-10-19')?.kind,'work_quantity',text);
 }
