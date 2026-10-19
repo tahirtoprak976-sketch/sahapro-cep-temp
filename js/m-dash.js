@@ -69,6 +69,7 @@ async function loadAll(db) {
     "price_book",
     "suppliers",
     "payables",
+    "payroll_entries",
     "supplier_payments",
     "instruments",
     "dump_sites",
@@ -183,6 +184,7 @@ async function dashboard(ctx) {
 
     <section class="card assist-hero" aria-label="Akıllı asistan" data-assist-hero>
       <h2 style="margin:0 0 2px;font-size:20px">Ne yapmak istiyorsunuz?</h2>
+      <button class="ultimate-home-link" data-overview-home data-go="#/isletme-panosu"><b>İşletme Panosu →</b><small>Dönem seç · grafiğe dokun · kaynak kaydı aç</small></button>
       <div class="small muted" style="margin-bottom:8px">Yazın veya söyleyin — asistan kontrol kartı hazırlar, siz onaylamadan kayıt yazılmaz.</div>
       <textarea data-hero-msg rows="2" placeholder="Örn: 34 KM 101 Kaya İnşaat 4 sefer moloz · Kaya'dan 20 bin tahsil ettim" style="width:100%;font-size:16px"></textarea>
       <button class="btn primary block" data-hero-go style="margin-top:8px">🤖 Asistana gönder</button>
@@ -278,8 +280,8 @@ async function dashboard(ctx) {
 
     <div class="section-title">Aylık Özet — son 6 ay</div>
     <div class="card">${mChart}
-      <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Gider+Yakıt</span></div>
-      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay gider+yakıt", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
+      <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Maliyet</span></div>
+      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay kayıtlı maliyet", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
       ${cur.unpriced ? `<div class="muted tiny" style="margin-top:6px">⚠ Bu ay ${cur.unpriced} işin fiyatı yok; iş değeri eksik hesaplanır.</div>` : ""}
     </div>
     ${vsr.length ? `<div class="section-title">Araç Başına — son 30 gün</div>` + vsr.map((v) => li({ ic: "🚚", t1: esc(v.name), t2: `${v.works} iş · ${fmtNum(v.liters)} Lt yakıt`, end: `<div class="amt">${fmtTL(v.cost)} ₺</div>` })).join("") : ""}
@@ -827,6 +829,7 @@ async function more(ctx) {
   ];
   root.innerHTML =
     appbar("Daha Fazla", "Tüm modüller") +
+    '<button class="ultimate-home-link" data-go="#/isletme-panosu"><b>İşletme Panosu →</b><small>Grafikler, kayıt kaynakları ve kontrol listesi</small></button>' +
     `
     <div style="height:10px"></div>
     <div class="quickgrid" style="grid-template-columns:repeat(4,minmax(0,1fr))">

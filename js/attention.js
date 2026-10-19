@@ -2,7 +2,7 @@
 // İnceleme adayları kesin hata olarak sunulmaz; her maddede neden ve sonraki adım yazılır.
 import { isActive, addDays, todayStr } from "./core.js";
 import { isIncluded, jobAttention } from "./job-core.js";
-import { workAmount } from "./collect-core.js";
+import { hasWorkPrice } from "./collect-core.js";
 import { fuelRulesOf, customerFuelLedger } from "./assistant-rules.js";
 import { fuelAudit } from "./fuel-audit.js";
 
@@ -11,7 +11,7 @@ export function attentionItems(d, { restoreSets = [], today = todayStr() } = {})
   const out = [];
   const internal = new Set(live(d, "customers").filter((c) => c.internal).map((c) => c.id));
   const works = live(d, "work_records");
-  const unpriced = works.filter((w) => w.customer_id && !internal.has(w.customer_id) && !workAmount(w) && !(Number(w.customer_fuel_allowance_l) > 0) && !isIncluded(w));
+  const unpriced = works.filter((w) => w.customer_id && !internal.has(w.customer_id) && !hasWorkPrice(w) && !(Number(w.customer_fuel_allowance_l) > 0) && !isIncluded(w));
   if (unpriced.length) out.push({ key: "fiyatsiz", count: unpriced.length, title: `${unpriced.length} işin fiyatı yok`, why: "Fiyat listesinde uyan kural yok ya da fiyat girilmemiş; bu işler alacağa sayılmıyor.", next: "Listeyi açıp fiyat girin ya da fiyat kuralı ekleyin.", hash: "#/isler?f=fiyatsiz" });
   const nocust = works.filter((w) => !w.customer_id);
   if (nocust.length) out.push({ key: "musterisiz", count: nocust.length, title: `${nocust.length} işte müşteri yok`, why: "Müşterisi seçilmemiş iş hiçbir cariye yazılmaz.", next: "İşi açıp müşteriyi seçin.", hash: "#/isler?f=musterisiz" });
