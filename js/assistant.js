@@ -286,7 +286,7 @@ export async function screen(ctx) {
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
-      try { await rereadSlips(db, v, imgParts, d, today); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
+      try { await rereadSlips(db, v, imgParts, d, today, vmsg); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
       for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])]) if (w.driverDup) w.ok = false;
       // Mesajdaki şoför kodu REDDEDİLDİYSE (iptal / süresi dolmuş / imzası tutmayan): aynı mesajın yazısından Gemini'nin
       // çıkardığı kayıtlar da kendiliğinden işaretlenmez (reddedilen kaydın kopyası yazıdan geri gelmesin)
@@ -1498,17 +1498,18 @@ async function strokesPng(sv) {
   return new Promise((r) => cv.toBlob(r, "image/png"));
 }
 
-// İşe bağlanan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, malzeme) eksikse ayrı ve daha dikkatli bir okuma
-export async function rereadSlips(db, v, imgParts, d, today) {
-  const need = (v.works || []).filter((w) => (w.photos || []).length && (!w.slip_no || !w.tonnage));
-  if (!need.length) return;
-  const idx = [...new Set(need.flatMap((w) => w.photos))].filter((i) => imgParts[i]).slice(0, 6);
+// İşe bağlanan veya doğrudan atılan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, ham metin) eksikse ayrı ve daha dikkatli bir okuma
+export async function rereadSlips(db, v, imgParts, d, today, message = "") {
+  const needWorks = (v.works || []).filter((w) => (w.photos || []).length && (!w.slip_no || !w.tonnage));
+  const needTickets = (v.tickets || []).filter((t) => t.photo != null && (!t.ticket_no || !t.tonnage || (t.issues || []).some((x) => /okunamadı|doğrulanamadı|fişte yok|fotoğrafta yok|görünmüyor/.test(x))));
+  if (!needWorks.length && !needTickets.length) return;
+  const idx = [...new Set([...needWorks.flatMap((w) => w.photos), ...needTickets.map((t) => t.photo)])].filter((i) => imgParts[i]).slice(0, 6);
   if (!idx.length) return;
   const { SLIP_PROMPT, slipSchema, validateSlips } = await import("./slip-read.js");
   const { geminiJson, withModelFallback } = await import("./ai-gemini.js");
   const raw = await withModelFallback(db, (o) => geminiJson([{ text: SLIP_PROMPT }, ...idx.map((i) => imgParts[i]), { text: `Fotoğraf sayısı: ${idx.length} (sıra 0'dan)` }], { ...o, schema: slipSchema() }));
   const res = validateSlips(raw, { d, today, count: idx.length });
-  for (const w of need) {
+  for (const w of needWorks) {
     const rows = res.rows.filter((r) => w.photos.includes(idx[r.photo]));
     if (!rows.length) continue;
     const tons = rows.filter((r) => r.net_ton != null);
@@ -1528,6 +1529,37 @@ export async function rereadSlips(db, v, imgParts, d, today) {
     if (got.length) w.issues.push("Fişten okundu: " + got.join(", "));
     if ("ok" in w)
       w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup);
+  }
+  if (needTickets.length) {
+    v.photoTexts ||= [];
+    let updated = false;
+    const rebuilt = (v.tickets || []).map((t) => {
+      const row = res.rows.find((r) => idx[r.photo] === t.photo);
+      if (!row || !row.text) return t;
+      updated = true;
+      v.photoTexts[t.photo] = [v.photoTexts[t.photo], row.text].filter(Boolean).join("\n");
+      const [revalidated] = validateTickets({
+        tickets: [{
+          photo: t.photo,
+          text: row.text,
+          ticket_no: row.slip_no || t.ticket_no,
+          date: row.date || (t.dateRead ? t.date : null),
+          plate: row.plate || "",
+          vehicle_id: row.vehicle_id || t.vehicle_id,
+          tonnage: row.net_ton ?? t.tonnage,
+          dump_site_id: t.dump_site_id,
+          dump_site_name: t.dump_site_name || row.to_place,
+          material: row.material || t.material,
+          customer_id: t.customer_id,
+          site_id: t.site_id,
+        }],
+      }, { d, today, photoTexts: v.photoTexts, photoCount: imgParts.length });
+      return revalidated || t;
+    });
+    if (updated) {
+      v.tickets = rebuilt;
+      mergeTicketsIntoWorks(v, { photoCount: imgParts.length, d, message });
+    }
   }
 }
 
