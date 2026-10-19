@@ -4,6 +4,7 @@
 import { isActive, addDays } from "./core.js";
 import { customerSpans } from "./money-roles.js";
 import { customerFuelLedger } from "./assistant-rules.js";
+import { parseWorkQuantityChange } from "./assistant-operations.js";
 import { vehicleSummary } from "./attention.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -123,7 +124,7 @@ export function routeCommand(text, d, today, ctx = {}) {
   if (!raw || raw.length > 140 || raw.includes("\n")) return null;
   const f = fold(raw);
   const requestedDate = dateWords(raw, today);
-  if (requestedDate && !requestedDate[0] && (OPEN.test(f) || EDIT.test(f)))
+  if (requestedDate && !requestedDate[0] && (OPEN.test(f) || EDIT.test(f) || parseWorkQuantityChange(raw)))
     return { kind: "choose", label: requestedDate[2], items: [] };
   // "Bu kayda fiş fotoğrafı ekle": son açılan kayıt açılır, fotoğraf orada kullanıcıyla eklenir
   if (/(bu|son|şu) (kayd|işe|ise)|kayda (fiş|foto)/.test(f) && /(fiş|fis|foto|resim)/.test(f) && /ekle/.test(f))
@@ -147,7 +148,8 @@ export function routeCommand(text, d, today, ctx = {}) {
     return { kind: "answer", label: `Araçlar — ${dw[2]}`, text: vs.length ? vs.map((v) => `${v.name}: ${v.works} iş (${unitsTxt(v)})`).join(" · ") + ". Birimler ayrı sayıldı." : "Bu tarihte araca bağlı iş kaydı yok.", items: [{ hash: `#/isler?from=${dw[0]}&to=${dw[1]}`, label: "İşleri listele" }, ...vs.slice(0, 6).map((v) => ({ hash: "#/filo/" + v.id, label: v.name + " — araç kartı" }))] };
   }
   if (isQ && /(kimden|alacağ|alacag)/.test(f)) return { kind: "open", hash: "#/tahsilat", label: "Tahsilat takibi — müşterilere göre açık alacak (TL; mazot alacağı ayrıdır)" };
-  const isEdit = EDIT.test(f), isOpen = OPEN.test(f);
+  const quantityChange = parseWorkQuantityChange(raw);
+  const isEdit = EDIT.test(f) || !!quantityChange, isOpen = OPEN.test(f);
   if (!isEdit && !isOpen) return null;
   if (!isEdit && RECORDISH.test(f)) return null; // "3 sefer… göster" gibi kayıt içerikli mesaj Gemini'ye gider
   let cust = findCustomer(raw, d);
@@ -173,8 +175,8 @@ export function routeCommand(text, d, today, ctx = {}) {
       .sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 12);
     const nm = (s, id) => live(d, s).find((x) => x.id === id)?.name || "—";
     const who = [per?.name, veh?.name, cust?.name, dw?.[2]].filter(Boolean).join(" · ");
-    return { kind: "candidates", label: `Düzeltilecek iş: ${who}${via}`, empty: !ws.length,
-      items: ws.map((w) => ({ hash: `#/isler/${w.id}/edit`, label: `${String(w.date || "tarihsiz").split("-").reverse().join(".")} · ${nm("vehicles", w.vehicle_id)} · ${nm("customers", w.customer_id)} · ${w.work_type || "iş"} · ${w.quantity ?? "?"} ${String(w.unit || "").toLocaleLowerCase("tr-TR")}` })) };
+    return { kind: quantityChange ? "work_quantity" : "candidates", change:quantityChange, label: `Düzeltilecek iş: ${who}${via}`, empty: !ws.length,
+      items: ws.map((w) => ({ id:w.id, hash: `#/isler/${w.id}/edit`, label: `${String(w.date || "tarihsiz").split("-").reverse().join(".")} · ${nm("vehicles", w.vehicle_id)} · ${nm("customers", w.customer_id)} · ${w.work_type || "iş"} · ${w.quantity ?? "?"} ${String(w.unit || "").toLocaleLowerCase("tr-TR")}` })) };
   }
   // Ekran / kart açma
   if (cust) {
