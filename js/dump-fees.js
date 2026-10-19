@@ -36,6 +36,12 @@ export function dumpFee(d, w) {
   const trips = w.unit === "Sefer" ? qty : 1;
   if (s.fee_unit === "Sefer") return { site: s.name, unit: "Sefer", fee, amount: r2(fee * trips), trips, ton: null, estimated: false };
   let ton = Number(w.tonnage) || (w.unit === "Ton" ? qty : 0), estimated = false;
+  // Birden çok seferlik kayıtta tek fiş tonu yazılmış olabilir: ton aracın sefer başı yükünün katı değilse kalan seferler o fişin tonuyla tahmin edilir
+  if (Number(w.tonnage) > 0 && w.unit === "Sefer" && trips > 1) {
+    const ref = loadTon(live(d, "vehicles").find((x) => x.id === w.vehicle_id));
+    const k = ref > 0 ? Math.min(trips, Math.max(1, Math.round(Number(w.tonnage) / ref))) : trips;
+    if (k < trips) { ton = r2((Number(w.tonnage) / k) * trips); estimated = true; }
+  }
   if (!(ton > 0)) {
     const v = live(d, "vehicles").find((x) => x.id === w.vehicle_id);
     const load = loadTon(v);
