@@ -84,3 +84,63 @@ export async function savePdfRow(db,row,hash,document_id,{confirmed=false,separa
  if(!previous&&!separate&&similarPdfRecords(data,prepared).length)throw Error('Benzer kayıt var; mevcut kaydı inceleyin veya ayrı gerçek işlem olduğunu açıkça doğrulayın.');
  return db.saveNew(prepared.store,prepared.fields,'Onaylı PDF geçmiş aktarımı',{op});
 }
+
+// Aynı PDF'deki aynı yazımı yalnız boş ve henüz işlenmemiş satırlara uygula.
+export function pdfMappingTargets(plan, field, from, target, d, completed = new Set()) {
+ const spec={customer_id:['customer_name','customers'],vehicle_id:['vehicle_name','vehicles'],personnel_id:['personnel_name','personnel']}[field];
+ if(!spec||!fold(from)||!liveId(d,spec[1],target))throw Error('Geçerli ad ve kart seçin.');
+ return plan.rows.filter(r=>['work','fuel','expense'].includes(r.kind)&&!completed.has(r.id)&&!r[field]&&fold(r[spec[0]])===fold(from)&&(field!=='customer_id'||r.kind!=='expense')).map(r=>r.id);
+}
+export function applyPdfMapping(plan, field, from, target, d, completed = new Set()) {
+ const ids=pdfMappingTargets(plan,field,from,target,d,completed);
+ for(const r of plan.rows)if(ids.includes(r.id))r[field]=target;
+ return ids;
+}
+export function pdfQuestions(r,d) {
+ const positive=x=>Number.isFinite(Number(x))&&Number(x)>0&&Number(x)<=1e12;
+ const qs=[];const add=(key,title,type)=>qs.push({key,title,type});
+ if(!['work','fuel','expense'].includes(r.kind))return qs;
+ if(!validPdfDate(r.date))add('date','Bu kayıt hangi gün gerçekleşti?','date');
+ if(!liveId(d,'vehicles',r.vehicle_id))add('vehicle_id',`Hangi araç / makine?${r.vehicle_name?' Belgedeki ad: '+r.vehicle_name:''}`,'vehicle');
+ if(r.kind==='work'){
+  if(!liveId(d,'customers',r.customer_id))add('customer_id',`Hangi müşteriye çalışıldı?${r.customer_name?' Belgedeki ad: '+r.customer_name:''}`,'customer');
+  if(!WORK_TYPES.includes(r.work_type))add('work_type','Hangi iş yapıldı?','work_type');
+  if(!positive(r.quantity))add('quantity','İşin miktarı ne kadar?','number');
+  if(!WORK_UNITS.includes(r.unit))add('unit','Miktarın birimi nedir?','unit');
+  if(r.unit_price!=null){
+   if(r.kdv_rate==null||!Number.isFinite(Number(r.kdv_rate))||r.kdv_rate<0||r.kdv_rate>100)add('kdv_rate','Belgedeki fiyatın KDV oranı nedir? (%0 geçerlidir.)','number');
+   if(typeof r.kdv_included!=='boolean')add('kdv_included','Bu birim fiyata KDV dahil mi?','boolean');
+  }
+ }
+ if(r.kind==='fuel'){
+  if(!positive(r.liters))add('liters','Kaç litre yakıt alındı?','number');
+  if(!FUEL_SOURCES.includes(r.fuel_source))add('fuel_source',`${r.liters||''} litre mazot hangi kaynaktan alındı?`,'fuel_source');
+  if(r.fuel_source==='Müşteri Verdi'&&!liveId(d,'customers',r.customer_id))add('customer_id','Mazotu hangi müşteri verdi?','customer');
+ }
+ if(r.kind==='expense'){
+  if(!positive(r.amount))add('amount','Gider tutarı kaç TL?','number');
+  if(!EXPENSE_CATEGORIES.includes(r.category))add('category','Bu gider hangi kategoriye ait?','category');
+ }
+ if(!Number.isInteger(r.page)||r.page<1||r.page>10000)add('page','Satır PDF’nin kaçıncı sayfasında?','number');
+ if(!String(r.quote||'').trim())add('quote','PDF’deki kaynak satırı yazın.','text');
+ return qs;
+}
+export function answerPdfQuestion(row,key,value,d) {
+ const question=pdfQuestions(row,d).find(q=>q.key===key);if(!question)throw Error('Bu alan artık eksik değil; güncel soruyu kontrol edin.');
+ const proposed={...row,[key]:value};
+ if(pdfQuestions(proposed,d).some(q=>q.key===key))throw Error('Geçerli bir yanıt girin.');
+ row[key]=value;return row;
+}
+export async function linkPdfWork(db,row,hash,document_id,recordId,{confirmed=false,expected=null}={}) {
+ if(!confirmed||row.kind!=='work')throw Error('Yalnız iş satırı açık onayla bağlanabilir.');
+ const d=await db.dumpAll(),p=pdfLinkFields(row,d,{hash,document_id});
+ const record=(d.work_records||[]).find(x=>x.id===recordId&&isActive(x));
+ if(!record||!similarPdfRecords(d,p).some(x=>x.id===recordId)||record.work_type!==row.work_type)throw Error('Seçilen iş satırla uyuşmuyor; müşteri, araç, tarih, miktar, birim ve iş türünü kontrol edin.');
+ const op={id:`pdf-history:${hash}:${row.id}`,hash:await db.opHash(p.fields)};
+ return db.linkPdfWorkSource({recordId,expected:expected||record,source:{document_id,hash,row:row.id,page:row.page,quote:row.quote},op});
+}
+
+export function pdfLinkFields(row,d,source) {
+ if(row.kind!=='work')throw Error('Yalnız iş satırı bağlanabilir.');
+ return pdfRowFields({...row,unit_price:null,kdv_rate:null,kdv_included:null},d,source);
+}

@@ -1791,3 +1791,52 @@ export async function saveJobCharge(siteId, charge, cariFields, reason) {
     t.onerror = t.onabort = () => reject(error || t.error);
   });
 }
+
+// Yalnız kaynak metaverisi: iş bedeli/miktarı/hakedişi değişmez. Kaynak + op + audit atomik.
+export async function linkPdfWorkSource({recordId,expected,source,op}) {
+  if (!recordId || !expected || !source?.document_id || !source?.hash || !op?.id || !op?.hash) throw Error('Kaynak bağlantısı eksik');
+  const db = await openDB();
+  return new Promise((resolve,reject)=>{
+    const t=db.transaction(['work_records','documents','meta','audit_log'],'readwrite');
+    const w=t.objectStore('work_records').get(recordId),doc=t.objectStore('documents').get(source.document_id),key=t.objectStore('meta').get(OP+op.id);
+    let out,error;
+    key.onsuccess=()=>{
+      try {
+        const current=w.result,archive=doc.result,prior=key.result?.value;
+        if(!current||current.deleted_at)throw Error('Bağlanacak iş bulunamadı.');
+        if(!archive||archive.deleted_at||archive.source_pdf_hash!==source.hash)throw Error('Kaynak PDF arşivi doğrulanamadı.');
+        if(prior){
+          if(prior.hash!==op.hash||prior.store!=='work_records'||prior.record_id!==recordId)throw opConflict(prior);
+          out={...current,_existing:true};return;
+        }
+        if(JSON.stringify(current)!==JSON.stringify(expected))throw Object.assign(Error('İş siz kontrol ettikten sonra değişti; yeniden inceleyin.'),{code:'STALE'});
+        const links=current.source_pdf_links||[];
+        const found=links.some(x=>x.hash===source.hash&&x.row===source.row)||(current.source_pdf_hash===source.hash&&current.source_pdf_row===source.row);
+        const at=nowISO(), stamp=current.updated_at&&at<=current.updated_at?new Date(Date.parse(current.updated_at)+1).toISOString():at;
+        out=found?current:{...current,source_pdf_links:[...links,{...source,linked_at:at}],updated_at:stamp};
+        if(!found){
+          t.objectStore('work_records').put(out);
+          t.objectStore('audit_log').put({id:uuid(),entity:'work_records',entity_id:recordId,action:'pdf_source_link',old:null,new:source,reason:'Kullanıcı onayıyla mevcut işe PDF kaynağı bağlandı; iş tutarı değişmedi',at});
+        }
+        t.objectStore('meta').put({key:OP+op.id,value:{hash:op.hash,store:'work_records',record_id:recordId,action:'link',at}});
+      }catch(e){error=e;t.abort();}
+    };
+    t.oncomplete=()=>resolve(out);t.onabort=t.onerror=()=>reject(error||t.error);
+  });
+}
+
+// Taslak PDF dosyaları için cihaz başına 60 MB bütçe; iki sekmede de atomik.
+export async function storePdfHistoryFile(hash,file) {
+  if(!/^[a-f0-9]{64}$/.test(hash)||!(file instanceof Blob)||!file.size||file.size>15*1024*1024)throw Error('PDF taslak dosyası geçersiz.');
+  const db=await openDB();
+  return new Promise((resolve,reject)=>{
+    const t=db.transaction('drafts','readwrite'),s=t.objectStore('drafts'),g=s.getAll();let error;
+    g.onsuccess=()=>{try{
+      const id='pdf_history_file:'+hash;
+      const size=g.result.filter(x=>String(x.form).startsWith('pdf_history_file:')&&x.form!==id).reduce((n,x)=>n+(x.blob?.size||0),0);
+      if(size+file.size>60*1024*1024){error=Error('Dosya taslak alanına sığmadı. Satırlar korunur; devam ederken PDF’yi yeniden seçin.');t.abort();return;}
+      s.put({form:id,blob:file,name:file.name||'kaynak.pdf',hash,updated_at:nowISO()});
+    }catch(e){error=e;t.abort();}};
+    t.oncomplete=()=>resolve(true);t.onabort=t.onerror=()=>reject(error||t.error);
+  });
+}
