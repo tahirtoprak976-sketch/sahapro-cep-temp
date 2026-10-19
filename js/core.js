@@ -3,8 +3,8 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.1";
-export const SCHEMA_VERSION = 3;
+export const APP_VERSION = "SAHAPRO SOLO v3.9.21";
+export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
 export const SW_CACHE = "sahapro-solo-v2";
@@ -37,6 +37,22 @@ export const ENTITY_STORES = [
   "contracts",
   "dump_sites",
   "quarries",
+  "suppliers",
+  "payables",
+  "supplier_payments",
+  "bank_accounts",
+  "bank_movements",
+  "receivable_plans",
+  "settlement_allocations",
+  "purchase_orders",
+  "payroll_entries",
+  "service_plans",
+  "activities",
+  "expense_categories",
+  "daily_closings",
+  "instruments",
+  "inbox_messages", "meter_readings", "shift_assignments", "custody_records",
+  "downtime_records", "maintenance_parts", "cost_allocations", "bank_import_rows", "stock_counts",
 ];
 export const SYSTEM_STORES = ["attachments", "meta", "drafts"];
 
@@ -123,6 +139,7 @@ export const MACHINE_TYPES = [
 export const FUEL_SOURCES = [
   "Depo Tankı",
   "Akaryakıt İstasyonu",
+  "Müşteri Verdi",
   "Şantiye",
   "Diğer",
 ];
@@ -194,7 +211,10 @@ export function nextCashStatus(s) {
 export const PERSONNEL_EVENT_TYPES = [
   "Avans",
   "Mesai",
+  "Çalıştı",
+  "Yarım Gün",
   "İzin",
+  "Rapor",
   "Devamsızlık",
   "Zimmet Notu",
   "Personel Gideri",
@@ -211,11 +231,13 @@ export const DOC_TYPES = [
   "İrsaliye",
   "Makbuz",
   "Fatura",
+  "Döküm Faturası",
   "Sözleşme",
   "Ruhsat",
   "Sigorta / Poliçe",
   "Muayene Belgesi",
   "Personel Evrakı",
+  "İzin Formu",
   "Diğer",
 ];
 export const VEHICLE_OWNERSHIP = ["Özmal", "Taşeron"];
@@ -332,14 +354,67 @@ export function calcCranePrice(hours, firstHour, nextHour) {
   return (Number(firstHour) || 0) + (h - 1) * (Number(nextHour) || 0);
 }
 
-// ---- Fiyat çözümleme önceliği: müşteri > şantiye > tarih > genel > manuel ----
+// ---- Fiyat önceliği: müşteri+şantiye > müşteri > genel; aynı kapsamda plaka > tür > grup > tüm araçlar ----
 // price_book kaydı: {vehicle_id, work_type, unit, price, kdv_rate, kdv_included, valid_from, valid_to, customer_id, site_id, formula, first_hour_price, next_hour_price, active}
+export const PRICE_VEHICLE_GROUPS = Object.assign(Object.create(null), {
+  TRUCK_TIR: { label: "Kamyon ve Tır", types: ["TRUCK", "TIR"] },
+  TRUCK: { label: "Yalnız Kamyon", types: ["TRUCK"] },
+  TIR: { label: "Yalnız Tır / Çekici", types: ["TIR"] },
+  VAN: { label: "Yalnız Kamyonet", types: ["VAN"] },
+});
+export function transportVehicleType(type) {
+  const key = String(type || "")
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/[\/()_-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    [
+      "kamyon",
+      "damperli kamyon",
+      "hafriyat kamyonu",
+      "kamyon damperli",
+    ].includes(key)
+  )
+    return "TRUCK";
+  if (["tir", "cekici", "tir cekici", "damperli tir"].includes(key))
+    return "TIR";
+  if (["kamyonet"].includes(key)) return "VAN";
+  return null;
+}
+export function priceVehicleScope(entry, vehicleNames = {}) {
+  if (entry.vehicle_id)
+    return vehicleNames[entry.vehicle_id] || "Belirli araç / plaka";
+  if (entry.vehicle_group)
+    return (
+      PRICE_VEHICLE_GROUPS[entry.vehicle_group]?.label || "Geçersiz araç grubu"
+    );
+  if (entry.vehicle_type) return entry.vehicle_type;
+  return "Tüm araç / makineler";
+}
 export function resolvePrice(entries, ctx) {
+  const result = rankPrices(entries, ctx);
+  if (!result.length) return null;
+  const x = result[0];
+  return { ...x.e, price_source: x.tier === 3 ? "Şantiyeye Özel Fiyat" : x.tier === 2 ? "Müşteriye Özel Fiyat" : "Genel Liste" };
+}
+// Uyan bütün kurallar, öncelik sırasıyla (tier: şantiye 3 / müşteri 2 / genel 1). opts.ignoreDate: tarih süzgeci uygulanmaz
+export function rankPrices(entries, ctx, opts = {}) {
   const cands = (entries || []).filter(
     (e) => isActive(e) && e.active !== false && e.unit === ctx.unit,
   );
   const result = [];
   for (const e of cands) {
+    if (
+      e.vehicle_group &&
+      !PRICE_VEHICLE_GROUPS[e.vehicle_group]?.types.includes(
+        transportVehicleType(ctx.vehicle_type),
+      )
+    )
+      continue;
     if (
       [
         "vehicle_id",
@@ -352,8 +427,9 @@ export function resolvePrice(entries, ctx) {
     )
       continue;
     if (
-      (e.valid_from && (!ctx.date || e.valid_from > ctx.date)) ||
-      (e.valid_to && (!ctx.date || e.valid_to < ctx.date))
+      !opts.ignoreDate &&
+      ((e.valid_from && (!ctx.date || e.valid_from > ctx.date)) ||
+        (e.valid_to && (!ctx.date || e.valid_to < ctx.date)))
     )
       continue;
     if (
@@ -370,28 +446,28 @@ export function resolvePrice(entries, ctx) {
       ["vehicle_id", "vehicle_type", "work_type", "material"].filter(
         (k) => e[k],
       ).length + (e.distance_min != null || e.distance_max != null ? 1 : 0);
-    result.push({ e, tier, specificity });
+    const vehicleSpecificity = e.vehicle_id
+      ? 4
+      : e.vehicle_type
+        ? 3
+        : e.vehicle_group
+          ? PRICE_VEHICLE_GROUPS[e.vehicle_group].types.length === 1
+            ? 2
+            : 1
+          : 0;
+    result.push({ e, tier, specificity, vehicleSpecificity });
   }
   result.sort(
     (a, b) =>
       b.tier - a.tier ||
+      b.vehicleSpecificity - a.vehicleSpecificity ||
       b.specificity - a.specificity ||
       String(b.e.valid_from || "").localeCompare(
         String(a.e.valid_from || ""),
       ) ||
       String(a.e.id || "").localeCompare(String(b.e.id || "")),
   );
-  if (!result.length) return null;
-  const x = result[0];
-  return {
-    ...x.e,
-    price_source:
-      x.tier === 3
-        ? "Şantiyeye Özel Fiyat"
-        : x.tier === 2
-          ? "Müşteriye Özel Fiyat"
-          : "Genel Liste",
-  };
+  return result;
 }
 export function priceForQuantity(entry, quantity, craneDefaults) {
   if (!entry) return null;
@@ -440,6 +516,12 @@ export function calcQuoteTotals(quote) {
 }
 
 // ---- Hakediş kalemi tutarı (snapshot'lı) ----
+// KDV oranı girişi: boş / geçersiz → null (sessizce %0 ya da %20 yapılmaz; kullanıcıdan istenir). %0 geçerlidir.
+export function kdvRateOf(raw) {
+  if (raw == null || String(raw).trim() === "") return null;
+  const n = Number(String(raw).replace(",", "."));
+  return Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
+}
 export function calcHakedisLine(item, craneDefaults) {
   const q = Number(item.quantity) || 0;
   let amount;
@@ -496,6 +578,30 @@ export function calcTankBalance(movements) {
     else if (m.move_type === "ÇIKIŞ") out += l;
   }
   return { in: inn, out, remaining: inn - out };
+}
+
+// Depo yakıtının litre maliyeti: verilen tarihe kadar fiyatı girilmiş depo girişlerinin litre ağırlıklı ortalaması
+export function tankUnitCost(movements, date = "9999-12-31") {
+  let L = 0, tl = 0;
+  for (const m of (movements || []).filter(isActive)) {
+    if (m.move_type !== "GİRİŞ" || (date && m.date > date)) continue;
+    // Toplam (KDV dahil, ödenen) esastır; litre fiyatı yanlış (ör. KDV hariç) yazılmış olsa da maliyet toplamdan hesaplanır
+    const up = Number(m.total) > 0 && Number(m.liters) > 0 ? Number(m.total) / Number(m.liters) : Number(m.unit_price) || 0;
+    if (!(up > 0)) continue;
+    L += Number(m.liters) || 0;
+    tl += up * (Number(m.liters) || 0);
+  }
+  return L > 0 ? Math.round((tl / L) * 100) / 100 : null;
+}
+
+// Depo durumu: kalan, son 14 gün günlük ortalama çıkış, kaç gün yeter
+export function tankStatus(movements, today = todayStr()) {
+  const bal = calcTankBalance(movements);
+  const from = addDays(today, -13);
+  const out14 = (movements || []).filter((m) => isActive(m) && m.move_type === "ÇIKIŞ" && m.date >= from && m.date <= today).reduce((n, m) => n + (Number(m.liters) || 0), 0);
+  const daily = Math.round((out14 / 14) * 10) / 10;
+  const lastIn = (movements || []).filter((m) => isActive(m) && m.move_type === "GİRİŞ" && !m.count_id).sort((a, b) => (b.date > a.date ? 1 : -1))[0] || null;
+  return { ...bal, daily, daysLeft: daily > 0 ? Math.floor(bal.remaining / daily) : null, lastIn, unitCost: tankUnitCost(movements, today) };
 }
 
 // ---- Gün özeti (genişletilmiş) ----
@@ -596,21 +702,24 @@ export function smartAlerts(data, opts = {}) {
         ref: { type: "vehicle", id: v.id },
       });
   }
-  for (const d of act(data.documents)) {
+  for (const d of latestDocuments(act(data.documents))) {
     if (d.expiry_date && d.expiry_date <= addDays(today, 30))
       alerts.push({
         kind: d.expiry_date < today ? "alert" : "warn",
         key: "doc_expiry",
-        text: `${(data.vehicles || []).find((v) => v.id === (d.vehicle_id || d.owner_id))?.name || (data.personnel || []).find((p) => p.id === (d.personnel_id || d.owner_id))?.name || "Belge"} · ${d.category || "Belge"}: ${d.expiry_date < today ? "Süresi geçti" : Math.ceil((new Date(d.expiry_date + "T12:00:00") - new Date(today + "T12:00:00")) / 86400000) + " gün kaldı"} (${trDate(d.expiry_date)})`,
+        text: `${(data.vehicles || []).find((v) => v.id === (d.vehicle_id || d.owner_id))?.name || (data.personnel || []).find((p) => p.id === (d.personnel_id || d.owner_id))?.name || (d.owner_type === "company" ? "Şirket" : "Belge")} · ${d.category || "Belge"}: ${d.expiry_date < today ? "Süresi geçti" : Math.ceil((new Date(d.expiry_date + "T12:00:00") - new Date(today + "T12:00:00")) / 86400000) + " gün kaldı"} (${trDate(d.expiry_date)})`,
         ref: { type: "document", id: d.id },
       });
   }
-  const lb = opts.lastBackupAt;
-  if (!lb || Date.now() - new Date(lb).getTime() > 24 * 3600 * 1000)
+  const bAge = backupAgeDays(opts.lastBackupAt, today);
+  if (bAge === null || bAge >= 3)
     alerts.push({
-      kind: "warn",
+      kind: bAge === null || bAge >= 7 ? "alert" : "warn",
       key: "backup_old",
-      text: "Son yedek 24 saatten eski — Ayarlar → Tüm Verileri Yedekle",
+      text:
+        bAge === null
+          ? "Hiç yedek alınmadı — Ayarlar → Tüm Verileri Yedekle"
+          : `Son yedek ${bAge} gün önce — Ayarlar → Tüm Verileri Yedekle`,
       ref: { type: "settings" },
     });
   const todayWorks = act(data.work_records).filter((w) => w.date === today);
@@ -639,6 +748,54 @@ export function smartAlerts(data, opts = {}) {
       ref: { type: "tank" },
     });
   return alerts;
+}
+// Aynı belgenin farklı adları (ör. "TÜVTÜRK / Periyodik Muayene" = "Muayene Belgesi")
+export const DOC_FAMILY = { "TÜVTÜRK / Periyodik Muayene": "Muayene Belgesi", "Sigorta / Poliçe": "Zorunlu Trafik Sigortası" };
+export const docFamily = (c) => DOC_FAMILY[c] || c || "";
+const docOwnerKey = (d) => `${d.owner_type || ""}|${d.vehicle_id || d.personnel_id || d.owner_id || ""}`;
+const docNoKey = (s) => String(s || "").toLocaleUpperCase("tr-TR").replace(/[^A-Z0-9ÇĞİÖŞÜ]/g, "");
+// Aynı belge mi? Aynı sahip + aynı belge ailesi + (aynı belge no ya da aynı düzenleme ve bitiş tarihi)
+export function sameDocument(a, b) {
+  if (docOwnerKey(a) !== docOwnerKey(b) || docFamily(a.category) !== docFamily(b.category)) return false;
+  const na = docNoKey(a.doc_no), nb = docNoKey(b.doc_no);
+  if (na.length >= 3 && na === nb) return true;
+  return !!(a.expiry_date && a.expiry_date === b.expiry_date && a.date && a.date === b.date);
+}
+// Mükerrer belge grupları (her grupta ilk kayıt tutulur)
+export function duplicateDocuments(docs) {
+  const list = [...(docs || [])].sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+  const groups = [];
+  for (const d of list) {
+    const g = groups.find((x) => sameDocument(x[0], d));
+    if (g) g.push(d); else groups.push([d]);
+  }
+  return groups.filter((g) => g.length > 1);
+}
+// Aynı sahip + belge ailesi için yalnızca en güncel belge (yenilenen eski belge uyarı vermesin)
+export function latestDocuments(docs) {
+  const best = new Map();
+  for (const d of docs || []) {
+    const k = `${docOwnerKey(d)}|${docFamily(d.category)}`;
+    const cur = best.get(k);
+    if (
+      !cur ||
+      String(d.expiry_date || "9999") > String(cur.expiry_date || "9999")
+    )
+      best.set(k, d);
+  }
+  return [...best.values()];
+}
+// Son yedekten bu yana gün (yedek yoksa null)
+export function backupAgeDays(lastBackupAt, today = todayStr()) {
+  if (!lastBackupAt) return null;
+  const t = new Date(lastBackupAt).getTime();
+  if (!Number.isFinite(t)) return null;
+  const days = Math.round(
+    (new Date(today + "T12:00:00").getTime() -
+      new Date(todayStr(new Date(t)) + "T12:00:00").getTime()) /
+      86400000,
+  );
+  return Math.max(0, days);
 }
 export function addDays(dateStr, n) {
   const d = new Date(dateStr + "T12:00:00");
@@ -672,7 +829,7 @@ export function profitability(data, filter = {}) {
   }
   let gider = 0;
   for (const e of (data.expense_records || []).filter(
-    (r) => isActive(r) && matchCtx(r) && inRange(r.date),
+    (r) => isActive(r) && !r.dump_deposit && matchCtx(r) && inRange(r.date),
   ))
     gider += Number(e.amount) || 0;
   let bakim = 0;
