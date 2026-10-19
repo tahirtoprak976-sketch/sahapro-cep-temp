@@ -25,6 +25,15 @@ export function workAmount(w) {
   return Number.isFinite(a) && a > 0 ? a : 0;
 }
 
+// Açıkça girilmiş 0 fiyat, fiyatı hiç girilmemiş işten farklıdır. Hesap değiştirmez.
+export function hasWorkPrice(w) {
+  const p=w?.price_snapshot;
+  if(!p||typeof p!=='object'||Array.isArray(p))return false;
+  const valid=n=>n!==''&&n!=null&&['number','string'].includes(typeof n)&&(typeof n!=='string'||n.trim()!=='')&&Number.isFinite(Number(n))&&Number(n)>=0;
+  if(p.amount!=null)return valid(p.amount);
+  return valid(p.unit_price)&&Number(w.quantity)>0&&Number.isFinite(Number(w.quantity))&&Number.isFinite(Number(p.unit_price)*Number(w.quantity));
+}
+
 function workLabel(d, w) {
   const site = live(d, "sites").find((s) => s.id === w.site_id)?.name;
   const q = Number(w.quantity) ? `${Number(w.quantity).toLocaleString("tr-TR")} ${String(w.unit || "").toLocaleLowerCase("tr-TR")} ` : "";

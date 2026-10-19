@@ -1,6 +1,7 @@
 // Asistan YEREL komut yönlendiricisi — SAF katman, kayıt yazmaz, Gemini'ye gitmez (internetsiz de çalışır).
 // Yalnız ekran açma, listeleme ve düzeltilecek kaydı BULMA yapar. Kayıt oluşturma / değiştirme mevcut kart ve form akışında kalır.
 // Emin değilse null döner (mesaj Gemini'ye gider). Birden çok aday varsa rastgele seçmez, listeler.
+import {localOverviewCommand} from "./business-overview.js";
 import { isActive, addDays } from "./core.js";
 import { customerSpans } from "./money-roles.js";
 import { customerFuelLedger } from "./assistant-rules.js";
@@ -123,6 +124,7 @@ export function routeCommand(text, d, today, ctx = {}) {
   const raw = String(text || "").trim();
   if (!raw || raw.length > 140 || raw.includes("\n")) return null;
   const f = fold(raw);
+  const overview=localOverviewCommand(raw,d,today);if(overview)return overview;
   // Miktarı belirsiz düzeltme komutu modelin yeniden yorumuna bırakılmaz.
   if (/\d.*(?:saat|sa|sefer|yevmiye|ton|adet|m³)\s+(?:yap|düzelt|duzelt|değiştir|degistir|güncelle|guncelle)[.!?]?$/u.test(f) && !parseWorkQuantityChange(raw))
     return { kind:'choose', label:'Miktar net değil. Tek pozitif sayı yazın; örneğin 1,5 saat yap. Bin için 1000 yazın.', items:[] };

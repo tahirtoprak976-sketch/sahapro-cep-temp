@@ -89,9 +89,9 @@ async function workList(ctx) {
   if (filter === "noslip") rows = rows.filter((r) => !r.slip_id);
   if (filter === "musterisiz") rows = rows.filter((r) => !r.customer_id);
   if (filter === "fiyatsiz") {
-    const { workAmount } = await import("./collect-core.js");
+    const { hasWorkPrice } = await import("./collect-core.js");
     const internal = new Set((await db.listActive("customers")).filter((c) => c.internal).map((c) => c.id));
-    rows = rows.filter((r) => !internal.has(r.customer_id) && !workAmount(r) && !(Number(r.customer_fuel_allowance_l) > 0));
+    rows = rows.filter((r) => !internal.has(r.customer_id) && !hasWorkPrice(r) && !(Number(r.customer_fuel_allowance_l) > 0));
   }
   rows = rows.filter((r) =>
     matchSearch(

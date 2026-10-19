@@ -1,6 +1,7 @@
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
 // giderleri, yakıtı çıkarır → doğrulanmış kartlar → tek dokunuşla kaydet. Yeni müşteri/şantiye,
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
+import {guideHTML,bindGuide} from "./assistant-guide.js";
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
@@ -23,25 +24,29 @@ export async function screen(ctx) {
   const { geminiSettings } = await import("./ai-gemini.js");
   const g = await geminiSettings(db);
   root.innerHTML =
-    appbar("Akıllı Asistan", "Gemini · işletmenizi tanır") +
+    appbar("Akıllı Asistan", "Yerel komutlar · mesaj ve belge okuma") +
     `<div style="height:10px"></div>
     ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
-    ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Önce Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Yerel özetler, ekran açma ve işlem rehberi anahtarsız çalışır. Mesaj/fotoğraf okumak için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    ${guideHTML()}
+    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
+    <details class="card assistant-guide"><summary><b>Diğer asistan araçları</b></summary>
     <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
     <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/danisman">🎓 Yönetim Danışmanı — araç / müşteri karnesi ve öneriler</button>
-    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
     <button class="btn block" style="margin-bottom:8px" data-go="#/teklif-hesap">🧮 Teklif Asistanı — kaça vermeliyim?</button>
     ${ctx.query?.wa ? "" : '<button class="btn block" style="margin-bottom:8px" data-go="#/whatsapp-toplu">💬 WhatsApp Grubu — günün tüm mesajlarını toplu işle</button>'}
+    </details>
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
       <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
-      <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
       <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
     </div>
     <div data-lastundo></div>
     <div data-out></div>`;
+  bindGuide(root,db);
   {
     const last = await db.metaGet("assistant_undo");
     if (last && Date.now() - new Date(last.at).getTime() < 86400000) {
@@ -66,6 +71,7 @@ export async function screen(ctx) {
   let files = [];
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
   const showThumbs = () => {
+    qs("[data-clearfiles]",root).hidden=!files.length;
     const box = qs("[data-thumbs]", root);
     box.innerHTML = files
       .map((f, i) => isAudio(f)
@@ -74,6 +80,7 @@ export async function screen(ctx) {
       .join("");
     for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { files.splice(Number(b.dataset.rm), 1); showThumbs(); });
   };
+  qs("[data-clearfiles]",root).onclick=()=>{files=[];photosIn.value="";showThumbs();};
   photosIn.addEventListener("change", () => {
     files = [...files.filter((f) => f._rec), ...photosIn.files].slice(0, 10);
     showThumbs();
@@ -155,12 +162,13 @@ export async function screen(ctx) {
       const cx = readCtx();
       const cmd = routeCommand(typed, await db.dumpAll(), todayStr(), cx);
       if (cmd) {
+        clearTimeout(draftT);draftT=null;
         await db.metaSet("assistant_draft", "");
         if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
         const out = qs("[data-out]", root);
         if (cmd.kind === "work_quantity") { await showWorkQuantityCommand(ctx, out, cmd); return; }
         if (cmd.kind === "open") { out.innerHTML = notice("info", "Açılıyor: " + cmd.label); toast("Açılıyor: " + cmd.label, "ok"); location.hash = cmd.hash; return; }
-        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer><span data-speaktext>${esc(cmd.text)}</span><div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak style="margin-top:4px">🔊 Sesli oku</button>' : ""}</div>` : "") +
+        out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer><span data-speaktext style="white-space:pre-line">${esc(cmd.text)}</span><div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak style="margin-top:4px">🔊 Sesli oku</button>' : ""}</div>` : "") +
           (cmd.kind === "candidates" ? `<div class="muted small" style="margin:0 2px 6px">${cmd.empty ? "Bu bilgilerle iş bulunamadı. Tarihi, aracı ya da müşteriyi ekleyip yeniden yazın." : "Rastgele seçilmez: düzeltmek istediğiniz işi seçin. Değişiklik formda yapılır, siz Kaydet'e basınca yazılır."}</div>` : "") +
           cmd.items.map((it) => `<div class="li" data-go="${esc(it.hash)}"><div class="grow"><div class="t1">${esc(it.label)}</div></div><div class="end">›</div></div>`).join("");
         return;

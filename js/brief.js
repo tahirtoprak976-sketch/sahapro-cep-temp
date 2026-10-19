@@ -1,7 +1,7 @@
 // Sabah brifingi: günün ilk açılışında işletmenin durumu tek kartta. SAF hesap (morningBrief) + ekran (briefCard).
 // Rakamlar telefonda hesaplanır; Gemini istenirse yalnız yorum cümlesi yazar (rakamlar doğrulanır).
 import { isActive, todayStr, addDays, latestDocuments, tankStatus, trDate } from "./core.js";
-import { receivables, workAmount } from "./collect-core.js";
+import { receivables, workAmount, hasWorkPrice } from "./collect-core.js";
 import { monthlySeries } from "./finance-chart.js";
 import { maintenanceBoard } from "./maint-core.js";
 import { staleQuotes } from "./quote-core.js";
@@ -30,7 +30,7 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
     for (const w of yWorks) (byV[nm(d, "vehicles", w.vehicle_id) || "—"] ||= []).push(w);
     const top = Object.entries(byV).sort((a, b) => b[1].length - a[1].length).slice(0, 4).map(([v, ws]) => `${v} ${units(ws)}`).join(" · ");
     const amt = yWorks.reduce((n, w) => n + workAmount(w), 0);
-    const np = yWorks.filter((w) => !workAmount(w) && !w.customer_fuel_allowance_l && !live(d, "customers").find((c) => c.id === w.customer_id)?.internal).length;
+    const np = yWorks.filter((w) => !hasWorkPrice(w) && !w.customer_fuel_allowance_l && !live(d, "customers").find((c) => c.id === w.customer_id)?.internal).length;
     add("🚚", `${label}: ${yWorks.length} iş (${units(yWorks)})${amt ? ` · ${fmt(amt)} ₺` : ""}${np ? ` · ${np} iş fiyatsız` : ""}`, "#/isler");
     add("", top);
   } else add("🚚", `${label} hiç iş kaydı yok — unutulan iş var mı?`, "#/akilli-asistan", "warn");
