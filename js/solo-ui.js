@@ -1412,7 +1412,8 @@ export async function augment(ctx) {
   const pdfStore = { isler:"work_records", yakit:"fuel_records", gider:"expense_records" }[route];
   if (pdfStore && id && parts.length === 2) {
     const record = await db.get(pdfStore,id);
-    if (record?.source_document_id) root.insertAdjacentHTML("beforeend", `<section class="card" data-pdf-provenance><h3>Kaynak PDF</h3><p>Sayfa ${esc(String(record.source_page || "?"))}</p><p class="small">${esc(record.source_quote || "")}</p><button class="btn block" data-go="#/belgeler/${esc(record.source_document_id)}">Orijinal PDF arşivini aç</button></section>`);
+    const sources=[...(record?.source_document_id?[{document_id:record.source_document_id,page:record.source_page,quote:record.source_quote}]:[]),...(record?.source_pdf_links||[])];
+    if (sources.length) root.insertAdjacentHTML("beforeend", `<section class="card" data-pdf-provenance><h3>Kaynak PDF</h3>${sources.map(s=>`<p>Sayfa ${esc(String(s.page || "?"))}</p><p class="small">${esc(s.quote || "")}</p><button class="btn block" data-go="#/belgeler/${esc(s.document_id)}">Orijinal PDF arşivini aç</button>`).join('')}</section>`);
   }
   // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
   if (route === "musteriler" && id) {
