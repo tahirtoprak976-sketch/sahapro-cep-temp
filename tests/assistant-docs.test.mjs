@@ -159,3 +159,59 @@ console.log("assistant-docs PASS");
   assert.ok(/Kum Nakliye mi/.test(f2.material_hint));
   console.log("malzeme PASS");
 }
+
+// ---- photo_texts boş / kaymış veya t.text dolu senaryoları (v3.9.21) ----
+{
+  const { validateTickets: vt, materialKind } = await import("../js/assistant-docs.js");
+  assert.equal(materialKind("MALZEME : 1 NO AGREGA"), "mıcır", "agrega mıcır olarak tanınır");
+  // 1) photo_texts boş ama ticket kendi içinde text döndürdü → tam doğrulanır ve ok: true olur
+  let tk = vt({
+    tickets: [{
+      photo: 0,
+      text: "ÇIKIŞ TARİHİ : 07.09.2026 10:56\nFiş No : A- 133427\nPLAKA : 34 ABC 123\nMALZEME : 1 NO AGREGA\nNET AĞIRLIK : 24850 kg",
+      ticket_no: "A-133427",
+      date: "2026-09-07",
+      plate: "34 ABC 123",
+      tonnage: 24.85,
+      material: "1 NO AGREGA",
+    }],
+  }, { d, today, photoTexts: [], photoCount: 1 });
+  assert.equal(tk[0].ok, true, tk[0].issues.join(" · "));
+  assert.equal(tk[0].ticket_no, "A-133427");
+  assert.equal(tk[0].date, "2026-09-07");
+  assert.equal(tk[0].tonnage, 24.85);
+  assert.equal(tk[0].vehicle_id, "V1");
+
+  // 2) Çoklu fotoğrafta photo_texts sırası kaymış (fiş photo:1 ama metin photoTexts[0] içinde) → fiş no/plaka eşleşmesiyle doğrulanır
+  tk = vt({
+    tickets: [{
+      photo: 1,
+      ticket_no: "ILF2026000000026",
+      date: "2026-09-07",
+      plate: "34 ABC 123",
+      tonnage: 27.1,
+    }],
+  }, { d, today, photoTexts: ["İLKDAL Fiş No: ILF2026000000026 Tarih: 07.09.2026 Plaka: 34ABC123 Net: 27.100 kg", ""], photoCount: 2 });
+  assert.equal(tk[0].ok, true, tk[0].issues.join(" · "));
+  assert.equal(tk[0].ticket_no, "ILF2026000000026");
+  assert.equal(tk[0].tonnage, 27.1);
+
+  // 3) Hem t.text hem photo_texts tamamen boş geldi → değerler kutulardan SİLİNMEZ, sadece ok: false kalır
+  tk = vt({
+    tickets: [{
+      photo: 0,
+      ticket_no: "A-133427",
+      date: "2026-09-07",
+      plate: "34 ABC 123",
+      tonnage: 24.85,
+      material: "1 NO AGREGA",
+    }],
+  }, { d, today, photoTexts: [], photoCount: 1 });
+  assert.equal(tk[0].ok, false, "ham metin yoksa otomatik işaretlenmez");
+  assert.equal(tk[0].ticket_no, "A-133427", "fiş no silinmez");
+  assert.equal(tk[0].date, "2026-09-07", "tarih bugüne sıfırlanmaz");
+  assert.equal(tk[0].tonnage, 24.85, "tonaj silinmez");
+  assert.equal(tk[0].vehicle_id, "V1", "araç korunur");
+  assert.ok(!tk[0].issues.some((x) => /fotoğrafta yok|fişte yok|görünmüyor/.test(x)), "çelişkili 'fişte yok' uyarısı basılmaz");
+  console.log("ticket-no-text-fallback PASS");
+}
