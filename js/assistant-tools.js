@@ -3,6 +3,7 @@
 import { qs, esc, appbar, toast, notice, todayStr } from "./ui.js";
 
 export async function screen(ctx) {
+  if (ctx.parts[0] === "akilli-asistan" && ctx.parts[1] === "pdf-gecmis") return (await import("./pdf-history-ui.js")).screen(ctx);
   if (ctx.parts[0] !== "akilli-asistan" || !["ozet", "soru", "danisman"].includes(ctx.parts[1])) return false;
   const { geminiSettings } = await import("./ai-gemini.js");
   const g = await geminiSettings(ctx.db);

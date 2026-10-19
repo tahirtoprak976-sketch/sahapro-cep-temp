@@ -29,6 +29,7 @@ export async function screen(ctx) {
     ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Önce Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
     <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/danisman">🎓 Yönetim Danışmanı — araç / müşteri karnesi ve öneriler</button>
+    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
     <button class="btn block" style="margin-bottom:8px" data-go="#/teklif-hesap">🧮 Teklif Asistanı — kaça vermeliyim?</button>
     ${ctx.query?.wa ? "" : '<button class="btn block" style="margin-bottom:8px" data-go="#/whatsapp-toplu">💬 WhatsApp Grubu — günün tüm mesajlarını toplu işle</button>'}
     <div class="card">
@@ -157,6 +158,7 @@ export async function screen(ctx) {
         await db.metaSet("assistant_draft", "");
         if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
         const out = qs("[data-out]", root);
+        if (cmd.kind === "work_quantity") { await showWorkQuantityCommand(ctx, out, cmd); return; }
         if (cmd.kind === "open") { out.innerHTML = notice("info", "Açılıyor: " + cmd.label); toast("Açılıyor: " + cmd.label, "ok"); location.hash = cmd.hash; return; }
         out.innerHTML = `<div class="section-title">${esc(cmd.label)}</div>` + (cmd.kind === "answer" ? `<div class="card small" data-answer><span data-speaktext>${esc(cmd.text)}</span><div class="tiny muted" style="margin-top:4px">Rakamı uygulama kayıtlardan hesapladı (yapay zekâ üretmedi).</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak style="margin-top:4px">🔊 Sesli oku</button>' : ""}</div>` : "") +
           (cmd.kind === "candidates" ? `<div class="muted small" style="margin:0 2px 6px">${cmd.empty ? "Bu bilgilerle iş bulunamadı. Tarihi, aracı ya da müşteriyi ekleyip yeniden yazın." : "Rastgele seçilmez: düzeltmek istediğiniz işi seçin. Değişiklik formda yapılır, siz Kaydet'e basınca yazılır."}</div>` : "") +
@@ -1595,3 +1597,34 @@ document.addEventListener("click", (e) => {
   b.dataset.on = "1"; b.textContent = "⏹ Durdur";
   speechSynthesis.speak(u);
 });
+
+
+// Komut → aday seçimi → salt okunur önizleme → açık onay → doğrulanan sonuç.
+async function showWorkQuantityCommand(ctx, out, cmd) {
+  const { previewWorkQuantity, executeWorkQuantity } = await import('./assistant-operations.js');
+  if (!cmd.items.length) { out.innerHTML = notice('warn','Bu bilgilerle iş bulunamadı; müşteri, araç veya tarihi belirtin.'); return; }
+  out.innerHTML = `<div class="card" data-action-choices><h3>Hangi işi değiştirelim?</h3>${cmd.items.map((it, i) => `<button class="btn block" style="margin-top:8px" data-work-choice="${i}" data-work-id="${esc(it.id)}">${esc(it.label)}</button>`).join('')}</div><div data-action-preview></div>`;
+  const box = qs('[data-action-preview]',out);
+  let busy = false;
+  const show = async (id) => {
+    try {
+      const rec = await ctx.db.get('work_records',id);
+      const plan = previewWorkQuantity(rec,cmd.change,await ctx.db.dumpAll());
+      const money = (x) => x ? `Net ${fmtTL(x.amount)} ₺ · KDV ${fmtTL(x.kdv)} ₺ · Brüt ${fmtTL(x.total)} ₺` : 'Fiyat yok — tutar hesaplanmadı';
+      box.innerHTML = `<div class="card" data-work-preview><h3>Değişiklik önizlemesi</h3><div>${esc(cmd.items.find(x=>x.id===id)?.label || '')}</div><p><b>${esc(String(plan.before))} → ${esc(String(plan.after))} ${esc(plan.unit)}</b></p><p>Önce: ${esc(money(plan.beforeMoney))}<br>Sonra: ${esc(money(plan.afterMoney))}</p><p class="tiny muted">Kayıtlı birim fiyat korunur; güncel fiyat listesi geçmiş işe uygulanmaz. Bu tutarlar iş bedelidir, tahsilat değildir.</p>${plan.noChange ? '<p>Miktar zaten bu değerde; kayıt değişmeyecek.</p>' : '<button class="btn primary block" data-work-confirm>Onayla ve uygula</button>'}<button class="btn block" data-work-cancel style="margin-top:8px">Vazgeç</button></div>`;
+      qs('[data-work-cancel]',box).onclick = () => { box.innerHTML=notice('info','Vazgeçildi; kayıt değiştirilmedi.'); };
+      const button=qs('[data-work-confirm]',box);
+      if (button) button.onclick=async()=>{
+        if (busy) return;
+        busy=true; button.disabled=true;
+        try {
+          const result=await executeWorkQuantity(ctx.db,plan,true);
+          out.innerHTML=notice('info',result.status==='updated' ? 'İş miktarı güncellendi ve kayıt doğrulandı.' : 'Miktar zaten aynı; kayıt değiştirilmedi.')+`<button class="btn block" data-go="#/isler/${esc(id)}/edit">İş kaydını aç</button>`;
+        } catch(e) { box.innerHTML=notice('warn',e.message)+`<button class="btn block" data-work-retry>Güncel hâli yeniden önizle</button>`; qs('[data-work-retry]',box).onclick=()=>show(id); }
+        finally { busy=false; }
+      };
+    } catch(e) { box.innerHTML=notice('warn',e.message)+`<button class="btn block" data-go="#/isler/${esc(id)}/edit">İş formunda incele</button>`; }
+  };
+  for (const b of qsa('[data-work-choice]',out)) b.onclick=()=>{ if(!busy)show(cmd.items[Number(b.dataset.workChoice)].id); };
+  if (cmd.items.length===1) await show(cmd.items[0].id);
+}

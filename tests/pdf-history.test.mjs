@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {normalizePdfHistory as norm,pdfTotals,pdfTotalIssues,pdfRowFields as fields,similarPdfRecords,savePdfRow,pdfDigest,PDF_LIMIT} from '../js/pdf-history-core.js';
+const d={customers:[{id:'C',name:'Örnek İnşaat'}],vehicles:[{id:'V',name:'34ABC123',plate:'34ABC123'}],personnel:[{id:'P',name:'Ali'}]};
+const input={kind:'work',page:1,quote:'11.05.2026 Örnek İnşaat 34ABC123 2 Sefer',date:'2026-05-11',customer_name:'Örnek İnşaat',vehicle_name:'34 ABC 123',personnel_name:'Ali',work_type:'Moloz Nakliye',unit:'Sefer',quantity:2,description:'Moloz taşıma'};
+const raw={rows:[input,{...input,quote:'Genel toplam: 2 sefer'},{kind:'work',quote:'Yükleme dahil; ayrıca yazılmadı',page:1}],totals:[{kind:'work',unit:'Sefer',value:2}]};
+const plan=norm(raw,d);assert.equal(plan.rows[0].vehicle_id,'V');assert.ok(plan.rows.every(r=>!r.selected));assert.equal(plan.rows[1].kind,'summary');assert.equal(plan.rows[2].kind,'note');
+assert.deepEqual(pdfTotals(plan.rows),{'work:Sefer':2});assert.equal(pdfTotalIssues(plan).length,0);
+assert.equal(pdfTotalIssues({...plan,totals:[{kind:'work',unit:'Sefer',value:5}]}).length,1);
+assert.throws(()=>norm({rows:[],truncated:true}));assert.throws(()=>norm({rows:Array(151).fill(input)}));
+assert.equal(norm({rows:[{...input,quote:'5 sefer, 20000 TL ödeme geldi',unit_price:20000}]},d).rows[0].unit_price,null);
+assert.equal(norm({rows:[{...input,quote:'Birim fiyat 3000 TL / sefer',unit_price:3000}]},d).rows[0].unit_price,3000);
+const r=plan.rows[0],source={hash:'H',document_id:'DOC'};
+assert.equal(fields(r,d,source).fields.price_snapshot,null,'no current price for historical row');
+assert.equal(norm({rows:[{...input,date:null}]},d).rows[0].date,'');
+assert.throws(()=>fields({...r,date:'2026-02-31'},d,source));assert.throws(()=>fields({...r,unit_price:100,kdv_rate:null},d,source));
+assert.equal(fields({...r,unit_price:100,kdv_rate:0,kdv_included:false},d,source).fields.price_snapshot.amount,200);
+assert.throws(()=>fields({...r,quantity:-2},d,source));assert.throws(()=>fields({...r,page:null},d,source));assert.throws(()=>fields({...r,page:1.5},d,source));assert.throws(()=>fields({...r,kind:'summary'},d,source));
+const ambiguous={...d,customers:[...d.customers,{id:'C2',name:'Örnek İnşaat'}]};assert.equal(norm({rows:[input]},ambiguous).rows[0].customer_id,'');
+const fuel={...r,kind:'fuel',liters:210,fuel_source:''};assert.throws(()=>fields(fuel,d,source));assert.throws(()=>fields({...fuel,fuel_source:'Müşteri Verdi',customer_id:''},d,source));
+assert.equal(fields({...fuel,fuel_source:'Şantiye'},d,source).fields.customer_id,null);
+const expense=fields({...r,kind:'expense',amount:500,category:'Lastik',payment_method:'Nakit'},d,source);
+assert.equal(expense.fields.payment_method,null);assert.equal(expense.store,'expense_records');
+let records=[],ops=new Map(),writes=0;
+const db={get:async(s,id)=>({id,source_pdf_hash:records.length&&id==='DOC-OTHER'?'OTHER':'H'}),dumpAll:async()=>({...d,work_records:records}),opHash:async f=>JSON.stringify(f),opLookup:async key=>ops.get(key),saveNew:async(store,f,reason,{op})=>{
+ const old=ops.get(op.id);if(old){if(old.hash!==op.hash)throw Object.assign(Error('conflict'),{code:'OP_CONFLICT'});return {...old.record,_existing:true};}
+ const rec={id:'new',...f};records.push(rec);ops.set(op.id,{record:rec,hash:op.hash});writes++;return rec;
+}};
+await assert.rejects(savePdfRow(db,r,'H','DOC'));
+await savePdfRow(db,r,'H','DOC',{confirmed:true});await savePdfRow(db,r,'H','DOC',{confirmed:true});assert.equal(writes,1);
+await assert.rejects(savePdfRow(db,{...r,quantity:3},'H','DOC',{confirmed:true}),{code:'OP_CONFLICT'});
+assert.equal(similarPdfRecords({...d,work_records:records},fields(r,d,source)).length,1);
+await assert.rejects(savePdfRow(db,{...r,id:'other'},'OTHER','DOC',{confirmed:true}));
+await savePdfRow(db,{...r,id:'other'},'OTHER','DOC-OTHER',{confirmed:true,separate:true});assert.equal(writes,2);
+const file=new Blob(['%PDF-1.4\nTEST']);const hash=await pdfDigest(file);assert.equal(hash.length,64);
+await assert.rejects(pdfDigest(new Blob(['not a PDF'])));await assert.rejects(pdfDigest({size:PDF_LIMIT+1}));
+console.log('pdf history: PASS');

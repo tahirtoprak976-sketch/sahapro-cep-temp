@@ -28,7 +28,7 @@ test("belirsiz müşteri adı: seçtirir", () => {
 test("düzeltme: Mahir'in dünkü işi → iki aday listelenir, rastgele seçilmez; değişiklik yapılmaz", () => {
   const before = JSON.stringify(d);
   const r = R("Mahir Bey’in dünkü işindeki süreyi 2,5 saat olarak düzelt");
-  assert.equal(r.kind, "candidates"); assert.deepEqual(r.items.map((x) => x.hash), ["#/isler/w1/edit", "#/isler/w2/edit"]);
+  assert.equal(r.kind, "work_quantity"); assert.deepEqual(r.items.map((x) => x.hash), ["#/isler/w1/edit", "#/isler/w2/edit"]);
   assert.match(r.items[0].label, /17\.10\.2026 · Hitachi · Kaya İnşaat · Kazı · 3 saat/);
   assert.equal(JSON.stringify(d), before);
 });

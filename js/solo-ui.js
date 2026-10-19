@@ -1408,6 +1408,12 @@ export async function augment(ctx) {
     route = parts[0],
     id = parts[1];
   if (["new", "edit"].some((p) => parts.includes(p))) return;
+  // Geçmiş PDF satırının kaynağına ayrıntı ekranından geri dönülebilir.
+  const pdfStore = { isler:"work_records", yakit:"fuel_records", gider:"expense_records" }[route];
+  if (pdfStore && id && parts.length === 2) {
+    const record = await db.get(pdfStore,id);
+    if (record?.source_document_id) root.insertAdjacentHTML("beforeend", `<section class="card" data-pdf-provenance><h3>Kaynak PDF</h3><p>Sayfa ${esc(String(record.source_page || "?"))}</p><p class="small">${esc(record.source_quote || "")}</p><button class="btn block" data-go="#/belgeler/${esc(record.source_document_id)}">Orijinal PDF arşivini aç</button></section>`);
+  }
   // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
   if (route === "musteriler" && id) {
     try { await customerDashboard(ctx, id); } catch (e) { console.error(e); }

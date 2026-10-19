@@ -824,7 +824,7 @@ const DEPENDENT = {
   liters: ["unit_price", "total"], unit_price: ["liters", "total"], total: ["liters", "unit_price", "amount"],
   cash_type: ["amount", "customer_id"], date: [],
 };
-export async function saveExisting(store, rec, fields, auditReason, _retry = 0) {
+export async function saveExisting(store, rec, fields, auditReason, _retry = 0, options = {}) {
   const delta = fields; // çağıranın değiştirmek istediği alanlar (çakışma denetimi bunlara bakar)
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
@@ -958,6 +958,10 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0) 
     const g = t.objectStore(store).get(rec.id);
     g.onsuccess = () => {
       const now = g.result;
+      if (options.strict && (!now || now.deleted_at || JSON.stringify(now) !== JSON.stringify(rec))) {
+        error = Object.assign(Error("Kayıt önizlemeden sonra değişti; yeniden önizleyin."), { code:"STALE" });
+        t.abort(); return;
+      }
       if (rec.updated_at && now && now.updated_at && now.updated_at !== rec.updated_at) {
         // Arada başka yazım olmuş. Sizin değiştirdiğiniz alanlardan biri de değiştiyse: ÇAKIŞMA (ezilmez).
         // Yalnız başka alanlar değiştiyse: güncel kayıt üzerine yeniden uygulanır (aşağıda, doğrulama yeniden çalışır).
