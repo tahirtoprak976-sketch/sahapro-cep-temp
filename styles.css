@@ -374,9 +374,11 @@ body {
   z-index: 30;
 }
 .actionbar .btn {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   box-shadow: var(--shadow);
 }
+@media (max-width: 420px) { .actionbar .btn { padding-left: 8px; padding-right: 8px; } }
 
 /* ---- Form ---- */
 .field {

@@ -79,7 +79,7 @@ async function workList(ctx) {
   if (filter === "week") {
     const from = new Date();
     from.setDate(from.getDate() - 7);
-    const fs = from.toISOString().slice(0, 10);
+    const fs = td(from); // yerel tarih (UTC değil: gece 00–03 arası bir gün kaymasın)
     rows = rows.filter((r) => r.date >= fs);
   }
   // Tarih aralığı (asistan komutu ya da grafik dokunuşu): ?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -563,6 +563,7 @@ async function workForm(ctx, editId) {
     clearTimeout(draftTimer);
     try {
       const val = collectForm(form);
+      const priceMemo = new Map();
       if (!val.quantity || Number(val.quantity) <= 0) {
         toast("Miktar girin (0'dan büyük)", "err");
         return;
@@ -616,19 +617,15 @@ async function workForm(ctx, editId) {
         dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
       };
       if (!editId) {
-        const { priceSnapshot } = await import("./business.js");
-        fields.price_snapshot = priceSnapshot(
-          {
-            ...fields,
-            vehicle_type: vehicles.find((v) => v.id === fields.vehicle_id)
-              ?.type,
-          },
-          await db.listActive("price_book"),
-          {
-            first: await db.metaGet("crane_first_hour"),
-            next: await db.metaGet("crane_next_hour"),
-          },
-        );
+        // Eşit öncelikli farklı fiyat kuralı varsa sessizce seçilmez: kullanıcıya sorulur
+        const jobWill = (w) => { const j = J.jobFor(dJob, w); return j && !j.ambiguous && (val.job_scope || "dahil") !== "ekstra"; }; // sözleşme fiyatlayacaksa sorma
+        if (!(val.manual_price !== "" && val.manual_price != null) && !jobWill(fields)) {
+          const { askPriceSnapshot } = await import("./price-pick.js");
+          const r = await askPriceSnapshot(await db.listActive("price_book"), { ...fields, vehicle_type: vehicles.find((v) => v.id === fields.vehicle_id)?.type },
+            { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${fields.date} · ${fields.quantity} ${fields.unit}`, memo: priceMemo });
+          if (r.cancel) return;
+          fields.price_snapshot = r.snap;
+        }
       }
       if (val.manual_price !== "" && val.manual_price != null) {
         if (
@@ -713,7 +710,12 @@ async function workForm(ctx, editId) {
           const manual =
             row.x_manual_price !== "" ? row.x_manual_price : val.manual_price;
           const rate = kdvRateOf(row.x_manual_kdv !== "" ? row.x_manual_kdv : val.manual_kdv) ?? NaN; // boş → geçersiz (sessizce %0 olmaz)
-          r.price_snapshot = priceSnapshot(r, prices, crane);
+          if ((manual === "" || manual == null) && !(J.jobFor(dJob, r) && !J.jobFor(dJob, r).ambiguous && (val.job_scope || "dahil") !== "ekstra")) {
+            const { askPriceSnapshot } = await import("./price-pick.js");
+            const pr = await askPriceSnapshot(prices, r, crane, { label: `${r.date} · ${r.quantity} ${r.unit}`, memo: priceMemo });
+            if (pr.cancel) return;
+            r.price_snapshot = pr.snap;
+          }
           if (manual !== "" && manual != null) {
             if (
               !Number.isFinite(Number(manual)) ||

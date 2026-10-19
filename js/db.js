@@ -928,6 +928,14 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0) 
     throw Error(
       "Alış belgesine bağlı maliyet değiştirilemez; borç kaydını inceleyin",
     );
+  // Fiyat kuralı geçmişi: fiyat / KDV / geçerlilik değişince eski hâl kuralın üstünde saklanır (hangi tarihte ne fiyat vardı)
+  if (store === "price_book" && current) {
+    const H = ["price", "kdv_rate", "kdv_included", "valid_from", "valid_to", "first_hour_price", "next_hour_price", "formula"];
+    if (H.some((k) => k in fields && String(fields[k] ?? "") !== String(current[k] ?? ""))) {
+      const old = Object.fromEntries(H.map((k) => [k, current[k] ?? null]));
+      fields = { ...fields, price_history: [...(current.price_history || []), { ...old, until: nowISO(), reason: auditReason || "" }].slice(-50) };
+    }
+  }
   fields = await validateFields(store, { ...current, ...fields });
   const upd = {
     ...touchRecord(rec),

@@ -42,3 +42,11 @@ export function priceSummary(rule, { date, quantity, unit }, crane) {
   const calc = rule.formula === "CRANE_FIRST_HOUR" ? `vinç formülü (${q} ${unitTxt}) = ${tl(amount)} ₺` : `${tl(q)} × ${tl(rule.price)} = ${tl(amount)} ₺`;
   return `Kural: ${rule.price_source} (${span}) · İş tarihi ${date} · Birim ${tl(rule.price)} ₺ / ${unitTxt} · ${kdv} · Tutar ${calc}`;
 }
+
+// Fiyat listesinden kural: eşit öncelikli farklı kurallar (ya da tarihe göre değişen fiyat + kesin olmayan tarih) varsa SESSİZ SEÇİM YOK.
+// Kesin kural → resolvePrice ile aynı nesne; belirsiz → null (çağıran kullanıcıya sorar ya da fiyatsız bırakır).
+export function resolvePriceSafe(entries, ctx, opts) {
+  const dec = priceDecision(entries, ctx, opts);
+  return dec.ambiguous ? null : dec.rule;
+}
+export const candidateLabel = (x) => `${tl(x.price)} ₺ · ${x.price_source}${x.valid_from ? " · " + x.valid_from + "'den" : ""}${x.valid_to ? " " + x.valid_to + "'e kadar" : ""} · KDV ${x.kdv_included ? "dahil" : "hariç"} %${x.kdv_rate}${x.note ? " · " + x.note : ""}`;
