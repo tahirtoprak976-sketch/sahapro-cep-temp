@@ -7,12 +7,16 @@ from playwright.sync_api import sync_playwright
 U='http://localhost:8841/'
 f=io.BytesIO();Image.new('RGB',(200,250),'green').save(f,'JPEG');photo={'name':'TEST-photo.jpg','mimeType':'image/jpeg','buffer':f.getvalue()}
 MOCK="""window.__mode='deny';window.__calls=0;navigator.canShare=()=>true;navigator.share=d=>{if(window.event?.type!=='click')throw Error('lost click');window.__calls++;if(window.__mode==='deny')return Promise.reject(new DOMException('Permission denied','NotAllowedError'));if(window.__mode==='sync')throw Error('Permission denied');if(window.__mode==='cancel')return Promise.reject(new DOMException('cancel','AbortError'));if(window.__mode==='pending')return new Promise((r,j)=>window.__reject=j);return Promise.resolve();};"""
+def prepare_files(dp):
+ dp.locator('[data-driver-files-prepare]').evaluate('(e)=>e.closest("details").open=true')
+ dp.click('[data-driver-files-prepare]')
+ dp.wait_for_function("() => !document.querySelector('[data-driver-share-go]').disabled")
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);boss=b.new_context(viewport={'width':360,'height':800});boss.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
  pg=boss.new_page();errors=[];pg.on('pageerror',lambda e:errors.append(str(e)));pg.goto(U);pg.evaluate('async()=>await navigator.serviceWorker.ready');pg.wait_for_timeout(900)
  fixture=pg.evaluate('''async()=>{const d=await import('./js/db.js'),D=await import('./js/driver-core.js'),S=await import('./js/security.js');const c=await d.saveNew('customers',{name:'TEST Müşteri'},'test'),v=await d.saveNew('vehicles',{name:'TEST Araç'},'test'),p=await d.saveNew('personnel',{name:'TEST Soner',active:true},'test'),link=await S.newDriverLink({pid:p.id,name:p.name});return {url:'sofor.html?k='+await D.pack({...D.driverConfig(await d.dumpAll(),{personnel_id:p.id,vehicle_id:v.id}),...link.forDriver})}}''')
  driver=b.new_context(viewport={'width':360,'height':800},accept_downloads=True);driver.add_init_script(MOCK);dp=driver.new_page();downloads=[];dp.on('download',lambda d:downloads.append(d));dp.on('pageerror',lambda e:errors.append(str(e)));dp.goto(U+fixture['url']);dp.wait_for_selector('[data-cid]');dp.select_option('[data-cid]',index=1);dp.fill('[data-k=q]','1');dp.set_input_files('[data-photo]',photo);dp.wait_for_function("() => !document.querySelector('[data-add]').disabled");dp.click('[data-add]');dp.wait_for_selector('[data-save-result]');original=dp.evaluate("JSON.parse(localStorage.getItem('sp_driver_entries'))")
- def prepare():dp.click('[data-send]');dp.wait_for_selector('[data-driver-share-download]',state='attached')
+ def prepare():dp.click('[data-send]');dp.wait_for_selector('[data-driver-share-download]',state='attached');prepare_files(dp)
  def pending():return dp.evaluate("!JSON.parse(localStorage.getItem('sp_driver_entries'))[0].sent")
  prepare();dp.locator('[data-driver-share-download]').evaluate('(e)=>e.closest("details").open=true');dp.click('[data-driver-share-pdf]');dp.wait_for_function("() => document.querySelector('[data-driver-share-status]').textContent.includes('izni reddedildi')");assert pending();assert not downloads;assert not dp.locator('[data-driver-share-download]').is_disabled();assert dp.locator('[data-driver-share-manual]').is_visible();assert dp.locator('.driver-share-panel').evaluate('(e)=>e.scrollWidth<=e.clientWidth')
  with dp.expect_download() as ev:dp.click('[data-driver-share-download]')
