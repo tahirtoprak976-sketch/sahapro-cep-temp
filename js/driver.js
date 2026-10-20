@@ -2,30 +2,33 @@
 // Şoför telefonu "şoför modunda" yalnız bu ekranı gösterir; kayıtlar telefonda (localStorage + fotoğraflar Cache Storage) durur,
 // "Patrona gönder" ile WhatsApp'tan okunur metin + SP1 kodu + fiş fotoğrafları gider. Patronun asistanı kodu Gemini'siz çözer.
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, confirmDialog, shareText } from "./ui.js";
+import { commitEntries, validConfig, validDate, validNumber } from "./driver-delivery.js";
 import { isActive, COMPANY_NAME } from "./core.js";
 
 const K_MODE = "sp_driver", K_CFG = "sp_driver_cfg", K_ENT = "sp_driver_entries", PHOTO_CACHE = "sahapro-driver";
 const ls = {
   get: (k, def = null) => { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } },
-  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { toast("Telefon hafızası dolu: eski kayıtları silin", "err"); } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { throw new Error("Telefon hafızasına yazılamadı. Form korunuyor; depolama alanını kontrol edip tekrar deneyin"); } },
   del: (k) => { try { localStorage.removeItem(k); } catch (e) {} },
 };
 export const isDriverMode = () => ls.get(K_MODE) === 1;
 
 async function putPhotos(id, files) {
-  if (!("caches" in self) || !files.length) return 0;
+  if (!files.length) return 0;
+  if (!("caches" in self)) throw new Error("Fotoğraf saklama bu tarayıcıda kullanılamıyor");
   const c = await caches.open(PHOTO_CACHE);
   let i = 0;
-  for (const f of files) await c.put(`./__drv/${id}-${i++}`, new Response(f, { headers: { "content-type": f.type || "image/jpeg", "x-name": encodeURIComponent(f.name || `fis-${id}-${i}.jpg`) } }));
+  try { for (const f of files) await c.put(`./__drv/${id}-${i++}`, new Response(f, { headers: { "content-type": f.type || "image/jpeg", "x-name": encodeURIComponent(f.name || `fis-${id}-${i}.jpg`) } }));
+  } catch (e) { await dropPhotos({ id, ph: i }).catch(() => {}); throw e; }
   return i;
 }
 async function getPhotos(e) {
   if (!("caches" in self) || !e.ph) return [];
   const c = await caches.open(PHOTO_CACHE), out = [];
-  for (let i = 0; i < e.ph; i++) { const r = await c.match(`./__drv/${e.id}-${i}`); if (r) { const b = await r.blob(); out.push(new File([b], decodeURIComponent(r.headers.get("x-name") || `fis-${i}.jpg`), { type: b.type || "image/jpeg" })); } }
+  for (let i = 0; i < e.ph; i++) { const r = await c.match(`./__drv/${e.photoId || e.id}-${i}`); if (r) { const b = await r.blob(); out.push(new File([b], decodeURIComponent(r.headers.get("x-name") || `fis-${i}.jpg`), { type: b.type || "image/jpeg" })); } }
   return out;
 }
-async function dropPhotos(e) { if ("caches" in self && e.ph) { const c = await caches.open(PHOTO_CACHE); for (let i = 0; i < e.ph; i++) await c.delete(`./__drv/${e.id}-${i}`); } }
+async function dropPhotos(e) { if ("caches" in self && e.ph) { const c = await caches.open(PHOTO_CACHE); for (let i = 0; i < e.ph; i++) await c.delete(`./__drv/${e.photoId || e.id}-${i}`); } }
 // Fotoğrafı küçült (WhatsApp ve hafıza için)
 export const PHOTO_LIMITS = { count: 10, mb: 25 };
 async function shrinkPhoto(f) {
@@ -36,6 +39,7 @@ async function shrinkPhoto(f) {
     const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * s); cv.height = Math.round(bmp.height * s);
     cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
     const b = await new Promise((r) => cv.toBlob(r, "image/jpeg", 0.8));
+    bmp.close();
     return b ? new File([b], (f.name || "fis").replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }) : f;
   } catch (e) { return f; }
 }
@@ -50,13 +54,15 @@ export async function screen(ctx) {
   if (ctx.query?.k) {
     try {
       const cfg = await core.unpack(ctx.query.k);
-      if (cfg?.v !== 1 || !cfg.p) throw new Error("Bağlantı bozuk");
+      if (!validConfig(cfg)) throw new Error("Bağlantı bozuk");
+      const previous = ls.get(K_CFG);
+      if (previous && previous.p?.[0] !== cfg.p[0] && (ls.get(K_ENT, []).length || ls.get("sp_driver_draft"))) throw new Error("Bu telefonda başka şoförün kayıtları var. Kişi değişikliği için ayrı tarayıcı profili veya başka telefon kullanın");
       const own = ((await db.dumpAll()).work_records || []).filter(isActive).length;
       if (own > 5 && !isDriverMode() && !(await confirmDialog("Bu telefon patron telefonu mu?", `Bu telefonda ${own} iş kaydı var. Şoför moduna geçerseniz yalnız şoför ekranı görünür (kayıtlar silinmez, istediğinizde çıkabilirsiniz).`, "Şoför moduna geç"))) { location.replace("#/"); return true; }
       const first = !isDriverMode();
       const prev = ls.get(K_CFG);
       // Adresteki eski kod, sonradan kurulan daha yeni bağlantıyı ezmesin (ana ekran simgesi hep ilk adresi açar)
-      if (prev && (Number(prev.ts) || 0) > (Number(cfg.ts) || 0)) { ls.set(K_MODE, 1); }
+      if (prev && prev.p?.[0] === cfg.p[0] && (Number(prev.ts) || 0) > (Number(cfg.ts) || 0)) { ls.set(K_MODE, 1); }
       else ls.set(K_CFG, cfg), ls.set(K_MODE, 1);
       try { localStorage.setItem("sp_role", "driver"); } catch (e) {}
       if (first) toast(`Hoş geldin ${cfg.p[1]}`, "ok");
@@ -80,35 +86,53 @@ export async function screen(ctx) {
   }
   const today = todayStr();
   const expired = cfg.exp && today > cfg.exp;
-  let entries = ls.get(K_ENT, []).filter((e) => !e.sent || e.date >= new Date(Date.now() - 14 * 864e5).toISOString().slice(0, 10));
+  let entries;
+  try {
+    const raw = localStorage.getItem(K_ENT); entries = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(entries) || entries.some(e => !e || typeof e.id !== "string" || !validDate(e.date))) throw new Error("Kayıt listesi bozuk");
+  } catch (e) { root.innerHTML = notice("danger", "Telefondaki şoför kayıtları okunamadı. Verileri silmeyin; destek için yedek alın. " + (e.message || e)); return true; }
+  let savedEntries = structuredClone(entries);
   const nm = (list, id) => (list || []).find((x) => x[0] === id)?.[1] || "";
-  let tab = "is", photos = [], slipFor = null, busy = false;
+  let tab = "is", photos = [], slipFor = null, busy = false, photoBusy = false, sharing = false;
+  let draftPhotoId = "draft", draftPhotoCount = 0, missingDraftPhotos = 0, draftQueue = Promise.resolve();
+  window.onbeforeunload = () => busy || photoBusy || sharing ? "İşlem sürüyor" : undefined;
+  const lockForm = () => { for (const el of qsa("button, input, select, textarea", root)) el.disabled = busy || photoBusy || sharing; };
   // Yarım form taslağı (uygulama kapanır / WhatsApp'a geçilir / internet kesilirse kaybolmaz): alanlar localStorage, fotoğraflar Cache
   const K_DRAFT = "sp_driver_draft";
-  const photoListHtml = () => photos.length ? `${photos.length} fotoğraf hazır: ` + photos.map((f, i) => `<span class="chip" style="margin:2px">📷 ${i + 1} <button class="btn sm ghost" data-phrm="${i}" aria-label="Fotoğraf ${i + 1} kaldır">✕</button></span>`).join("") : "";
+  let previewURLs = [];
+  const picture = (f, alt) => { const url = URL.createObjectURL(f); previewURLs.push(url); return `<img src="${url}" alt="${esc(alt)}" style="width:76px;height:88px;object-fit:contain;border-radius:8px;background:#fff">`; };
+  const photoListHtml = () => photos.length ? `<div class="small strong">${photos.length} fotoğraf hazır</div><div class="driver-photos">` + photos.map((f, i) => `<div>${picture(f, "Fotoğraf " + (i + 1))}<button class="btn sm ghost" data-phrm="${i}" aria-label="Fotoğraf ${i + 1} kaldır">${i + 1} · Kaldır</button></div>`).join("") + "</div>" : "";
   const st = { vid: ls.get("sp_driver_vid") || cfg.veh || "", cid: "", cn: "", sid: "", wt: core.DRIVER_TYPES[0], q: 1, u: "Sefer", ds: "", dn: "", ton: "", slip: "", note: "", mat: "", f: {} };
   let draftNote = "";
   {
     const dr = ls.get(K_DRAFT);
-    if (dr && Date.now() - (dr.at || 0) < 7 * 86400000 && dr.st) {
+    if (dr && dr.st) {
       Object.assign(st, dr.st, { vid: st.vid || dr.st.vid });
       if (dr.tab) tab = dr.tab;
-      if (dr.ph) photos = await getPhotos({ id: "draft", ph: dr.ph });
+      draftPhotoId = dr.photoId || "draft"; draftPhotoCount = dr.ph || 0;
+      if (dr.ph) photos = await getPhotos({ id: draftPhotoId, ph: dr.ph });
+      missingDraftPhotos = (Number(dr.missing) || 0) + Math.max(0, (dr.ph || 0) - photos.length);
       draftNote = `Yarım kalan form geri yüklendi (${new Date(dr.at).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})${dr.ph ? ` · ${photos.length}/${dr.ph} fotoğraf` : ""}`;
-      if (dr.ph && photos.length < dr.ph) draftNote += " — bazı fotoğraflar telefonda bulunamadı, yeniden ekleyin";
+      if (missingDraftPhotos) draftNote += " — bazı fotoğraflar telefonda bulunamadı, yeniden ekleyin";
     }
   }
-  const saveDraft = async (withPhotos = false) => {
-    const empty = !photos.length && !String(st.note || st.slip || st.ton || st.cn || "").trim() && !Object.values(st.f || {}).some(Boolean) && !Object.values(st.x || {}).some(Boolean) && !st.cid;
-    if (empty && !withPhotos) { ls.del(K_DRAFT); return; }
-    if (withPhotos) { await dropPhotos({ id: "draft", ph: 12 }).catch(() => {}); await putPhotos("draft", photos).catch(() => toast("Fotoğraf taslağı saklanamadı (telefon hafızası dolu olabilir)", "err")); }
-    if (empty) { ls.del(K_DRAFT); return; }
-    const { f, x: xx, ...rest } = st;
-    ls.set(K_DRAFT, { at: Date.now(), tab, st: { ...rest, f: { ...f }, x: { ...xx } }, ph: photos.length });
+  const saveDraft = (withPhotos = false) => {
+    const snapshot = { at: Date.now(), tab, st: structuredClone(st), ph: photos.length, missing: missingDraftPhotos };
+    const files = [...photos];
+    draftQueue = draftQueue.catch(() => {}).then(async () => {
+      const empty = !snapshot.ph && !snapshot.missing && !files.length && !String(snapshot.st.note || snapshot.st.slip || snapshot.st.ton || snapshot.st.cn || "").trim() && !Object.values(snapshot.st.f || {}).some(Boolean) && !Object.values(snapshot.st.x || {}).some(Boolean) && !snapshot.st.cid;
+      if (empty) { ls.del(K_DRAFT); return; }
+      const old = { id: draftPhotoId, ph: draftPhotoCount };
+      const photoId = withPhotos ? "draft-" + core.newId() : draftPhotoId;
+      if (withPhotos) await putPhotos(photoId, files);
+      try { ls.set(K_DRAFT, { ...snapshot, photoId }); }
+      catch (e) { if (withPhotos) await dropPhotos({ id: photoId, ph: files.length }).catch(() => {}); throw e; }
+      if (withPhotos) { draftPhotoId = photoId; draftPhotoCount = files.length; await dropPhotos(old).catch(() => {}); }
+    });
+    return draftQueue;
   };
-  const clearDraft = async () => { ls.del(K_DRAFT); await dropPhotos({ id: "draft", ph: 12 }).catch(() => {}); draftNote = ""; };
-  // Paylaşılmış kayıtların fotoğrafları 7 gün tekrar paylaşım için saklanır, sonra temizlenir (hafıza dolmasın)
-  for (const e of entries.filter((e) => e.sent && e.ph && Date.now() - Date.parse(e.sent) > 7 * 86400000)) { await dropPhotos(e).catch(() => {}); e.ph_dropped = e.ph; delete e.ph; }
+  const clearDraft = async () => { clearTimeout(root._dt); await draftQueue.catch(() => {}); ls.del(K_DRAFT); await dropPhotos({ id: draftPhotoId, ph: draftPhotoCount }).catch(() => {}); draftPhotoCount = 0; missingDraftPhotos = 0; draftNote = ""; };
+  // No automatic deletion: opening a share sheet is not a delivery receipt.
   const opt = (rows, val, empty) => (empty != null ? `<option value="">${esc(empty)}</option>` : "") + rows.map(([v, t]) => `<option value="${esc(v)}" ${String(v) === String(val) ? "selected" : ""}>${esc(t)}</option>`).join("");
   const big = "min-height:52px;font-size:17px";
 
@@ -206,7 +230,7 @@ export async function screen(ctx) {
         const signedAt = sigBlob ? new Date().toISOString() : "";
         if (sigBlob && "caches" in self) await (await caches.open(PHOTO_CACHE)).put(sigKey, new Response(sigBlob, { headers: { "content-type": "image/png" } }));
         Object.assign(e, { dfs: no, rcv: receiver, ...(signedAt ? { sgt: signedAt, sg: 1, sv: core.encodeStrokes(strokes) } : {}) });
-        save();
+        await save();
         await send(sigBlob, no, receiver, signedAt);
         toast(`Fiş ${no} hazır`, "ok"); slipFor = null; draw();
       } catch (err) { toast("Fiş oluşturulamadı: " + (err.message || err), "err"); }
@@ -219,9 +243,27 @@ export async function screen(ctx) {
       } catch (err) { toast("Gönderilemedi: " + (err.message || err), "err"); }
     });
   };
+  const entryCards = (list) => {
+    let date = "";
+    return [...list].sort((a, b) => b.date.localeCompare(a.date)).map(e => {
+      const heading = date !== e.date ? `<div class="section-title">${esc(trDate(e.date))}</div>` : ""; date = e.date;
+      return heading + `<div class="card driver-entry" data-entry="${esc(e.id)}">
+        <div class="row between"><span class="badge">${e.sent ? "Paylaşım açıldı" : "Telefonda bekliyor"}</span><span class="tiny muted">${e.ph || e.ph_dropped || 0} fotoğraf</span></div>
+        <p class="small" style="line-height:1.6;overflow-wrap:anywhere">${esc(core.entryLine(e, cfg))}</p>
+        <div class="driver-actions"><button class="btn sm" data-sendone="${esc(e.id)}">${e.sent ? "Tekrar paylaş" : "Bu kaydı paylaş"}</button>
+        ${!e.k ? `<button class="btn sm" data-slip="${esc(e.id)}">Dijital fiş</button>` : ""}
+        ${(e.ph || e.ph_dropped) ? `<button class="btn sm" data-viewphotos="${esc(e.id)}">Fotoğrafları kontrol et</button>` : ""}
+        <button class="btn sm ghost" data-del="${esc(e.id)}" aria-label="Kaydı telefondan kaldır">${e.sent ? "Telefondan kaldır" : "Sil"}</button></div>
+        ${(e.ph || e.ph_dropped) ? `<div data-photo-panel="${esc(e.id)}" hidden><div class="driver-photos" data-savedphotos="${esc(e.id)}"></div><div class="tiny muted" data-photo-status="${esc(e.id)}"></div>
+        <label class="small">Fotoğrafları yeniden seç<input type="file" accept="image/*" multiple data-repair="${esc(e.id)}"></label>
+        ${!e.sent ? `<button class="btn sm ghost" data-nophoto="${esc(e.id)}">Fotoğraf bağlantısını kaldır</button>` : ""}</div>` : ""}
+      </div>`;
+    }).join("");
+  };
   const draw = () => {
+    for (const url of previewURLs) URL.revokeObjectURL(url); previewURLs = [];
     if (slipFor) return drawSlip();
-    const unsent = entries.filter((e) => !e.sent), sent = entries.filter((e) => e.sent).slice(-15).reverse();
+    const unsent = entries.filter((e) => !e.sent), sent = entries.filter((e) => e.sent).reverse();
     const sites = (cfg.S || []).filter((s) => s[2] === st.cid);
     root.innerHTML = `
       <div class="card" style="margin-top:10px;background:#0f2238;color:#fff">
@@ -229,6 +271,13 @@ export async function screen(ctx) {
         <select data-vid style="margin-top:8px;width:100%;${big};border-radius:10px;padding:6px 10px">${opt(cfg.V || [], st.vid, "— araç seçin —")}</select>
       </div>
       ${expired ? `<div class="notice danger"><div>Bağlantının süresi ${esc(trDate(cfg.exp))} tarihinde doldu. Gönderdiğin kayıtlar işlenmez: patrondan <b>yeni bağlantı</b> iste.</div></div>` : ""}
+      <div class="card driver-delivery" aria-label="Gönderim durumu">
+        <div class="row between"><b>Gönderim merkezi</b><span class="badge">${navigator.onLine ? "Bağlantı var" : "Çevrimdışı"}</span></div>
+        <div class="driver-stats"><div><strong>${unsent.length}</strong><span>Paylaşılmayı bekliyor</span></div><div><strong>${sent.length}</strong><span>Paylaşım ekranı açıldı</span></div><div><strong>${entries.reduce((n,e)=>n+(e.ph || e.ph_dropped || 0),0)}</strong><span>Fotoğraf bağlantısı</span></div></div>
+        <div class="small muted" style="line-height:1.6">1. Kaydet → 2. WhatsApp'ta paylaş → 3. Patron Asistan'da kontrol edip kaydeder.</div>
+        <div class="tiny muted" style="margin-top:6px">Patronun aldığı bu telefonda doğrulanamaz. Kayıtlar ve fotoğraflar kendiliğinden silinmez. İnternetsiz kayıt girebilirsiniz; paylaşmak için bağlantınızı kontrol edin.</div>
+        ${unsent.length ? `<button class="btn primary block" data-pending style="margin-top:10px">${unsent.length} bekleyen kayda git ↓</button>` : ""}
+      </div>
       ${weekHtml()}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">${[["is", "🚚 İş"], ["yakit", "⛽ Mazot"], ["ariza", "🔧 Arıza / Bakım"], ["gider", "💸 Gider"]].map(([k, t]) => `<button class="btn ${tab === k ? "primary" : ""}" data-tab="${k}" style="${big}">${t}</button>`).join("")}</div>
       ${tab === "is" ? `<div class="card">
@@ -256,37 +305,73 @@ export async function screen(ctx) {
         <div class="field"><label>Litre</label><input type="number" inputmode="decimal" data-f="L" value="${esc(st.f.L ?? "")}" style="${big};font-size:22px;font-weight:800"></div>
         <div class="field"><label>Nereden?</label><div class="row" style="gap:6px;flex-wrap:wrap">${[["Depo Tankı", "Depodan"], ["Akaryakıt İstasyonu", "İstasyondan"], ["Müşteri Verdi", "Müşteri verdi"]].map(([v, t]) => `<button class="chip ${st.src === v ? "on" : ""}" data-src="${v}">${t}</button>`).join("")}</div></div>
         ${st.src === "Müşteri Verdi" ? `<div class="field"><label>Hangi müşteri?</label><select data-f="cid">${opt(cfg.C || [], st.f.cid || "", "— seçin —")}</select></div>` : ""}
-        <div class="formgrid2">${st.src === "Akaryakıt İstasyonu" ? '<div class="field"><label>Tutar (TL)</label><input type="number" inputmode="decimal" data-f="tl" value="${esc(st.f.tl ?? "")}"></div>' : ""}
+        <div class="formgrid2">${st.src === "Akaryakıt İstasyonu" ? `<div class="field"><label>Tutar (TL)</label><input type="number" inputmode="decimal" data-f="tl" value="${esc(st.f.tl ?? "")}"></div>` : ""}
           <div class="field"><label>Km</label><input type="number" inputmode="numeric" data-f="km" value="${esc(st.f.km ?? "")}"></div>
           <div class="field"><label>Makine saati</label><input type="number" inputmode="decimal" data-f="hr" value="${esc(st.f.hr ?? "")}"></div></div>
+        <div class="field"><label>📷 Yakıt fişi / fotoğraf</label><input type="file" accept="image/*" capture="environment" multiple data-photo></div>
+        <div class="tiny muted">En çok ${PHOTO_LIMITS.count} fotoğraf · her biri ${PHOTO_LIMITS.mb} MB'a kadar</div><div class="small" data-phc>${photoListHtml()}</div>
         <button class="btn primary block" data-addf style="${big};margin-top:8px">✓ Kaydet</button>
       </div>`}
-      ${draftNote ? `<div class="card small" data-draftnote>📝 ${esc(draftNote)} <button class="btn sm ghost" data-draftclear>Taslağı temizle</button></div>` : ""}<div class="section-title">Telefonda bekleyen — henüz paylaşılmadı (${unsent.length})</div>
-      ${unsent.map((e) => `<div class="card"><div class="row between"><span class="small">${esc(core.entryLine(e, cfg))}</span><span class="row" style="gap:4px">${!e.k ? `<button class="btn sm" data-slip="${esc(e.id)}" title="Dijital fiş">🧾</button>` : ""}<button class="btn sm ghost" data-del="${esc(e.id)}">🗑</button></span></div>${!e.k && !e.dfs ? '<div class="tiny muted">🧾 Şantiye şefine imzalı dijital fiş</div>' : ""}</div>`).join("") || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}
-      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#25d366;color:#fff;border:0;font-weight:800">📤 Patrona paylaş (WhatsApp)</button>` : ""}
-      ${sent.length ? `<details class="card" style="margin-top:10px"><summary class="small">Paylaşılanlar (${sent.length}) — patronun aldığı bu telefonda doğrulanamaz</summary>${sent.map((e) => `<div class="tiny muted" style="margin-top:4px">✓ ${esc(core.entryLine(e, cfg))}</div>`).join("")}<button class="btn sm" style="margin-top:6px" data-resend>Son paylaşılanı tekrar paylaş (aynı kayıt kimlikleri — patronda ikinci kayıt oluşmaz)</button></details>` : ""}
+      ${draftNote ? `<div class="card small" data-draftnote>📝 ${esc(draftNote)} ${missingDraftPhotos ? `<button class="btn sm" data-forgetmissing>Eksik fotoğrafları yok say</button>` : ""} <button class="btn sm ghost" data-draftclear>Taslağı temizle</button></div>` : ""}<div class="section-title">Telefonda bekleyen — henüz paylaşılmadı (${unsent.length})</div>
+      <div id="driver-pending">${entryCards(unsent) || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}</div>
+      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#168a45;color:#fff;border:0;font-weight:800">📤 Patrona paylaş (WhatsApp) · ${unsent.length} kayıt</button><p class="tiny muted">Uzun listeler parçalara ayrılır. Kalan kayıt sayısı her paylaşımın ardından gösterilir. Fotoğraflar aynı pakette, kayıt sırasıyla eklenir.</p>` : ""}
+      ${sent.length ? `<details class="card" data-shared style="margin-top:10px"><summary class="small">Paylaşılanlar (${sent.length}) — patronun aldığı bu telefonda doğrulanamaz</summary><p class="tiny muted">Tekrar paylaşım aynı kayıt kimliğini taşır; patronda ikinci kayıt oluşturmaz. WhatsApp'ta mesajı ve ekleri kontrol edin.</p>${entryCards(sent)}<button class="btn sm" style="margin-top:6px" data-resend>Son paylaşılanı tekrar paylaş</button></details>` : ""}
       <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><div class="field" style="margin-top:6px"><label class="tiny">Patron yeni bağlantı gönderdiyse buraya yapıştırın</label><textarea data-newlink rows="2" placeholder="Yeni bağlantı"></textarea><button class="btn sm block" data-newlink-ok style="margin-top:4px">Yeni bağlantıyı kur</button></div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
-    bind();
+    bind(); lockForm();
   };
   const readForm = () => {
     for (const el of qsa("[data-k]", root)) st[el.dataset.k] = el.value;
     for (const el of qsa("[data-f]", root)) st.f[el.dataset.f] = el.value;
     for (const el of qsa("[data-x]", root)) x[el.dataset.x] = el.value;
     const vb = qs("[data-x-veh]", root); if (vb) x.noVeh = !vb.checked;
-    saveDraft();
+    saveDraft().catch(e => toast(e.message || String(e), "err"));
   };
-  const save = () => ls.set(K_ENT, entries);
+  const save = async () => {
+    try { entries = await commitEntries(K_ENT, savedEntries, entries); savedEntries = structuredClone(entries); }
+    catch (e) { entries = structuredClone(savedEntries); throw e; }
+  };
+  const persist = async (e) => {
+    if (busy || photoBusy || sharing) return false;
+    if (missingDraftPhotos) { toast("Taslakta eksik fotoğraf var. Fotoğrafları yeniden ekleyin veya eksikleri yok saymayı açıkça seçin", "err"); return false; }
+    busy = true; lockForm();
+    try {
+      await draftQueue.catch(() => {});
+      e.ph = await putPhotos(e.id, photos);
+      if (!e.ph) delete e.ph;
+      entries.push(e); await save();
+      return true;
+    } catch (err) {
+      busy = false; lockForm();
+      await dropPhotos(e).catch(() => {});
+      toast("Kaydedilemedi: " + (err.message || err) + ". Formu tekrar deneyebilirsiniz.", "err"); return false;
+    }
+  };
+  const checkForm = () => {
+    if (!validDate(st.date || today) || (st.date || today) > today) { toast("Geçerli bir tarih seçin; gelecek tarih olamaz", "err"); return false; }
+    const vals = tab === "is" ? [st.ton] : tab === "yakit" ? [st.f.L, st.f.tl, st.f.km, st.f.hr] : [x.tl, x.km, x.hr];
+    if (!vals.every(v => validNumber(v))) { toast("Sayılar sıfır veya pozitif, en fazla 1 trilyon olmalı", "err"); return false; }
+    return true;
+  };
+  const redrawForm = () => { saveDraft().catch(e => toast(e.message || String(e), "err")); draw(); };
   const bind = () => {
-    qs("[data-vid]", root).addEventListener("change", (e) => { st.vid = e.target.value; ls.set("sp_driver_vid", st.vid); });
-    for (const b of qsa("[data-tab]", root)) b.addEventListener("click", () => { readForm(); tab = b.dataset.tab; draw(); });
-    qs("[data-cid]", root)?.addEventListener("change", (e) => { readForm(); st.cid = e.target.value; st.sid = ""; draw(); });
-    qs("[data-ds]", root)?.addEventListener("change", (e) => { readForm(); st.ds = e.target.value; draw(); });
-    for (const b of qsa("[data-wt]", root)) b.addEventListener("click", () => { readForm(); st.wt = b.dataset.wt; if (/Makine|Kazı|Yükleme/.test(st.wt) && st.u === "Sefer") st.u = "Saat"; else if (/Nakliye/.test(st.wt) && st.u === "Saat") st.u = "Sefer"; draw(); });
-    for (const b of qsa("[data-u]", root)) b.addEventListener("click", () => { readForm(); st.u = b.dataset.u; draw(); });
-    for (const b of qsa("[data-src]", root)) b.addEventListener("click", () => { readForm(); st.src = b.dataset.src; draw(); });
-    for (const b of qsa("[data-q]", root)) b.addEventListener("click", () => { readForm(); st.q = Math.max(0, (Number(st.q) || 0) + Number(b.dataset.q)); draw(); });
-    root.oninput = () => { clearTimeout(root._dt); root._dt = setTimeout(() => readForm(), 600); };
+    qs("[data-vid]", root).addEventListener("change", (e) => { st.vid = e.target.value; try { ls.set("sp_driver_vid", st.vid); saveDraft().catch(err => toast(err.message, "err")); } catch (err) { toast(err.message, "err"); } });
+    qs("[data-pending]", root)?.addEventListener("click", () => qs("#driver-pending", root)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    for (const b of qsa("[data-tab]", root)) b.addEventListener("click", () => {
+      if (photoBusy || busy || sharing) return;
+      if (photos.length && b.dataset.tab !== tab) return toast("Fotoğraflı formu önce kaydedin veya fotoğrafları kaldırın; fotoğraflar başka kayıt türüne taşınmaz", "err");
+      readForm(); tab = b.dataset.tab; redrawForm();
+    });
+    qs("[data-cid]", root)?.addEventListener("change", (e) => { readForm(); st.cid = e.target.value; st.sid = ""; redrawForm(); });
+    qs("[data-ds]", root)?.addEventListener("change", (e) => { readForm(); st.ds = e.target.value; redrawForm(); });
+    for (const b of qsa("[data-wt]", root)) b.addEventListener("click", () => { readForm(); st.wt = b.dataset.wt; if (/Makine|Kazı|Yükleme/.test(st.wt) && st.u === "Sefer") st.u = "Saat"; else if (/Nakliye/.test(st.wt) && st.u === "Saat") st.u = "Sefer"; redrawForm(); });
+    for (const b of qsa("[data-u]", root)) b.addEventListener("click", () => { readForm(); st.u = b.dataset.u; redrawForm(); });
+    for (const b of qsa("[data-src]", root)) b.addEventListener("click", () => { readForm(); st.src = b.dataset.src; redrawForm(); });
+    for (const b of qsa("[data-q]", root)) b.addEventListener("click", () => { readForm(); st.q = Math.max(0, (Number(st.q) || 0) + Number(b.dataset.q)); redrawForm(); });
+    root.oninput = () => { if (!qs("[data-vid]", root)) return; clearTimeout(root._dt); readForm(); };
     qs("[data-photo]", root)?.addEventListener("change", async (e) => {
+      if (photoBusy || busy || sharing) return;
+      photoBusy = true; lockForm();
+      try {
       const el = qs("[data-phc]", root), list = [...e.target.files], bad = [];
       e.target.value = "";
       if (photos.length + list.length > PHOTO_LIMITS.count) toast(`En çok ${PHOTO_LIMITS.count} fotoğraf eklenebilir; ilk ${Math.max(0, PHOTO_LIMITS.count - photos.length)} tanesi alındı`, "err");
@@ -300,42 +385,54 @@ export async function screen(ctx) {
         if (g === f && f.size > 8 * 1048576) { bad.push(`${f.name || i + 1}: hazırlanamadı`); continue; }
         photos.push(g);
       }
+      if (missingDraftPhotos) toast("Yeni fotoğraflar hazır. Eski eksik fotoğrafları yok say düğmesiyle taslağı doğrulayın", "err");
       await saveDraft(true);
       el.innerHTML = photoListHtml() + (bad.length ? `<div class="tiny" style="color:#c0392b">Eklenemedi: ${esc(bad.join(" · "))} — yeniden deneyin</div>` : "");
       bindPhotoRemove();
+      } catch (err) { toast("Fotoğraf taslağı saklanamadı: " + (err.message || err) + ". Kaydet ile tekrar deneyin.", "err"); }
+      finally { photoBusy = false; lockForm(); }
     });
-    const bindPhotoRemove = () => { for (const b of qsa("[data-phrm]", root)) b.onclick = async (ev) => { ev.preventDefault(); photos.splice(Number(b.dataset.phrm), 1); await saveDraft(true); qs("[data-phc]", root).innerHTML = photoListHtml(); bindPhotoRemove(); }; };
+    const bindPhotoRemove = () => { for (const b of qsa("[data-phrm]", root)) b.onclick = async (ev) => {
+      ev.preventDefault(); if (photoBusy || busy || sharing) return;
+      photoBusy = true; lockForm(); const before = [...photos];
+      try { photos.splice(Number(b.dataset.phrm), 1); await saveDraft(true); }
+      catch (err) { photos = before; toast("Fotoğraf kaldırılamadı: " + (err.message || err), "err"); }
+      finally { photoBusy = false; qs("[data-phc]", root).innerHTML = photoListHtml(); bindPhotoRemove(); lockForm(); }
+    }; };
     bindPhotoRemove();
+    qs("[data-forgetmissing]", root)?.addEventListener("click", async () => {
+      if (!(await confirmDialog("Taslak fotoğrafları", "Telefonda bulunamayan eski fotoğraflar bu taslaktan çıkarılacak. Yalnız ekranda görünen fotoğraflar kayda eklenecek.", "Görünenlerle devam"))) return;
+      const before = missingDraftPhotos; missingDraftPhotos = 0;
+      try { await saveDraft(true); draftNote = "Taslakta yalnız görünen fotoğraflar kullanılacak"; draw(); }
+      catch (err) { missingDraftPhotos = before; toast(err.message || String(err), "err"); }
+    });
     qs("[data-draftclear]", root)?.addEventListener("click", async () => { await clearDraft(); photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "", f: {} }); Object.keys(x).forEach((k) => delete x[k]); draw(); });
     qs("[data-add]", root)?.addEventListener("click", async () => {
-      if (busy) return; // iki kez basma: tek kayıt
+      if (busy || photoBusy || sharing) return; // iki kez basma: tek kayıt
       readForm();
+      if (!checkForm()) return;
       const q = Number(String(st.q).replace(",", "."));
       if (!st.vid) return toast("Araç seçin", "err");
       if (!st.cid || (st.cid === "__new" && !st.cn.trim())) return toast("Müşteri seçin", "err");
-      if (!(q > 0)) return toast("Miktar yazın", "err");
+      if (!validNumber(q, true)) return toast("Miktar yazın", "err");
       if (/Nakliye/.test(st.wt) && st.u === "Saat" && !(await confirmDialog("Birim saat mi?", `${st.wt} genelde sefer olur. ${q} SAAT olarak mı kaydedilsin?`, "Evet, saat"))) return;
       const e = { id: core.newId(), date: st.date || today, vid: st.vid, wt: st.wt, q, u: st.u,
         ...(st.cid === "__new" ? { cn: st.cn.trim() } : { cid: st.cid }), ...(st.sid ? { sid: st.sid } : {}),
         ...(st.ds && st.ds !== "__new" ? { ds: st.ds } : st.ds === "__new" && st.dn.trim() ? { dn: st.dn.trim() } : {}),
-        ...(Number(st.ton) > 0 ? { ton: Number(String(st.ton).replace(",", ".")) } : {}), ...(st.slip.trim() ? { slip: st.slip.trim() } : {}),
+        ...(Number(String(st.ton).replace(",", ".")) > 0 ? { ton: Number(String(st.ton).replace(",", ".")) } : {}), ...(st.slip.trim() ? { slip: st.slip.trim() } : {}),
         ...(st.mat.trim() ? { mat: st.mat.trim() } : {}), ...(st.note.trim() ? { note: st.note.trim() } : {}) };
-      busy = true;
-      try {
-        e.ph = await putPhotos(e.id, photos);
-        if (!e.ph) delete e.ph;
-        entries.push(e); save();
-      } finally { busy = false; }
-      photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" }); await clearDraft();
+      if (!(await persist(e))) return;
+      photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" }); await clearDraft(); busy = false;
       toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
     });
-    for (const b of qsa("[data-x-kind]", root)) b.addEventListener("click", () => { readForm(); if (tab === "ariza") x.mt = b.dataset.xKind; else { x.cat = b.dataset.xKind; if (x.cat === "Yemek") x.noVeh = true; } draw(); });
-    for (const b of qsa("[data-x-st]", root)) b.addEventListener("click", () => { readForm(); x.st = b.dataset.xSt; draw(); });
-    for (const b of qsa("[data-x-pay]", root)) b.addEventListener("click", () => { readForm(); x.pay = b.dataset.xPay; draw(); });
-    qs("[data-x-sup]", root)?.addEventListener("change", (e) => { readForm(); x.sup = e.target.value; draw(); });
+    for (const b of qsa("[data-x-kind]", root)) b.addEventListener("click", () => { readForm(); if (tab === "ariza") x.mt = b.dataset.xKind; else { x.cat = b.dataset.xKind; if (x.cat === "Yemek") x.noVeh = true; } redrawForm(); });
+    for (const b of qsa("[data-x-st]", root)) b.addEventListener("click", () => { readForm(); x.st = b.dataset.xSt; redrawForm(); });
+    for (const b of qsa("[data-x-pay]", root)) b.addEventListener("click", () => { readForm(); x.pay = b.dataset.xPay; redrawForm(); });
+    qs("[data-x-sup]", root)?.addEventListener("change", (e) => { readForm(); x.sup = e.target.value; redrawForm(); });
     qs("[data-addx]", root)?.addEventListener("click", async () => {
-      if (busy) return;
+      if (busy || photoBusy || sharing) return;
       readForm();
+      if (!checkForm()) return;
       const isM = tab === "ariza";
       const tl = Number(String(x.tl || "").replace(",", "."));
       if (isM ? !x.mt : !x.cat) return toast(isM ? "Ne olduğunu seçin" : "Ne için olduğunu seçin", "err");
@@ -349,31 +446,30 @@ export async function screen(ctx) {
       const e = isM
         ? { id: core.newId(), k: "m", date: st.date || today, vid: st.vid, mt: x.mt, desc: [String(x.desc).trim(), note].filter(Boolean).join(" · "), st: x.st === "Tamamlandı" ? "Tamamlandı" : "Açık", ...(tl > 0 ? { tl, pay: x.pay } : {}), ...sup, ...(Number(x.km) > 0 ? { km: Number(x.km) } : {}), ...(Number(x.hr) > 0 ? { hr: Number(x.hr) } : {}) }
         : { id: core.newId(), k: "g", date: st.date || today, cat: x.cat, tl, pay: x.pay, ...sup, ...(x.noVeh || !st.vid ? {} : { vid: st.vid }), ...(note ? { desc: note } : {}) };
-      busy = true;
-      try {
-        e.ph = await putPhotos(e.id, photos);
-        if (!e.ph) delete e.ph;
-        entries.push(e); save();
-      } finally { busy = false; }
-      photos = []; Object.keys(x).forEach((k) => delete x[k]); await clearDraft();
+      if (!(await persist(e))) return;
+      photos = []; Object.keys(x).forEach((k) => delete x[k]); await clearDraft(); busy = false;
       toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
     });
-    qs("[data-addf]", root)?.addEventListener("click", () => {
+    qs("[data-addf]", root)?.addEventListener("click", async () => {
+      if (busy || photoBusy || sharing) return;
       readForm();
+      if (!checkForm()) return;
       const f = Object.fromEntries(qsa("[data-f]", root).map((el) => [el.dataset.f, el.value]));
       const L = Number(String(f.L).replace(",", "."));
       if (!st.vid) return toast("Araç seçin", "err");
-      if (!(L > 0)) return toast("Litre yazın", "err");
+      if (!validNumber(L, true)) return toast("Litre yazın", "err");
       if (!st.src) return toast("Nereden aldığınızı seçin", "err");
       if (st.src === "Müşteri Verdi" && !f.cid) return toast("Müşteriyi seçin", "err");
-      entries.push({ id: core.newId(), k: "f", date: st.date || today, vid: st.vid, L, src: st.src, ...(f.cid ? { cid: f.cid } : {}), ...(Number(f.tl) > 0 ? { tl: Number(f.tl) } : {}), ...(Number(f.km) > 0 ? { km: Number(f.km) } : {}), ...(Number(f.hr) > 0 ? { hr: Number(f.hr) } : {}) });
-      st.f = {}; save(); clearDraft(); toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
+      const e = { id: core.newId(), k: "f", date: st.date || today, vid: st.vid, L, src: st.src, ...(f.cid ? { cid: f.cid } : {}), ...(Number(f.tl) > 0 ? { tl: Number(f.tl) } : {}), ...(Number(f.km) > 0 ? { km: Number(f.km) } : {}), ...(Number(f.hr) > 0 ? { hr: Number(f.hr) } : {}) };
+      if (!(await persist(e))) return;
+      photos = []; st.f = {}; await clearDraft(); busy = false; toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
     });
     for (const b of qsa("[data-slip]", root)) b.addEventListener("click", () => { readForm(); slipFor = b.dataset.slip; draw(); window.scrollTo(0, 0); });
     for (const b of qsa("[data-del]", root)) b.addEventListener("click", async () => {
+      if (busy || photoBusy || sharing) return;
       const e = entries.find((x) => x.id === b.dataset.del);
-      if (!(await confirmDialog("Silinsin mi?", core.entryLine(e, cfg), "Sil", true))) return;
-      await dropPhotos(e); entries = entries.filter((x) => x !== e); save(); draw();
+      if (!e || !(await confirmDialog("Telefondan silinsin mi?", core.entryLine(e, cfg) + (e.sent ? " — Patronun aldığı doğrulanamaz. Bu telefondaki kayıt ve fotoğrafları kaldırmadan önce gerektiğinde tekrar paylaşın." : ""), "Sil", true))) return;
+      try { entries = entries.filter((x) => x !== e); await save(); await dropPhotos(e); draw(); } catch (err) { toast(err.message || String(err), "err"); }
     });
     const send = async (list) => {
       // İmza mesajın KODUNUN İÇİNDE gider (çizgi verisi; eski kayıtlarda küçültülmüş PNG): patron kopyala-yapıştır yapsa da imza gelir.
@@ -400,10 +496,13 @@ export async function screen(ctx) {
       const prep = async (e, w) => {
         const c = { ...e, _e: e };
         if (c.sv?.length) { delete c.sg; return c; }
-        if (c.sg) { const sb = await sigOf(e); delete c.sg; if (sb) { if (w) { try { c.sig = await smallB64(sb, w); } catch (err) { c._file = sb; c.sg = 1; } } else { c._file = sb; c.sg = 1; } } }
+        if (c.sg) { const sb = await sigOf(e); if (!sb) throw new Error("Bu kaydın imzası telefonda bulunamadı. Dijital fişi kontrol edin; eksik imzayla paylaşılmadı"); delete c.sg; if (sb) { if (w) { try { c.sig = await smallB64(sb, w); } catch (err) { c._file = sb; c.sg = 1; } } else { c._file = sb; c.sg = 1; } } }
         return c;
       };
       const msg = (arr) => core.driverMessage(arr.map(({ _e, _file, ...c }) => c), cfg);
+      let attachmentCount = 0, recordLimit = 0;
+      for (const e of list) { const count = (e.ph || 0) + (e.sg && !e.sv?.length ? 1 : 0); if (recordLimit && attachmentCount + count > 20) break; attachmentCount += count; recordLimit++; }
+      list = list.slice(0, recordLimit);
       let out = [], text = "";
       // Önce tüm kayıtlar; sığmazsa imza resmi küçültülür, yine sığmazsa son kayıtlar sonraki mesaja bırakılır
       for (let n = list.length; n >= 1; n--) {
@@ -414,46 +513,88 @@ export async function screen(ctx) {
         }
         if (core.msgBytes(text) <= core.MSG_LIMIT || n === 1) break;
       }
-      const files = [];
+      if (core.msgBytes(text) > core.MSG_LIMIT) throw new Error("Bu kayıt paylaşım sınırını aşıyor. Dijital fişi ayrıca paylaşın; kayıt telefonda korunuyor");
+      const files = []; let totalBytes = 0, completeRecords = 0;
       for (const c of out) {
-        files.push(...(await getPhotos(c)));
-        if (c.sg && c._file) files.push(new File([c._file], `imza-${c.dfs || c.id}.png`, { type: "image/png" }));
+        const images = await getPhotos(c);
+        if (c.ph_dropped || images.length !== (c.ph || 0)) throw new Error("Bu kaydın fotoğrafları eksik. Fotoğrafları onarın veya kaydı fotoğrafsız paylaşmayı açıkça seçin");
+        const group = [...images];
+        if (c.sg && c._file) group.push(new File([c._file], `imza-${c.dfs || c.id}.png`, { type: "image/png" }));
+        const bytes = group.reduce((n,f)=>n+f.size,0);
+        if (bytes > 20 * 1048576) throw new Error("Bir kaydın fotoğrafları 20 MB'ı aşıyor. Daha küçük fotoğraflarla yeniden seçin");
+        if (totalBytes + bytes > 20 * 1048576) break;
+        totalBytes += bytes; files.push(...group); completeRecords++;
+
       }
+      out = out.slice(0, completeRecords); text = await msg(out);
       let ok = false;
       try {
         if (files.length && navigator.canShare?.({ files, text })) { await navigator.share({ text, files }); ok = true; }
-        else if (navigator.share) { await navigator.share({ text }); ok = true; if (files.length) toast("Fotoğraflar eklenemedi; fişleri ayrıca gönderin", "err"); }
+        else if (files.length) throw new Error("Tarayıcı fotoğraflı paylaşımı desteklemiyor. Chrome / Safari ile açın; kayıt ve fotoğraflar beklemede kalır");
+        else if (navigator.share) { await navigator.share({ text }); ok = true; }
         else { location.href = "https://wa.me/?text=" + encodeURIComponent(text); ok = true; }
-      } catch (e) { if (e?.name !== "AbortError") toast("Paylaşılamadı: " + (e.message || e), "err"); }
+      } catch (e) { toast(e?.name === "AbortError" ? "Paylaşım iptal edildi; kayıtlar telefonda duruyor" : "Paylaşılamadı: " + (e.message || e), "err"); }
       return ok ? out.map((c) => c._e) : null;
     };
-    qs("[data-send]", root)?.addEventListener("click", async () => {
-      const list = entries.filter((e) => !e.sent);
-      const done = await send(list);
-      if (done) {
-        const at = new Date().toISOString();
-        for (const e of done) { e.sent = at; }
-        save();
-        // Fotoğraflar SİLİNMEZ: paylaşım ekranının açılması mesajın gittiğini kanıtlamaz; 7 gün tekrar paylaşılabilir
-        const left = list.length - done.length;
-        if (left > 0) toast(`${done.length} kayıt için paylaşım ekranı açıldı. Mesaj uzun olmasın diye ${left} kayıt kaldı — tekrar basın`, "ok");
-        else toast("Paylaşım ekranı açıldı — WhatsApp'ta gönderildiğini kontrol edin. Gitmediyse 'Son paylaşılanı tekrar paylaş'.", "ok");
-        draw();
-      }
+    const shareRows = async (list) => {
+      if (sharing || busy || photoBusy || !list.length) return;
+      if (expired) return toast("Bağlantı süresi doldu. Ayarlar bölümünden yeni bağlantıyı kurun; kayıtlar korunuyor", "err");
+      sharing = true; lockForm();
+      try {
+        const done = await send(list);
+        if (done) {
+          const at = new Date().toISOString();
+          for (const e of done) e.sent = at;
+          await save();
+          const left = list.length - done.length;
+          toast(left ? `${done.length} kayıt için paylaşım ekranı açıldı. ${left} kayıt kaldı — tekrar basın` : "Paylaşım ekranı açıldı — WhatsApp'ta gönderildiğini kontrol edin. Gitmediyse tekrar paylaşın.", "ok");
+        }
+      } catch (e) { toast("Paylaşım tamamlanamadı: " + (e.message || e) + ". Kayıtlar telefonda korunuyor.", "err"); }
+      finally { sharing = false; draw(); }
+    };
+    qs("[data-send]", root)?.addEventListener("click", () => shareRows(entries.filter(e => !e.sent)));
+    qs("[data-resend]", root)?.addEventListener("click", () => {
+      const last = entries.filter(e => e.sent).map(e => e.sent).sort().at(-1);
+      return shareRows(entries.filter(e => e.sent === last));
     });
-    qs("[data-resend]", root)?.addEventListener("click", async () => {
-      const last = entries.filter((e) => e.sent).map((e) => e.sent).sort().at(-1);
-      const batch = entries.filter((e) => e.sent === last);
-      const done = await send(batch);
-      if (done && done.length < batch.length) toast(`${done.length}/${batch.length} kayıt gönderildi (mesaj uzun olmasın diye)`, "ok");
-    });
+    for (const b of qsa("[data-viewphotos]", root)) b.onclick = async () => {
+      const e = entries.find(e => e.id === b.dataset.viewphotos), card = b.closest("[data-entry]"), panel = qs("[data-photo-panel]", card);
+      panel.hidden = !panel.hidden; if (panel.hidden) return;
+      try {
+        const files = await getPhotos(e), expected = e.ph || e.ph_dropped || 0;
+        qs("[data-savedphotos]", card).innerHTML = files.map((f, i) => picture(f, "Kayıt fotoğrafı " + (i + 1))).join("");
+        qs("[data-photo-status]", card).textContent = files.length === expected ? `${files.length}/${expected} fotoğraf telefonda hazır` : `${files.length}/${expected} fotoğraf bulundu. Eksik fotoğrafları yeniden seçmeden paylaşılmaz.`;
+      } catch (err) { qs("[data-photo-status]", card).textContent = "Fotoğraflar okunamadı: " + (err.message || err); }
+    };
+    for (const b of qsa("[data-sendone]", root)) b.onclick = () => shareRows(entries.filter(e => e.id === b.dataset.sendone));
+    for (const b of qsa("[data-nophoto]", root)) b.onclick = async () => {
+      const e = entries.find(e => e.id === b.dataset.nophoto);
+      if (!e || e.sent || sharing || busy || photoBusy || !(await confirmDialog("Fotoğrafsız paylaşım", "Bu kaydın fotoğraf bağlantısı kaldırılır. Patrona yalnız kayıt bilgileri gidecek. Elinizdeki fişleri ayrıca iletin.", "Fotoğrafsız devam"))) return;
+      const old = { ...e }; delete e.ph; delete e.ph_dropped;
+      try { await save(); await dropPhotos(old).catch(() => {}); draw(); } catch (err) { toast(err.message || String(err), "err"); }
+    };
+    for (const el of qsa("[data-repair]", root)) el.onchange = async () => {
+      if (sharing || busy || photoBusy) return;
+      const e = entries.find(e => e.id === el.dataset.repair), files = [...el.files];
+      if (!e || !files.length) return;
+      busy = true; lockForm();
+      const id = "repair-" + core.newId(), old = { id: e.photoId || e.id, ph: e.ph || e.ph_dropped };
+      try {
+        if (files.length > PHOTO_LIMITS.count || files.some(f => !f.type.startsWith("image/") || f.size > PHOTO_LIMITS.mb * 1048576)) throw new Error("En çok 10 fotoğraf; her biri en fazla 25 MB olmalı");
+        if (e.sent && files.length !== (e.ph || e.ph_dropped || 0)) throw new Error("Paylaşılan kayıt için aynı sayıda fotoğraf seçin; eski paketin fotoğraf sırası korunmalı");
+        const resized = []; for (const f of files) { const image = await shrinkPhoto(f); if (image.size > 8 * 1048576) throw new Error("Fotoğraf küçültülemedi; daha küçük bir fotoğraf seçin"); resized.push(image); }
+        await putPhotos(id, resized); e.photoId = id; e.ph = resized.length; delete e.ph_dropped;
+        await save(); await dropPhotos(old).catch(() => {}); toast("Fotoğraflar yenilendi; aynı kayıt tekrar paylaşılabilir", "ok");
+      } catch (err) { await dropPhotos({ id, ph: files.length }).catch(() => {}); toast("Fotoğraf yenilenemedi: " + (err.message || err), "err"); }
+      finally { busy = false; draw(); }
+    };
     qs("[data-newlink-ok]", root)?.addEventListener("click", async () => {
       const m = /(?:^|[#&?/])k=([A-Za-z0-9_-]{20,})/.exec(qs("[data-newlink]", root).value);
       if (!m) return toast("Bağlantı bulunamadı; mesajın tamamını yapıştırın", "err");
       try {
         const n = await core.unpack(m[1]);
-        if (n?.v !== 1 || !n.p) throw new Error("Bağlantı bozuk");
-        if (n.p[0] !== cfg.p[0] && !(await confirmDialog("Başka kişinin bağlantısı", `Bu bağlantı ${n.p[1]} adına. Bu telefonda ${cfg.p[1]} yerine kurulsun mu?`, "Kur"))) return;
+        if (!validConfig(n)) throw new Error("Bağlantı bozuk");
+        if (n.p[0] !== cfg.p[0] && (entries.length || ls.get(K_DRAFT))) throw new Error("Bu telefonda başka şoförün kayıtları var; ayrı telefon veya tarayıcı profili kullanın");
         ls.set(K_CFG, { ...n, ts: Math.max(Number(n.ts) || 0, Date.now()) });
         toast("Yeni bağlantı kuruldu", "ok");
         location.reload();
@@ -522,26 +663,35 @@ async function setupScreen(ctx) {
     qs("[data-share]", root).disabled = qs("[data-copy]", root).disabled = true;
     qs("[data-info]", root).insertAdjacentHTML("beforebegin", `<div class="notice warn" style="margin-top:8px"><div>Şoför bağlantısı göndermeden önce <b>yönetici kilidini</b> kurun. Böylece bağlantılar imzalı olur, şoför telefonu yönetici ekranına geçemez.<br><button class="btn sm primary" data-go="#/guvenlik" style="margin-top:6px">🛡 Kilidi kur</button></div></div>`);
   }
+  const links = await sec.driverLinks();
+  const currentLinks = links.filter(l => !l.revoked_at && l.exp >= todayStr());
+  root.insertAdjacentHTML("beforeend", `<div class="card"><div class="row between"><b>Bağlantı kontrolü</b><span class="badge">${currentLinks.length} geçerli bağlantı</span></div>
+    <p class="small muted">Yeni bağlantı üretmek eski bağlantıyı iptal etmez. Önce şoförün yenisini açtığını doğrulayın; kayıp telefon veya eski bağlantıyı Güvenlik ekranından iptal edin.</p>
+    ${currentLinks.slice(0, 12).map(l => `<div class="row between small" style="gap:10px;margin:6px 0"><span>${esc(l.name)}</span><span>${esc(trDate(l.exp))} tarihine kadar</span></div>`).join("")}
+    <button class="btn block" data-go="#/guvenlik">Güvenlik ve bağlantı iptali</button></div>`);
   let made = null; // aynı ekranda paylaş + kopyala aynı bağlantıyı kullansın
   const link = async () => {
     const p = people.find((x) => x.id === qs("[data-pid]", root).value);
-    if (made && made.pid === p.id && made.vid === (qs("[data-vid]", root).value || null)) return made.out;
+    if (made && made.pid === p.id && made.vid === (qs("[data-vid]", root).value || null) && made.days === Number(qs("[data-days]", root).value)) return made.out;
     if (!(await sec.reauth("Şoför bağlantısı oluşturma: " + p.name))) throw new Error("Vazgeçildi");
-    // Aynı kişinin eski bağlantıları iptal (yalnız son bağlantı geçerli)
-    await sec.revokeForPerson(p.id, "Yeni bağlantı gönderildi");
+    // Existing links remain valid until explicitly revoked in Security: a canceled share must not strand the driver.
     const { forDriver } = await sec.newDriverLink({ pid: p.id, name: p.name, vid: qs("[data-vid]", root).value || null, days: Number(qs("[data-days]", root)?.value) || 180 });
     const cfg = { ...core.driverConfig(d, { personnel_id: p.id, vehicle_id: qs("[data-vid]", root).value || null, company: COMPANY_NAME, issued: todayStr() }), ...forDriver, ts: Date.now() };
     // Ayrı şoför uygulaması: yönetici ekranları hiç yüklenmez; iPhone ana ekran simgesi bu adresi açar
     const url = location.origin + location.pathname.replace(/[^/]*$/, "") + "sofor.html?k=" + (await core.pack(cfg));
-    qs("[data-info]", root).textContent = `İmzalı bağlantı · geçerlilik ${trDate(cfg.exp)} · ${cfg.C.length} müşteri, ${cfg.V.length} araç · ${url.length} karakter. Çıkış kodu: Güvenlik ekranında.`;
-    made = { pid: p.id, vid: qs("[data-vid]", root).value || null, out: { p, url } };
+    qs("[data-info]", root).textContent = `İmzalı bağlantı · geçerlilik ${trDate(cfg.exp)} · ${cfg.C.length} müşteri, ${cfg.V.length} araç · ${url.length} karakter. Çıkış kodu: Güvenlik ekranında. Eski bağlantılar otomatik iptal edilmedi; kayıp telefon için Güvenlik ekranından iptal edin.`;
+    made = { pid: p.id, days: Number(qs("[data-days]", root).value), vid: qs("[data-vid]", root).value || null, out: { p, url } };
     return made.out;
   };
+  let creating = false;
+  const setupBusy = value => { creating = value; for (const el of qsa("[data-share], [data-copy], [data-pid], [data-vid], [data-days]", root)) el.disabled = value; };
   qs("[data-share]", root).addEventListener("click", async () => {
-    try { const { p, url } = await link(); shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Sonra ana ekrandaki "SAHAPRO Şoför" simgesinden aç.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); }
+    if (creating) return; setupBusy(true);
+    try { const { p, url } = await link(); await shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Sonra ana ekrandaki "SAHAPRO Şoför" simgesinden aç.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); } finally { setupBusy(false); }
   });
   qs("[data-copy]", root).addEventListener("click", async () => {
-    try { const { url } = await link(); await navigator.clipboard.writeText(url); toast("Kopyalandı", "ok"); } catch (e) { toast(e.message || String(e), "err"); }
+    if (creating) return; setupBusy(true);
+    try { const { url } = await link(); await navigator.clipboard.writeText(url); toast("Kopyalandı", "ok"); } catch (e) { toast(e.message || String(e), "err"); } finally { setupBusy(false); }
   });
   return true;
 }

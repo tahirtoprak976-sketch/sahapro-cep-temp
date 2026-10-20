@@ -64,7 +64,7 @@ export function entryLine(e, cfg) {
   return `🚚 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${cust}${e.sid ? " / " + nm(cfg.S, e.sid) : ""} · ${e.wt} ${e.q} ${String(e.u).toLocaleLowerCase("tr-TR")}${e.mat ? " " + e.mat : ""}${dump ? " → " + dump : ""}${e.ton ? ` · ${e.ton} ton` : ""}${e.slip ? ` · fiş ${e.slip}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}${e.note ? ` · ${e.note}` : ""}${dfs}`;
 }
 export async function driverMessage(entries, cfg) {
-  const code = await pack({ v: 1, p: cfg.p[0], n: cfg.p[1], ...(cfg.lid ? { lid: cfg.lid } : {}), e: entries.map(({ sent, ...e }) => e) });
+  const code = await pack({ v: 1, p: cfg.p[0], n: cfg.p[1], ...(cfg.lid ? { lid: cfg.lid } : {}), e: entries.map(({ sent, photoId, ph_dropped, ...e }) => e) });
   // İmzalı bağlantı: kod, bağlantının gizli anahtarıyla imzalanır (patron telefonu doğrular; değiştirilen kod işlenmez)
   const sig = cfg.ls ? "." + (await (await import("./security-core.js")).hmac(cfg.ls, code)) : "";
   return [`📋 SAHAPRO şoför kaydı — ${cfg.p[1]}`, ...entries.map((e) => entryLine(e, cfg)), `SP1:${code}${sig}`].join("\n");
@@ -124,16 +124,17 @@ export function stripDriverBlocks(text) {
 export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
   const works = [], fuel = [], meta = [], fuelMeta = [], expenses = [], expMeta = [], maintenance = [], mainMeta = [];
   let photo = 0;
+  const expectedPhotos = payloads.reduce((n,p)=>n+p.e.reduce((m,e)=>m+(Number(e.ph)||0)+(e.sg?1:0),0),0);
   const has = (s, id) => !!id && live(d, s).some((x) => x.id === id);
   // Fotoğraflar şoförün gönderdiği sırayla (kayıt sırası) dağıtılır
-  const takePhotos = (n) => { const out = []; for (let i = 0; i < (Number(n) || 0) && photo < photoCount; i++) out.push(photo++); return out; };
+  const takePhotos = (n) => { if (photoCount < expectedPhotos) return []; const out = []; for (let i = 0; i < (Number(n) || 0) && photo < photoCount; i++) out.push(photo++); return out; };
   for (const p of payloads) for (const e of p.e) {
     const supId = has("suppliers", e.sup) ? e.sup : null;
     const supName = supId ? live(d, "suppliers").find((x) => x.id === supId).name : e.sn || "";
     if (e.k === "g") {
       const ph = takePhotos(e.ph);
       expenses.push({ date: e.date, amount: Number(e.tl) || null, category: e.cat, company: supName, vehicle_id: has("vehicles", e.vid) ? e.vid : null, supplier_id: e.pay === "veresiye" ? supId : null, credit: e.pay === "veresiye", photo: ph[0] ?? null, note: [e.desc, e.pay === "cep" ? "şoför cebinden ödedi" : ""].filter(Boolean).join(" · ") });
-      expMeta.push({ driver_entry_id: e.id, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null });
+      expMeta.push({ driver_entry_id: e.id, photos: ph, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null });
       continue;
     }
     if (e.k === "m") {
@@ -143,8 +144,9 @@ export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
       continue;
     }
     if (e.k === "f") {
-      fuel.push({ date: e.date, vehicle_id: has("vehicles", e.vid) ? e.vid : null, liters: Number(e.L) || null, total: Number(e.tl) || null, km: Number(e.km) || null, machine_hours: Number(e.hr) || null, source: FUEL_SOURCES.includes(e.src) ? e.src : "Depo Tankı", customer_id: has("customers", e.cid) ? e.cid : null, photo: null });
-      fuelMeta.push({ driver_entry_id: e.id });
+      const ph = takePhotos(e.ph);
+      fuel.push({ date: e.date, vehicle_id: has("vehicles", e.vid) ? e.vid : null, liters: Number(e.L) || null, total: Number(e.tl) || null, km: Number(e.km) || null, machine_hours: Number(e.hr) || null, source: FUEL_SOURCES.includes(e.src) ? e.src : "Depo Tankı", customer_id: has("customers", e.cid) ? e.cid : null, photo: ph[0] ?? null });
+      fuelMeta.push({ driver_entry_id: e.id, photos: ph });
       continue;
     }
     const photos = takePhotos(e.ph);

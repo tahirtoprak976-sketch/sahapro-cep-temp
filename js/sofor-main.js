@@ -38,12 +38,13 @@ async function render() {
     if ("serviceWorker" in navigator) {
       try {
         const reg = await navigator.serviceWorker.register("./sw.js");
-        const ask = (sw) => { const b = document.createElement("button"); b.className = "btn primary block"; b.style.cssText = "position:fixed;left:12px;right:12px;bottom:12px;z-index:9999"; b.textContent = "Yeni sürüm hazır — dokunun"; b.onclick = () => sw.postMessage({ type: "SKIP_WAITING" }); document.body.appendChild(b); };
+        let requestedUpdate = false;
+        const ask = (sw) => { if (document.querySelector("[data-driver-update]")) return; const b = document.createElement("button"); b.className = "btn primary block"; b.dataset.driverUpdate = "1"; b.style.cssText = "margin:8px 12px;width:calc(100% - 24px)"; b.textContent = "Yeni sürüm hazır — dokunun"; b.onclick = () => { if (document.querySelector("#screen button:disabled")) return toast("Fotoğraf veya kayıt işlemi bitsin; sonra güncelleyin", "err"); requestedUpdate = true; sw.postMessage({ type: "SKIP_WAITING" }); }; document.body.insertBefore(b, document.body.firstChild); };
         if (reg.waiting && navigator.serviceWorker.controller) ask(reg.waiting);
         reg.addEventListener("updatefound", () => { const sw = reg.installing; sw?.addEventListener("statechange", () => { if (sw.state === "installed" && navigator.serviceWorker.controller) ask(sw); }); });
         document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
         let done = false;
-        navigator.serviceWorker.addEventListener("controllerchange", () => { if (!done) { done = true; location.reload(); } });
+        navigator.serviceWorker.addEventListener("controllerchange", () => { if (!done && requestedUpdate) { done = true; location.reload(); } });
       } catch (e) {}
     }
     await render();

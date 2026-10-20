@@ -281,7 +281,7 @@ export async function screen(ctx) {
         drvPlan.mainMeta.forEach((m, i) => { tag((v.maintenance || [])[i], m); if (v.maintenance?.[i]) Object.assign(v.maintenance[i], { driver_pay: m.pay, driver_pid: m.personnel_id, km: m.km, machine_hours: m.hours }); });
         // Şoför fotoğraf gönderdi ama buraya eklenmedi (kopyala-yapıştırda yalnız yazı gelir)
         const expected = drvPayloads.reduce((n, p) => n + p.e.reduce((k, e) => k + (Number(e.ph) || 0) + (e.sg ? 1 : 0), 0), 0);
-        if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} Aşağıdan fotoğrafı galeriden seçin (WhatsApp'tan gelen fotoğraflar galeride "WhatsApp Images" klasöründedir); kartlar fotoğrafla yeniden hazırlanır. Fotoğrafsız da kaydedebilirsiniz.`;
+        if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} Eksik pakette fotoğraflar yanlış kayda bağlanmasın diye otomatik eşleştirme yapılmadı. Aşağıdan tüm fotoğrafları kayıt sırasıyla galeriden seçin (WhatsApp'tan gelen fotoğraflar galeride "WhatsApp Images" klasöründedir); kartlar fotoğrafla yeniden hazırlanır. Fotoğrafsız da kaydedebilirsiniz.`;
         if (expected > images.length) v.driverPhotoNeed = expected;
         v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir)`;
       }
@@ -1249,7 +1249,7 @@ async function save(ctx, out, v, d, { message, files }) {
           // Esnaf borcunun istek anahtarı kalıcı işlem kimliğinden: aynı satır yeniden kaydedilince ikinci borç yazılmaz
           const key = "op-" + (await db.opHash({ msgKey, kind: "credit-bill", row: rowKey("expense", Number(c.dataset.i)), date: f.date }));
           const res = await createCreditBill(ctx, fresh, s, f, { key });
-          if (res) done.expense++;
+          if (res) { for (const pi of (r.photos || [])) if (pi !== r.photo && files[pi]) await db.addAttachment("payable", res.rec.id, files[pi]); done.expense++; }
         } else {
           const { findDuplicates } = await import("./esnaf.js");
           const dup = findDuplicates(fresh, { date: f.date, amount: f.amount });
@@ -1269,7 +1269,7 @@ async function save(ctx, out, v, d, { message, files }) {
           if (!r.driver_entry_id) {
             eg = await opGate("expense", c.dataset.i, { date: f.date, amount: f.amount, category: f.category, vehicle_id: f.vehicle_id || null, payer: payer || pay }, `Gider ${f.date} · ${fmtTL(f.amount)} ₺`);
             if (!eg) continue;
-            if (eg.existing) { if (file) await db.addAttachment("expense", eg.existing.id, file); continue; }
+            if (eg.existing) { for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", eg.existing.id, image); continue; }
           }
           const rec = await skipDup(db.saveNew("expense_records", {
             ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
@@ -1279,8 +1279,8 @@ async function save(ctx, out, v, d, { message, files }) {
             company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
           }, "Asistan", { op: eg?.op || null }));
           if (!rec) continue;
-          if (rec._existing) { done.already++; if (file) await db.addAttachment("expense", rec.id, file); continue; }
-          if (file) await db.addAttachment("expense", rec.id, file);
+          if (rec._existing) { done.already++; for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image); continue; }
+          for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image);
           // Kalemlerde filtre/yağ/balata… varsa ve araç seçiliyse: bakım kaydı (maliyet giderde; bakım takvimi için)
           if (D?.items?.length && f.vehicle_id && qs("[data-mhint]", c)?.checked) {
             const { maintenanceHint } = await import("./receipt-detail.js");
@@ -1402,7 +1402,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (!r.driver_entry_id) {
           fg = await opGate("fuel", c.dataset.i, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), liters, total, source: src }, `Yakıt ${val(c, "date") || todayStr()} · ${liters} L`);
           if (!fg) continue;
-          if (fg.existing) { if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", fg.existing.id, files[r.photo]); continue; }
+          if (fg.existing) { for (const pi of (r.photos?.length ? r.photos : r.photo != null ? [r.photo] : [])) if (files[pi]) await db.addAttachment("fuel", fg.existing.id, files[pi]); continue; }
         }
         const rec = await skipDup(db.saveNew("fuel_records", {
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
@@ -1413,7 +1413,7 @@ async function save(ctx, out, v, d, { message, files }) {
         }, "Asistan", { op: fg?.op || null }));
         if (!rec) continue;
         if (rec._existing) { done.already++; continue; }
-        if (r.photo != null && files[r.photo]) await db.addAttachment("fuel", rec.id, files[r.photo]);
+        for (const pi of (r.photos?.length ? r.photos : r.photo != null ? [r.photo] : [])) if (files[pi]) await db.addAttachment("fuel", rec.id, files[pi]);
         done.fuel++;
       }
     }
@@ -1510,7 +1510,7 @@ async function strokesPng(sv) {
 
 // İşe bağlanan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, malzeme) eksikse ayrı ve daha dikkatli bir okuma
 export async function rereadSlips(db, v, imgParts, d, today) {
-  const need = (v.works || []).filter((w) => (w.photos || []).length && (!w.slip_no || !w.tonnage));
+  const need = (v.works || []).filter((w) => !w.driver_entry_id && (w.photos || []).length && (!w.slip_no || !w.tonnage));
   const tickets = (v.tickets || []).filter((t) => t.photo != null && (!t.ticket_no || !t.tonnage || !t.dateRead || t.unverified));
   const idx = [...new Set([...tickets.map((t) => t.photo), ...need.flatMap((w) => w.photos)])].filter((i) => imgParts[i]).slice(0, 6);
   if (!idx.length) return;

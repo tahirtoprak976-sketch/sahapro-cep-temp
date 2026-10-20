@@ -1088,3 +1088,12 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 [data-guide-list]{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:10px}.ultimate-task{display:grid;gap:6px;padding:13px;background:#f6f9fb;border:1px solid #d8e3ec;border-radius:11px;text-align:left;min-width:0;cursor:pointer;color:#17364d}.ultimate-task .badge{justify-self:start}.ultimate-task b{font-size:14px}.ultimate-task small{font-size:12px;color:#52697b;overflow-wrap:anywhere}.ultimate-task>span:last-child{font-size:11px;font-weight:650;color:#965500}
 @media(min-width:760px){.ultimate-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.ultimate-rank-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}[data-guide-list]{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:360px){.ultimate-metric{padding:13px 10px}.ultimate-metric strong{font-size:21px}.ultimate-intro{padding:18px 14px}.ultimate-intro h2{font-size:24px}}
+
+/* Driver delivery centre */
+.driver-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0}
+.driver-stats>div{padding:10px 4px;border-radius:12px;background:var(--bg2);text-align:center;min-width:0}
+.driver-stats strong{display:block;font-size:26px;line-height:1.3}.driver-stats span{display:block;font-size:12px;line-height:1.45}
+.driver-actions,.driver-photos{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.driver-photos{margin:10px 0}.driver-photos>div{display:flex;flex-direction:column;align-items:center;max-width:100px}
+.driver-entry .badge{white-space:normal}.driver-entry [data-photo-panel]{margin-top:12px;border-top:1px solid var(--border);padding-top:8px}
+#driver-pending{scroll-margin-top:15px}.driver-entry p{margin:10px 0}.driver-entry input[type=file]{max-width:100%}
