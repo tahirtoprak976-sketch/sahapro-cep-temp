@@ -1,7 +1,8 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261020-whatsapp-pdf-41";
+const CACHE = "sahapro-solo-v3-20261020-separate-group-share-42";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
+  "./js/driver-group-share.js",
   "./js/driver-pdf-transfer.js",
   "./js/driver-bundle.js",
   "./js/driver-transfer.js",

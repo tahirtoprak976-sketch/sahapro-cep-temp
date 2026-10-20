@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {groupWorkSummary} from '../js/driver-group-share.js';
+const cfg={p:['private-person-id','Soner'],ls:'private-secret',lid:'private-link',V:[['v','Manitou']],C:[['child','Çatıcı (Ulaş Rondela)']],S:[],D:[]};
+const row={id:'private-row',date:'2026-10-20',vid:'v',cid:'child',wt:'Makine Çalışması',q:1,u:'Saat',note:'Çatıya OCB verildi',cash:2500,cash_date:'2026-10-19',rate:12345,ph:2,sg:1,dfs:'private-slip',rcv:'private-signatory',sent:'private-status'};
+const before=JSON.stringify({row,cfg});
+const text=groupWorkSummary([row,{...row,k:'g',cat:'Yemek'},{...row,k:'f',L:80},{...row,k:'m',mt:'Arıza'}],cfg);
+for(const value of ['Soner','20.10.2026','Manitou','Çatıcı (Ulaş Rondela)','1 saat','Çatıya OCB verildi'])assert.ok(text.includes(value),value);
+for(const value of ['SP1:','private-','2500','12345','📷','nakit','Yemek','Arıza','litre'])assert.ok(!text.includes(value),value);
+assert.equal(text.split('\n').length,2);
+assert.equal(groupWorkSummary([{...row,k:'g'}],cfg),'');
+assert.equal(groupWorkSummary([],cfg),'');
+assert.equal(JSON.stringify({row,cfg}),before);
+assert.equal(groupWorkSummary([{...row,sent:null}],cfg),text);
+console.log('group summary: work-only allowlist, subcontractor context, no transfer/cash/evidence fields, unchanged source, sent/pending independent OK');
