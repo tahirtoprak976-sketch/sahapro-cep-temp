@@ -349,7 +349,15 @@ export async function buildDocument(input) {
       ),
     );
   }
-  objs[catalog - 1] = bytes(`<< /Type /Catalog /Pages ${tree} 0 R >>`);
+  // Optional standard embedded data for readable driver reports; normal PDFs are unchanged.
+  let transferRef=0,embeddedNames='';
+  if(spec.sahaproTransfer){
+    if(!(spec.sahaproTransfer instanceof Uint8Array)||!spec.sahaproTransfer.length||spec.sahaproTransfer.length>20*1048576)throw Error('PDF aktarım verisi geçersiz veya sınırı aşıyor');
+    transferRef=add(stream(spec.sahaproTransfer,'/Type /EmbeddedFile /Subtype /application#2Fzip'));
+    const fileSpec=add(`<< /Type /Filespec /F (sahapro-transfer.zip) /EF << /F ${transferRef} 0 R >> >>`);
+    embeddedNames=` /Names << /EmbeddedFiles << /Names [(sahapro-transfer.zip) ${fileSpec} 0 R] >> >>`;
+  }
+  objs[catalog - 1] = bytes(`<< /Type /Catalog /Pages ${tree} 0 R${embeddedNames} >>`);
   objs[tree - 1] = bytes(
     `<< /Type /Pages /Kids [${kids.map((k) => k + " 0 R").join(" ")}] /Count ${kids.length} >>`,
   );
@@ -373,7 +381,7 @@ export async function buildDocument(input) {
         .map((o) => String(o).padStart(10, "0") + " 00000 n \n")
         .join(
           "",
-        )}trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${offset}\n%%EOF`,
+        )}trailer\n<< /Size ${objs.length + 1} /Root ${catalog} 0 R${transferRef ? ` /SAHAPROTransfer ${transferRef} 0 R` : ""} >>\nstartxref\n${offset}\n%%EOF`,
     ),
   );
   return new Blob(chunks, { type: "application/pdf" });
