@@ -561,11 +561,24 @@ export async function ensureSeeded() {
   return installId;
 }
 
-// ---- backup için tüm entity verisi ----
+// One readonly transaction: records, files and settings describe the same database state.
+export async function readSnapshot({ attachments = true, meta = true, drafts = false } = {}) {
+  const db = await openDB();
+  const stores = [...ENTITY_STORES, ...(attachments ? ["attachments"] : []), ...(meta ? ["meta"] : []), ...(drafts ? ["drafts"] : [])];
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(stores, "readonly");
+    const out = { data: {}, attachments: [], meta: [], drafts: [], captured_at: null };
+    for (const name of stores) {
+      const request = t.objectStore(name).getAll();
+      request.onsuccess = () => { if (ENTITY_STORES.includes(name)) out.data[name] = request.result; else out[name] = request.result; };
+    }
+    t.oncomplete = () => { out.captured_at = nowISO(); resolve(out); };
+    t.onabort = t.onerror = () => reject(t.error || new Error("Veritabanı anlık görüntüsü okunamadı"));
+  });
+}
+// All entities are read together, not one transaction per table.
 export async function dumpAll() {
-  const out = {};
-  for (const s of ENTITY_STORES) out[s] = await getAll(s);
-  return out;
+  return (await readSnapshot({ attachments: false, meta: false })).data;
 }
 
 // ---- kayıt yardımcıları ----

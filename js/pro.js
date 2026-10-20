@@ -1746,6 +1746,21 @@ async function backupPanel(ctx) {
     anchor ? "afterend" : "afterbegin",
     '<div class="card"><h3>Tam Yedek ve Geri Yükleme</h3><p>Veriler, orijinal dosyalar, imzalar ve ayarlar tek dosyada (.sahapro; eski .json yedekler de geri yüklenir).</p><button class="btn primary" data-full-backup>Tam Yedeği İndir</button><div class="field"><label>Tam yedeği geri yükle</label><input type="file" data-full-restore></div><div data-full-preview></div></div>',
   );
+  const backupCard = qs("[data-full-backup]", root).closest(".card");
+  backupCard.insertAdjacentHTML("beforeend", `<div class="notice info"><span>ℹ</span><span>Bu yedek bu cihazın kaydedilmiş işlerini, ayarlarını ve kayda eklenmiş dosyalarını kapsar. Henüz arşivlenmemiş PDF dosyaları ve şoför telefonundaki paylaşılmamış kayıtlar dahil değildir. PDF asıllarını ayrıca saklayın. Şoför bağlantı anahtarları yalnız şifreli yedekte bulunur.</span></div><div data-device-storage class="small">Cihazdaki saklama durumu okunuyor…</div><button class="btn sm" data-device-refresh>Durumu yenile</button>`);
+  const refreshStorage = async () => {
+    const el = qs("[data-device-storage]", backupCard), btn = qs("[data-device-refresh]", backupCard); btn.disabled = true;
+    try {
+      const { deviceStorageStatus } = await import("./storage-status.js");
+      const state = await deviceStorageStatus(db); if (!el.isConnected) return;
+      const time = state.last && Number.isFinite(Date.parse(state.last)) ? new Date(state.last).toLocaleString("tr-TR") : "Kayıt yok";
+      const mb = x => (x / 1048576).toLocaleString("tr-TR", { maximumFractionDigits: 1 }) + " MB";
+      el.innerHTML = `<p><b>Son yedek dosyası işlemi:</b> ${esc(time)}${state.handoff?.at === state.last && state.handoff?.method === "shared" ? " · paylaşım paneline verildi" : state.handoff?.at === state.last && state.handoff?.method === "downloaded" ? " · indirme tarayıcıya verildi" : ""}. Dosyanın başka cihaza ulaştığı doğrulanamaz.</p><p><b>Yedeğe girmeyen PDF taslak dosyası:</b> ${state.pdfDraftFiles}. Bu, taslak satır sayısı değil; henüz arşivlenmemiş asıl PDF dosyası sayısıdır.</p><p><b>Tarayıcı saklama izni:</b> ${state.persisted === true ? "kalıcı saklama tanınmış" : state.persisted === false ? "kalıcı saklama tanınmamış" : "bilgi alınamadı"}. Kullanıcının tarayıcı verilerini silmesine veya telefon kaybına karşı koruma değildir.</p><p><b>Tarayıcının bildirdiği kullanım:</b> ${state.usage == null ? "bilinmiyor" : esc(mb(state.usage))}${state.quota == null ? "" : " / kota " + esc(mb(state.quota))}. Telefonun toplam boş alanı değildir.</p>`;
+    } catch (e) { el.textContent = "Saklama durumu okunamadı: " + (e.message || e) + ". Yedek düğmesini kullanabilir, durumu yeniden okuyabilirsiniz."; }
+    finally { btn.disabled = false; }
+  };
+  qs("[data-device-refresh]", backupCard).onclick = refreshStorage;
+  void refreshStorage();
   qs("[data-full-backup]", root).onclick = async () => {
     try {
       const crm = await import("./m-crm.js");

@@ -1,3 +1,4 @@
+import { allowUpdate, trackUpdateEdits } from "./update-safety.js";
 import * as solo from "./solo-ui.js";
 import * as enterprise from "./enterprise.js";
 import * as esnaf from "./esnaf.js";
@@ -327,21 +328,29 @@ async function pinGate() {
 }
 
 // ---- Service Worker + güncelleme bildirimi ----
-function showUpdateBar(reg) {
+let updateRequested = false;
+function showUpdateBar(reg, activated = false) {
   if (document.getElementById("update-bar")) return;
   const bar = document.createElement("div");
   bar.id = "update-bar";
   bar.style.cssText =
     "position:relative;margin:12px;z-index:40;background:#1d4ed8;color:#fff;border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 6px 20px rgba(0,0,0,.35)";
   bar.innerHTML =
-    '<span style="flex:1;font-size:14px">Yeni sürüm hazır</span><button data-upd style="background:#fff;color:#1d4ed8;border:0;border-radius:8px;padding:8px 14px;font-weight:700">Güncelle</button><button data-x style="background:transparent;color:#fff;border:0;font-size:18px" aria-label="Kapat">✕</button>';
+    '<span style="flex:1;font-size:14px">' + (activated ? 'Yeni sürüm etkin — hazır olduğunuzda yenileyin' : 'Yeni sürüm hazır') + '</span><button data-upd style="background:#fff;color:#1d4ed8;border:0;border-radius:8px;padding:8px 14px;font-weight:700">Güncelle</button><button data-x style="background:transparent;color:#fff;border:0;font-size:18px" aria-label="Kapat">✕</button>';
   // Bildirim normal akışta: açık formun Kaydet düğmesini örtmez.
   document.body.prepend(bar);
   bar.querySelector("[data-x]").onclick = () => bar.remove();
-  bar.querySelector("[data-upd]").onclick = () => {
+  bar.querySelector("[data-upd]").onclick = async () => {
+    const button = bar.querySelector("[data-upd]"); if (button.disabled) return; button.disabled = true;
+    try {
+    const { confirmDialog } = await import("./ui.js");
+    const result = await allowUpdate(document.querySelector("#screen"), () => confirmDialog("Güncellemeden önce", "Açık form, mesaj veya fotoğraf seçimi var. Henüz kaydedilmemiş önizleme ve ekler yenilemede kaybolabilir. Kaydetmek için Vazgeç'i seçin.", "Yine de yenile"));
+    if (!result.allowed) { button.disabled = false; if (result.reason) toast(result.reason, "warn"); return; }
+    updateRequested = true;
     const w = reg.waiting;
     if (w) w.postMessage({ type: "SKIP_WAITING" });
     else location.reload();
+    } catch (e) { updateRequested = false; button.disabled = false; toast("Güncelleme başlatılamadı: " + (e.message || e), "err"); }
   };
 }
 async function requestPersist() {
@@ -372,18 +381,12 @@ async function registerSW() {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
     setInterval(check, 30 * 60 * 1000);
     window.__swCheck = async () => { await reg.update(); return !!(reg.waiting || reg.installing); };
+    trackUpdateEdits(document.querySelector("#screen"));
     let reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return;
-      reloaded = true;
-      const editing = () => (location.hash || "").includes("/new") || (location.hash || "").startsWith("#/gecmis");
-      const notify = () => toast("Yeni sürüm yüklendi — formu tamamlayıp yenileyin", "ok");
-      if (editing()) notify();
-      else setTimeout(() => {
-        // A file/preview form may have been opened while the reload was pending.
-        if (editing()) notify();
-        else location.reload();
-      }, 600);
+      if (updateRequested) { reloaded = true; location.reload(); }
+      else showUpdateBar(reg, true);
     });
   } catch (e) {
     console.warn("SW", e);

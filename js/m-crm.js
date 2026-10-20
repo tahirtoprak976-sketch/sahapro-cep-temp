@@ -1,3 +1,4 @@
+import { startActivity } from "./update-safety.js";
 // ============================================================
 // SAHAPRO SOLO — CRM & Sistem: Müşteriler · Şantiyeler · Belge Merkezi
 // · Belge Tara (OCR) · Global Arama · Ayarlar (yedek/restore/alias/PIN) · Çöp Kutusu
@@ -40,7 +41,6 @@ import {
   DOC_TYPES,
   ENTITY_STORES,
   toCSV,
-  buildBackup,
   isValidBackup,
   mergePreview,
   buildZip,
@@ -1502,10 +1502,14 @@ function tsName() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
+const activeBackups = new WeakSet();
 export async function doBackup(ctx) {
+  if (activeBackups.has(ctx.db)) return toast("Yedek zaten hazırlanıyor", "warn");
+  activeBackups.add(ctx.db); const release = startActivity("backup");
+  try {
   const sec = await import("./security.js");
   if (!(await sec.reauth("Yedek alma (tüm kayıtlar dışarı çıkar)"))) return;
-  await sec.secLog("backup", "Yedek alındı");
+  await sec.secLog("backup", "Yedek hazırlama başlatıldı");
   const { backupParts } = await import("./backup.js");
   // Sıkıştırılmış (çok daha küçük) ve şifre konduysa şifreli: WhatsApp/Drive'daki dosyayı başkası açamaz
   const pw = (await ctx.db.metaGet("backup_pw")) || "";
@@ -1525,16 +1529,22 @@ export async function doBackup(ctx) {
     toast("Yedek paylaşımı iptal edildi — yedek kaydedilmedi", "warn");
     return name;
   }
-  await ctx.db.metaSet("last_backup_at", new Date().toISOString());
+  const at = new Date().toISOString();
+  await ctx.db.metaSet("last_backup_at", at);
+  await ctx.db.metaSet("last_backup_result", { at, method: how, files: files.length, encrypted: !!pw, snapshot_at: parts.captured_at || null });
+  if (ctx.root?.querySelector("[data-backup-last]")) ctx.root.querySelector("[data-backup-last]").innerHTML = kv("Son yedek dosyası işlemi", new Date(at).toLocaleString("tr-TR") + " · dış kopya doğrulanamaz");
+  ctx.root?.querySelector("[data-device-refresh]")?.click();
+  await sec.secLog("backup", how === "shared" ? "Yedek paylaşım paneline verildi; dış teslim doğrulanamaz" : "Yedek indirme tarayıcıya verildi; dış kopya doğrulanamaz");
   toast(
     (how === "shared"
-      ? "Yedek paylaşıldı — WhatsApp/Drive'a gönderdiğinizden emin olun"
+      ? "Yedek paylaşım ekranına verildi — WhatsApp/Drive’da gönderimi tamamlayın"
       : "Yedek indirildi — dosyayı telefonun dışına (Drive/e-posta) da kopyalayın") +
       (files.length > 1 ? `. Yedek ${files.length} parça: hepsini saklayın; geri yüklerken önce 1. parçayı yükleyin` : "") +
       (pw ? "" : ". Yedek şifresiz: şoför bağlantı anahtarları dosyaya yazılmadı; Güvenlik ekranından yedek şifresi koymanız önerilir."),
     pw ? "ok" : "warn",
   );
   return name;
+  } finally { release(); activeBackups.delete(ctx.db); }
 }
 async function doCsvZip(ctx) {
   const db = ctx.db;
@@ -1566,44 +1576,17 @@ async function doCsvZip(ctx) {
   return name;
 }
 async function doFullZip(ctx) {
-  const db = ctx.db;
-  const data = await db.dumpAll();
-  const installId = await db.metaGet("device_install_id");
-  const enc = new TextEncoder();
-  const files = [
-    {
-      name: `SAHAPRO-SOLO-BACKUP-${tsName()}.json`,
-      data: enc.encode(JSON.stringify(buildBackup(data, installId || ""))),
-    },
-  ];
-  const atts = await db.getAll("attachments");
-  let total = 0;
-  for (const a of atts) total += a.size || 0;
-  let attCount = 0;
-  if (total < 60 * 1024 * 1024) {
-    for (const a of atts) {
-      try {
-        files.push({
-          name: `ekler/${a.record_type}_${a.record_id}_${(a.name || "ek").replace(/[^\w.-]+/g, "_")}`,
-          data: new Uint8Array(await a.blob.arrayBuffer()),
-        });
-        attCount++;
-      } catch (e) {
-        /* atla */
-      }
-    }
-  }
-  const zip = buildZip(files);
-  const name = `SAHAPRO-SOLO-PAKET-${tsName()}.zip`;
-  downloadBlob(new Blob([zip], { type: "application/zip" }), name);
-  await db.metaSet("last_backup_at", new Date().toISOString());
-  toast(
-    attCount
-      ? `ZIP indirildi (${attCount} ek dahil)`
-      : "ZIP indirildi (ekler boyut sınırı nedeniyle hariç)",
-    "ok",
-  );
-  return name;
+  if (activeBackups.has(ctx.db)) return toast("Yedek veya arşiv zaten hazırlanıyor", "warn");
+  activeBackups.add(ctx.db); const release = startActivity("archive");
+  try {
+    const { backupArchive } = await import("./backup-archive.js");
+    const snapshot = await ctx.db.readSnapshot();
+    const archive = await backupArchive(snapshot);
+    const name = `SAHAPRO-SOLO-ARSIV-${tsName()}.zip`;
+    downloadBlob(archive.blob, name);
+    toast(`Şifresiz arşiv ZIP indirmeye verildi (${archive.count} ek). Otomatik geri yükleme için Tam Yedek (.sahapro) kullanın.`, "ok");
+    return name;
+  } finally { release(); activeBackups.delete(ctx.db); }
 }
 
 async function settings(ctx) {
@@ -1657,16 +1640,16 @@ async function settings(ctx) {
       <form data-coform>${Object.entries(CO).map(([k, t]) => `<div class="field"><label>${esc(t)}</label><input name="${k}" value="${esc(company[k] || "")}"></div>`).join("")}<button type="submit" class="btn block">Şirket bilgilerini kaydet</button></form></div>
     <div class="section-title">Yedekleme</div>
     <div class="card">
-      ${kv("Son yedek", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}
+      <div data-backup-last>${kv("Son yedek dosyası işlemi", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}</div>
       ${kv("Yedek şifresi", backupPw ? "🔒 Açık — yedek dosyası şifreli" : "Kapalı — dosyayı bulan açabilir")}
       <button class="btn sm block" data-bakpw style="margin:6px 0">${backupPw ? "🔒 Yedek şifresini değiştir / kaldır" : "🔒 Yedeğe şifre koy"}</button>
-      ${kv("Kalıcı depolama", persisted ? "Korumalı ✓" : "Korumasız — tarayıcı yer açarken silebilir; düzenli yedek alın")}
+      ${kv("Kalıcı depolama", persisted ? "Tarayıcı tanımış — dış yedek yerine geçmez" : "Tanımamış veya bilgi yok — düzenli yedek alın")}
       <div class="row" style="gap:8px;margin-top:10px">
         <button class="btn primary grow" data-bak>💾 Yedek al</button>
         <button class="btn grow" data-csv>📑 CSV Paket</button>
-        <button class="btn grow" data-zip>📦 Tam ZIP</button>
+        <button class="btn grow" data-zip>📦 Arşiv ZIP</button>
       </div>
-      <div class="muted tiny" style="margin-top:8px">Tam ZIP: JSON + ekler (fotoğraflar). JSON'a fotoğraf GÖMÜLMEZ.</div>
+      <div class="muted tiny" style="margin-top:8px">Arşiv ZIP ve CSV şifresizdir. ZIP, kayıt ve ekleri ayrı dosyalarla saklar; otomatik geri yükleme yedeği değildir. Telefon taşımak için Tam Yedek (.sahapro) kullanın. Arşiv sınırı 60 MB; sınır aşılırsa eksik dosya üretilmez.</div>
     </div>
     <div class="section-title">Kart Düzeni</div>
     <div class="card tap" data-go="#/tahsilat"><div class="row between"><span>💰 Tahsilat takibi (kim kaç gündür borçlu, WhatsApp hatırlatma, çek/senet vadeleri)</span><span class="muted small">›</span></div></div>
@@ -1709,7 +1692,13 @@ async function settings(ctx) {
       <button class="btn ghost block" style="margin-top:8px" data-go="#/cop">🗑 Çöp Kutusu</button>
     </div>`;
 
-  qs("[data-bak]", root).addEventListener("click", () => doBackup(ctx));
+  const runExport = async (ev, run) => {
+    const button = ev.currentTarget; button.disabled = true;
+    try { await run(ctx); }
+    catch (e) { toast(e.message || String(e), "err"); }
+    finally { button.disabled = false; }
+  };
+  qs("[data-bak]", root).addEventListener("click", ev => runExport(ev, doBackup));
   qs("[data-shrink]", root)?.addEventListener("click", async (ev) => {
     const b = ev.currentTarget;
     if (!(await confirmDialog("Fotoğraflar küçültülsün mü?", "Büyük fotoğraflar 1600 piksele (belgeler 2000) küçültülür. Fiş yazısı okunur kalır ama orijinal büyük hali geri gelmez. İsterseniz önce yedek alın.", "Küçült"))) return;
@@ -1750,8 +1739,8 @@ async function settings(ctx) {
     } catch (e) { info.textContent = "Denetlenemedi: " + (e.message || e) + " (internet?)"; }
     b.disabled = false;
   });
-  qs("[data-csv]", root).addEventListener("click", () => doCsvZip(ctx));
-  qs("[data-zip]", root).addEventListener("click", () => doFullZip(ctx));
+  qs("[data-csv]", root).addEventListener("click", ev => runExport(ev, doCsvZip));
+  qs("[data-zip]", root).addEventListener("click", ev => runExport(ev, doFullZip));
   qs("[data-restore]", root).addEventListener("change", (e) => {
     const f = e.target.files[0];
     if (f) restorePreview(ctx, f);

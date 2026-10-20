@@ -1,3 +1,4 @@
+import { startActivity } from "./update-safety.js";
 import { validateSmartData } from "./message-smart-core.js";
 import { validateSoloData, SOLO_STORES } from "./solo-core.js";
 import {
@@ -30,24 +31,28 @@ async function toB64(blob) {
   return btoa(binary);
 }
 // attachments: "base64" (dosyaya yazılan yedek) | "blob" (telefon içi kurtarma kopyası: kopya yok, bellek az) | "none"
-export async function fullBackup(db, { encrypted = true, attachments: mode = "base64" } = {}) {
-  const data = await db.dumpAll(),
-    attachments = [];
-  if (mode !== "none")
-    for (const a of await db.getAll("attachments"))
-      attachments.push(mode === "blob" ? { ...a } : { ...a, blob: undefined, base64: await toB64(a.blob) });
+async function capture(db, files) {
+  if (typeof db.readSnapshot === "function") return { ...(await db.readSnapshot({ attachments: files, meta: true, drafts: true })), consistent: true };
+  // Compatibility with external adapters/test doubles. The real app always uses readSnapshot.
+  return { data: await db.dumpAll(), attachments: files ? await db.getAll("attachments") : [], meta: await db.getAll("meta"), drafts: [], captured_at: new Date().toISOString(), consistent: false };
+}
+async function backupFromSnapshot(snapshot, encrypted, mode) {
+  const attachments = [];
+  if (mode !== "none") for (const a of snapshot.attachments)
+    attachments.push(mode === "blob" ? { ...a } : { ...a, blob: undefined, base64: await toB64(a.blob) });
   return {
-    app: APP_ID,
-    app_version: APP_VERSION,
-    schema_version: SCHEMA_VERSION,
-    exported_at: new Date().toISOString(),
-    device_install_id: await db.metaGet("device_install_id"),
-    data,
-    attachments,
-    // API anahtarı gibi gizli ayarlar yedek dosyasına yazılmaz (yedek WhatsApp/Drive ile paylaşılabilir)
-    meta: (await db.getAll("meta")).filter((m) => !SECRET_META.includes(m.key) && !m.key.startsWith(RESTORE_SET) && (encrypted || !LINK_META.includes(m.key))),
+    app: APP_ID, app_version: APP_VERSION, schema_version: SCHEMA_VERSION,
+    exported_at: snapshot.captured_at,
+    device_install_id: snapshot.meta.find(m => m.key === "device_install_id")?.value || null,
+    data: snapshot.data, attachments,
+    meta: snapshot.meta.filter(m => !SECRET_META.includes(m.key) && !m.key.startsWith(RESTORE_SET) && (encrypted || !LINK_META.includes(m.key))),
+    coverage: { consistent_snapshot: snapshot.consistent, attachments_included: mode !== "none", draft_files_included: false, driver_phone_queue_included: false,
+      pdf_draft_files_not_included: snapshot.drafts.filter(d => String(d.form).startsWith("pdf_history_file:") && d.blob).length },
     ...(encrypted ? {} : { driver_links_omitted: true }),
   };
+}
+export async function fullBackup(db, { encrypted = true, attachments: mode = "base64" } = {}) {
+  return backupFromSnapshot(await capture(db, mode !== "none"), encrypted, mode);
 }
 // ---- Parçalı yedek (telefon belleği) ----
 // Bir parçanın açılmış (JSON) boyutu bu bütçeyi aşmaz. Ölçüm (masaüstü Chromium, v3.9.04): geri yüklemede bellek
@@ -56,13 +61,15 @@ export async function fullBackup(db, { encrypted = true, attachments: mode = "ba
 export const PART_JSON_BUDGET = 120 * 1024 * 1024;
 const b64Len = (n) => Math.ceil(n / 3) * 4;
 export async function backupParts(db, { encrypted = true, budget = PART_JSON_BUDGET } = {}) {
-  const head = await fullBackup(db, { encrypted, attachments: "none" });
   if(!Number.isSafeInteger(budget)||budget<1024||budget>PART_JSON_BUDGET)throw Error('Yedek parça bütçesi geçersiz');
-  const atts = (await db.getAll("attachments")).map(({ blob, ...m }) => ({ m, blob, est: b64Len(blob?.size || 0) + JSON.stringify({...m,base64:''}).length }));
+  const snapshot = await capture(db, true);
+  const head = await backupFromSnapshot(snapshot, encrypted, "none");
+  head.coverage.attachments_included = true;
+  const atts = snapshot.attachments.map(({ blob, ...m }) => ({ m, blob, est: b64Len(blob?.size || 0) + JSON.stringify({...m,base64:''}).length }));
   const set = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
   const records = Object.values(head.data || {}).reduce((k, rows) => k + (Array.isArray(rows) ? rows.length : 0), 0);
   const totals = { records, attachments: atts.length, attachment_bytes: atts.reduce((k, a) => k + (a.blob?.size || 0), 0) };
-  const tail = { app:head.app,app_version:head.app_version,schema_version:head.schema_version,exported_at:head.exported_at,device_install_id:head.device_install_id,data:{},meta:[],attachments:[] };
+  const tail = { app:head.app,app_version:head.app_version,schema_version:head.schema_version,exported_at:head.exported_at,device_install_id:head.device_install_id,coverage:head.coverage,data:{},meta:[],attachments:[] };
   // Manifest ve TÜM ek dizini de bütçenin içindedir. En büyük olası sıra/sayıları
   // kullan: gerçek parça başlığı bu üst sınırdan büyük olamaz.
   const maxParts=atts.length+1;
@@ -81,12 +88,12 @@ export async function backupParts(db, { encrypted = true, budget = PART_JSON_BUD
   const n=groups.length;
   const index=groups.flatMap((g,i)=>g.map(a=>[a.m.id,a.m.record_type,a.m.record_id,i+1]));
   return {
-    count: n, set,
+    count: n, set, captured_at: head.exported_at,
     async *[Symbol.asyncIterator]() {
       for (let i = 0; i < n; i++) {
         const attachments = [];
         for (const a of groups[i]) attachments.push({ ...a.m, base64: await toB64(a.blob) });
-        const part = { ...(i === 0 ? head : { app: head.app, app_version: head.app_version, schema_version: head.schema_version, exported_at: head.exported_at, device_install_id: head.device_install_id, data: {}, meta: [] }),
+        const part = { ...(i === 0 ? head : { app: head.app, app_version: head.app_version, schema_version: head.schema_version, exported_at: head.exported_at, device_install_id: head.device_install_id, coverage: head.coverage, data: {}, meta: [] }),
           attachments,
           part: { set, no: i + 1, of: n, created_at: head.exported_at, limit_basis: "açılmış JSON (karakter)", budget, totals,
             part_attachments: attachments.length, part_attachment_bytes: groups[i].reduce((k, a) => k + (a.blob?.size || 0), 0),
@@ -187,6 +194,8 @@ export function freshDeviceDrops(local, obj) {
 }
 
 export async function restoreBackup(db, obj, replace = false) {
+  const release = startActivity("restore");
+  try {
   const state0 = obj.part ? await db.metaGet(RESTORE_SET + obj.part.set) : null;
   checkPart(obj, state0);
   if (obj.part && state0?.done?.includes(obj.part.no))
@@ -214,7 +223,7 @@ export async function restoreBackup(db, obj, replace = false) {
   const drop = freshDeviceDrops(await db.dumpAll(), obj);
   const connection = await db.openDB(),
     stores = [...ENTITY_STORES, "attachments", "meta"];
-  return new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     const t = connection.transaction(stores, "readwrite");
     let error;
     for (const [s, ids] of Object.entries(drop)) for (const id of ids) t.objectStore(s).delete(id);
@@ -258,7 +267,7 @@ export async function restoreBackup(db, obj, replace = false) {
             value: Math.max(Number(q.result?.value) || 0, Number(m.value) || 0),
           });
       } else if (
-        !["device_install_id", "pin_hash", "last_backup_at", "sec_lock", "sec_fail"].includes(m.key)
+        !["device_install_id", "pin_hash", "last_backup_at", "last_backup_result", "sec_lock", "sec_fail"].includes(m.key)
       ) {
         const q = t.objectStore("meta").get(m.key);
         q.onsuccess = () => {
@@ -304,6 +313,7 @@ export async function restoreBackup(db, obj, replace = false) {
     t.onabort = t.onerror = () =>
       reject(error || t.error || Error("Geri yükleme iptal edildi"));
   });
+  } finally { release(); }
 }
 // Kullanıcıya gösterilecek durum: tamamlandı mı, eksik parçalar, eki beklenen kayıt sayısı
 export function setStatusText(st) {
