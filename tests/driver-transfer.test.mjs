@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {cleanDriverShare,readDriverTransfer,isDriverTransferFile,DRIVER_TRANSFER_HEADER} from '../js/driver-transfer.js';
+const text='📋 SAHAPRO şoför kaydı — TEST\n🚚 TEST iş\nSP1:abcdefghijk.signature123';
+const packet={text,rows:[{id:'id/<>',q:1}],files:[new File(['photo'],'photo.jpg',{type:'image/jpeg'})]};
+const payload=cleanDriverShare(packet);assert.ok(!payload.text.includes('SP1:'));assert.ok(payload.text.includes('TEST iş'));assert.equal(payload.files.length,2);assert.equal(await readDriverTransfer(payload.files[0]),text);assert.equal(payload.files[1],packet.files[0]);assert.equal(payload.files[0].name,'SAHAPRO-id-1.sahapro.txt');
+assert.equal(await payload.files[0].text(),await cleanDriverShare(packet).files[0].text());
+assert.ok(isDriverTransferFile({name:'SAHAPRO-id.sahapro (1).txt'}));assert.ok(!isDriverTransferFile({name:'sohbet.txt'}));
+for(const [body,name] of [['not transfer','a.sahapro.txt'],[DRIVER_TRANSFER_HEADER+'\nSP1:tiny','a.sahapro.txt'],[DRIVER_TRANSFER_HEADER+'\n'+text+'\nSP1:abcdefghijk','a.sahapro.txt'],[DRIVER_TRANSFER_HEADER+'\n'+text,'ordinary.txt'],['x'.repeat(65537),'a.sahapro.txt']])await assert.rejects(()=>readDriverTransfer(new File([body],name)));
+assert.throws(()=>cleanDriverShare({...packet,text:'no code'}));
+console.log('driver-transfer: clean caption, stable full original code in attachment, media order, bounded strict file parser OK');

@@ -1,3 +1,4 @@
+import {isDriverTransferFile,readDriverTransfer} from "./driver-transfer.js";
 import {driverCashContextHTML} from "./driver-cash-context.js";
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
 // giderleri, yakıtı çıkarır → doğrulanmış kartlar → tek dokunuşla kaydet. Yeni müşteri/şantiye,
@@ -29,7 +30,7 @@ export async function screen(ctx) {
     appbar("Akıllı Asistan", "Yerel komutlar · mesaj ve belge okuma") +
     `<div style="height:10px"></div>
     ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
-    ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Yerel özetler, ekran açma ve işlem rehberi anahtarsız çalışır. Mesaj/fotoğraf okumak için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Şoför aktarım dosyaları, yerel özetler, ekran açma ve işlem rehberi anahtarsız çalışır. Mesaj/fotoğraf okumak için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     ${guideHTML()}
     <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
     <details class="card assistant-guide"><summary><b>Diğer asistan araçları</b></summary>
@@ -40,8 +41,8 @@ export async function screen(ctx) {
     </details>
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
-      <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>
-      <p class="tiny muted">En fazla 20 dosya. Şoför paketinin tüm fotoğraflarını aynı seçimde ekleyin.</p>
+      <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/*,audio/*,.txt,text/plain" multiple data-photos></div>
+      <p class="tiny muted">En fazla 20 dosya. Sade şoför mesajı için .sahapro.txt aktarım dosyasını ve paketin tüm fotoğraflarını aynı seçimde ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
@@ -79,7 +80,9 @@ export async function screen(ctx) {
     qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
     const box = qs("[data-thumbs]", root);
     box.innerHTML = files
-      .map((f, i) => isAudio(f)
+      .map((f, i) => isDriverTransferFile(f)
+        ? `<div class="card small" style="margin:0;padding:8px;width:100%;overflow-wrap:anywhere">📎 SAHAPRO aktarım dosyası · ${esc(f.name)} <button class="btn sm" data-rm="${i}">Kaldır</button></div>`
+        : isAudio(f)
         ? `<div class="card" style="margin:0;padding:6px;width:100%"><div class="small">🎤 Ses kaydı ${esc(f.name || "")} <button class="btn small" data-rm="${i}">Sil</button></div><audio controls src="${URL.createObjectURL(f)}" style="width:100%"></audio></div>`
         : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
       .join("");
@@ -159,11 +162,15 @@ export async function screen(ctx) {
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
     if (attachmentError) return toast(attachmentError, "err");
-    const typed = qs("[data-msg]", root).value.trim();
+    if(files.some(f=>!isDriverTransferFile(f)&&(/\.txt$/i.test(f.name||'')||f.type==='text/plain')))return toast("Bu metin dosyası SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
+    const transferFiles=files.filter(isDriverTransferFile);
+    if(transferFiles.length>1)return toast("Aynı anda yalnız bir şoför aktarım dosyası ekleyin; her paketi kendi fotoğraflarıyla ayrı işleyin", "err");
+    let typed=qs("[data-msg]", root).value.trim();
+    if(transferFiles.length){try{typed=await readDriverTransfer(transferFiles[0]);}catch(e){return toast(e.message,"err");}}
     // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
     // Uzun ya da WhatsApp dışa aktarımı gibi görünen metin YENİ mesajdır: düzeltme kutusu işaretli kalmış olsa bile önceki taslağa eklenmez
     const looksNew = typed.length > 160 || /^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}:\d{2}/m.test(typed);
-    const refine = prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message && !looksNew ? prev : null;
+    const refine = !transferFiles.length && prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message && !looksNew ? prev : null;
     if (prev && !prev.v._done && qs("[data-refine]", root).checked && looksNew) toast("Yeni mesaj olarak gönderildi (önceki sonucun düzeltmesi sayılmadı)", "ok");
     if (prev && !prev.v._done && !refine && !typed) return toast("Düzeltme yazın ya da yeni mesaj girin", "err");
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
@@ -189,19 +196,19 @@ export async function screen(ctx) {
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
     if (!g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
-    const images = files.filter((f) => !isAudio(f)), audios = files.filter(isAudio);
+    const images = files.filter((f) => !isAudio(f) && !isDriverTransferFile(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
     if (!navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
     btn.disabled = true;
-    out.innerHTML = '<div class="muted small" style="padding:10px">Gemini okuyor…</div>';
+    out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
     try {
       const { geminiJson, blobToBase64, shrink, audioToWav } = await import("./ai-gemini.js");
       // Mesaj kendi depodan söz ediyor ama depo henüz kurulmadıysa: kendiliğinden kurulur (iç müşteri + depo sahası)
       {
         const yc0 = await import("./yard-core.js");
         const d0 = await db.dumpAll();
-        if (yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
+        if (!transferFiles.length && yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
           if (!yc0.yardSite(d0)) await db.saveNew("dump_sites", { name: yc0.YARD_SITE_NAME, own_yard: true, note: "Kendi depo / stok sahası (asistan kurdu)" }, "Kendi depo kuruldu");
           if (!yc0.yardCustomer(d0)) await db.saveNew("customers", { name: yc0.YARD_CUSTOMER_NAME, internal: true, note: "Depodan döküm sahalarına giden iç seferler. Hakedişe para yazılmaz." }, "Kendi depo kuruldu");
           toast("Kendi depo kuruldu (Ayarlar → Kendi depo)", "ok");
@@ -223,7 +230,7 @@ export async function screen(ctx) {
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
       // Şoför kodu Gemini'siz çözülür; anahtar yoksa kalan serbest yazı okunmaz (kullanıcıya söylenir)
-      const useGemini = g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      const useGemini = !transferFiles.length && g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
       if (!g.ready && drvAll.length && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8) toast("Gemini anahtarı yok: şoför kodu okundu, mesajdaki diğer yazı okunmadı", "err");
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
