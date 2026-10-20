@@ -1,3 +1,4 @@
+import {workReviewContext} from './collect-core.js';
 import { latestWork, repeatWork } from "./work-repeat.js";
 import { exploreWorks, workURL, workFlags, workCSV } from "./work-explorer.js";
 import { workHours } from "./enterprise-core.js";
@@ -73,11 +74,11 @@ async function work(ctx) {
 
 async function workList(ctx) {
   const { root, db, names, query } = ctx;
-  const [all, customers, vehicles, personnel, sites] = await Promise.all([
-    db.getAll("work_records"), db.listActive("customers"), db.listActive("vehicles"), db.listActive("personnel"), db.listActive("sites"),
+  const [all, customers, vehicles, personnel, sites, hakedis] = await Promise.all([
+    db.getAll("work_records"), db.listActive("customers"), db.listActive("vehicles"), db.listActive("personnel"), db.listActive("sites"), db.getAll("hakedis"),
   ]);
-  const today = todayStr(), internal = new Set(customers.filter(c => c.internal).map(c => c.id));
-  const model = exploreWorks(all, names, query, { today, internal });
+  const today = todayStr(), {internal,billed}=workReviewContext({customers,hakedis});
+  const model = exploreWorks(all, names, query, { today, internal, billed });
   const { rows, state, units, counts } = model;
   const filter = state.f, q = state.q, dFrom = state.from, dTo = state.to;
   const options = (list, value, label) => `<option value="">${esc(label)}</option>` +
@@ -134,7 +135,7 @@ async function workList(ctx) {
     const { groupByDate, pageGroups } = await import("./date-groups.js");
     const pages = pageGroups(groupByDate(rows), 30);
     const row = (w) => {
-      const flags = workFlags(w, internal);
+      const flags = workFlags(w, internal, billed);
       return `<a class="li work-explorer-row" href="#/isler/${esc(encodeURIComponent(w.id))}">
         <div class="work-explorer-row-head"><strong>${esc(names.customers[w.customer_id] || "Müşteri yok")}</strong><strong class="work-explorer-quantity">${fmtNum(w.quantity)} ${esc(w.unit || "")}</strong></div>
         <div class="small">${esc(w.work_type || "İş")}${w.site_id ? " · " + esc(names.sites[w.site_id] || "Şantiye arşivde") : ""}</div>

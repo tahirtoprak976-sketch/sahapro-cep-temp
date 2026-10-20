@@ -304,9 +304,10 @@ async function dashboard(ctx) {
   // Yönetim özeti: dikkat isteyen işler (mevcut denetimlerden), son 14 gün, araçlar (birimler ayrı), mazot anlaşmaları (litre)
   try {
     const A = await import("./attention.js");
-    const { restoreSets } = await import("./backup.js");
+    const { RESTORE_SET } = await import("./backup.js");
+    const reviewMeta=await db.getAll("meta");
     const yb = qs("[data-yonetim]", root);
-    const items = A.attentionItems(data, { restoreSets: await restoreSets(db).catch(() => []) });
+    const items = A.attentionItems(data, { meta:reviewMeta, restoreSets:reviewMeta.filter(m=>m.key.startsWith(RESTORE_SET)).map(m=>m.value) });
     const days = A.dailyWorks(data, today, 14), max = Math.max(1, ...days.map((x) => x.count));
     const mStart = today.slice(0, 8) + "01", veh = A.vehicleSummary(data, mStart, today).slice(0, 8), fuel = A.fuelSummaries(data);
     const n1 = (x) => Number(x || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
@@ -319,7 +320,7 @@ async function dashboard(ctx) {
       <div class="tiny muted">Çubuk: iş SAYISI. Saat, sefer ve ton ayrı birimlerdir; toplanmaz (çubuğa dokununca o günün işleri açılır).</div></div>` +
       (veh.length ? `<div class="section-title" style="margin-top:12px">Araçlar — bu ay <span class="muted small">(birimler ayrı)</span></div><div class="card" style="padding:6px 10px;overflow-x:auto"><table class="tiny" style="width:100%;border-collapse:collapse"><tr class="muted"><th style="text-align:left">Araç</th><th>İş</th><th>Saat</th><th>Sefer</th><th>Yevmiye</th><th>Ton</th></tr>${veh.map((v) => `<tr data-go="#/filo/${esc(v.id)}" style="cursor:pointer;border-top:1px solid var(--border)"><td style="text-align:left;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(v.name)}</td><td style="text-align:center">${v.works}</td><td style="text-align:center">${v.Saat ? n1(v.Saat) : "—"}</td><td style="text-align:center">${v.Sefer ? n1(v.Sefer) : "—"}</td><td style="text-align:center">${v.Yevmiye ? n1(v.Yevmiye) : "—"}</td><td style="text-align:center">${v.Ton ? n1(v.Ton) : "—"}</td></tr>`).join("")}</table></div>` : "") +
       (fuel.length ? `<div class="section-title" style="margin-top:12px">Mazot anlaşmaları <span class="muted small">(litre; TL bakiyeye dahil değil)</span></div>` + fuel.map((f) => `<div class="li" data-go="#/musteriler/${esc(f.id)}"><div class="grow"><div class="t1 ellipsis">${esc(f.name)}</div><div class="t2">Hak edilen ${n1(f.earned)} L · Alınan ${n1(f.received)} L</div></div><div class="end"><span class="amt">${f.balance >= 0 ? "Kalan " + n1(f.balance) : "Fazla " + n1(-f.balance)} L</span></div></div>`).join("") : "");
-  } catch (e) { console.warn(e); }
+  } catch (e) { console.warn(e);const target=qs("[data-yonetim]",root);if(target)target.innerHTML=notice("warn","Kontrol listesi yüklenemedi. Sayfayı yeniden açın."); }
   {
     const bh = qs("[data-brief]", root);
     if (bh) (await import("./brief.js")).briefCard({ ...ctx, toast }, bh, data).catch((e) => console.warn(e));
@@ -838,7 +839,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.9.45")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.9.46")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

@@ -1,6 +1,8 @@
+import {pdfPending} from './pending-records.js';
+export {pdfPending} from './pending-records.js';
 // İşletme panosu ve yerel asistan özetleri. SAF, kayıt yazmaz; para ve birimler ayrı.
 import {isActive,todayStr,addDays,toKurus,fromKurus,WORK_UNITS} from './core.js';
-import {workAmount,hasWorkPrice} from './collect-core.js';
+import {workAmount,hasWorkPrice,workReviewContext} from './collect-core.js';
 import {costRows,costTotals} from './costs-core.js';
 import {attentionItems,fuelSummaries} from './attention.js';
 import {isIncluded} from './job-core.js';
@@ -28,24 +30,17 @@ export function overviewRange(period='month',today=todayStr(),custom={}){
 const live=(d,s)=>(d[s]||[]).filter(isActive);
 const num=x=>Number.isFinite(Number(x))?Number(x):0;
 const sumMoney=(a,get)=>fromKurus(a.reduce((n,x)=>n+toKurus(get(x)),0));
-export function workPriceState(w,d){
- if(live(d,'customers').some(c=>c.id===w.customer_id&&c.internal))return 'internal';
+export function workPriceState(w,d,context=workReviewContext(d)){
+ if(context.internal.has(w.customer_id)||w.price_snapshot?.price_source==='İç iş (kendi depo)')return 'internal';
  if(isIncluded(w))return 'included';
  if(w.price_snapshot?.price_source==='Mazot karşılığı')return 'fuel';
  if(hasWorkPrice(w))return 'priced';
+ if(Number(w.customer_fuel_allowance_l)>0)return 'fuel';
+ if(w.price_snapshot?.locked)return 'locked';
+ if(context.billed.has(w.id))return 'billed';
  return 'missing';
 }
 const inRange=(x,r)=>overviewDate(x.date)&&x.date>=r.from&&x.date<=r.to;
-export function pdfPending(meta,d){
- const ops=new Map(meta.map(x=>[x.key,x.value]));const files=[];
- for(const m of meta){
-  if(!m.key.startsWith('pdf_history_draft:')||!Array.isArray(m.value?.rows))continue;
-  const hash=m.key.slice('pdf_history_draft:'.length);
-  const rows=m.value.rows.filter(r=>r&&['work','fuel','expense'].includes(r.kind)&&!((d[ops.get('op:pdf-history:'+hash+':'+r.id)?.store]||[]).some(x=>x.id===ops.get('op:pdf-history:'+hash+':'+r.id)?.record_id&&isActive(x))));
-  if(rows.length)files.push({hash,name:m.value._file_name||'PDF taslağı',count:rows.length});
- }
- return {files,rows:files.reduce((n,f)=>n+f.count,0)};
-}
 function timeline(d,r){
  const out=[];
  if(r.days<=31){for(let date=r.from;date<=r.to;date=addDays(date,1))out.push({from:date,to:date,label:date.slice(8)+'.'+date.slice(5,7)});}
@@ -66,8 +61,9 @@ export function businessOverview(d,{today=todayStr(),period='month',from,to,meta
  const cash=live(d,'cash_records').filter(x=>inRange(x,range)&&x.cash_type==='Müşteriden Para Alındı');
  const costs=costRows(d,{from:range.from,to:range.to});
  const fuel=live(d,'fuel_records').filter(x=>inRange(x,range));
- const priced=works.filter(w=>workPriceState(w,d)==='priced');
- const missing=works.filter(w=>workPriceState(w,d)==='missing');
+ const context=workReviewContext(d);
+ const priced=works.filter(w=>workPriceState(w,d,context)==='priced');
+ const missing=works.filter(w=>workPriceState(w,d,context)==='missing');
  const units={};for(const unit of WORK_UNITS){const a=works.filter(w=>w.unit===unit);if(a.length)units[unit]=Math.round(a.reduce((n,w)=>n+num(w.quantity),0)*100)/100;}
  const previous={from:addDays(range.from,-range.days),to:addDays(range.from,-1)};
  const previousCount=live(d,'work_records').filter(x=>inRange(x,previous)).length;
@@ -78,10 +74,9 @@ export function businessOverview(d,{today=todayStr(),period='month',from,to,meta
  }).filter(Boolean).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'tr'));
  const pending=pdfPending(meta,d);
  const restore=meta.filter(m=>m.key.startsWith('restore_set:')).map(m=>m.value);
- const attention=attentionItems(d,{today,restoreSets:restore});
+ const attention=attentionItems(d,{today,restoreSets:restore,meta});
  const due=maintenanceBoard(d,{today}).filter(x=>x.state==='late'||x.state==='soon');
  if(due.length)attention.push({key:'maintenance',count:due.length,title:due.length+' bakım kuralı yaklaşıyor veya gecikti',why:'Bakım takvimindeki gün / sayaç kayıtlarına göre.',next:'İlgili aracı ve bakım kuralını kontrol edin.',hash:'#/bakim-takvimi'});
- if(pending.rows)attention.unshift({key:'pdf',count:pending.rows,title:pending.files.length+' PDF’de '+pending.rows+' satır bekliyor',why:'Bu satırlar henüz kaydedilmedi veya mevcut işe bağlanmadı.',next:'Kaldığınız taslağı açın ve satırları kontrol edin.',hash:'#/akilli-asistan/pdf-gecmis'});
  return {range,works,cash,costs,fuel,priced,missing,units,
   totals:{works:works.length,value:sumMoney(priced,workAmount),cash:sumMoney(cash,x=>x.amount),cost:costTotals(costs).total,liters:Math.round(fuel.reduce((n,f)=>n+num(f.liters),0)*100)/100},
   comparison:{...previous,count:previousCount,change:works.length-previousCount,percent:previousCount?Math.round((works.length-previousCount)/previousCount*100):null},

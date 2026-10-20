@@ -1,17 +1,18 @@
+import {pdfPending} from './pending-records.js';
 // "Dikkat isteyen işler" ve ana ekran özetleri — SAF katman, kayıt yazmaz; mevcut denetimlerin sonuçlarını toplar.
 // İnceleme adayları kesin hata olarak sunulmaz; her maddede neden ve sonraki adım yazılır.
 import { isActive, addDays, todayStr } from "./core.js";
-import { isIncluded, jobAttention } from "./job-core.js";
-import { hasWorkPrice } from "./collect-core.js";
+import { jobAttention } from "./job-core.js";
+import { missingCustomerWorkPrice,workReviewContext } from "./collect-core.js";
 import { fuelRulesOf, customerFuelLedger } from "./assistant-rules.js";
 import { fuelAudit } from "./fuel-audit.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
-export function attentionItems(d, { restoreSets = [], today = todayStr() } = {}) {
+export function attentionItems(d, { restoreSets = [], meta = [], today = todayStr() } = {}) {
   const out = [];
-  const internal = new Set(live(d, "customers").filter((c) => c.internal).map((c) => c.id));
+  const {internal,billed}=workReviewContext(d);
   const works = live(d, "work_records");
-  const unpriced = works.filter((w) => w.customer_id && !internal.has(w.customer_id) && !hasWorkPrice(w) && !(Number(w.customer_fuel_allowance_l) > 0) && !isIncluded(w));
+  const unpriced = works.filter((w) => w.customer_id && !internal.has(w.customer_id) && missingCustomerWorkPrice(w,billed.has(w.id)));
   if (unpriced.length) out.push({ key: "fiyatsiz", count: unpriced.length, title: `${unpriced.length} işin fiyatı yok`, why: "Fiyat listesinde uyan kural yok ya da fiyat girilmemiş; bu işler alacağa sayılmıyor.", next: "Listeyi açıp fiyat girin ya da fiyat kuralı ekleyin.", hash: "#/isler?f=fiyatsiz" });
   const nocust = works.filter((w) => !w.customer_id);
   if (nocust.length) out.push({ key: "musterisiz", count: nocust.length, title: `${nocust.length} işte müşteri yok`, why: "Müşterisi seçilmemiş iş hiçbir cariye yazılmaz.", next: "İşi açıp müşteriyi seçin.", hash: "#/isler?f=musterisiz" });
@@ -24,6 +25,8 @@ export function attentionItems(d, { restoreSets = [], today = todayStr() } = {})
   if (cand.length) out.push({ key: "mazot", count: cand.length, title: `${cand.length} müşterinin mazot hesabında inceleme adayı var`, why: "Kesin hata değildir: kurala uymayan TL iş ya da müşteriye bağlı olmayan yakıt kaydı olabilir.", next: "Mazot hesabı incelemesini açın; düzeltme yalnız onayınızla yapılır.", hash: "#/mazot-hesaplari" });
   const jobs = jobAttention(d, today);
   if (jobs.length) out.push({ key: "olcum", count: jobs.length, title: `${jobs.length} metreküp işi ölçüm bekliyor olabilir`, why: jobs.map((j) => j.text).join(" · "), next: "İş bittiyse ölçümcünün m³'ünü girin; hakediş ancak ölçümle cariye yazılır.", hash: jobs.length === 1 ? jobs[0].href : "#/is-sozlesmeleri" });
+  const pending=pdfPending(meta,d);
+  if(pending.rows)out.unshift({key:'pdf',count:pending.rows,title:pending.files.length+' PDF’de '+pending.rows+' satır bekliyor',why:'Bu satırlar henüz kaydedilmedi veya mevcut işe bağlanmadı.',next:'Kaldığınız taslağı açın ve satırları kontrol edin.',hash:'#/akilli-asistan/pdf-gecmis'});
   return out;
 }
 // Son N günün günlük iş sayısı ve birim toplamları (birimler AYRI)

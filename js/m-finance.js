@@ -1152,8 +1152,11 @@ async function cariDetail(ctx, cid) {
         ruleId = rec?.id || old?.id || null;
       }
       let n = 0;
-      for (const w of g.works) {
-        try { await db.saveExisting("work_records", await db.get("work_records", w.id), { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Cari: fiyatsız işe fiyat yazıldı"); n++; } catch (e) { /* kilitli */ }
+      const current = unpricedGroups(await db.dumpAll(), cid).find(x => x.key === g.key);
+      const originalIds = new Set(g.works.map(w => w.id));
+      for (const w of current?.works || []) {
+        if (!originalIds.has(w.id)) continue;
+        try { await db.saveExisting("work_records", w, { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Cari: fiyatsız işe fiyat yazıldı"); n++; } catch (e) { /* kilitli veya başka ekranda değişmiş */ }
       }
       toast(`${n} işe fiyat yazıldı`, "ok");
       ctx.reload();
