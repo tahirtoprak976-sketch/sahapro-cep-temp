@@ -62,7 +62,7 @@ export function entryLine(e, cfg) {
   const cust = e.cid === cfg.Y ? "kendi depodan çıkış" : nm(cfg.C, e.cid) || e.cn || "müşteri ?";
   const dump = nm(cfg.D, e.ds) || e.dn || "";
   const dfs = e.dfs ? ` · 🧾 dijital fiş ${e.dfs}${e.rcv ? " (imzalayan: " + e.rcv + ")" : ""}` : "";
-  return `🚚 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${cust}${e.sid ? " / " + nm(cfg.S, e.sid) : ""} · ${e.wt} ${e.q} ${String(e.u).toLocaleLowerCase("tr-TR")}${e.mat ? " " + e.mat : ""}${dump ? " → " + dump : ""}${e.ton ? ` · ${e.ton} ton` : ""}${e.slip ? ` · fiş ${e.slip}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}${e.note ? ` · ${e.note}` : ""}${dfs}${e.cash ? ` · 💵 ${e.cash} TL nakit alındı (${cfg.p[1]})` : ""}`;
+  return `🚚 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${cust}${e.sid ? " / " + nm(cfg.S, e.sid) : ""} · ${e.wt} ${e.q} ${String(e.u).toLocaleLowerCase("tr-TR")}${e.mat ? " " + e.mat : ""}${dump ? " → " + dump : ""}${e.ton ? ` · ${e.ton} ton` : ""}${e.slip ? ` · fiş ${e.slip}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}${e.note ? ` · ${e.note}` : ""}${dfs}${e.cash ? ` · 💵 ${e.cash} TL nakit alındı (${cfg.p[1]})${e.cash_date ? " · nakit tarihi " + fmtDate(e.cash_date) : ""}` : ""}`;
 }
 export async function driverMessage(entries, cfg) {
   const code = await pack({ v: 1, p: cfg.p[0], n: cfg.p[1], ...(cfg.lid ? { lid: cfg.lid } : {}), e: entries.map(({ sent, photoId, ph_dropped, ...e }) => e) });
@@ -164,7 +164,7 @@ export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true
     }
     const customer = resolveDriverCustomer(e, d);
     const received = driverCashAmount(e.cash);
-    if (received > 0) cash.push({ ...customer, date: e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id, note: entryLine(e, {p:[p.p,p.n],V:[],C:[],S:[],D:[]}) });
+    if (received > 0) cash.push({ ...customer, date: e.cash_date || e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id, note: entryLine(e, {p:[p.p,p.n],V:[],C:[],S:[],D:[]}) });
     const photos = takePhotos(e.ph);
     // İmzalı dijital fişin imza görüntüsü: işin fotoğraflarından hemen sonra gelir
     const sigPhoto = e.sg ? takePhotos(1)[0] ?? null : null;
