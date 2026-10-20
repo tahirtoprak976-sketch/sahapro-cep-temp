@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {latestWork,repeatWork} from '../js/work-repeat.js';
+const data={customers:[{id:'c'}],sites:[{id:'s',customer_id:'c'},{id:'wrong',customer_id:'other'}],vehicles:[{id:'v'}],personnel:[{id:'p'}],dumpSites:[{id:'d'}],quarries:[{id:'q'}]};
+const record={id:'secret',created_at:'2026-10-19',date:'2026-01-01',customer_id:'c',site_id:'s',vehicle_id:'v',personnel_id:'p',dump_site_id:'d',quarry_id:'q',quantity:10,unit:'Sefer',work_type:'Hafriyat Nakliye',material:'moloz',dump_area:'A',quarry:'B',price_snapshot:{locked:true,unit_price:9999},driver_entry_id:'driver',slip_no:'old',digital_slip_no:'S1',customer_fuel_allowance_l:750,invoice_no:'F',description:'yesterday',internal_note:'private',time_start:'08:00',_transport_rows:[{}]};
+const before=JSON.stringify(record),r=repeatWork(record,data,'2026-10-20');
+assert.equal(r.values.date,'2026-10-20');assert.equal(r.values.quantity,'');assert.equal(r.values.site_id,'s');assert.equal(r.values.material,'moloz');assert.deepEqual(r.missing,[]);
+for(const key of ['id','created_at','price_snapshot','driver_entry_id','slip_no','digital_slip_no','customer_fuel_allowance_l','invoice_no','description','internal_note','time_start','_transport_rows'])assert.equal(r.values[key],undefined,key);
+assert.equal(JSON.stringify(record),before);
+const invalid=repeatWork({...record,site_id:'wrong',vehicle_id:'deleted',unit:'bad',work_type:'bad'},data);assert.equal(invalid.values.site_id,'');assert.equal(invalid.values.vehicle_id,'');assert.equal(invalid.values.unit,'Sefer');assert.equal(invalid.values.work_type,'');assert.deepEqual(invalid.missing,['Araç','Şantiye']);
+const rows=[{id:'zz',date:'2026-10-20',created_at:'2026-10-18'},{id:'aa',date:'2025-01-01',created_at:'2026-10-19'},{id:'del',created_at:'2026-10-20',deleted_at:'x'}];assert.equal(latestWork(rows).id,'aa');assert.equal(rows[0].id,'zz');assert.equal(latestWork([]),null);
+console.log('work-repeat: safe allowlist, today/empty quantity, current cards, latest-created ordering, immutability OK');
