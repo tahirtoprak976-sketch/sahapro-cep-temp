@@ -422,8 +422,8 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
   }
   v.tickets = keep;
   // Başka bir yere bağlanmamış fotoğraf ve tek iş varsa: fotoğraf o işin fişidir
-  const used = new Set([...(v.tickets || []).map((t) => t.photo), ...(v.docs || []).map((x) => x.photo), ...(v.expenses || []).map((e) => e.photo), ...(v.fuel || []).map((f) => f.photo), ...works.flatMap((w) => w.photos || []), ...works.map((w) => w.digital?.sigPhoto), ...(v.maintenance || []).flatMap((m) => m.photos || [])].filter((x) => x != null));
-  if (works.length === 1)
+  const used = new Set([...(v.tickets || []).map((t) => t.photo), ...(v.docs || []).map((x) => x.photo), ...(v.expenses || []).flatMap((e) => [e.photo, ...(e.photos || [])]), ...(v.fuel || []).flatMap((f) => [f.photo, ...(f.photos || [])]), ...works.flatMap((w) => w.photos || []), ...works.map((w) => w.digital?.sigPhoto), ...(v.maintenance || []).flatMap((m) => m.photos || [])].filter((x) => x != null));
+  if (works.length === 1 && !v.driverPhotoNeed)
     for (let i = 0; i < photoCount; i++) if (!used.has(i)) works[0].photos = [...(works[0].photos || []), i];
   return v;
 }
