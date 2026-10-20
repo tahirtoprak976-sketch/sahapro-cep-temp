@@ -16,3 +16,11 @@ for(const amount of ['',null,0,'0',1,'25,50',2500,1e12])assert.notEqual(driverCa
 for(const amount of [-1,'NaN',Infinity,1e12+1,0.001,'1,234'])assert.equal(driverCashAmount(amount),null,String(amount));
 const key=await collectionKey({source:'driver:job',amount:0,occ:0});const fields={customer_id:'child',amount:2500,date:e.date,payment_method:'Nakit'};const old={...fields,request_id:key};assert.equal(collectionDecision([old],key,fields,'driver:job').kind,'repeat');assert.equal(collectionDecision([old],key,{...fields,amount:2600},'driver:job').kind,'conflict');
 console.log('driver-customer-cash: explicit subcontractors, parent scope, selected IDs, cash amounts, stable retry keys OK');
+// Backdated work and cash received later must retain distinct dates in SP1.
+const dated={...e,cash_date:'2026-10-21'};
+const datedMsg=await driverMessage([dated],{p:['p','Soner'],V:[],C:[],S:[],D:[]});
+assert.match(datedMsg,/nakit tarihi 21.10.2026/);
+const datedPlan=payloadsToPlan(await extractPayloads(datedMsg),d);
+assert.equal(datedPlan.plan.works[0].date,'2026-10-20');assert.equal(datedPlan.cash[0].date,'2026-10-21');
+assert.equal(plan.cash[0].date,e.date,'legacy packets keep work date; never replace it with today');
+console.log('cash dates: independent receipt date survives SP1 roundtrip; legacy date preserved');

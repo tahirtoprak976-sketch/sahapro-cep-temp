@@ -1,3 +1,4 @@
+import { validDate } from "./driver-delivery.js";
 import { customerNameKey } from "./driver-customer.js";
 import { linkVerdict } from "./security-core.js";
 import { ENTERPRISE_STORES, workHours } from "./enterprise-core.js";
@@ -1710,6 +1711,7 @@ export function sameCollection(a, b) {
 // Aynı request_id + aynı içerik → mevcut kayıt; farklı içerik → OP_CONFLICT. op aynı kurallarla.
 export async function saveCashEvent(fields, { op = null } = {}) {
   assertNumericFields(fields);
+  if (fields.driver_entry_id && !validDate(fields.date)) throw new Error("Şoför nakit bildirimi için geçerli tarih gereklidir");
   if (fields.driver_entry_id && (fields.cash_type !== "Müşteriden Para Alındı" || fields.payment_method !== "Nakit" || fields.cash_status !== "PERSONELDE" || !fields.personnel_id || !(Number(fields.amount) >= 0.01) || Number(fields.amount) > 1e12 || Math.abs(Number(fields.amount)*100-Math.round(Number(fields.amount)*100)) > 0.0000001)) throw new Error("Şoför nakit bildirimi pozitif tutar, nakit ödeme ve parayı alan personelle kaydedilmelidir");
   const d = await openDB(),
     rec = newRecord(fields);
