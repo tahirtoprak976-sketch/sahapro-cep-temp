@@ -1103,3 +1103,8 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 .work-explorer-row{display:flex;flex-direction:column;align-items:stretch;gap:7px;color:inherit;text-decoration:none;overflow-wrap:anywhere}.work-explorer-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.work-explorer-row-head>strong:first-child{min-width:0;flex:1;line-height:1.45}.work-explorer-quantity{max-width:45%;text-align:right;flex-shrink:0;line-height:1.45}.work-explorer-row-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.work-explorer-row:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 .work-explorer-checks .btn{max-width:100%;overflow-wrap:anywhere;white-space:normal;text-align:left}
+
+/* Daily operational stream */
+.field-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}.field-week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}.field-week a{padding:8px 1px;font-size:11px;display:flex;flex-direction:column;min-width:0}.field-record{display:flex;flex-direction:column;gap:8px;text-decoration:none;color:inherit;margin:10px 0;overflow-wrap:anywhere}.field-record .badge{align-self:flex-start}[data-stream-search] input,[data-stream-kind],[data-stream-vehicle]{width:100%;margin:8px 0}
+
+.field-actions a,.field-week a{text-decoration:none}.field-week a{min-height:48px}.field summary{cursor:pointer;min-height:44px;padding:10px 0}

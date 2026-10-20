@@ -37,6 +37,7 @@ import { screen as crmScreen } from "./m-crm.js";
 
 // ---- Modül yönlendirme tablosu ----
 const MODULES = {
+  "saha-akisi":async ctx=>(await import("./field-stream-ui.js")).screen(ctx),
   "isletme-panosu":async ctx=>(await import("./business-overview-ui.js")).screen(ctx),
   sozlesmeler: pro.screen,
   dokum: pro.screen,
@@ -74,6 +75,7 @@ const MODULES = {
 };
 const SECTION = {
   "isletme-panosu":"ana",
+  "saha-akisi":"ana",
   "": "ana",
   "akilli-asistan": "asistan",
   gunsonu: "ana",
