@@ -1,6 +1,7 @@
 import {qs,qsa,esc,confirmDialog,toast} from './ui.js';
 export const ASSISTANT_TASKS=[
  {id:'overview',group:'Rapor',title:'İşletme panosu',detail:'Dönem seç, grafiğe dokun, kaynak kayıtlarını aç.',hash:'#/isletme-panosu'},
+ {id:'priorities',group:'Kontrol',title:'Bugün ne yapmalıyım?',detail:'Tahsilat, personelde nakit, bakım ve eksik kayıtlar için nedenleriyle öncelik önerir. İnternetsiz çalışır.',text:'Bugün ne yapmalıyım?'},
  {id:'today',group:'Rapor',title:'Bugünkü durum',detail:'İş, tahsilat, maliyet ve ayrı birim özeti. İnternetsiz çalışır.',text:'Bugünkü durum'},
  {id:'month',group:'Rapor',title:'Bu ayın özeti',detail:'Rakamlar bu cihazdaki kayıtlardan hesaplanır.',text:'Bu ayın özeti'},
  {id:'week',group:'Rapor',title:'Son 7 günün özeti',detail:'İş sayısı, fiyatlı işler ve tahsilat.',text:'Son 7 günün özeti'},

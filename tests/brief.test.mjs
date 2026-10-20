@@ -19,7 +19,7 @@ const t = B.text;
 assert.match(t, /Dün: 2 iş \(4 sefer, 8 saat\) · 12\.000 ₺ · 1 iş fiyatsız/);
 assert.match(t, /34GAM627 4 sefer · 34UL9492 8 saat/);
 assert.match(t, /Toplam alacak 14\.000 ₺ \(90 günü geçen 5\.000 ₺\) · dün 3\.000 ₺ tahsilat/);
-assert.match(t, /Kaya bugün ödeyecek · 9\.000 ₺/);
+assert.match(t, /Kaya ödeme sözü bugün · 9\.000 ₺/);
 assert.match(t, /Leda: 5\.000 ₺, en eskisi 106 gün/);
 assert.match(t, /Depoda 300 L mazot · günde ~50 L → 6 gün yeter/);
 assert.match(t, /34GAM627 · Muayene 20\.10\.2026'de bitiyor/);

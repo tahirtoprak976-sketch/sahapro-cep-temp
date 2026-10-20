@@ -183,8 +183,13 @@ export async function screen(ctx) {
     // Yerel komut (ekran aç, listele, düzeltilecek kaydı bul): Gemini'ye gitmez, internetsiz çalışır
     if (!refine && !files.length && typed) {
       const { routeCommand } = await import("./command-router.js");
+      const { isBusinessPriorityCommand } = await import("./business-priorities.js");
       const cx = readCtx();
-      const cmd = routeCommand(typed, await db.dumpAll(), todayStr(), cx);
+      let cmd;
+      try {
+        const snapshot = isBusinessPriorityCommand(typed) ? await db.readSnapshot({ attachments:false }) : null;
+        cmd = routeCommand(typed, snapshot?.data || await db.dumpAll(), todayStr(), { ...cx, priorityMeta:snapshot?.meta });
+      } catch (e) { qs('[data-out]',root).innerHTML=notice('warn','Kayıtlar okunamadı; öneri hazırlanmadı. Yeniden deneyin. '+(e.message||e));return; }
       if (cmd) {
         clearTimeout(draftT);draftT=null;
         await db.metaSet("assistant_draft", "");

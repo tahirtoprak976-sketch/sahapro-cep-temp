@@ -1,7 +1,8 @@
 // Sabah brifingi: günün ilk açılışında işletmenin durumu tek kartta. SAF hesap (morningBrief) + ekran (briefCard).
-// Rakamlar telefonda hesaplanır; Gemini istenirse yalnız yorum cümlesi yazar (rakamlar doğrulanır).
+// Rakamlar ve kaynak ekranlarına bağlı öncelikler bu cihazdaki kayıtlardan hesaplanır.
 import { isActive, todayStr, addDays, latestDocuments, tankStatus, trDate } from "./core.js";
-import { receivables, workAmount, hasWorkPrice } from "./collect-core.js";
+import { receivables, workAmount, missingCustomerWorkPrice, workReviewContext } from "./collect-core.js";
+import {businessPriorities} from './business-priorities.js';
 import { monthlySeries } from "./finance-chart.js";
 import { maintenanceBoard } from "./maint-core.js";
 import { staleQuotes } from "./quote-core.js";
@@ -30,8 +31,9 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
     for (const w of yWorks) (byV[nm(d, "vehicles", w.vehicle_id) || "—"] ||= []).push(w);
     const top = Object.entries(byV).sort((a, b) => b[1].length - a[1].length).slice(0, 4).map(([v, ws]) => `${v} ${units(ws)}`).join(" · ");
     const amt = yWorks.reduce((n, w) => n + workAmount(w), 0);
-    const np = yWorks.filter((w) => !hasWorkPrice(w) && !w.customer_fuel_allowance_l && !live(d, "customers").find((c) => c.id === w.customer_id)?.internal).length;
-    add("🚚", `${label}: ${yWorks.length} iş (${units(yWorks)})${amt ? ` · ${fmt(amt)} ₺` : ""}${np ? ` · ${np} iş fiyatsız` : ""}`, "#/isler");
+    const {internal,billed}=workReviewContext(d);
+    const np = yWorks.filter((w) => w.customer_id && !internal.has(w.customer_id) && missingCustomerWorkPrice(w,billed.has(w.id))).length;
+    add("🚚", `${label}: ${yWorks.length} iş (${units(yWorks)})${amt ? ` · ${fmt(amt)} ₺` : ""}${np ? ` · ${np} iş fiyatsız` : ""}`, "#/isler?from="+from+"&to="+to);
     add("", top);
   } else add("🚚", `${label} hiç iş kaydı yok — unutulan iş var mı?`, "#/akilli-asistan", "warn");
   // 2) Tahsilat ve alacak
@@ -39,7 +41,7 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   const rec = receivables(d, { today, notes });
   add("💰", `Toplam alacak ${fmt(rec.total)} ₺${rec.buckets.b90 ? ` (90 günü geçen ${fmt(rec.buckets.b90)} ₺)` : ""}${yCash ? ` · ${label.toLocaleLowerCase("tr-TR")} ${fmt(yCash)} ₺ tahsilat` : ""}`, "#/tahsilat", rec.buckets.b90 ? "warn" : "");
   const promises = rec.rows.filter((r) => r.promise && r.promise.date <= today);
-  for (const r of promises.slice(0, 3)) add("🤝", `${r.name} ${r.promise.date === today ? "bugün ödeyecek" : "ödeme sözünü geçirdi (" + trDate(r.promise.date) + ")"}${r.promise.amount ? ` · ${fmt(r.promise.amount)} ₺` : ""}`, "#/tahsilat/" + r.id, r.promise.late ? "alert" : "");
+  for (const r of promises.slice(0, 3)) add("🤝", `${r.name} ${r.promise.date === today ? "ödeme sözü bugün" : "ödeme sözünü geçirdi (" + trDate(r.promise.date) + ")"}${r.promise.amount ? ` · ${fmt(r.promise.amount)} ₺` : ""}`, "#/tahsilat/" + r.id, r.promise.late ? "alert" : "");
   const risky = rec.rows.filter((r) => !r.promise && r.oldest_days > 60).slice(0, 2);
   for (const r of risky) add("⏳", `${r.name}: ${fmt(r.total)} ₺, en eskisi ${r.oldest_days} gün${r.reminded_days != null ? ` (hatırlatma ${r.reminded_days} gün önce)` : " — hiç hatırlatılmadı"}`, "#/tahsilat/" + r.id, "warn");
   // 3) Depo tankı
@@ -64,7 +66,7 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   if (yard && yard.total >= (yard.alert || 15)) add("🏗", `Kendi depoda ~${fmt(yard.total)} kamyonet yükü birikti — döküm sahasına gönderme zamanı`, "#/kendi-depo", "warn");
   // 6) Bu ay
   const m = monthlySeries(d, { today, months: 1, fuelRefPrice })[0];
-  if (m.works || m.cost) add("📊", `Bu ay: iş ${fmt(m.work)} ₺ · masraf ${fmt(m.cost)} ₺ · tahmini kâr ${fmt(m.profit)} ₺${m.fuelPayL ? ` · mazot karşılığı ${fmt(m.fuelPayL)} L` : ""}${m.unpriced ? ` · ${m.unpriced} iş fiyatsız` : ""}`, "#/finans", m.profit < 0 ? "warn" : "");
+  if (m.works || m.cost) add("📊", `Bu ay: iş değeri ${fmt(m.work)} ₺ · kayıtlı maliyet ${fmt(m.cost)} ₺ · fark ${fmt(m.profit)} ₺${m.fuelPayL ? ` · mazot karşılığı ${fmt(m.fuelPayL)} L` : ""}${m.unpriced ? ` · ${m.unpriced} iş fiyatsız` : ""}. KDV esasları farklı olabilir; bu fark kâr veya kasa bakiyesi değildir.`, "#/finans", m.profit < 0 ? "warn" : "");
   const text = lines.map((l) => (l.ic ? l.ic + " " : "   ") + l.text).join("\n");
   return { date: today, lines, text, facts: { yesterday_works: yWorks.length, receivable: rec.total, overdue90: rec.buckets.b90, tank_days: tank.daysLeft, month_profit: m.profit } };
 }
@@ -96,7 +98,7 @@ export async function briefCard(ctx, host, data) {
     host.innerHTML = open
       ? `<div class="card" style="border-left:4px solid #f5a623"><div class="row between"><b>☀️ Günaydın — sabah brifingi</b><button class="btn sm ghost" data-bclose aria-label="Kapat">✕</button></div>
         ${B.lines.map((l) => `<div class="small ${l.href ? "tap" : ""}" ${l.href ? `data-go="${esc(l.href)}"` : ""} style="margin:5px 0;${l.kind === "alert" ? "color:#d9534f;font-weight:600" : l.kind === "warn" ? "color:#b9770e" : ""}">${l.ic ? esc(l.ic) + " " : '<span style="display:inline-block;width:1.4em"></span>'}${esc(l.text)}</div>`).join("")}
-        <div data-badvice></div>
+        <div data-badvice aria-live="polite"></div>
         <div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap"><button class="btn sm grow" data-bspeak>🔊 Sesli oku</button><button class="btn sm grow" data-bshare>📤 Paylaş</button><button class="btn sm grow" data-badv>🤖 Ne yapmalıyım?</button></div></div>`
       : `<div class="card tap" data-bopen><div class="row between"><span class="small">☀️ Sabah brifingi</span><span class="muted small">aç ›</span></div></div>`;
     host.querySelector("[data-bopen]")?.addEventListener("click", () => draw(true));
@@ -105,21 +107,25 @@ export async function briefCard(ctx, host, data) {
     host.querySelector("[data-bshare]")?.addEventListener("click", async () => (await import("./ui.js")).shareText("☀️ Sabah brifingi — " + trDate(today) + "\n\n" + B.text));
     host.querySelector("[data-badv]")?.addEventListener("click", async (ev) => {
       const b = ev.currentTarget, box = host.querySelector("[data-badvice]");
-      b.disabled = true;
-      box.innerHTML = '<div class="muted small">Gemini düşünüyor…</div>';
-      try {
-        const { withModelFallback, geminiText } = await import("./ai-gemini.js");
-        const { keepVerified } = await import("./day-summary.js");
-        const knowledge = (await import("./expert-core.js")).EXPERT_KNOWLEDGE;
-        const out = await withModelFallback(db, (o) => geminiText("Bugünün brifingi:\n" + B.text + "\n\nRakamlar (JSON): " + JSON.stringify(B.facts), { ...o, maxTokens: 600,
-          system: knowledge + "\nBir hafriyat/nakliye işletmesinin sahibine bugün yapması gerekenleri öner. En çok 3 kısa madde, Türkçe, sade. Yalnız brifingde geçen rakam ve adları kullan; rakam uydurma. Önce parayı (tahsilat, söz, gecikme), sonra yakıt/belge, sonra iş. Her madde bir eylem: 'X'i ara', 'Y'ye hatırlatma gönder', 'depoya mazot söyle'." }));
-        const v = keepVerified(String(out || ""), [B.text, B.facts]);
-        v.text = v.text.replace(/\s+\d+\.\s*(?=\d+\.|$)/g, " ").replace(/\s(\d+\.)\s/g, "\n$1 ").trim();
-        box.innerHTML = v.text ? `<div class="notice info" style="margin-top:6px"><span>🤖</span><span style="white-space:pre-wrap">${esc(v.text)}</span></div>` : '<div class="muted small">Öneri çıkmadı.</div>';
-      } catch (e) {
-        box.innerHTML = `<div class="muted small">${esc(e.message || e)}</div>`;
-      }
-      b.disabled = false;
+      let plan=null,shown=3,busy=false;
+      const render=()=>{
+        if(!box.isConnected)return;
+        box.innerHTML=`<section class="business-priorities" data-business-priorities><div class="row between"><b>Bugünün öncelikleri</b><button class="btn sm" data-priority-refresh>Yenile</button></div><p class="tiny muted">${plan.total} takip maddesi${plan.urgent?' · '+plan.urgent+' önce incelenecek kayıt':''} · ${trDate(plan.date)}</p>${plan.items.slice(0,shown).map(x=>`<article class="business-priority" data-priority="${esc(x.key)}"><span class="badge ${x.urgency===0?'danger':x.urgency===1?'warn':''}">${esc(x.category)}</span><b>${esc(x.title)}</b><p class="small">${esc(x.why)}</p><button class="btn block" data-priority-source data-go="${esc(x.hash)}">${esc(x.action)} ›</button></article>`).join('')||'<p class="small">Mevcut kurallarda takip maddesi bulunmadı. Bu, bütün işletme kayıtlarının eksiksiz olduğunu göstermez.</p>'}${plan.items.length>shown?`<button class="btn block" data-priority-more>Diğer öncelikleri göster (${plan.items.length-shown})</button>`:''}<p class="tiny muted">${esc(plan.note)}</p></section>`;
+        box.querySelector('[data-priority-more]')?.addEventListener('click',()=>{shown+=5;render();});
+        box.querySelector('[data-priority-refresh]').addEventListener('click',load);
+      };
+      const load=async()=>{
+        if(busy)return;busy=true;b.disabled=true;
+        box.querySelector('[data-priority-refresh]')?.setAttribute('disabled','');
+        box.innerHTML='<p class="small muted">Kayıtlardan öncelikler hazırlanıyor…</p>';
+        try{
+          const snapshot=await db.readSnapshot({attachments:false});
+          if(!box.isConnected)return;
+          plan=businessPriorities(snapshot.data,{today:todayStr(),meta:snapshot.meta});shown=3;render();
+        }catch(e){if(box.isConnected)box.innerHTML='<p class="notice warn">Öncelikler okunamadı. Yeniden deneyin. '+esc(e.message||e)+'</p>';}
+        finally{busy=false;b.disabled=false;}
+      };
+      await load();
     });
   };
   draw(!closed);
