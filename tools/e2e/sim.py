@@ -92,7 +92,7 @@ with sync_playwright() as p:
         dp.click("[data-tab=is]"); dp.wait_for_timeout(200)
     def driver_send(dp):
         n0 = dp.evaluate("(window.__shares||[]).length")
-        dp.click("[data-send]"); dp.wait_for_selector("[data-driver-share-go]",state="attached"); dp.locator("[data-driver-share-go]").evaluate('(e)=>e.closest("details").open=true'); dp.click("[data-driver-share-go]"); dp.wait_for_timeout(2500)
+        dp.click("[data-send]"); dp.wait_for_selector("[data-driver-share-go]",state="attached"); dp.locator("[data-driver-share-go]").evaluate('(e)=>{const d=e.closest("details");if(d)d.open=true}'); dp.click("[data-driver-share-go]"); dp.wait_for_timeout(2500)
         sh = dp.evaluate("(window.__shares||[]).at(-1)") if dp.evaluate("(window.__shares||[]).length") > n0 else None
         return sh
 

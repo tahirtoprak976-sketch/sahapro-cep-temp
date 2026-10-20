@@ -5,6 +5,7 @@ import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, confirmDialog, p
 import { commitEntries, validConfig, validDate, validNumber } from "./driver-delivery.js";
 import {driverCashAmount} from "./driver-customer.js";
 import { startActivity } from "./update-safety.js";
+import { reviewGroupWorks } from "./driver-group-share.js";
 import { reviewDriverPacket } from "./driver-share-ui.js";
 import { isActive, COMPANY_NAME } from "./core.js";
 
@@ -280,6 +281,7 @@ export async function screen(ctx) {
         <div class="driver-stats"><div><strong>${unsent.length}</strong><span>Paylaşılmayı bekliyor</span></div><div><strong>${sent.length}</strong><span>Paylaşım ekranı açıldı</span></div><div><strong>${entries.reduce((n,e)=>n+(e.ph || e.ph_dropped || 0),0)}</strong><span>Fotoğraf bağlantısı</span></div></div>
         <div class="small muted" style="line-height:1.6">1. Telefona kaydet → 2. Paketi kontrol et → 3. WhatsApp’ta paylaş → 4. Patron kontrol edip kaydeder.</div>
         <div class="tiny muted" style="margin-top:6px">Patronun aldığı bu telefonda doğrulanamaz. Kayıtlar ve fotoğraflar kendiliğinden silinmez. İnternetsiz kayıt girebilirsiniz; paylaşmak için bağlantınızı kontrol edin.</div>
+        ${entries.some(e => !e.k) ? `<button class="btn block" data-group-share style="margin-top:10px">WhatsApp grubunda paylaş · yalnız işler</button><p class="tiny muted">Kod ve dosya içermez. Patrona gönderim yerine geçmez; bekleyen kayıtları değiştirmez.</p>` : ""}
         ${unsent.length ? `<button class="btn primary block" data-pending style="margin-top:10px">${unsent.length} bekleyen kayda git ↓</button>` : ""}
       </div>
       ${recent ? `<section class="card" data-save-result role="status"><b>✓ Telefona kaydedildi · henüz paylaşılmadı</b><p class="small">${esc(core.entryLine(recent, cfg))}</p><button class="btn primary block" data-review-saved>Bu kaydın paketini hazırla</button><p class="tiny muted">Yeni kayıt eklemeye de devam edebilirsiniz; tüm bekleyenleri aşağıdan birlikte hazırlayın.</p></section>` : ""}
@@ -321,7 +323,7 @@ export async function screen(ctx) {
       </div>`}
       ${draftNote ? `<div class="card small" data-draftnote>📝 ${esc(draftNote)} ${missingDraftPhotos ? `<button class="btn sm" data-forgetmissing>Eksik fotoğrafları yok say</button>` : ""} <button class="btn sm ghost" data-draftclear>Taslağı temizle</button></div>` : ""}<div class="section-title">Telefonda bekleyen — henüz paylaşılmadı (${unsent.length})</div>
       <div id="driver-pending">${entryCards(unsent) || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}</div>
-      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#168a45;color:#fff;border:0;font-weight:800">📤 Paketi hazırla · ${unsent.length} kayıt</button><p class="tiny muted">Önce kayıt ve fotoğraf önizlemesini kontrol edin; sonra paylaşın. Uzun listeler parçalara ayrılır. Kalan kayıt sayısı her paylaşımın ardından gösterilir. Fotoğraflar aynı pakette, kayıt sırasıyla eklenir.</p>` : ""}
+      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#168a45;color:#fff;border:0;font-weight:800">📤 Patrona gönder · ${unsent.length} kayıt</button><p class="tiny muted">Önce kayıt ve fotoğraf önizlemesini kontrol edin; sonra paylaşın. Uzun listeler parçalara ayrılır. Kalan kayıt sayısı her paylaşımın ardından gösterilir. Fotoğraflar aynı pakette, kayıt sırasıyla eklenir.</p>` : ""}
       ${sent.length ? `<details class="card" data-shared style="margin-top:10px"><summary class="small">Paylaşılanlar (${sent.length}) — patronun aldığı bu telefonda doğrulanamaz</summary><p class="tiny muted">Tekrar paylaşım aynı kayıt kimliğini taşır; patronda ikinci kayıt oluşturmaz. WhatsApp'ta mesajı ve ekleri kontrol edin.</p>${entryCards(sent)}<button class="btn sm" style="margin-top:6px" data-resend>Son paylaşılanı tekrar paylaş</button></details>` : ""}
       <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><div class="field" style="margin-top:6px"><label class="tiny">Patron yeni bağlantı gönderdiyse buraya yapıştırın</label><textarea data-newlink rows="2" placeholder="Yeni bağlantı"></textarea><button class="btn sm block" data-newlink-ok style="margin-top:4px">Yeni bağlantıyı kur</button></div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
     bind(); lockForm();
@@ -588,6 +590,18 @@ export async function screen(ctx) {
       } catch (e) { toast("Paylaşım tamamlanamadı: " + (e.message || e) + ". Kayıtlar telefonda korunuyor.", "err"); }
       finally { sharing = false; releaseUpdate(); draw(); }
     };
+    qs("[data-group-share]", root)?.addEventListener("click", async () => {
+      if (sharing || busy || photoBusy) return;
+      sharing = true; lockForm();
+      const release = startActivity("Grup iş özeti hazırlanıyor veya paylaşılıyor");
+      try {
+        await reviewGroupWorks({ root, cfg,
+          rows: JSON.parse(localStorage.getItem(K_ENT) || "[]"),
+          readEntries: () => JSON.parse(localStorage.getItem(K_ENT) || "[]"),
+          readConfig: () => JSON.parse(localStorage.getItem(K_CFG) || "null") });
+      } catch (e) { toast("İş özeti açılamadı: " + (e.message || e), "err"); }
+      finally { sharing = false; release(); draw(); }
+    });
     qs("[data-review-saved]", root)?.addEventListener("click", () => shareRows(entries.filter(e => e.id === lastSavedId && !e.sent)));
     qs("[data-send]", root)?.addEventListener("click", () => shareRows(entries.filter(e => !e.sent)));
     qs("[data-resend]", root)?.addEventListener("click", () => {
