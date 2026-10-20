@@ -37,3 +37,18 @@ assert.match(preparedPacketError(packet,[a],current,{...current,lid:'new'},'2026
 assert.match(preparedPacketError(packet,[a],current,current,'2026-10-22'),/süresi doldu/);
 assert.match(preparedPacketError(packet,null,current,current,'2026-10-20'),/okunamadı/);
 console.log('prepared packet: stale record/config, expiry, corruption guards OK');
+
+const {driverPhotoPolicy}=await import('../js/driver-core.js');
+assert.deepEqual(driverPhotoPolicy(payload,3),{expected:3,attached:3,reason:'',allowed:true});
+for(const n of [0,1,2,4,5]){
+ const policy=driverPhotoPolicy(payload,n);assert.equal(policy.allowed,false);assert.equal(policy.reason,n<3?'missing':'extra');
+ const p=payloadsToPlan(payload,{}, {photoCount:n});assert.deepEqual(p.meta[0].photos,[]);assert.deepEqual(p.fuelMeta[0].photos,[]);
+}
+assert.equal(driverPhotoPolicy(payload,3,{rejected:true}).reason,'rejected');
+const rejectedPlan=payloadsToPlan(payload,{}, {photoCount:3,allowPhotos:false});assert.deepEqual(rejectedPlan.meta[0].photos,[]);
+for(const ph of [-1,0.5,'2',21,Infinity])assert.equal(driverPhotoPolicy([{e:[{ph}]}],1).reason,'invalid');
+assert.equal(driverPhotoPolicy([{e:[{ph:0,sg:1}]}],1).allowed,true);
+assert.equal(driverPhotoPolicy([{e:[{ph:0,sg:2}]}],2).reason,'invalid');
+const extra={works:[{photos:[]}],tickets:[],driverPhotoNeed:0,driverPhotoBlocked:true};mergeTicketsIntoWorks(extra,{photoCount:2});assert.deepEqual(extra.works[0].photos,[],'zero expected photos must never assign extras to a lone driver work');
+const signed=payloadsToPlan([{p:'p',e:[{id:'s',date:'2026-10-20',ph:1,sg:1,dfs:'S-1',q:1}]}],{}, {photoCount:3});assert.equal(signed.meta[0].digital.sigPhoto,null);assert.deepEqual(signed.meta[0].photos,[]);
+console.log('critic photo guards OK: missing, extra, rejected, invalid counts, signature, lone-work fallback');

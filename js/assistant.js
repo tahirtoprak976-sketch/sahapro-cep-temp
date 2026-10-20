@@ -39,8 +39,9 @@ export async function screen(ctx) {
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
       <div class="field"><label>Fiş / döküm fişi / belge fotoğrafı veya ses kaydı (isteğe bağlı)</label><input type="file" accept="image/*,audio/*" multiple data-photos></div>
+      <p class="tiny muted">En fazla 20 dosya. Şoför paketinin tüm fotoğraflarını aynı seçimde ekleyin.</p>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
-      <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button>
+      <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
       <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
     </div>
@@ -68,10 +69,12 @@ export async function screen(ctx) {
   }
   let prev = null; // son sonuç (kaydedilmediyse düzeltme için)
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
-  let files = [];
+  let files = [], attachmentError = "";
+  const attachmentLimit = 20;
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
   const showThumbs = () => {
-    qs("[data-clearfiles]",root).hidden=!files.length;
+    const errorBox = qs("[data-attachment-error]", root); errorBox.hidden = !attachmentError; errorBox.textContent = attachmentError;
+    qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
     const box = qs("[data-thumbs]", root);
     box.innerHTML = files
       .map((f, i) => isAudio(f)
@@ -80,9 +83,11 @@ export async function screen(ctx) {
       .join("");
     for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { files.splice(Number(b.dataset.rm), 1); showThumbs(); });
   };
-  qs("[data-clearfiles]",root).onclick=()=>{files=[];photosIn.value="";showThumbs();};
+  qs("[data-clearfiles]",root).onclick=()=>{files=[];attachmentError="";photosIn.value="";showThumbs();};
   photosIn.addEventListener("change", () => {
-    files = [...files.filter((f) => f._rec), ...photosIn.files].slice(0, 10);
+    const next = [...files.filter((f) => f._rec), ...photosIn.files];
+    if (next.length > attachmentLimit) { photosIn.value = ""; attachmentError = "En fazla 20 dosya seçin. Önceki ekler korunuyor; yeni seçim alınmadı. Yeniden seçin veya ekleri temizleyin."; showThumbs(); return toast(attachmentError, "err"); }
+    files = next; attachmentError = "";
     showThumbs();
   });
   // Sesli not: telefonun mikrofonu ile kayıt (en çok 3 dakika)
@@ -111,7 +116,8 @@ export async function screen(ctx) {
         if (blob.size < 500) return toast("Kayıt boş", "err");
         const f = new File([blob], "sesli-not-" + new Date().toTimeString().slice(0, 5).replace(":", "") + "." + (blob.type.split("/")[1] || "webm"), { type: blob.type });
         f._rec = true;
-        files = [...files, f].slice(0, 10);
+        if (files.length >= attachmentLimit) return toast("20 dosya sınırı dolu; sesli not eklenmedi. Önce ekleri azaltın", "err");
+        files = [...files, f];
         showThumbs();
         if (autoSend) { autoSend = false; qs("[data-ask]", root).click(); }
       };
@@ -129,12 +135,14 @@ export async function screen(ctx) {
       const cache = await caches.open("sahapro-share");
       const t = await cache.match("./__share/text");
       if (t) msgEl.value = await t.text();
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < attachmentLimit; i++) {
         const r = await cache.match(`./__share/file-${i}`);
         if (!r) break;
         const b = await r.blob();
         files.push(new File([b], decodeURIComponent(r.headers.get("x-name") || "foto.jpg"), { type: b.type || r.headers.get("content-type") || "image/jpeg" }));
       }
+      const incomingError = await cache.match("./__share/error");
+      if (incomingError) attachmentError = await incomingError.text();
       await caches.delete("sahapro-share");
       showThumbs();
       if (msgEl.value || files.length) toast("Paylaşılan içerik alındı", "ok");
@@ -148,6 +156,7 @@ export async function screen(ctx) {
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
+    if (attachmentError) return toast(attachmentError, "err");
     const typed = qs("[data-msg]", root).value.trim();
     // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
     // Uzun ya da WhatsApp dışa aktarımı gibi görünen metin YENİ mesajdır: düzeltme kutusu işaretli kalmış olsa bile önceki taslağa eklenmez
@@ -249,7 +258,8 @@ export async function screen(ctx) {
       let plan = useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : {};
-      const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length }) : null;
+      const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
+      const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length, allowPhotos: photoPolicy.allowed }) : null;
       if (drvPlan) plan = { ...plan, works: [...drvPlan.plan.works, ...(plan.works || [])], fuel: [...drvPlan.plan.fuel, ...(plan.fuel || [])], expenses: [...drvPlan.plan.expenses, ...(plan.expenses || [])], maintenance: [...drvPlan.plan.maintenance, ...(plan.maintenance || [])] };
       const asked = await askP;
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
@@ -280,11 +290,19 @@ export async function screen(ctx) {
         drvPlan.expMeta.forEach((m, i) => { tag(v.expenses[i], m); if (v.expenses[i]) Object.assign(v.expenses[i], { driver_pay: m.pay, driver_pid: m.personnel_id }); });
         drvPlan.mainMeta.forEach((m, i) => { tag((v.maintenance || [])[i], m); if (v.maintenance?.[i]) Object.assign(v.maintenance[i], { driver_pay: m.pay, driver_pid: m.personnel_id, km: m.km, machine_hours: m.hours }); });
         // Şoför fotoğraf gönderdi ama buraya eklenmedi (kopyala-yapıştırda yalnız yazı gelir)
-        const expected = drvPayloads.reduce((n, p) => n + p.e.reduce((k, e) => k + (Number(e.ph) || 0) + (e.sg ? 1 : 0), 0), 0);
-        if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} Eksik pakette fotoğraflar yanlış kayda bağlanmasın diye otomatik eşleştirme yapılmadı. Aşağıdan tüm fotoğrafları kayıt sırasıyla galeriden seçin (WhatsApp'tan gelen fotoğraflar galeride "WhatsApp Images" klasöründedir); kartlar fotoğrafla yeniden hazırlanır. Fotoğrafsız da kaydedebilirsiniz.`;
-        if (expected > images.length) v.driverPhotoNeed = expected;
+        const expected = photoPolicy.expected;
+        v.driverPhotoBlocked = !photoPolicy.allowed;
+        if (v.driverPhotoBlocked) {
+          const why = photoPolicy.reason === "rejected" ? "Mesajda reddedilmiş şoför paketi de var; eklerin hangi pakete ait olduğu doğrulanamıyor. Geçerli mesajı ve yalnız ona ait dosyaları ayrı gönderin."
+            : photoPolicy.reason === "invalid" ? "Şoför paketindeki dosya adedi geçersiz. Şoförden kaydı uygulamadan yeniden paylaşmasını isteyin."
+            : `Pakette ${expected ?? "geçersiz sayıda"} dosya bekleniyor, ${images.length} dosya eklendi. ${photoPolicy.reason === "extra" ? "Fazla veya başka pakete ait dosya var." : "Dosyalar eksik."} Yalnız bu paketin tüm dosyalarını gönderildiği sırayla yeniden seçin.`;
+          v.driverPhotoWarn = why + " Otomatik fotoğraf ve imza eşleştirmesi yapılmadı. Fotoğrafsız kayıt için ayrıca onayınız istenir.";
+          v.driverPhotoNeed = expected || 0;
+          v.driverPhotoReselect = expected > 0 && (photoPolicy.reason === "missing" || photoPolicy.reason === "extra");
+          v.driverPhotoClear = expected === 0 && photoPolicy.reason === "extra";
+        }
         const duplicateCount = [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])].filter(r => r.driverDup).length;
-        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir). Kontrol kartları hazır; yeni kayıtlar henüz kaydedilmedi. ${duplicateCount ? duplicateCount + " satır daha önce alınmış; seçim dışı bırakıldı. " : ""}Pakette ${expected} dosya bekleniyor, ${images.length} dosya eklendi. Kaydetmeden önce dosya eşleşmelerini kontrol edin.`;
+        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir). Kontrol kartları hazır; yeni kayıtlar henüz kaydedilmedi. ${duplicateCount ? duplicateCount + " satır daha önce alınmış; seçim dışı bırakıldı. " : ""}Pakette ${expected ?? "geçersiz sayıda"} dosya bekleniyor, ${images.length} dosya eklendi. Kaydetmeden önce dosya eşleşmelerini kontrol edin.`;
       }
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message: vmsg, d });
@@ -361,6 +379,13 @@ function summaryHtml(v, d) {
 function render(ctx, out, v, d, { message, files, ms }) {
   // Şoförün fotoğrafı eksikse: burada seçilir, mesaj fotoğraflarla yeniden işlenir (WhatsApp'a dönmeye gerek yok)
   setTimeout(() => {
+    const clear = qs("[data-drvclear]", out);
+    if (clear) clear.onclick = () => {
+      qs("[data-clearfiles]", ctx.root).click();
+      qs("[data-msg]", ctx.root).value = message;
+      const rf = qs("[data-refine]", ctx.root); if (rf) rf.checked = false;
+      qs("[data-ask]", ctx.root).click();
+    };
     const dp = qs("[data-drvph]", out);
     if (!dp) return;
     dp.addEventListener("change", () => {
@@ -403,7 +428,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       (v.restSkipped ? notice("warn", "Mesajdaki diğer yazı da işlenmedi (reddedilen şoför kaydı yazıdan geri gelmesin). Gerekliyse yalnız o yazıyı ayrıca yapıştırın.") : "") +
       (v.relink || []).map(([pid, n]) => `<button class="btn block" style="margin-top:6px" data-go="#/sofor-kur?pid=${esc(pid)}">🔗 ${esc(n)} için yeni imzalı bağlantı oluştur</button>`).join("") : "") +
     (v.driverSecWarn ? notice("warn", "🛡 " + v.driverSecWarn.map(esc).join(" · ")) : "") +
-    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Şoförün fotoğrafını ekle${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/*" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : "") +
+    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + (v.driverPhotoReselect ? `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Paketin dosyalarını yeniden seç${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/*" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : v.driverPhotoClear ? '<button class="btn block" data-drvclear>Bu mesajın eklerini kaldır ve yeniden hazırla</button>' : "") : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
@@ -688,7 +713,19 @@ function render(ctx, out, v, d, { message, files, ms }) {
     for (const n of ["scope", "customer", "unit"]) qs(`[name=${n}]`, card).addEventListener("change", show);
     show();
   }
-  qs("[data-save]", out)?.addEventListener("click", () => save(ctx, out, v, d, { message, files }));
+  let saveInFlight = false;
+  qs("[data-save]", out)?.addEventListener("click", async (ev) => {
+    if (saveInFlight) return;
+    saveInFlight = true;
+    const btn = ev.currentTarget; btn.disabled = true;
+    try {
+      const rows = { work: v.works, fuel: v.fuel, expense: v.expenses, maintenance: v.maintenance };
+      const affected = v.driverPhotoBlocked && qsa(".card[data-kind]", out).some(c => qs("[data-pick]", c)?.checked && rows[c.dataset.kind]?.[Number(c.dataset.i)]?.driver_entry_id);
+      if (affected && !(await confirmDialog("Dosyalar eklenmeden kaydedilsin mi?", "Şoför dosyaları güvenle eşleştirilemedi. Seçili şoför kayıtlarına bu paketin fotoğrafları ve dosya olarak gelen imzaları eklenmeyecek. Sonradan aynı kodu tekrar almak dosyaları tamamlamaz; kayıt ayrıntısından elle eklemeniz gerekir. Önce dosyaları düzeltmek için vazgeçin.", "Dosyasız kaydet"))) return;
+      if (out.isConnected) await save(ctx, out, v, d, { message, files });
+    } catch (e) { toast("Kaydedilemedi: " + (e.message || e), "err"); }
+    finally { saveInFlight = false; if (btn.isConnected) btn.disabled = false; }
+  });
   // Önizlemesi açılamayan fotoğraf: yerine yazı (CSP satır içi onerror'a izin vermez)
   for (const img of qsa("img[data-imgfb]", out)) img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("div"), { className: "small muted", textContent: img.alt })));
   // Belge kartı: "Yeni personel / araç" seçilince ilgili alanlar görünür
