@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {driverCashWork,driverCashContextHTML} from '../js/driver-cash-context.js';
+const cash={driver_entry_id:'entry',customer_id:'child',driver_work:{date:'2026-09-07',customer:'Çatıcı (Ulaş Rondela)',vehicle:'Manitou',work_type:'Makine Çalışması',quantity:1,unit:'Saat',note:'Çatıya malzeme verildi'}};
+const work={id:'work',driver_entry_id:'entry',customer_id:'child'};
+assert.equal(driverCashWork(cash,[work]).state,'linked');
+assert.equal(driverCashWork(cash,[{...work,driver_entry_id:'different'}]).state,'pending');
+assert.equal(driverCashWork(cash,[{...work,deleted_at:'2026-10-20'}]).state,'deleted');
+assert.equal(driverCashWork(cash,[work,{...work,id:'second'}]).state,'ambiguous');
+assert.equal(driverCashWork({...cash,customer_id:'different'},[work]).state,'customer-changed');
+assert.equal(driverCashWork({},[work]).state,'none');assert.equal(driverCashContextHTML({},[work]),'');
+const html=driverCashContextHTML(cash,[work]);for(const text of ['07.09.2026','Çatıcı (Ulaş Rondela)','Manitou','Makine Çalışması 1 Saat','#/isler/work'])assert.ok(html.includes(text),text);
+assert.ok(!driverCashContextHTML(cash,[work,{...work,id:'duplicate'}]).includes('data-driver-cash-work'));
+assert.match(driverCashContextHTML({driver_entry_id:'old',source_quote:'<img src=x onerror=alert(1)>'}),/&lt;img/);
+assert.ok(!driverCashContextHTML({...cash,driver_work:{...cash.driver_work,note:'<script>bad</script>'}},[work]).includes('<script>'));
+assert.ok(driverCashContextHTML({driver_entry_id:'old'}).includes('iş özeti saklanmamış'));
+console.log('driver cash context: exact identity only, pending/deleted/duplicate/mismatch states, legacy and escaped rendering OK');

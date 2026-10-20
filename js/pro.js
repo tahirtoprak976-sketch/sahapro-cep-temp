@@ -1,3 +1,4 @@
+import {driverCashContextHTML} from "./driver-cash-context.js";
 import {
   workFinancials,
   operatingResult,
@@ -1835,6 +1836,7 @@ async function simpleDetail(ctx) {
     '<div class="card">' +
     spec.sections[0].pairs.map((p) => kv(...p)).join("") +
     "</div>" +
+    (store === "cash_records" ? driverCashContextHTML(r, await db.getAll("work_records")) : "") +
     (store === "price_book" && (r.price_history || []).length
       ? `<div class="card" data-pricehist><div class="section-title" style="margin:0 0 6px">Fiyat geçmişi</div>${[...r.price_history].reverse().map((h) => `<div class="small">• ${esc(h.until ? core.trDate(core.todayStr(new Date(h.until))) : "—")} tarihine kadar: <b>${esc(core.fmtTL(h.price))} ₺</b> · KDV ${h.kdv_included ? "dahil" : "hariç"} %${esc(h.kdv_rate ?? "")}${h.valid_from || h.valid_to ? ` · geçerlilik ${esc(h.valid_from || "…")} – ${esc(h.valid_to || "…")}` : ""}</div>`).join("")}<div class="muted tiny" style="margin-top:4px">Kayıtlı işlerin fiyatı değişmez; her iş kendi tarihindeki fiyatı saklar.</div></div>`
       : "");

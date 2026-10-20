@@ -164,7 +164,9 @@ export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true
     }
     const customer = resolveDriverCustomer(e, d);
     const received = driverCashAmount(e.cash);
-    if (received > 0) cash.push({ ...customer, date: e.cash_date || e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id, note: entryLine(e, {p:[p.p,p.n],V:[],C:[],S:[],D:[]}) });
+    if (received > 0) cash.push({ ...customer, date: e.cash_date || e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id,
+      driver_work: { date: e.date, customer: customer.customer_id ? customerLabel(live(d,"customers").find(c=>c.id===customer.customer_id),live(d,"customers")) : e.cn || "", vehicle: live(d,"vehicles").find(v=>v.id===e.vid)?.name || e.vid || "", work_type: e.wt || "", quantity: e.q, unit: e.u || "", note: e.note || "" },
+      note: entryLine(e, {p:[p.p,p.n],V:[],C:[],S:[],D:[]}) });
     const photos = takePhotos(e.ph);
     // İmzalı dijital fişin imza görüntüsü: işin fotoğraflarından hemen sonra gelir
     const sigPhoto = e.sg ? takePhotos(1)[0] ?? null : null;

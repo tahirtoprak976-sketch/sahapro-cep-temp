@@ -1,3 +1,4 @@
+import {driverCashContextHTML} from "./driver-cash-context.js";
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
 // giderleri, yakıtı çıkarır → doğrulanmış kartlar → tek dokunuşla kaydet. Yeni müşteri/şantiye,
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
@@ -590,8 +591,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
     v.collections
       .map((r, i) => `<div class="card" data-kind="collection" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Tahsilat</b> ${r.driver_entry_id ? "(şoförün aldığı nakit · onay bekliyor)" : "(müşteriden para)"}</label>
+        ${driverCashContextHTML(r, d.work_records || [])}
         <div class="formgrid2">
-          <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
+          <div class="field"><label>${r.driver_entry_id ? "Nakdin alındığı tarih" : "Tarih"}</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Müşteri</label><select name="customer">${opt([...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer + (r.new_customer_parent_id ? " (" + nameOf("customers", r.new_customer_parent_id) + " taşeronu)" : "")]] : [])], r.customer_id || (r.new_customer ? "new:" + r.new_customer : ""))}</select></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="amount" value="${r.amount ?? ""}"></div>
           <div class="field"><label>Şekil</label><select name="method">${opt(r.driver_entry_id ? [["Nakit", "Nakit"]] : [["Nakit", "Nakit"], ["Havale", "Havale / EFT"]], r.method, "Nakit")}</select></div>
@@ -1385,7 +1387,7 @@ async function save(ctx, out, v, d, { message, files }) {
             const pid = val(c, "personnel") || null;
             const r0 = await db.saveNew("cash_records", {
               request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
-              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo, ...(cr.driver_entry_id ? { driver_entry_id: cr.driver_entry_id } : {}),
+              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo, ...(cr.driver_entry_id ? { driver_entry_id: cr.driver_entry_id, ...(cr.driver_work ? { driver_work: structuredClone(cr.driver_work) } : {}) } : {}),
             }, "Asistan tahsilat", { op: { id: reqId, hash: await db.opHash(fieldsC) } }); // PR #121 işlem kaydı: kimlik = kaynak anahtarı (deterministik)
             if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
           }
