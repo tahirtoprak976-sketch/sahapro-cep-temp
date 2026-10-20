@@ -1,6 +1,7 @@
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
+import {customerNameKey} from "./driver-customer.js";
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
@@ -427,15 +428,16 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const c = byId(customers, w.customer_id);
     if (c) r.customer_id = c.id;
     else if (w.new_customer) {
-      const twin = similarCard(w.new_customer, customers);
-      const hinted = !twin ? hintCustomer(w.new_customer, hints) : null;
+      const exact = fromDriver ? customers.filter(c => customerNameKey(c.name) === customerNameKey(w.new_customer) && (c.parent_customer_id || null) === (w.new_customer_parent_id || null)) : [];
+      const twin = fromDriver ? (exact.length === 1 ? exact[0] : null) : similarCard(w.new_customer, customers);
+      const hinted = !fromDriver && !twin ? hintCustomer(w.new_customer, hints) : null;
       if (twin) { r.customer_id = twin.id; issues.push(`"${w.new_customer}" mevcut müşteri "${twin.name}" ile eşleştirildi`); }
       else if (hinted) {
         r.customer_id = hinted;
         r.hinted = true;
         issues.push(`"${w.new_customer}" geçmiş işlerde "${customers.find((x) => x.id === hinted)?.name}" kayıtlarında geçiyor; o müşteri seçildi — doğruysa işaretleyin (bir kez kaydedince hafızaya alınır)`);
       }
-      else if (!inMessage(w.new_customer, message)) { issues.push(`Yeni müşteri adı "${w.new_customer}" mesajda geçmiyor`); r.badNew = true; }
+      else if (!fromDriver && !inMessage(w.new_customer, message)) { issues.push(`Yeni müşteri adı "${w.new_customer}" mesajda geçmiyor`); r.badNew = true; }
       else {
         const key = norm(w.new_customer);
         if (!newNames.has(key)) newNames.set(key, String(w.new_customer).trim());
@@ -591,7 +593,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     {
       const card = r.customer_id ? byId(customers, r.customer_id) : null;
       const parent = card?.parent_customer_id ? byId(customers, card.parent_customer_id) : null;
-      if (card && parent) {
+      if (card && parent && !fromDriver) {
         const rowText = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
         const named = inMessage(card.name, rowText) || tok(card.name).filter((x) => !GENERIC.has(x) && x.length >= 4).some((x) => tok(rowText).some((t) => sameWord(t, x)))
           || live(d, "aliases").some((a) => a.active !== false && a.target_type === "customer" && a.target_id === card.id && inMessage(a.alias, rowText));

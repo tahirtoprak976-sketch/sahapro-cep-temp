@@ -1,8 +1,9 @@
 // Şoför ekranı (#/sofor) ve patron tarafında şoför bağlantısı (#/sofor-kur).
 // Şoför telefonu "şoför modunda" yalnız bu ekranı gösterir; kayıtlar telefonda (localStorage + fotoğraflar Cache Storage) durur,
 // "Patrona gönder" ile WhatsApp'tan okunur metin + SP1 kodu + fiş fotoğrafları gider. Patronun asistanı kodu Gemini'siz çözer.
-import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, confirmDialog, shareText } from "./ui.js";
+import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, confirmDialog, promptDialog, shareText } from "./ui.js";
 import { commitEntries, validConfig, validDate, validNumber } from "./driver-delivery.js";
+import {driverCashAmount} from "./driver-customer.js";
 import { startActivity } from "./update-safety.js";
 import { reviewDriverPacket } from "./driver-share-ui.js";
 import { isActive, COMPANY_NAME } from "./core.js";
@@ -104,7 +105,7 @@ export async function screen(ctx) {
   let previewURLs = [];
   const picture = (f, alt) => { const url = URL.createObjectURL(f); previewURLs.push(url); return `<img src="${url}" alt="${esc(alt)}" style="width:76px;height:88px;object-fit:contain;border-radius:8px;background:#fff">`; };
   const photoListHtml = () => photos.length ? `<div class="small strong">${photos.length} fotoğraf hazır</div><div class="driver-photos">` + photos.map((f, i) => `<div>${picture(f, "Fotoğraf " + (i + 1))}<button class="btn sm ghost" data-phrm="${i}" aria-label="Fotoğraf ${i + 1} kaldır">${i + 1} · Kaldır</button></div>`).join("") + "</div>" : "";
-  const st = { vid: ls.get("sp_driver_vid") || cfg.veh || "", cid: "", cn: "", sid: "", wt: core.DRIVER_TYPES[0], q: 1, u: "Sefer", ds: "", dn: "", ton: "", slip: "", note: "", mat: "", f: {} };
+  const st = { vid: ls.get("sp_driver_vid") || cfg.veh || "", cid: "", cn: "", sid: "", wt: core.DRIVER_TYPES[0], q: 1, u: "Sefer", ds: "", dn: "", ton: "", slip: "", note: "", mat: "", cash: "", f: {} };
   let draftNote = "";
   {
     const dr = ls.get(K_DRAFT);
@@ -122,7 +123,7 @@ export async function screen(ctx) {
     const snapshot = { at: Date.now(), tab, st: structuredClone(st), ph: photos.length, missing: missingDraftPhotos };
     const files = [...photos];
     draftQueue = draftQueue.catch(() => {}).then(async () => {
-      const empty = !snapshot.ph && !snapshot.missing && !files.length && !String(snapshot.st.note || snapshot.st.slip || snapshot.st.ton || snapshot.st.cn || "").trim() && !Object.values(snapshot.st.f || {}).some(Boolean) && !Object.values(snapshot.st.x || {}).some(Boolean) && !snapshot.st.cid;
+      const empty = !snapshot.ph && !snapshot.missing && !files.length && !String(snapshot.st.note || snapshot.st.slip || snapshot.st.ton || snapshot.st.cn || snapshot.st.cash || "").trim() && !Object.values(snapshot.st.f || {}).some(Boolean) && !Object.values(snapshot.st.x || {}).some(Boolean) && !snapshot.st.cid;
       if (empty) { ls.del(K_DRAFT); return; }
       const old = { id: draftPhotoId, ph: draftPhotoCount };
       const photoId = withPhotos ? "draft-" + core.newId() : draftPhotoId;
@@ -253,7 +254,7 @@ export async function screen(ctx) {
         <div class="row between"><span class="badge">${e.sent ? "Paylaşım açıldı" : "Telefonda bekliyor"}</span><span class="tiny muted">${e.ph || e.ph_dropped || 0} fotoğraf</span></div>
         <p class="small" style="line-height:1.6;overflow-wrap:anywhere">${esc(core.entryLine(e, cfg))}</p>
         <div class="driver-actions"><button class="btn sm" data-sendone="${esc(e.id)}">${e.sent ? "Tekrar paylaş" : "Bu kaydı paylaş"}</button>
-        ${!e.k ? `<button class="btn sm" data-slip="${esc(e.id)}">Dijital fiş</button>` : ""}
+        ${!e.k ? `<button class="btn sm" data-cash-edit="${esc(e.id)}">Nakit bilgisi${e.cash ? " · " + esc(e.cash) + " ₺" : ""}</button><button class="btn sm" data-slip="${esc(e.id)}">Dijital fiş</button>` : ""}
         ${(e.ph || e.ph_dropped) ? `<button class="btn sm" data-viewphotos="${esc(e.id)}">Fotoğrafları kontrol et</button>` : ""}
         <button class="btn sm ghost" data-del="${esc(e.id)}" aria-label="Kaydı telefondan kaldır">${e.sent ? "Telefondan kaldır" : "Sil"}</button></div>
         ${(e.ph || e.ph_dropped) ? `<div data-photo-panel="${esc(e.id)}" hidden><div class="driver-photos" data-savedphotos="${esc(e.id)}"></div><div class="tiny muted" data-photo-status="${esc(e.id)}"></div>
@@ -301,6 +302,7 @@ export async function screen(ctx) {
           <div class="field"><label>Fişteki ton</label><input type="number" inputmode="decimal" data-k="ton" value="${esc(st.ton)}"></div>
           <div class="field"><label>Fiş no</label><input data-k="slip" value="${esc(st.slip)}"></div>
           <div class="field"><label>Not</label><input data-k="note" value="${esc(st.note)}"></div></div>
+        <div class="field"><label>Alınan nakit (₺, varsa)</label><input type="number" step="0.01" min="0" inputmode="decimal" data-k="cash" value="${esc(st.cash || "")}" placeholder="Örn. 2500"><div class="tiny muted">Müşteriden para aldıysan tutarı yaz. Birim fiyat değildir. Para sende olarak patronun onayına gelir; kasaya teslim ayrı izlenir.</div></div>
         <div class="field"><label>📷 Fiş fotoğrafı</label><input type="file" accept="image/*" capture="environment" multiple data-photo></div>
         <div class="tiny muted">En çok ${PHOTO_LIMITS.count} fotoğraf · her biri ${PHOTO_LIMITS.mb} MB'a kadar · telefonda küçültülür, yönü korunur</div><div class="small" data-phc>${photoListHtml()}</div>
         <button class="btn primary block" data-add style="${big};margin-top:8px">✓ Kaydet</button>
@@ -412,11 +414,13 @@ export async function screen(ctx) {
       try { await saveDraft(true); draftNote = "Taslakta yalnız görünen fotoğraflar kullanılacak"; draw(); }
       catch (err) { missingDraftPhotos = before; toast(err.message || String(err), "err"); }
     });
-    qs("[data-draftclear]", root)?.addEventListener("click", async () => { await clearDraft(); photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "", f: {} }); Object.keys(x).forEach((k) => delete x[k]); draw(); });
+    qs("[data-draftclear]", root)?.addEventListener("click", async () => { await clearDraft(); photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "", cash: "", f: {} }); Object.keys(x).forEach((k) => delete x[k]); draw(); });
     qs("[data-add]", root)?.addEventListener("click", async () => {
       if (busy || photoBusy || sharing) return; // iki kez basma: tek kayıt
       readForm();
       if (!checkForm()) return;
+      const cash = driverCashAmount(st.cash);
+      if (cash === null) return toast("Nakit tutarı pozitif sayı olmalı; en fazla iki ondalık hane kullanın", "err");
       const q = Number(String(st.q).replace(",", "."));
       if (!st.vid) return toast("Araç seçin", "err");
       if (!st.cid || (st.cid === "__new" && !st.cn.trim())) return toast("Müşteri seçin", "err");
@@ -426,9 +430,9 @@ export async function screen(ctx) {
         ...(st.cid === "__new" ? { cn: st.cn.trim() } : { cid: st.cid }), ...(st.sid ? { sid: st.sid } : {}),
         ...(st.ds && st.ds !== "__new" ? { ds: st.ds } : st.ds === "__new" && st.dn.trim() ? { dn: st.dn.trim() } : {}),
         ...(Number(String(st.ton).replace(",", ".")) > 0 ? { ton: Number(String(st.ton).replace(",", ".")) } : {}), ...(st.slip.trim() ? { slip: st.slip.trim() } : {}),
-        ...(st.mat.trim() ? { mat: st.mat.trim() } : {}), ...(st.note.trim() ? { note: st.note.trim() } : {}) };
+        ...(st.mat.trim() ? { mat: st.mat.trim() } : {}), ...(st.note.trim() ? { note: st.note.trim() } : {}), ...(cash > 0 ? { cash } : {}) };
       if (!(await persist(e))) return;
-      photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" }); await clearDraft(); busy = false;
+      photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "", cash: "" }); await clearDraft(); busy = false;
       toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Paketi hazırla' ile devam edin", "ok"); draw(); showSaved();
     });
     for (const b of qsa("[data-x-kind]", root)) b.addEventListener("click", () => { readForm(); if (tab === "ariza") x.mt = b.dataset.xKind; else { x.cat = b.dataset.xKind; if (x.cat === "Yemek") x.noVeh = true; } redrawForm(); });
@@ -470,6 +474,20 @@ export async function screen(ctx) {
       if (!(await persist(e))) return;
       photos = []; st.f = {}; await clearDraft(); busy = false; toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Paketi hazırla' ile devam edin", "ok"); draw(); showSaved();
     });
+    for (const b of qsa("[data-cash-edit]", root)) b.onclick = async () => {
+      if (busy || photoBusy || sharing) return;
+      const e = entries.find(x => x.id === b.dataset.cashEdit); if (!e) return;
+      busy = true; lockForm(); const release = startActivity("Nakit bildirimi düzenleniyor");
+      try {
+        const value = await promptDialog("İşe ait alınan nakit (₺)", "Bu iş için alınan TOPLAM nakdi yazın. Patron daha önce tahsilatı kaydettiyse değişiklik onu düzeltmez; patrona ayrıca bildirin.", e.cash || "", { hint: "Boş veya 0: nakit bildirimi yok. Düzenleme sonrası aynı kayıt yeniden paylaşılmayı bekler." });
+        if (value === null) return;
+        const amount = driverCashAmount(value); if (amount === null) throw Error("Geçerli tutar yazın; en fazla iki ondalık hane kullanın");
+        if (amount === (e.cash || 0)) return;
+        if (amount) e.cash = amount; else delete e.cash;
+        delete e.sent; await save(); toast("Nakit bilgisi saklandı. Aynı kaydı patrona yeniden paylaşın", "ok");
+      } catch (err) { toast(err.message || String(err), "err"); }
+      finally { busy = false; release(); draw(); }
+    };
     for (const b of qsa("[data-slip]", root)) b.addEventListener("click", () => { readForm(); slipFor = b.dataset.slip; draw(); window.scrollTo(0, 0); });
     for (const b of qsa("[data-del]", root)) b.addEventListener("click", async () => {
       if (busy || photoBusy || sharing) return;
