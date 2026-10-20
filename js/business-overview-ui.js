@@ -1,7 +1,8 @@
+import {workReviewContext} from './collect-core.js';
 import {qs,qsa,esc,appbar,fmtTL,fmtNum,trDate,todayStr,notice} from './ui.js';
-import {businessOverview,OVERVIEW_PERIODS} from './business-overview.js';
+import {businessOverview,OVERVIEW_PERIODS,workPriceState} from './business-overview.js';
 const unitText=units=>Object.entries(units).map(([u,q])=>fmtNum(q)+' '+u).join(' · ')||'Miktar yok';
-const priceLabels={missing:'Fiyat eksik',fuel:'Mazot karşılığı',included:'Sözleşmeye dahil',internal:'İç iş'};
+const priceLabels={missing:'Fiyat eksik',fuel:'Mazot karşılığı',included:'Sözleşmeye dahil',internal:'İç iş',locked:'Fiyat kilitli',billed:'Hakedişe dahil'};
 export async function screen(ctx){
  const {root,db,query}=ctx;
  let today=todayStr(),data={},meta=[],model=null,busy=false,loaded=false,shown=30;
@@ -16,6 +17,7 @@ export async function screen(ctx){
  }
  function inspect(){
   if(!model)return;
+  const priceContext=workReviewContext(data);
   let rows=state.source==='cash'?model.cash:state.source==='cost'?model.costs:state.source==='missing'?model.missing:state.source==='value'?model.priced:model.works;
   if(state.bucket)rows=rows.filter(x=>x.date>=state.bucket.from&&x.date<=state.bucket.to);
   if(state.customer)rows=rows.filter(x=>x.customer_id===state.customer);
@@ -28,7 +30,7 @@ export async function screen(ctx){
    let label,sub,amount,href;
    if(isCost){label=r.label;sub=r.sub;amount=fmtTL(r.amount)+' ₺';href=r.href||'#/gider/'+encodeURIComponent(r.id);}
    else if(isCash){label=nm('customers',r.customer_id);sub=r.payment_method||'Tahsilat';amount=fmtTL(r.amount)+' ₺';href='#/kasa/'+encodeURIComponent(r.id);}
-   else{label=nm('customers',r.customer_id)+' · '+(r.work_type||'İş');sub=nm('vehicles',r.vehicle_id)+' · '+fmtNum(r.quantity)+' '+(r.unit||'');const p=model.priced.includes(r);amount=p?fmtTL(r.price_snapshot?.amount??Number(r.price_snapshot?.unit_price)*Number(r.quantity))+' ₺':priceLabels[r.price_snapshot?.price_source==='Mazot karşılığı'?'fuel':model.missing.includes(r)?'missing':r.price_snapshot?.price_source==='Sözleşmeye dahil'?'included':'internal'];href='#/isler/'+encodeURIComponent(r.id);}
+   else{label=nm('customers',r.customer_id)+' · '+(r.work_type||'İş');sub=nm('vehicles',r.vehicle_id)+' · '+fmtNum(r.quantity)+' '+(r.unit||'');const p=model.priced.includes(r);amount=p?fmtTL(r.price_snapshot?.amount??Number(r.price_snapshot?.unit_price)*Number(r.quantity))+' ₺':priceLabels[workPriceState(r,data,priceContext)];href='#/isler/'+encodeURIComponent(r.id);}
    return `<button class="ultimate-source" data-go="${esc(href)}"><span><b>${esc(label)}</b><small>${trDate(r.date)} · ${esc(sub||'')}</small></span><strong>${esc(amount)}</strong></button>`;
   }).join('')+(!rows.length?'<p class="muted">Bu seçimde kayıt yok.</p>':'')+(rows.length>shown?`<button class="btn block" data-overview-more>Daha fazla göster (${rows.length-shown})</button>`:'');
  }

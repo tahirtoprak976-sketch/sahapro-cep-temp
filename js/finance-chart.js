@@ -1,3 +1,4 @@
+import {workAmount,missingCustomerWorkPrice,workReviewContext} from './collect-core.js';
 // Panodaki grafikler için saf hesaplar. Kayıt yazmaz, kullanıcıya gösterilecek özetleri üretir.
 // Gelir = fiyatı girilmiş işlerin değeri (KDV durumu kayıttan bilinmediği için "iş değeri" denir),
 // tahsilat = "Müşteriden Para Alındı" kasa kayıtları. Fiyatsız işler ayrıca sayılır; gizlenmez.
@@ -29,14 +30,14 @@ export function monthlySeries(data, opts = {}) {
   const rows = new Map(
     keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, pay: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0, fuelGotL: 0 }]),
   );
+  const {internal,billed}=workReviewContext(data);
   for (const w of data.work_records || []) {
     if (!isActive(w)) continue;
     const r = rows.get(monthKey(w.date));
     if (!r) continue;
     r.works++;
-    const amt = w.price_snapshot?.amount;
-    if (amt == null || !Number.isFinite(Number(amt))) r.unpriced++;
-    else r.work += toKurus(amt);
+    if (!internal.has(w.customer_id) && missingCustomerWorkPrice(w,billed.has(w.id))) r.unpriced++;
+    r.work += toKurus(workAmount(w));
     // Ücreti mazotla ödenen iş (ör. Kılıç): TL gelir SAYILMAZ, yalnız hak edilen litre tutulur.
     // Müşterinin verdiği mazot da araca konunca masraf sayılmaz (kasadan para çıkmaz). İkisi litre hesabında izlenir.
     const L = Number(w.customer_fuel_allowance_l) || 0;

@@ -34,6 +34,12 @@ export function hasWorkPrice(w) {
   return valid(p.unit_price)&&Number(w.quantity)>0&&Number.isFinite(Number(w.quantity))&&Number.isFinite(Number(p.unit_price)*Number(w.quantity));
 }
 
+// Same review scope for the home screen, work list, charts and price completion.
+export function workReviewContext(d) {
+  return {internal:new Set(live(d,'customers').filter(c=>c.internal).map(c=>c.id)),
+    billed:new Set(live(d,'hakedis').filter(h=>h.status==='Kesinleşti').flatMap(h=>(h.items||[]).map(i=>i.work_record_id)))};
+}
+
 // Presentation only: a deliberately zero-priced, billed or non-TL job is not missing a price.
 export function missingCustomerWorkPrice(w, billed = false) {
   return !billed && !w.price_snapshot?.locked && !hasWorkPrice(w) && !(Number(w.customer_fuel_allowance_l)>0) &&
@@ -222,11 +228,11 @@ export function customerBalances(d) {
 
 // Cari'de 0 görünmesinin nedenleri: fiyatı girilmemiş işler (alacağa sayılamaz) — iş türü + birime göre gruplu
 export function unpricedGroups(d, customerId) {
-  const billed = new Set(live(d, "hakedis").filter((h) => h.status === "Kesinleşti").flatMap((h) => (h.items || []).map((i) => i.work_record_id)));
+  const {internal,billed}=workReviewContext(d);
+  if(internal.has(customerId))return [];
   const groups = new Map();
   for (const w of live(d, "work_records")) {
-    if (w.customer_id !== customerId || billed.has(w.id) || w.price_snapshot?.locked) continue;
-    if (workAmount(w) > 0 || Number(w.customer_fuel_allowance_l) > 0 || w.price_snapshot?.price_source === "Mazot karşılığı" || w.price_snapshot?.price_source === "İç iş (kendi depo)" || w.price_snapshot?.price_source === "Sözleşmeye dahil") continue;
+    if (w.customer_id !== customerId || !missingCustomerWorkPrice(w,billed.has(w.id))) continue;
     const key = (w.work_type || "Diğer") + "|" + (w.unit || "");
     const g = groups.get(key) || { key, work_type: w.work_type || "Diğer", unit: w.unit || "", works: [], qty: 0, vehicles: new Set() };
     g.works.push(w);
