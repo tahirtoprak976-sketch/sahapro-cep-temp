@@ -1,3 +1,4 @@
+import { customerNameKey } from "./driver-customer.js";
 import { linkVerdict } from "./security-core.js";
 import { ENTERPRISE_STORES, workHours } from "./enterprise-core.js";
 // SAHAPRO SOLO — IndexedDB katmanı (local-first, offline-first)
@@ -340,6 +341,29 @@ export async function audit(entity, entityId, action, oldV, newV, reason) {
   return wrap(tx(db, "audit_log", "readwrite").put(rec));
 }
 
+// Name + explicit parent is one identity; concurrent approvals must reuse the same card.
+export async function ensureCustomerCard(name, parent = null) {
+  name = String(name || "").trim(); if (!name) throw new Error("Müşteri adı gerekli");
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(["customers", "audit_log"], "readwrite"), store = t.objectStore("customers");
+    let result, error;
+    const q = store.getAll();
+    q.onsuccess = () => {
+      const active = q.result.filter(isActive);
+      if (parent && !active.some(c => c.id === parent)) { error = new Error("Ana firma artık kullanılamıyor; müşteriyi tekrar seçin"); t.abort(); return; }
+      const matches = active.filter(c => customerNameKey(c.name) === customerNameKey(name) && (c.parent_customer_id || null) === (parent || null));
+      if (matches.length > 1) { error = new Error("Aynı ad ve ana firmayla birden fazla müşteri var; doğru kartı seçin"); t.abort(); return; }
+      if (matches.length) { result = { ...matches[0], _existing: true }; return; }
+      result = newRecord({ name, note: "Asistan ile açıldı", ...(parent ? { parent_customer_id: parent } : {}) });
+      store.put(result);
+      t.objectStore("audit_log").put({ id: uuid(), entity: "customers", entity_id: result.id, action: "create", old: null, new: result, reason: "Asistan: yeni müşteri", at: nowISO() });
+    };
+    t.oncomplete = () => resolve(result);
+    t.onerror = t.onabort = () => reject(error || t.error);
+  });
+}
+
 // ---- taslak autosave ----
 export async function draftSave(form, values) {
   const db = await openDB();
@@ -676,11 +700,11 @@ export async function updateDriverLinks(change) {
   });
 }
 // İmza doğrulama ile Kaydet arasındaki iptal/pasifleştirme de son transaction'da görülür.
-function driverProofRequests(t,id) {
+function driverProofRequests(t,id,expectedPid=null) {
   const marker=t.objectStore('meta').get(DRV_OK+id),links=t.objectStore('meta').get('driver_links'),people=t.objectStore('personnel').getAll();
   return ()=>{
     const proof=marker.result?.value;
-    if(!proof?.pid||!proof.lid)return false;
+    if(!proof?.pid||!proof.lid||(expectedPid&&proof.pid!==expectedPid))return false;
     const link=(links.result?.value||[]).find(x=>x.lid===proof.lid&&x.pid===proof.pid),person=people.result.find(x=>x.id===proof.pid);
     return linkVerdict(link,{today:todayStr(),personnelActive:!!person&&!person.deleted_at&&person.active!==false}).ok;
   };
@@ -1686,11 +1710,14 @@ export function sameCollection(a, b) {
 // Aynı request_id + aynı içerik → mevcut kayıt; farklı içerik → OP_CONFLICT. op aynı kurallarla.
 export async function saveCashEvent(fields, { op = null } = {}) {
   assertNumericFields(fields);
+  if (fields.driver_entry_id && (fields.cash_type !== "Müşteriden Para Alındı" || fields.payment_method !== "Nakit" || fields.cash_status !== "PERSONELDE" || !fields.personnel_id || !(Number(fields.amount) >= 0.01) || Number(fields.amount) > 1e12 || Math.abs(Number(fields.amount)*100-Math.round(Number(fields.amount)*100)) > 0.0000001)) throw new Error("Şoför nakit bildirimi pozitif tutar, nakit ödeme ve parayı alan personelle kaydedilmelidir");
   const d = await openDB(),
     rec = newRecord(fields);
   return new Promise((res, rej) => {
-    const t = d.transaction(["cash_records", "cari_movements", "audit_log", ...(op ? ["meta"] : [])], "readwrite");
+    const t = d.transaction([...new Set(["cash_records", "cari_movements", "audit_log", ...(op || fields.driver_entry_id ? ["meta"] : []), ...(fields.driver_entry_id ? ["personnel"] : [])])], "readwrite");
     let existing = null, error = null;
+    const verified = fields.driver_entry_id ? driverProofRequests(t, fields.driver_entry_id, fields.personnel_id) : null;
+    const allowed = () => { if (verified && !verified()) { error = unverifiedDriver(); t.abort(); return false; } return true; };
     const write = () => {
       t.objectStore("cash_records").put(rec);
       opPut(t, op, "cash_records", rec.id);
@@ -1708,6 +1735,7 @@ export async function saveCashEvent(fields, { op = null } = {}) {
         );
     };
     const viaOp = () => {
+      if (!allowed()) return;
       if (!op) return write();
       const g = t.objectStore("meta").get(OP + op.id);
       g.onsuccess = () => {
@@ -1716,15 +1744,16 @@ export async function saveCashEvent(fields, { op = null } = {}) {
         if (st === "new") write();
       };
     };
-    if (fields.request_id) {
+    if (fields.request_id || fields.driver_entry_id) {
       const q = t.objectStore("cash_records").getAll();
       q.onsuccess = () => {
-        const old = q.result.find((x) => !x.deleted_at && x.request_id === fields.request_id) || null;
+        if (!allowed()) return;
+        const old = q.result.find((x) => !x.deleted_at && ((fields.request_id && x.request_id === fields.request_id) || (fields.driver_entry_id && x.driver_entry_id === fields.driver_entry_id))) || null;
         if (old && !sameCollection(old, fields)) { error = Object.assign(Error("Aynı kaynak kimliğiyle farklı tahsilat kayıtlı — yazılmadı"), { code: "OP_CONFLICT", old }); t.abort(); return; }
         if (old) { existing = old; return; }
         viaOp();
       };
-    } else viaOp();
+    } else if (verified) { const ready = t.objectStore("meta").get(DRV_OK + fields.driver_entry_id); ready.onsuccess = viaOp; } else viaOp();
     t.oncomplete = () => res(existing ? { ...existing, _existing: true } : rec);
     t.onerror = t.onabort = () => rej(error || t.error);
   });

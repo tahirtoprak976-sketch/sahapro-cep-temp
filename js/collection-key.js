@@ -69,7 +69,7 @@ export function collectionDecision(existing, key, fields, source) {
   const old = existing.find((x) => !x.deleted_at && x.request_id === key);
   if (!old) return { kind: "new" };
   if (!sameContent(old, fields)) return { kind: "conflict", old };
-  return { kind: String(source || "").startsWith("wa:") ? "repeat" : "ask", old };
+  return { kind: /^(wa:|driver:)/.test(String(source || "")) ? "repeat" : "ask", old };
 }
 // Kullanıcı "yeni ödeme" dediğinde sıradaki anahtar (deterministik: iki sekme aynı anahtarı üretir)
 export function nextNewKey(existing, key) {

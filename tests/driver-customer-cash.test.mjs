@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {resolveDriverCustomer,customerLabel,driverCashAmount} from '../js/driver-customer.js';
+import {driverMessage,extractPayloads,payloadsToPlan,driverConfig} from '../js/driver-core.js';
+import {validatePlan} from '../js/assistant-core.js';
+import {collectionKey,collectionDecision} from '../js/collection-key.js';
+const d={customers:[{id:'ulas',name:'Ulaş Rondela'},{id:'demir',name:'Demir İnşaat'},{id:'other',name:'Başka İnşaat'},{id:'other-child',name:'Çatıcı',parent_customer_id:'other'}],vehicles:[{id:'v',name:'Manitou MTX 1840'}],personnel:[{id:'p',name:'Soner'}],sites:[],quarries:[],dump_sites:[],aliases:[],work_records:[],price_book:[]};
+let r=resolveDriverCustomer({cn:'Çatıcı (Ulaş rondela)'},d);assert.equal(r.customer_id,null);assert.equal(r.new_customer,'Çatıcı');assert.equal(r.new_customer_parent_id,'ulas');
+const e={id:'job',date:'2026-10-20',cn:'Çatıcı (Ulaş rondela)',vid:'v',wt:'Makine Çalışması',q:1,u:'Saat',cash:2500};
+const message=await driverMessage([e],{p:['p','Soner'],V:[['v','Manitou MTX 1840']],C:[],S:[],D:[]});assert.match(message,/2500 TL nakit alındı/);
+const plan=payloadsToPlan(await extractPayloads(message),d);const v=validatePlan(plan.plan,{d,message,today:'2026-10-20'});assert.equal(v.works[0].customer_id,null);assert.equal(v.works[0].new_customer,'Çatıcı');assert.equal(v.works[0].new_customer_parent_id,'ulas');assert.equal(plan.cash[0].personnel_id,'p');assert.equal(plan.cash[0].amount,2500);assert.equal(plan.cash[0].new_customer_parent_id,'ulas');
+d.customers.push({id:'child',name:'Çatıcı',parent_customer_id:'ulas'});assert.equal(resolveDriverCustomer({cn:e.cn},d).customer_id,'child');
+const trusted=payloadsToPlan([{p:'p',n:'Soner',e:[{...e,cid:'child',cn:undefined}]}],d).plan;assert.equal(validatePlan(trusted,{d,message:'SP1: code only',today:'2026-10-20'}).works[0].customer_id,'child','structured selected child must never fall back to parent');
+assert.equal(customerLabel(d.customers.at(-1),d.customers),'Çatıcı (Ulaş Rondela)');assert.ok(driverConfig(d,{personnel_id:'p'}).C.some(([id,name])=>id==='child'&&name==='Çatıcı (Ulaş Rondela)'));
+assert.ok(resolveDriverCustomer({cn:'Mermerci (Bilinmeyen)'},d).customer_issue);
+for(const amount of ['',null,0,'0',1,'25,50',2500,1e12])assert.notEqual(driverCashAmount(amount),null,String(amount));
+for(const amount of [-1,'NaN',Infinity,1e12+1,0.001,'1,234'])assert.equal(driverCashAmount(amount),null,String(amount));
+const key=await collectionKey({source:'driver:job',amount:0,occ:0});const fields={customer_id:'child',amount:2500,date:e.date,payment_method:'Nakit'};const old={...fields,request_id:key};assert.equal(collectionDecision([old],key,fields,'driver:job').kind,'repeat');assert.equal(collectionDecision([old],key,{...fields,amount:2600},'driver:job').kind,'conflict');
+console.log('driver-customer-cash: explicit subcontractors, parent scope, selected IDs, cash amounts, stable retry keys OK');

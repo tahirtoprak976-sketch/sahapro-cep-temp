@@ -2,6 +2,7 @@
 // Patron şoföre bir bağlantı gönderir (içinde şoför, araç, müşteri/şantiye/döküm listesi; sıkıştırılmış). Şoför kayıtlarını girer,
 // "Patrona gönder" okunur bir metin + "SP1:" kodu (kayıtların kendisi) olarak WhatsApp'tan gider. Patronun asistanı kodu çözer:
 // kartlar Gemini'siz, birebir dolar; aynı kayıt (kimlik) ikinci kez gelirse atlanır.
+import {resolveDriverCustomer,customerLabel,driverCashAmount} from "./driver-customer.js";
 import { isActive, WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES } from "./core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -38,7 +39,7 @@ export function driverConfig(d, { personnel_id, vehicle_id = null, company = "",
   return {
     v: 1, co: company, iss: issued, p: [p.id, p.name], veh: vehicle_id || p.vehicle_id || live(d, "vehicles").find((v) => v.assignee_id === p.id)?.id || null,
     V: live(d, "vehicles").map((v) => [v.id, v.plate && v.plate !== v.name ? `${v.name} (${v.plate})` : v.name]),
-    C: cust.map((c) => [c.id, c.name]),
+    C: cust.map((c) => [c.id, customerLabel(c, live(d, "customers"))]),
     S: live(d, "sites").filter((s) => cs.has(s.customer_id)).map((s) => [s.id, s.name, s.customer_id, s.contact || "", s.phone || ""]),
     D: live(d, "dump_sites").map((s) => [s.id, s.name]),
     Q: live(d, "quarries").map((s) => [s.id, s.name]),
@@ -61,7 +62,7 @@ export function entryLine(e, cfg) {
   const cust = e.cid === cfg.Y ? "kendi depodan çıkış" : nm(cfg.C, e.cid) || e.cn || "müşteri ?";
   const dump = nm(cfg.D, e.ds) || e.dn || "";
   const dfs = e.dfs ? ` · 🧾 dijital fiş ${e.dfs}${e.rcv ? " (imzalayan: " + e.rcv + ")" : ""}` : "";
-  return `🚚 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${cust}${e.sid ? " / " + nm(cfg.S, e.sid) : ""} · ${e.wt} ${e.q} ${String(e.u).toLocaleLowerCase("tr-TR")}${e.mat ? " " + e.mat : ""}${dump ? " → " + dump : ""}${e.ton ? ` · ${e.ton} ton` : ""}${e.slip ? ` · fiş ${e.slip}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}${e.note ? ` · ${e.note}` : ""}${dfs}`;
+  return `🚚 ${fmtDate(e.date)} · ${nm(cfg.V, e.vid)} · ${cust}${e.sid ? " / " + nm(cfg.S, e.sid) : ""} · ${e.wt} ${e.q} ${String(e.u).toLocaleLowerCase("tr-TR")}${e.mat ? " " + e.mat : ""}${dump ? " → " + dump : ""}${e.ton ? ` · ${e.ton} ton` : ""}${e.slip ? ` · fiş ${e.slip}` : ""}${e.ph ? ` · 📷${e.ph}` : ""}${e.note ? ` · ${e.note}` : ""}${dfs}${e.cash ? ` · 💵 ${e.cash} TL nakit alındı (${cfg.p[1]})` : ""}`;
 }
 export async function driverMessage(entries, cfg) {
   const code = await pack({ v: 1, p: cfg.p[0], n: cfg.p[1], ...(cfg.lid ? { lid: cfg.lid } : {}), e: entries.map(({ sent, photoId, ph_dropped, ...e }) => e) });
@@ -134,7 +135,7 @@ export function driverPhotoPolicy(payloads, photoCount = 0, { rejected = false }
 
 // Kodlardan asistan planı (Gemini'nin döndürdüğü biçimle aynı) + her işin ek bilgisi (kimlik, fotoğraf, ton)
 export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true } = {}) {
-  const works = [], fuel = [], meta = [], fuelMeta = [], expenses = [], expMeta = [], maintenance = [], mainMeta = [];
+  const works = [], fuel = [], meta = [], fuelMeta = [], expenses = [], expMeta = [], maintenance = [], mainMeta = [], cash = [];
   let photo = 0;
   const photoPolicy = driverPhotoPolicy(payloads, photoCount);
   const has = (s, id) => !!id && live(d, s).some((x) => x.id === id);
@@ -161,21 +162,24 @@ export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true
       fuelMeta.push({ driver_entry_id: e.id, photos: ph });
       continue;
     }
+    const customer = resolveDriverCustomer(e, d);
+    const received = driverCashAmount(e.cash);
+    if (received > 0) cash.push({ ...customer, date: e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id, note: entryLine(e, {p:[p.p,p.n],V:[],C:[],S:[],D:[]}) });
     const photos = takePhotos(e.ph);
     // İmzalı dijital fişin imza görüntüsü: işin fotoğraflarından hemen sonra gelir
     const sigPhoto = e.sg ? takePhotos(1)[0] ?? null : null;
     works.push({
-      date: e.date, customer_id: has("customers", e.cid) ? e.cid : null, new_customer: !has("customers", e.cid) && e.cn ? e.cn : null,
+      date: e.date, ...customer,
       site_id: has("sites", e.sid) ? e.sid : null, vehicle_id: has("vehicles", e.vid) ? e.vid : null, personnel_id: has("personnel", p.p) ? p.p : null,
       work_type: e.wt, quantity: Number(e.q), unit: e.u, date_source: "mesaj", from_driver: true, reporter: p.n || null, guessed: false,
       dump_site_id: has("dump_sites", e.ds) ? e.ds : null, to_place: !has("dump_sites", e.ds) && e.dn ? e.dn : null, to_is_dump: !!e.dn,
       quarry_id: has("quarries", e.qy) ? e.qy : null, slip_no: e.slip || e.dfs || "", material: e.mat || "",
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
     });
-    meta.push({ driver_entry_id: e.id, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
+    meta.push({ driver_entry_id: e.id, customer_issue: customer.customer_issue, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
       ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, signed: signedContent(e), sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null, sigStrokes: Array.isArray(e.sv) && e.sv.length ? e.sv : null } } : {}) });
   }
-  return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta };
+  return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta, cash };
 }
 
 // Daha önce alınmış şoför kayıtları

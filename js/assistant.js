@@ -1,6 +1,7 @@
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
 // giderleri, yakıtı çıkarır → doğrulanmış kartlar → tek dokunuşla kaydet. Yeni müşteri/şantiye,
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
+import {customerLabel,customerNameKey} from "./driver-customer.js";
 import {guideHTML,bindGuide} from "./assistant-guide.js";
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
@@ -283,12 +284,20 @@ export async function screen(ctx) {
           if (m.photos) row.photos = m.photos;
           if (m.tonnage && !row.tonnage) row.tonnage = m.tonnage;
           if (m.digital) row.digital = m.digital;
+          if (m.customer_issue) { row.issues.push(m.customer_issue); row.customerGuess = true; row.ok = false; }
           if (seen.has(m.driver_entry_id)) { row.issues.push("Bu şoför kaydı daha önce alındı — atlandı"); row.ok = false; row.driverDup = true; }
         };
         drvPlan.meta.forEach((m, i) => tag(v.works[i], m));
         drvPlan.fuelMeta.forEach((m, i) => tag(v.fuel[i], m));
         drvPlan.expMeta.forEach((m, i) => { tag(v.expenses[i], m); if (v.expenses[i]) Object.assign(v.expenses[i], { driver_pay: m.pay, driver_pid: m.personnel_id }); });
         drvPlan.mainMeta.forEach((m, i) => { tag((v.maintenance || [])[i], m); if (v.maintenance?.[i]) Object.assign(v.maintenance[i], { driver_pay: m.pay, driver_pid: m.personnel_id, km: m.km, machine_hours: m.hours }); });
+        // Authenticated structured cash reports are separate, always unchecked approvals.
+        for (const report of drvPlan.cash || []) {
+          const already = (d.cash_records || []).some(x => isActive(x) && x.driver_entry_id === report.driver_entry_id);
+          v.collections.push({ ...report, bank_account_id: null, ok: false, needsApproval: true, okData: !!(report.amount && (report.customer_id || report.new_customer) && report.personnel_id),
+            issues: [report.customer_issue, already ? "Bu nakit bildirimi daha önce kaydedilmiş; tekrar yazılmaz" : "Şoför nakit aldığını bildirdi. Müşteriyi, tutarı ve parayı alan personeli kontrol edip işaretleyin. Kasaya teslim ayrı işlemdir."].filter(Boolean),
+            src: { source: "driver:" + report.driver_entry_id, amount: 0, occ: 0, quote: report.note } });
+        }
         // Şoför fotoğraf gönderdi ama buraya eklenmedi (kopyala-yapıştırda yalnız yazı gelir)
         const expected = photoPolicy.expected;
         v.driverPhotoBlocked = !photoPolicy.allowed;
@@ -406,7 +415,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     });
   }, 0);
   const live = (s) => (d[s] || []).filter(isActive);
-  const customers = live("customers").map((c) => [c.id, c.name]);
+  const customers = live("customers").map((c) => [c.id, customerLabel(c, live("customers"))]);
   const vehicles = live("vehicles").map((x) => [x.id, x.name]);
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
@@ -580,14 +589,14 @@ function render(ctx, out, v, d, { message, files, ms }) {
       .join("") +
     v.collections
       .map((r, i) => `<div class="card" data-kind="collection" data-i="${i}">
-        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Tahsilat</b> (müşteriden para)</label>
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Tahsilat</b> ${r.driver_entry_id ? "(şoförün aldığı nakit · onay bekliyor)" : "(müşteriden para)"}</label>
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
-          <div class="field"><label>Müşteri</label><select name="customer">${opt([...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer]] : [])], r.customer_id || (r.new_customer ? "new:" + r.new_customer : ""))}</select></div>
+          <div class="field"><label>Müşteri</label><select name="customer">${opt([...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer + (r.new_customer_parent_id ? " (" + nameOf("customers", r.new_customer_parent_id) + " taşeronu)" : "")]] : [])], r.customer_id || (r.new_customer ? "new:" + r.new_customer : ""))}</select></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="amount" value="${r.amount ?? ""}"></div>
-          <div class="field"><label>Şekil</label><select name="method">${opt([["Nakit", "Nakit"], ["Havale", "Havale / EFT"]], r.method, "Nakit")}</select></div>
+          <div class="field"><label>Şekil</label><select name="method">${opt(r.driver_entry_id ? [["Nakit", "Nakit"]] : [["Nakit", "Nakit"], ["Havale", "Havale / EFT"]], r.method, "Nakit")}</select></div>
           <div class="field"><label>Banka hesabı (havale)</label><select name="bank">${opt(banks, r.bank_account_id, "— yok —")}</select></div>
-          <div class="field"><label>Parayı alan personel</label><select name="personnel">${opt(personnel, r.personnel_id, "— kasaya —")}</select></div>
+          <div class="field"><label>Parayı alan personel</label><select name="personnel" ${r.driver_entry_id ? "disabled" : ""}>${opt(personnel, r.personnel_id, "— kasaya —")}</select></div>
         </div>${issues(r)}</div>`)
       .join("") +
     v.maintenance
@@ -796,12 +805,13 @@ async function save(ctx, out, v, d, { message, files }) {
   const ensureCustomer = async (customer, parent = null) => {
     if (!customer.startsWith("new:")) return customer;
     const name = customer.slice(4);
-    if (!newIds.has("c:" + name)) {
-      const rec = await db.saveNew("customers", { name, note: "Asistan ile açıldı", ...(parent ? { parent_customer_id: parent } : {}) }, "Asistan: yeni müşteri");
-      newIds.set("c:" + name, rec.id);
-      done.customer++;
+    const key = parent ? "cp:" + parent + ":" + customerNameKey(name) : "c:" + name;
+    if (!newIds.has(key)) {
+      const rec = await db.ensureCustomerCard(name, parent);
+      newIds.set(key, rec.id);
+      if (!rec._existing) done.customer++;
     }
-    return newIds.get("c:" + name);
+    return newIds.get(key);
   };
   const newIds = new Map();
   const source = "Asistan: " + message.slice(0, 300);
@@ -1330,10 +1340,10 @@ async function save(ctx, out, v, d, { message, files }) {
           done.expense++;
         }
       } else if (k === "collection") {
-        const customer = await ensureCustomer(val(c, "customer"));
-        const amount = Number(val(c, "amount")), date = val(c, "date") || todayStr(), method = val(c, "method") === "Havale" ? "Havale" : "Nakit";
-        const ck = await import("./collection-key.js");
         const cr = v.collections[Number(c.dataset.i)] || {};
+        const customer = await ensureCustomer(val(c, "customer"), cr.new_customer_parent_id || null);
+        const amount = Number(val(c, "amount")), date = val(c, "date") || todayStr(), method = !cr.driver_entry_id && val(c, "method") === "Havale" ? "Havale" : "Nakit";
+        const ck = await import("./collection-key.js");
         // Kaynak kimliği: mesajdaki ödeme ifadesinden (WhatsApp satırı varsa o satır, yoksa mesaj metni) + tutar + sıra.
         // Fotoğraftan gelen ya da mesajda bulunamayan tutarda kaynak = mesaj + kart sırası (tutar düzenlenirse çakışma verir)
         const src = cr.src || { source: "txt:" + ck.normText(message), amount: cr.amount ?? amount, occ: "kart" + c.dataset.i, quote: "" };
@@ -1365,7 +1375,7 @@ async function save(ctx, out, v, d, { message, files }) {
             rel = { similar_to: sim.map((x) => x.id), ...(ans.reason ? { new_payment_reason: ans.reason } : {}) };
           }
         }
-        const srcInfo = { source_ref: src.source.startsWith("wa:") ? src.source : "elle yapıştırılan mesaj", source_quote: src.quote || "", ...rel };
+        const srcInfo = { source_ref: /^(wa:|driver:)/.test(src.source) ? src.source : "elle yapıştırılan mesaj", source_quote: src.quote || "", ...rel };
         try {
           if (method === "Havale") {
             const { customerBankReceipt } = await import("./enterprise-db.js");
@@ -1375,7 +1385,7 @@ async function save(ctx, out, v, d, { message, files }) {
             const pid = val(c, "personnel") || null;
             const r0 = await db.saveNew("cash_records", {
               request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
-              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo,
+              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo, ...(cr.driver_entry_id ? { driver_entry_id: cr.driver_entry_id } : {}),
             }, "Asistan tahsilat", { op: { id: reqId, hash: await db.opHash(fieldsC) } }); // PR #121 işlem kaydı: kimlik = kaynak anahtarı (deterministik)
             if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
           }
@@ -1475,9 +1485,26 @@ async function save(ctx, out, v, d, { message, files }) {
       const ws = (await db.listActive("work_records")).filter((w) => dslipIds.includes(w.driver_entry_id) && w.digital_slip_no);
       dslipBtns = ws.map((w) => `<button class="btn block" style="margin-top:8px;border-color:#2e9e6b" data-go="#/isler/${esc(w.id)}">🧾 Dijital fişi gör: ${esc(w.digital_slip_no)}${w.slip_receiver ? " · " + esc(w.slip_receiver) : ""}</button>`).join("");
     }
+    const savedCash = (await db.listActive("cash_records")).filter(r => r.driver_entry_id);
+    const pendingCash = (v.collections || []).filter(r => r.driver_entry_id && !savedCash.some(x => x.driver_entry_id === r.driver_entry_id));
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + dslipBtns +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
       (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;
+    if (pendingCash.length) {
+      out.insertAdjacentHTML("beforeend", notice("warn", pendingCash.length + " şoför nakit bildirimi ONAYLANMADI; tahsilat yazılmadı. Ayrı kontrol edip kaydedin veya aynı şoför mesajını tekrar açın.") + '<button class="btn primary block" data-pending-driver-cash>Nakit bildirimlerini incele</button>');
+      qs("[data-pending-driver-cash]", out).onclick = async () => {
+        try {
+          const fresh = await db.dumpAll(); if (!out.isConnected) return;
+          const remaining = { ...v, _done: false, newCustomers: [], answer: null, asked: null, open: null, heard: null, driverPhotoBlocked: false, driverPhotoWarn: null, driverReject: null, driverNote: "İş kayıtları ayrı saklandı. Bu nakit bildirimleri henüz onaylanmadı; para şoförde olarak kaydedilir." };
+          for (const key of ["works","fuel","expenses","maintenance","collections","personnel","edits","cards","memory","tickets","docs","tankIn","prices","actions","settings","questions"]) remaining[key] = [];
+          remaining.collections = pendingCash.map(r => {
+            const matches = (fresh.customers || []).filter(c => isActive(c) && customerNameKey(c.name) === customerNameKey(r.new_customer) && (c.parent_customer_id || null) === (r.new_customer_parent_id || null));
+            return { ...r, ok: false, ...(r.new_customer && matches.length === 1 ? { customer_id: matches[0].id, new_customer: null } : {}) };
+          });
+          render(ctx, out, remaining, fresh, { message, files: [], ms: 0 });
+        } catch (e) { toast("Nakit bildirimleri açılamadı: " + (e.message || e), "err"); }
+      };
+    }
     bindUndo(ctx, out);
     qs("[data-msg]", ctx.root).value = "";
     await db.metaSet("assistant_draft", "");
