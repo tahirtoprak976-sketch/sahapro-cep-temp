@@ -1,3 +1,4 @@
+import { latestWork, repeatWork } from "./work-repeat.js";
 import { exploreWorks, workURL, workFlags, workCSV } from "./work-explorer.js";
 import { workHours } from "./enterprise-core.js";
 import { kdvRateOf } from "./core.js";
@@ -188,6 +189,7 @@ async function workList(ctx) {
 
 async function workForm(ctx, editId) {
   const { root, db, names, query } = ctx;
+  const formHash = location.hash;
   const [customers, sites, vehicles, personnel, dumpSites, quarries] =
     await Promise.all([
       db.listActive("customers"),
@@ -197,28 +199,31 @@ async function workForm(ctx, editId) {
       db.listActive("dump_sites"),
       db.listActive("quarries"),
     ]);
+  if (location.hash !== formHash) return;
   let rec = editId ? await db.get("work_records", editId) : null;
 
-  // Ön-doldurma: WhatsApp taslağı / son kayıt kopyası
-  let prefill = null;
-  if (!editId && window.__prefill) {
-    prefill = window.__prefill;
+  // Explicit repeat takes precedence over transient WhatsApp prefill.
+  let prefill = null, repeatSource = null, repeatMissing = [];
+  if (!editId && (query.repeat || query.copylast === "1")) {
+    repeatSource = query.repeat ? await db.get("work_records", query.repeat) : latestWork(await db.getAll("work_records"));
+    if (location.hash !== formHash) return;
+    if (!repeatSource || !isActive(repeatSource)) {
+      root.innerHTML = appbar("Benzer İş") + notice("warn", "Kaynak iş bulunamadı veya silinmiş. Yeni bir iş seçin.") + '<a class="btn" href="#/isler">İş kayıtlarına dön</a>'; return;
+    }
+    const draft = await db.draftGet("work");
+    if (draft?._repeat_source === repeatSource.id) prefill = draft;
+    else {
+      const replaceDraft = !(draft && Object.values(draft).some(Boolean)) || await confirmDialog("Yarım kalan iş taslağı var", "Benzer iş açılırsa önceki iş taslağının yerini alacak. Taslağa dönmek için vazgeçin.", "Benzer işi aç");
+      if (location.hash !== formHash) return;
+      if (!replaceDraft) { go("#/isler/new"); return; }
+      const prepared = repeatWork(repeatSource, { customers, sites, vehicles, personnel, dumpSites, quarries });
+      prefill = { ...prepared.values, _repeat_source: repeatSource.id }; repeatMissing = prepared.missing;
+      if (location.hash !== formHash) return;
+      await db.draftSave("work", prefill);
+    }
     window.__prefill = null;
   }
-  if (!editId && !prefill && query.copylast === "1") {
-    const all = (await db.getAll("work_records")).filter(isActive);
-    if (all.length) {
-      const last = all[all.length - 1];
-      prefill = {
-        customer_id: last.customer_id,
-        site_id: last.site_id,
-        vehicle_id: last.vehicle_id,
-        personnel_id: last.personnel_id,
-        work_type: last.work_type,
-        unit: last.unit,
-      };
-    }
-  }
+  if (!editId && !prefill && window.__prefill) { prefill = window.__prefill; window.__prefill = null; }
   // Müşteri kartından "+ Bu müşteriye iş"
   if (!editId && !prefill && query.customer_id) prefill = { customer_id: query.customer_id };
   // Taslak autosave
@@ -226,6 +231,7 @@ async function workForm(ctx, editId) {
     const draft = await db.draftGet("work");
     if (draft && Object.values(draft).some((v) => v)) prefill = draft;
   }
+  if (location.hash !== formHash) return;
   const v = rec || prefill || {};
 
   // Kendi depo iç müşterisi listede müşteri gibi görünmez; ayrı ve açık bir seçenek olarak en altta durur
@@ -242,7 +248,7 @@ async function workForm(ctx, editId) {
     ) +
     `
     ${editId ? "" : notice("info", "Nakliyede döküm yerlerini + Satır ekle ile girin. Aynı fiyatlı seferler müşteriye tek satır görünür; döküm ayrıntıları içeride korunur.")}
-    ${!editId && prefill && !rec ? '<div class="notice info"><span>ℹ</span><span>Taslak/son kayıt bilgileri yüklendi.</span></div>' : ""}
+    ${repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : !editId && prefill && !rec ? '<div class="notice info"><span>ℹ</span><span>Yarım kalan iş taslağı yüklendi.</span></div>' : ""}
     <form data-form novalidate>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
@@ -279,15 +285,16 @@ async function workForm(ctx, editId) {
         <button type="button" class="btn block" style="margin-top:6px" data-wai>🤖 Gemini ile fişi oku (ton, fiş no, tarih, plaka)</button>
         <div data-wai-out></div>
       </section>
-      <div class="formgrid2">${fNum("Manuel birim fiyat (opsiyonel)", "manual_price", v.price_snapshot?.price_source === "Manuel" ? v.price_snapshot.unit_price : "", { step: "any" })}${fNum("KDV %", "manual_kdv", v.price_snapshot?.kdv_rate ?? 20, { step: "any" })}</div>
+      <div class="formgrid2">${fNum("Manuel birim fiyat (opsiyonel)", "manual_price", (!editId ? v.manual_price : undefined) ?? (v.price_snapshot?.price_source === "Manuel" ? v.price_snapshot.unit_price : ""), { step: "any" })}${fNum("KDV %", "manual_kdv", (!editId ? v.manual_kdv : undefined) ?? v.price_snapshot?.kdv_rate ?? 20, { step: "any" })}</div>
       ${fNum("Mesafe (km, opsiyonel)", "distance_km", v.distance_km ?? "", { step: "any" })}
       ${editId ? "" : '<section data-transport-batch hidden><div data-transport-rows></div><button type="button" class="btn" data-add-transport>+ Satır ekle</button><div class="notice" data-transport-total aria-live="polite"></div><p class="tiny">Ek satırda boş bırakılan araç, personel ve fiyat üstteki seçimden alınır. Her satır ayrı iş kaydı olarak saklanır.</p></section>'}
       ${fArea("İş Açıklaması", "description", v.description || "")}
       ${fArea("Müşteri Notu (PDF'te görünür)", "customer_note", v.customer_note || "")}
       ${fArea("İç Not (müşteriye GÖSTERİLMEZ)", "internal_note", v.internal_note || "")}
+      ${editId ? "" : '<label class="history-check"><input type="checkbox" data-save-next> Bu kayıttan sonra benzer iş aç · miktarı yeniden gir</label>'}
     </form>
     <div class="actionbar">
-      ${editId ? "" : '<button class="btn" data-copylast>Son Kaydı Kopyala</button>'}
+      ${editId ? "" : '<button class="btn" data-copylast>Son İşten Başla</button>'}
       <button class="btn primary" data-save>Kaydet</button>
     </div>`;
 
@@ -311,7 +318,10 @@ async function workForm(ctx, editId) {
   for (const n of ["customer_id", "site_id", "date", "unit", "quantity"]) qs(`[name=${n}]`, form)?.addEventListener("change", jobDraw);
   jobDraw();
   let draftTimer,
-    saving = false;
+    saving = false, copying = false;
+  let formDirty = false;
+  form.addEventListener("input", () => { formDirty = true; });
+  form.addEventListener("change", () => { formDirty = true; });
   // ---- Fiş fotoğrafı: işe eklenir; Gemini tonu ve fiş bilgisini okuyup boş alanları doldurur ----
   let wfiles = [];
   const wIn = qs("[data-wfiles]", form), wOut = qs("[data-wai-out]", form);
@@ -565,21 +575,36 @@ async function workForm(ctx, editId) {
           db.draftSave("work", {
             ...collectForm(form),
             _transport_rows: extraRows(),
-          });
+            ...(repeatSource ? { _repeat_source: repeatSource.id } : {}),
+          }).catch(e => toast("Taslak saklanamadı: " + (e.message || e) + ". Form açıkken kaydedin veya metni koruyun.", "err"));
       }, 600);
     });
   }
   const copyBtn = qs("[data-copylast]", root);
+  if (copyBtn && !(dJob.work_records || []).some(isActive)) { copyBtn.disabled = true; copyBtn.title = "Henüz kopyalanacak iş yok"; }
   if (copyBtn)
-    copyBtn.addEventListener("click", () => go("#/isler/new?copylast=1"));
+    copyBtn.addEventListener("click", async () => {
+      if (saving || copying) return;
+      copying = true; copyBtn.disabled = true;
+      try {
+        if ((formDirty || wfiles.length || extraRows().length) && !(await confirmDialog("Form yerine son iş açılsın mı?", "Bu formdaki değişiklikler ve seçilen fotoğraflar yeni forma taşınmayacak. Önce kaydetmek için vazgeçin.", "Son işten başla"))) return;
+        if (!form.isConnected) return;
+        clearTimeout(draftTimer);
+        if (formDirty || wfiles.length || extraRows().length) await db.draftClear("work");
+        go("#/isler/new?copylast=1&open=" + Date.now());
+      } catch (e) { toast("Form açılamadı: " + (e.message || e), "err"); }
+      finally { copying = false; if (copyBtn.isConnected) copyBtn.disabled = false; }
+    });
 
   qs("[data-save]", root).addEventListener("click", async () => {
-    if (saving) return;
+    if (saving || copying) return;
     saving = true;
     qs("[data-save]", root).disabled = true;
     clearTimeout(draftTimer);
     try {
       const val = collectForm(form);
+      const saveNext = !editId && !!qs("[data-save-next]", form)?.checked;
+      const afterSave = id => go(saveNext ? "#/isler/new?repeat=" + encodeURIComponent(id) : "#/isler/" + id);
       const priceMemo = new Map();
       if (!val.quantity || Number(val.quantity) <= 0) {
         toast("Miktar girin (0'dan büyük)", "err");
@@ -785,7 +810,7 @@ async function workForm(ctx, editId) {
           `${created.length} satır · ${fmtNum(created.reduce((s, r) => s + r.quantity, 0))} sefer kaydedildi`,
           "ok",
         );
-        go("#/isler/" + created[0].id);
+        afterSave(created[0].id);
         return;
       }
       // Duplicate adayı uyarısı (otomatik engelleme YOK)
@@ -819,7 +844,7 @@ async function workForm(ctx, editId) {
         await attachFiles(created.id);
         await db.draftClear("work");
         toast("İş kaydedildi", "ok");
-        go("#/isler/" + created.id);
+        afterSave(created.id);
       }
     } catch (e) {
       if (e?.code === "STALE" && e.current) {
@@ -897,6 +922,7 @@ async function workDetail(ctx, id) {
       ${sst.kind === "legacy" || slipChanges.length ? `<button class="btn block" style="margin-top:8px" data-dslip-rev>📄 Revizyon fişi — güncel hâl (imzasız, yeniden imza için)</button>` : ""}</div>` : ""}
     <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/*,application/pdf" multiple data-watt hidden></label></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${atts.map((a) => (String(a.type).startsWith("image/") ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>` : `<a class="chip" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name)}</a>`)).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
+    <a class="btn block" data-repeat-work href="#/isler/new?repeat=${esc(encodeURIComponent(w.id))}">＋ Benzer iş oluştur</a>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
     <div class="actionbar">
       ${slip ? `<button class="btn" data-go="#/fisler/${slip.id}">🧾 Fiş</button>` : `<button class="btn" data-mkslip>🧾 ${siblings.length ? "Toplam Sefer Fişi" : "Fiş Oluştur"}</button>`}
