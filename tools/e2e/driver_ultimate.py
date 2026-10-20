@@ -7,7 +7,7 @@ checks=[]
 def send_review(page,selector='[data-send]'):
     page.click(selector);page.wait_for_timeout(500)
     if page.locator('[data-driver-share-go]').count():
-        page.click('[data-driver-share-go]');page.wait_for_timeout(450)
+        page.locator('[data-driver-share-go]').evaluate('(e)=>e.closest("details").open=true');page.click('[data-driver-share-go]');page.wait_for_timeout(450)
         if page.locator('[data-driver-share-cancel]').count():page.click('[data-driver-share-cancel]')
 
 def check(ok,msg):

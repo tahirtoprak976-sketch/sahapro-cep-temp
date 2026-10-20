@@ -1,3 +1,4 @@
+import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
 import {isDriverTransferFile,readDriverTransfer} from "./driver-transfer.js";
 import {driverCashContextHTML} from "./driver-cash-context.js";
 // Asistan ekranı: mesaj yaz/yapıştır + fiş fotoğrafı ekle → Gemini işletmeni tanıyarak işleri,
@@ -41,8 +42,8 @@ export async function screen(ctx) {
     </details>
     <div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="5" placeholder="Örn: Mahir bey 14 tonluk yarım yevmiye, 34 ABC 123 Kaya İnşaat 4 sefer moloz, lastikçiye 500 veresiye"></textarea></div>
-      <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/*,audio/*,.txt,text/plain" multiple data-photos></div>
-      <p class="tiny muted">En fazla 20 dosya. Sade şoför mesajı için .sahapro.txt aktarım dosyasını ve paketin tüm fotoğraflarını aynı seçimde ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
+      <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/*,audio/*,.txt,.zip,text/plain,application/zip" multiple data-photos></div>
+      <p class="tiny muted">En fazla 20 dosya. Tek SAHAPRO paketini (.sahapro.zip) seçmeniz yeterlidir; fotoğraflar içindedir. Eski .sahapro.txt yönteminde dosyayı ve bütün fotoğrafları birlikte ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
@@ -74,14 +75,15 @@ export async function screen(ctx) {
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
   let files = [], attachmentError = "";
   const attachmentLimit = 20;
+  const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f);
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
   const showThumbs = () => {
     const errorBox = qs("[data-attachment-error]", root); errorBox.hidden = !attachmentError; errorBox.textContent = attachmentError;
     qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
     const box = qs("[data-thumbs]", root);
     box.innerHTML = files
-      .map((f, i) => isDriverTransferFile(f)
-        ? `<div class="card small" style="margin:0;padding:8px;width:100%;overflow-wrap:anywhere">📎 SAHAPRO aktarım dosyası · ${esc(f.name)} <button class="btn sm" data-rm="${i}">Kaldır</button></div>`
+      .map((f, i) => isTransfer(f)
+        ? `<div class="card small" style="margin:0;padding:8px;width:100%;overflow-wrap:anywhere">${isDriverBundle(f)?"📦 SAHAPRO tek paket · fotoğraflar içinde":"📎 SAHAPRO aktarım dosyası"} · ${esc(f.name)} <button class="btn sm" data-rm="${i}">Kaldır</button></div>`
         : isAudio(f)
         ? `<div class="card" style="margin:0;padding:6px;width:100%"><div class="small">🎤 Ses kaydı ${esc(f.name || "")} <button class="btn small" data-rm="${i}">Sil</button></div><audio controls src="${URL.createObjectURL(f)}" style="width:100%"></audio></div>`
         : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
@@ -162,11 +164,13 @@ export async function screen(ctx) {
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
     if (attachmentError) return toast(attachmentError, "err");
-    if(files.some(f=>!isDriverTransferFile(f)&&(/\.txt$/i.test(f.name||'')||f.type==='text/plain')))return toast("Bu metin dosyası SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
-    const transferFiles=files.filter(isDriverTransferFile);
+    if(files.some(f=>!isTransfer(f)&&(/\.(txt|zip)$/i.test(f.name||'')||f.type==='text/plain'||/zip/.test(f.type||''))))return toast("Bu dosya SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
+    const transferFiles=files.filter(isTransfer);
     if(transferFiles.length>1)return toast("Aynı anda yalnız bir şoför aktarım dosyası ekleyin; her paketi kendi fotoğraflarıyla ayrı işleyin", "err");
-    let typed=qs("[data-msg]", root).value.trim();
-    if(transferFiles.length){try{typed=await readDriverTransfer(transferFiles[0]);}catch(e){return toast(e.message,"err");}}
+    let typed=qs("[data-msg]", root).value.trim(),bundleFiles=null;
+    const bundled=transferFiles.length&&isDriverBundle(transferFiles[0]);
+    if(bundled&&files.length!==1)return toast("Tek paketin fotoğrafları içindedir. Yanındaki diğer ekleri kaldırıp yalnız paketi seçin", "err");
+    if(transferFiles.length){try{if(bundled){const opened=await openDriverBundle(transferFiles[0]);typed=opened.message;bundleFiles=opened.files;}else typed=await readDriverTransfer(transferFiles[0]);}catch(e){return toast(e.message,"err");}}
     // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
     // Uzun ya da WhatsApp dışa aktarımı gibi görünen metin YENİ mesajdır: düzeltme kutusu işaretli kalmış olsa bile önceki taslağa eklenmez
     const looksNew = typed.length > 160 || /^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}:\d{2}/m.test(typed);
@@ -196,7 +200,7 @@ export async function screen(ctx) {
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
     if (!g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
-    const images = files.filter((f) => !isAudio(f) && !isDriverTransferFile(f)), audios = files.filter(isAudio);
+    const images = bundleFiles || files.filter((f) => !isAudio(f) && !isTransfer(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
     if (!navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
@@ -263,11 +267,12 @@ export async function screen(ctx) {
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
-      const askP = message && tools.isQuestion(message) ? tools.askWithTools(db, message).catch(() => null) : Promise.resolve(null);
+      const askP = !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message).catch(() => null) : Promise.resolve(null);
       let plan = useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : {};
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
+      if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
       const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length, allowPhotos: photoPolicy.allowed }) : null;
       if (drvPlan) plan = { ...plan, works: [...drvPlan.plan.works, ...(plan.works || [])], fuel: [...drvPlan.plan.fuel, ...(plan.fuel || [])], expenses: [...drvPlan.plan.expenses, ...(plan.expenses || [])], maintenance: [...drvPlan.plan.maintenance, ...(plan.maintenance || [])] };
       const asked = await askP;

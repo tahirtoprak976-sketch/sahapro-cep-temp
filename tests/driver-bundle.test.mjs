@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {makeDriverBundle,openDriverBundle,isDriverBundle,DRIVER_BUNDLE_LIMIT} from '../js/driver-bundle.js';
+import {buildZip} from '../js/core.js';
+import {listZip} from '../js/unzip.js';
+const packet={text:'📋 TEST\n🚚 TEST iş\nSP1:abcdefghijk.signature123',rows:[{id:'test'}],files:[new File(['one'],'aynı.jpg',{type:'image/jpeg'}),new File(['two'],'aynı.jpg',{type:'image/jpeg'})]};
+const payload=await makeDriverBundle(packet);assert.equal(payload.files.length,1);assert.ok(isDriverBundle(payload.files[0]));assert.ok(!payload.text.includes('SP1:'));const opened=await openDriverBundle(payload.files[0]);assert.equal(opened.message,packet.text);assert.deepEqual(await Promise.all(opened.files.map(f=>f.text())),['one','two']);assert.deepEqual(opened.files.map(f=>f.name),['aynı.jpg','aynı.jpg']);
+assert.equal(Buffer.compare(Buffer.from(await payload.files[0].arrayBuffer()),Buffer.from(await (await makeDriverBundle(packet)).files[0].arrayBuffer())),0,'stable retry bytes');
+assert.equal((await openDriverBundle((await makeDriverBundle({...packet,files:[]})).files[0])).files.length,0);
+assert.equal((await openDriverBundle((await makeDriverBundle({...packet,files:Array(20).fill(packet.files[0])})).files[0])).files.length,20);
+await assert.rejects(()=>makeDriverBundle({...packet,files:Array(21).fill(packet.files[0])}));
+await assert.rejects(()=>openDriverBundle(new File([new Uint8Array(DRIVER_BUNDLE_LIMIT+1)],'big.sahapro.zip')));
+const raw=new Uint8Array(await payload.files[0].arrayBuffer()),entries=listZip(raw);const photo=entries.find(e=>e.name.startsWith('photos/'));const corrupted=raw.slice();corrupted[photo.offset+30+new TextEncoder().encode(photo.name).length]^=1;await assert.rejects(()=>openDriverBundle(new File([corrupted],'broken.sahapro.zip')),/bozulmuş/);
+const bomb=raw.slice(),v=new DataView(bomb.buffer);v.setUint16(photo.offset+8,8,true);await assert.rejects(()=>openDriverBundle(new File([bomb],'bomb.sahapro.zip')));
+const zip=files=>new File([buildZip(files.map(([name,text])=>({name,data:new TextEncoder().encode(text)})))],'test.sahapro.zip');
+await assert.rejects(()=>openDriverBundle(zip([['index.json','{}'],['index.json','{}']])));
+await assert.rejects(()=>openDriverBundle(zip([['index.json',JSON.stringify({kind:'SAHAPRO_DRIVER_BUNDLE',version:1,photos:[{path:'../a',name:'a.jpg',type:'image/jpeg',size:1}]})],['transfer.sahapro.txt','SAHAPRO_DRIVER_TRANSFER_V1\n'+packet.text],['../a','x']])));
+assert.ok(isDriverBundle({name:'SAHAPRO.sahapro (2).zip'}));assert.ok(!isDriverBundle({name:'sohbet.zip'}));
+console.log('driver-bundle: single file, complete original code/photos, duplicate names/order, stable retries, 0/20/21 limits, corruption/bomb/duplicate/path rejection OK');
