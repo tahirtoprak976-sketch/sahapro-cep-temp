@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {workURL,workQuery,exploreWorks,workFlags,workCSV,csvCell} from '../js/work-explorer.js';
+const today='2026-10-20', names={customers:{C:'Kaya İnşaat',I:'İç'},vehicles:{V:'34TEST001'},personnel:{P:'Tahir'},sites:{S:'Merkez'}};
+const w=(id,date,quantity=1,unit='Sefer',extra={})=>({id,date,quantity,unit,customer_id:'C',vehicle_id:'V',personnel_id:'P',site_id:'S',work_type:'Hafriyat Nakliye',...extra});
+const rows=[w('a',today,3),w('b','2026-10-14',2,'Saat',{slip_status:'Fiş Var'}),w('c','2026-10-13'),w('old','2026-09-30',5,'Ton'),w('future','2026-10-21'),w('zero',today,1,'Sefer',{price_snapshot:{unit_price:0}}),w('fuel',today,1,'Sefer',{customer_fuel_allowance_l:75}),w('internal',today,1,'Sefer',{customer_id:'I'}),w('included',today,1,'Sefer',{price_snapshot:{price_source:'Sözleşmeye dahil'}}),w('digital',today,1,'Sefer',{digital_slip_no:'SP-001',driver_entry_id:'driver'}),w('missing',today,1,'Sefer',{customer_id:null}),w('deleted',today,100,'Sefer',{deleted_at:'x'}),w('undated',null,2)];
+const opts={today,internal:new Set(['I'])};
+const week=exploreWorks(rows,names,{f:'week'},opts);
+assert.equal(week.state.from,'2026-10-14');assert.equal(week.state.to,today);assert.ok(!week.rows.some(w=>['c','old','future','deleted','undated'].includes(w.id)));
+assert.equal(week.units.Saat,2);assert.equal(week.units.Sefer,9);assert.equal(week.days,2);
+assert.equal(exploreWorks(rows,names,{f:'fiyatsiz',period:'today'},opts).rows.length,2);
+for(const id of ['zero','fuel','internal','included','missing'])assert.ok(!exploreWorks(rows,names,{f:'fiyatsiz'},opts).rows.some(w=>w.id===id));
+assert.equal(workFlags(rows.find(w=>w.id==='digital')).noslip,false);assert.equal(workFlags(rows[1]).noslip,false);
+assert.deepEqual(exploreWorks(rows,names,{f:'driver'},opts).rows.map(w=>w.id),['digital']);
+assert.equal(exploreWorks(rows,names,{from:today,to:today,q:'34test',customer_id:'C',vehicle_id:'V',personnel_id:'P',site_id:'S',unit:'Sefer'},opts).rows.length,5);
+for(const query of [{from:'2026-02-30'},{from:today,to:'2026-10-19'},{to:'bad'}]){const m=exploreWorks(rows,names,query,opts);assert.ok(m.state.error);assert.equal(m.rows.length,0);}
+assert.equal(workQuery({from:'2024-02-29'},today).to,'2024-02-29');
+assert.equal(workQuery({period:'month'},today).from,'2026-10-01');
+const url=workURL({from:today,to:today,customer_id:'C',vehicle_id:'V',q:'old',unknown:'x'},{q:'Kaya & Şantiye',f:'noslip'});
+const params=new URLSearchParams(url.split('?')[1]);assert.equal(params.get('from'),today);assert.equal(params.get('vehicle_id'),'V');assert.equal(params.get('q'),'Kaya & Şantiye');assert.equal(params.get('unknown'),null);
+assert.ok(!workURL({from:today},{from:null}).includes('from='));
+const csv=workCSV([w('csv',today,2,'Saat',{description:'=HYPERLINK("https://example.invalid")\nfoo;bar'})],{...names,customers:{C:'@SUM(1+1)'}});
+assert.ok(csv.startsWith('\uFEFF'));assert.match(csv,/'@SUM/);assert.match(csv,/'=HYPERLINK\(""/);assert.match(csv,/foo;bar/);
+for(const v of ['=1+1','+1','-2','@SUM(A1)',' \t=1'])assert.ok(csvCell(v).startsWith('"\''));
+assert.equal(csvCell('A"B'),'"A""B"');
+assert.equal(Object.getPrototypeOf(exploreWorks([w('u',today,2,'__proto__')],names,{},opts).units),null);
+assert.equal(exploreWorks([w('u',today,2,'__proto__')],names,{},opts).units.__proto__,2);
+console.log('work-explorer OK: date boundaries, intersecting filters, missing-price exclusions, stable URLs, CSV escaping, safe unit aggregation');
