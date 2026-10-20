@@ -4,6 +4,12 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 U=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8841/'
 checks=[]
+def send_review(page,selector='[data-send]'):
+    page.click(selector);page.wait_for_timeout(500)
+    if page.locator('[data-driver-share-go]').count():
+        page.click('[data-driver-share-go]');page.wait_for_timeout(450)
+        if page.locator('[data-driver-share-cancel]').count():page.click('[data-driver-share-cancel]')
+
 def check(ok,msg):
     print(('PASS ' if ok else 'FAIL ')+msg,flush=True); checks.append((ok,msg))
 def jpg():
@@ -32,17 +38,17 @@ with sync_playwright() as p:
     check(pg.evaluate("JSON.parse(localStorage.getItem('sp_driver_entries'))[0].ph")==1,'double tap saves one entry and its photo')
     check(pg.locator('#driver-pending .section-title').count()==1 and 'Gönderim merkezi' in pg.inner_text('#screen'),'date groups and delivery centre')
     for mode in ['cancel','fail','unsupported']:
-        pg.evaluate('window.__mode='+json.dumps(mode));pg.click('[data-send]');pg.wait_for_timeout(700)
+        pg.evaluate('window.__mode='+json.dumps(mode));send_review(pg);pg.wait_for_timeout(700)
         check(not pg.evaluate("JSON.parse(localStorage.getItem('sp_driver_entries'))[0].sent||false"),mode+' leaves outbox pending')
     pg.evaluate("async()=>{const e=JSON.parse(localStorage.getItem('sp_driver_entries'))[0];await (await caches.open('sahapro-driver')).delete('./__drv/'+e.id+'-0');window.__mode='ok'}")
-    pg.click('[data-send]');pg.wait_for_timeout(600)
+    send_review(pg);pg.wait_for_timeout(600)
     check(pg.evaluate('window.__shares.length')==0,'missing photo blocks sharing, never shifts photo order')
     pg.click('[data-viewphotos]');pg.wait_for_timeout(300)
     check('0/1 fotoğraf' in pg.inner_text('[data-photo-status]'),'missing photo diagnosis visible')
     pg.set_input_files('[data-repair]',photo);pg.wait_for_function("() => !document.querySelector('[data-add]').disabled")
-    pg.click('[data-send]');pg.wait_for_timeout(900)
+    send_review(pg);pg.wait_for_timeout(900)
     check(pg.evaluate('window.__shares[0].count')==1 and pg.evaluate("!!JSON.parse(localStorage.getItem('sp_driver_entries'))[0].sent"),'repair restores complete native share')
-    pg.click('[data-shared] > summary');pg.click('[data-sendone]');pg.wait_for_timeout(800)
+    pg.click('[data-shared] > summary');send_review(pg,'[data-sendone]');pg.wait_for_timeout(800)
     check(pg.evaluate('window.__shares[0].text===window.__shares[1].text'),'per-record retry preserves identical packet and entry ID')
     # Fuel has its own photo input, and imported work photo remains correctly positioned.
     pg.click('[data-tab=yakit]');pg.fill('[data-f=L]','20');pg.click('[data-src="Akaryakıt İstasyonu"]');pg.fill('[data-f=tl]','900')
@@ -69,7 +75,7 @@ with sync_playwright() as p:
     check(pg.evaluate("JSON.parse(localStorage.getItem('sp_driver_entries')).length")==4 and pg.locator('[data-send]').count()==1,'real service worker offline reload preserves driver outbox and new helper module')
     ctx.set_offline(False)
     pg.evaluate("()=>{const c=JSON.parse(localStorage.getItem('sp_driver_cfg'));c.exp='2020-01-01';c.ts=Date.now();localStorage.setItem('sp_driver_cfg',JSON.stringify(c))}")
-    pg.reload();pg.wait_for_selector('[data-send]');pg.click('[data-send]');pg.wait_for_timeout(400)
+    pg.reload();pg.wait_for_selector('[data-send]');send_review(pg);pg.wait_for_timeout(400)
     check(pg.evaluate('window.__shares.length')==0 and 'Bağlantı süresi doldu' in pg.inner_text('#toast-root'),'expired link cannot open sharing')
     # A missing draft image cannot silently become a photo-less saved record.
     recovery=b.new_context(viewport={'width':390,'height':844});recovery.add_init_script(MOCK)
@@ -87,7 +93,7 @@ with sync_playwright() as p:
     for _ in range(3):
         rp.select_option('[data-cid]','c');rp.set_input_files('[data-photo]',[dict(photo,name=f'proof-{i}.jpg') for i in range(10)])
         rp.wait_for_function("() => !document.querySelector('[data-add]').disabled");rp.click('[data-add]');rp.wait_for_function("() => !document.querySelector('[data-add]').disabled")
-    rp.click('[data-send]');rp.wait_for_timeout(900)
+    send_review(rp);rp.wait_for_timeout(900)
     check(rp.evaluate('window.__shares[0].count')<=20 and rp.evaluate("JSON.parse(localStorage.getItem('sp_driver_entries')).some(e=>!e.sent)"),'large photo queue splits into bounded packets and retains remaining rows')
     recovery.close()
     pg.screenshot(path='/tmp/driver-v3928.png',full_page=True)
