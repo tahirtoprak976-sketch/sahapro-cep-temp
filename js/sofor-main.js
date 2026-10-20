@@ -39,7 +39,7 @@ async function render() {
       try {
         const reg = await navigator.serviceWorker.register("./sw.js");
         let requestedUpdate = false;
-        const ask = (sw) => { if (document.querySelector("[data-driver-update]")) return; const b = document.createElement("button"); b.className = "btn primary block"; b.dataset.driverUpdate = "1"; b.style.cssText = "margin:8px 12px;width:calc(100% - 24px)"; b.textContent = "Yeni sürüm hazır — dokunun"; b.onclick = () => { if (document.querySelector("#screen button:disabled")) return toast("Fotoğraf veya kayıt işlemi bitsin; sonra güncelleyin", "err"); requestedUpdate = true; sw.postMessage({ type: "SKIP_WAITING" }); }; document.body.insertBefore(b, document.body.firstChild); };
+        const ask = (sw) => { if (document.querySelector("[data-driver-update]")) return; const b = document.createElement("button"); b.className = "btn primary block"; b.dataset.driverUpdate = "1"; b.style.cssText = "margin:8px 12px;width:calc(100% - 24px)"; b.textContent = "Yeni sürüm hazır — dokunun"; b.onclick = () => { if (document.querySelector("[data-driver-share], #screen button:disabled")) return toast("Fotoğraf veya kayıt işlemi bitsin; sonra güncelleyin", "err"); requestedUpdate = true; sw.postMessage({ type: "SKIP_WAITING" }); }; document.body.insertBefore(b, document.body.firstChild); };
         if (reg.waiting && navigator.serviceWorker.controller) ask(reg.waiting);
         reg.addEventListener("updatefound", () => { const sw = reg.installing; sw?.addEventListener("statechange", () => { if (sw.state === "installed" && navigator.serviceWorker.controller) ask(sw); }); });
         document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });

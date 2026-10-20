@@ -61,13 +61,13 @@ with sync_playwright() as p:
     check("patrona henüz gitmedi" in t and not dp.query_selector("[data-draftnote]") and not dp.evaluate("localStorage.getItem('sp_driver_draft')"), "kayıt sonrası durum dürüst ('telefonda kaydedildi'), taslak temizlendi")
     check("henüz paylaşılmadı (1)" in dp.evaluate("document.querySelector('#screen').textContent"), "'telefonda bekleyen — henüz paylaşılmadı' bölümü")
     # 4) Paylaş: dürüst durum, fotoğraflar tekrar paylaşım için kalır
-    dp.click("[data-send]"); dp.wait_for_timeout(1200)
+    dp.click("[data-send]"); dp.wait_for_selector("[data-driver-share-go]"); dp.click("[data-driver-share-go]"); dp.wait_for_timeout(1200)
     t = " ".join(dp.evaluate("[...document.querySelectorAll('.toast')].map(t=>t.textContent)")); dp.wait_for_timeout(1500)
     sh1 = dp.evaluate("(window.__shares||[]).at(-1)")
     check("Paylaşım ekranı açıldı" in t and "Gönderildi ✓" not in t, "paylaşım sonrası 'gönderildi' denmiyor; 'paylaşım ekranı açıldı'")
     check("doğrulanamaz" in dp.inner_text("#screen"), "paylaşılanlar 'patronun aldığı doğrulanamaz' notuyla")
     dp.click("details summary") if dp.query_selector("details summary") else None
-    dp.click("[data-resend]"); dp.wait_for_timeout(3000)
+    dp.click("[data-resend]"); dp.wait_for_selector("[data-driver-share-go]"); dp.click("[data-driver-share-go]"); dp.wait_for_timeout(3000)
     sh2 = dp.evaluate("(window.__shares||[]).at(-1)")
     check(sh1 and sh2 and len(sh2["files"]) == len(sh1["files"]) == 1, f"tekrar paylaşımda fotoğraf hâlâ var ({len(sh1['files']) if sh1 else 0} → {len(sh2['files']) if sh2 else 0})")
     # 5) Patron aynı paketi iki kez içe alır → tek kayıt
@@ -103,3 +103,5 @@ with sync_playwright() as p:
     check(not errs, f"sayfa hatası yok {errs[:2]}")
     b.close()
 print("\nSONUÇ:", "BAŞARILI" if not FAIL else f"{len(FAIL)} SORUN")
+
+raise SystemExit(bool(FAIL))

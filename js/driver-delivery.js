@@ -57,3 +57,13 @@ export async function commitEntries(key, before, next) {
     tx.onabort = tx.onerror = () => reject(failure || tx.error || new Error("Kayıt saklanamadı"));
   });
 }
+
+// Synchronous guard: native share must still happen within the click activation.
+export function preparedPacketError(packet,latest,cfg,current,today){
+ if(!current||JSON.stringify(current)!==JSON.stringify(cfg))return 'Şoför bağlantısı başka sekmede değişti. Geri dönüp sayfayı yenileyin';
+ if(current.exp&&(!validDate(current.exp)||today>current.exp))return 'Bağlantının süresi doldu. Patrondan yeni bağlantı isteyin';
+ if(!Array.isArray(latest)||!packet.rows.length)return 'Kayıt listesi okunamadı; yeniden hazırlayın';
+ const map=new Map(latest.map(e=>[e.id,e]));
+ for(const [id,snapshot] of packet.snapshots)if(JSON.stringify(map.get(id))!==snapshot)return 'Paketteki bir kayıt başka sekmede değişti veya silindi. Geri dönüp yeniden hazırlayın';
+ return '';
+}

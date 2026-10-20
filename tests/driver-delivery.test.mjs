@@ -27,3 +27,13 @@ assert.deepEqual(incomplete.fuelMeta[0].photos,[]); assert.deepEqual(incomplete.
 console.log('driver-delivery OK: concurrent merges, config, dates, numeric bounds, fuel photo alignment');
 
 const missing={works:[{photos:[]}],tickets:[],driverPhotoNeed:3};mergeTicketsIntoWorks(missing,{photoCount:2});assert.deepEqual(missing.works[0].photos,[], 'single work fallback must not undo incomplete bundle guard');
+
+const {preparedPacketError}=await import('../js/driver-delivery.js');
+const current={...cfg,exp:'2026-10-21'},packet={rows:[a],snapshots:[[a.id,JSON.stringify(a)]]};
+assert.equal(preparedPacketError(packet,[a,b],current,structuredClone(current),'2026-10-20'),'');
+assert.match(preparedPacketError(packet,[b],current,current,'2026-10-20'),/değişti veya silindi/);
+assert.match(preparedPacketError(packet,[{...a,ph:1}],current,current,'2026-10-20'),/değişti veya silindi/);
+assert.match(preparedPacketError(packet,[a],current,{...current,lid:'new'},'2026-10-20'),/bağlantısı başka sekmede/);
+assert.match(preparedPacketError(packet,[a],current,current,'2026-10-22'),/süresi doldu/);
+assert.match(preparedPacketError(packet,null,current,current,'2026-10-20'),/okunamadı/);
+console.log('prepared packet: stale record/config, expiry, corruption guards OK');

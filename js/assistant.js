@@ -283,7 +283,8 @@ export async function screen(ctx) {
         const expected = drvPayloads.reduce((n, p) => n + p.e.reduce((k, e) => k + (Number(e.ph) || 0) + (e.sg ? 1 : 0), 0), 0);
         if (expected > images.length) v.driverPhotoWarn = `Şoför ${expected} fotoğraf gönderdi (fiş / irsaliye / arıza), ${images.length ? `buraya yalnız ${images.length} tanesi eklendi.` : "buraya hiç eklenmedi."} Eksik pakette fotoğraflar yanlış kayda bağlanmasın diye otomatik eşleştirme yapılmadı. Aşağıdan tüm fotoğrafları kayıt sırasıyla galeriden seçin (WhatsApp'tan gelen fotoğraflar galeride "WhatsApp Images" klasöründedir); kartlar fotoğrafla yeniden hazırlanır. Fotoğrafsız da kaydedebilirsiniz.`;
         if (expected > images.length) v.driverPhotoNeed = expected;
-        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir)`;
+        const duplicateCount = [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])].filter(r => r.driverDup).length;
+        v.driverNote = `${drvPayloads.map((p) => p.n).join(", ")}: şoför ekranından ${[[drvPlan.meta.length, "iş"], [drvPlan.fuelMeta.length, "yakıt"], [drvPlan.expMeta.length, "gider"], [drvPlan.mainMeta.length, "arıza/bakım"]].filter(([n]) => n).map(([n, t]) => n + " " + t).join(", ")} (Gemini'siz, birebir). Kontrol kartları hazır; yeni kayıtlar henüz kaydedilmedi. ${duplicateCount ? duplicateCount + " satır daha önce alınmış; seçim dışı bırakıldı. " : ""}Pakette ${expected} dosya bekleniyor, ${images.length} dosya eklendi. Kaydetmeden önce dosya eşleşmelerini kontrol edin.`;
       }
       v.cards = validateCards(plan, { message: vmsg, d, photoTexts: v.photoTexts });
       v.memory = validateMemory(plan, { message: vmsg, d });

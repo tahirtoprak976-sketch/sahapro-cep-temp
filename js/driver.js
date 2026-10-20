@@ -3,6 +3,8 @@
 // "Patrona gönder" ile WhatsApp'tan okunur metin + SP1 kodu + fiş fotoğrafları gider. Patronun asistanı kodu Gemini'siz çözer.
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, confirmDialog, shareText } from "./ui.js";
 import { commitEntries, validConfig, validDate, validNumber } from "./driver-delivery.js";
+import { startActivity } from "./update-safety.js";
+import { reviewDriverPacket } from "./driver-share-ui.js";
 import { isActive, COMPANY_NAME } from "./core.js";
 
 const K_MODE = "sp_driver", K_CFG = "sp_driver_cfg", K_ENT = "sp_driver_entries", PHOTO_CACHE = "sahapro-driver";
@@ -93,7 +95,7 @@ export async function screen(ctx) {
   } catch (e) { root.innerHTML = notice("danger", "Telefondaki şoför kayıtları okunamadı. Verileri silmeyin; destek için yedek alın. " + (e.message || e)); return true; }
   let savedEntries = structuredClone(entries);
   const nm = (list, id) => (list || []).find((x) => x[0] === id)?.[1] || "";
-  let tab = "is", photos = [], slipFor = null, busy = false, photoBusy = false, sharing = false;
+  let tab = "is", photos = [], slipFor = null, busy = false, photoBusy = false, sharing = false, lastSavedId = null;
   let draftPhotoId = "draft", draftPhotoCount = 0, missingDraftPhotos = 0, draftQueue = Promise.resolve();
   window.onbeforeunload = () => busy || photoBusy || sharing ? "İşlem sürüyor" : undefined;
   const lockForm = () => { for (const el of qsa("button, input, select, textarea", root)) el.disabled = busy || photoBusy || sharing; };
@@ -264,6 +266,7 @@ export async function screen(ctx) {
     for (const url of previewURLs) URL.revokeObjectURL(url); previewURLs = [];
     if (slipFor) return drawSlip();
     const unsent = entries.filter((e) => !e.sent), sent = entries.filter((e) => e.sent).reverse();
+    const recent = entries.find(e => e.id === lastSavedId && !e.sent);
     const sites = (cfg.S || []).filter((s) => s[2] === st.cid);
     root.innerHTML = `
       <div class="card" style="margin-top:10px;background:#0f2238;color:#fff">
@@ -274,10 +277,11 @@ export async function screen(ctx) {
       <div class="card driver-delivery" aria-label="Gönderim durumu">
         <div class="row between"><b>Gönderim merkezi</b><span class="badge">${navigator.onLine ? "Bağlantı var" : "Çevrimdışı"}</span></div>
         <div class="driver-stats"><div><strong>${unsent.length}</strong><span>Paylaşılmayı bekliyor</span></div><div><strong>${sent.length}</strong><span>Paylaşım ekranı açıldı</span></div><div><strong>${entries.reduce((n,e)=>n+(e.ph || e.ph_dropped || 0),0)}</strong><span>Fotoğraf bağlantısı</span></div></div>
-        <div class="small muted" style="line-height:1.6">1. Kaydet → 2. WhatsApp'ta paylaş → 3. Patron Asistan'da kontrol edip kaydeder.</div>
+        <div class="small muted" style="line-height:1.6">1. Telefona kaydet → 2. Paketi kontrol et → 3. WhatsApp’ta paylaş → 4. Patron kontrol edip kaydeder.</div>
         <div class="tiny muted" style="margin-top:6px">Patronun aldığı bu telefonda doğrulanamaz. Kayıtlar ve fotoğraflar kendiliğinden silinmez. İnternetsiz kayıt girebilirsiniz; paylaşmak için bağlantınızı kontrol edin.</div>
         ${unsent.length ? `<button class="btn primary block" data-pending style="margin-top:10px">${unsent.length} bekleyen kayda git ↓</button>` : ""}
       </div>
+      ${recent ? `<section class="card" data-save-result role="status"><b>✓ Telefona kaydedildi · henüz paylaşılmadı</b><p class="small">${esc(core.entryLine(recent, cfg))}</p><button class="btn primary block" data-review-saved>Bu kaydın paketini hazırla</button><p class="tiny muted">Yeni kayıt eklemeye de devam edebilirsiniz; tüm bekleyenleri aşağıdan birlikte hazırlayın.</p></section>` : ""}
       ${weekHtml()}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0">${[["is", "🚚 İş"], ["yakit", "⛽ Mazot"], ["ariza", "🔧 Arıza / Bakım"], ["gider", "💸 Gider"]].map(([k, t]) => `<button class="btn ${tab === k ? "primary" : ""}" data-tab="${k}" style="${big}">${t}</button>`).join("")}</div>
       ${tab === "is" ? `<div class="card">
@@ -314,7 +318,7 @@ export async function screen(ctx) {
       </div>`}
       ${draftNote ? `<div class="card small" data-draftnote>📝 ${esc(draftNote)} ${missingDraftPhotos ? `<button class="btn sm" data-forgetmissing>Eksik fotoğrafları yok say</button>` : ""} <button class="btn sm ghost" data-draftclear>Taslağı temizle</button></div>` : ""}<div class="section-title">Telefonda bekleyen — henüz paylaşılmadı (${unsent.length})</div>
       <div id="driver-pending">${entryCards(unsent) || '<div class="muted small" style="padding:0 4px 8px">Gönderilecek kayıt yok.</div>'}</div>
-      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#168a45;color:#fff;border:0;font-weight:800">📤 Patrona paylaş (WhatsApp) · ${unsent.length} kayıt</button><p class="tiny muted">Uzun listeler parçalara ayrılır. Kalan kayıt sayısı her paylaşımın ardından gösterilir. Fotoğraflar aynı pakette, kayıt sırasıyla eklenir.</p>` : ""}
+      ${unsent.length ? `<button class="btn block" data-send style="${big};background:#168a45;color:#fff;border:0;font-weight:800">📤 Paketi hazırla · ${unsent.length} kayıt</button><p class="tiny muted">Önce kayıt ve fotoğraf önizlemesini kontrol edin; sonra paylaşın. Uzun listeler parçalara ayrılır. Kalan kayıt sayısı her paylaşımın ardından gösterilir. Fotoğraflar aynı pakette, kayıt sırasıyla eklenir.</p>` : ""}
       ${sent.length ? `<details class="card" data-shared style="margin-top:10px"><summary class="small">Paylaşılanlar (${sent.length}) — patronun aldığı bu telefonda doğrulanamaz</summary><p class="tiny muted">Tekrar paylaşım aynı kayıt kimliğini taşır; patronda ikinci kayıt oluşturmaz. WhatsApp'ta mesajı ve ekleri kontrol edin.</p>${entryCards(sent)}<button class="btn sm" style="margin-top:6px" data-resend>Son paylaşılanı tekrar paylaş</button></details>` : ""}
       <details style="margin:14px 4px"><summary class="tiny muted">Ayarlar</summary><div class="tiny muted" style="margin:6px 0">Liste güncellemesi için patrondan yeni bağlantı isteyin. Bağlantı tarihi: ${esc(cfg.iss ? trDate(cfg.iss) : "—")}</div><div class="field" style="margin-top:6px"><label class="tiny">Patron yeni bağlantı gönderdiyse buraya yapıştırın</label><textarea data-newlink rows="2" placeholder="Yeni bağlantı"></textarea><button class="btn sm block" data-newlink-ok style="margin-top:4px">Yeni bağlantıyı kur</button></div><button class="btn sm ghost" data-exit>Şoför modundan çık</button></details>`;
     bind(); lockForm();
@@ -339,6 +343,7 @@ export async function screen(ctx) {
       e.ph = await putPhotos(e.id, photos);
       if (!e.ph) delete e.ph;
       entries.push(e); await save();
+      lastSavedId = e.id;
       return true;
     } catch (err) {
       busy = false; lockForm();
@@ -352,6 +357,7 @@ export async function screen(ctx) {
     if (!vals.every(v => validNumber(v))) { toast("Sayılar sıfır veya pozitif, en fazla 1 trilyon olmalı", "err"); return false; }
     return true;
   };
+  const showSaved = () => qs("[data-save-result]", root)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const redrawForm = () => { saveDraft().catch(e => toast(e.message || String(e), "err")); draw(); };
   const bind = () => {
     qs("[data-vid]", root).addEventListener("change", (e) => { st.vid = e.target.value; try { ls.set("sp_driver_vid", st.vid); saveDraft().catch(err => toast(err.message, "err")); } catch (err) { toast(err.message, "err"); } });
@@ -423,7 +429,7 @@ export async function screen(ctx) {
         ...(st.mat.trim() ? { mat: st.mat.trim() } : {}), ...(st.note.trim() ? { note: st.note.trim() } : {}) };
       if (!(await persist(e))) return;
       photos = []; Object.assign(st, { q: 1, ton: "", slip: "", note: "" }); await clearDraft(); busy = false;
-      toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
+      toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Paketi hazırla' ile devam edin", "ok"); draw(); showSaved();
     });
     for (const b of qsa("[data-x-kind]", root)) b.addEventListener("click", () => { readForm(); if (tab === "ariza") x.mt = b.dataset.xKind; else { x.cat = b.dataset.xKind; if (x.cat === "Yemek") x.noVeh = true; } redrawForm(); });
     for (const b of qsa("[data-x-st]", root)) b.addEventListener("click", () => { readForm(); x.st = b.dataset.xSt; redrawForm(); });
@@ -448,7 +454,7 @@ export async function screen(ctx) {
         : { id: core.newId(), k: "g", date: st.date || today, cat: x.cat, tl, pay: x.pay, ...sup, ...(x.noVeh || !st.vid ? {} : { vid: st.vid }), ...(note ? { desc: note } : {}) };
       if (!(await persist(e))) return;
       photos = []; Object.keys(x).forEach((k) => delete x[k]); await clearDraft(); busy = false;
-      toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
+      toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Paketi hazırla' ile devam edin", "ok"); draw(); showSaved();
     });
     qs("[data-addf]", root)?.addEventListener("click", async () => {
       if (busy || photoBusy || sharing) return;
@@ -462,7 +468,7 @@ export async function screen(ctx) {
       if (st.src === "Müşteri Verdi" && !f.cid) return toast("Müşteriyi seçin", "err");
       const e = { id: core.newId(), k: "f", date: st.date || today, vid: st.vid, L, src: st.src, ...(f.cid ? { cid: f.cid } : {}), ...(Number(f.tl) > 0 ? { tl: Number(f.tl) } : {}), ...(Number(f.km) > 0 ? { km: Number(f.km) } : {}), ...(Number(f.hr) > 0 ? { hr: Number(f.hr) } : {}) };
       if (!(await persist(e))) return;
-      photos = []; st.f = {}; await clearDraft(); busy = false; toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Patrona paylaş' ile gönderin", "ok"); draw();
+      photos = []; st.f = {}; await clearDraft(); busy = false; toast("Telefonda kaydedildi — patrona henüz gitmedi; 'Paketi hazırla' ile devam edin", "ok"); draw(); showSaved();
     });
     for (const b of qsa("[data-slip]", root)) b.addEventListener("click", () => { readForm(); slipFor = b.dataset.slip; draw(); window.scrollTo(0, 0); });
     for (const b of qsa("[data-del]", root)) b.addEventListener("click", async () => {
@@ -471,7 +477,8 @@ export async function screen(ctx) {
       if (!e || !(await confirmDialog("Telefondan silinsin mi?", core.entryLine(e, cfg) + (e.sent ? " — Patronun aldığı doğrulanamaz. Bu telefondaki kayıt ve fotoğrafları kaldırmadan önce gerektiğinde tekrar paylaşın." : ""), "Sil", true))) return;
       try { entries = entries.filter((x) => x !== e); await save(); await dropPhotos(e); draw(); } catch (err) { toast(err.message || String(err), "err"); }
     });
-    const send = async (list) => {
+    const prepare = async (list) => {
+      const requested = list.length;
       // İmza mesajın KODUNUN İÇİNDE gider (çizgi verisi; eski kayıtlarda küçültülmüş PNG): patron kopyala-yapıştır yapsa da imza gelir.
       // WhatsApp ~4 KB'tan uzun metni kesebildiği için mesaj MSG_LIMIT altında tutulur; sığmayan kayıtlar sonraki gönderime kalır.
       const sigOf = async (e) => {
@@ -527,21 +534,23 @@ export async function screen(ctx) {
 
       }
       out = out.slice(0, completeRecords); text = await msg(out);
-      let ok = false;
-      try {
-        if (files.length && navigator.canShare?.({ files, text })) { await navigator.share({ text, files }); ok = true; }
-        else if (files.length) throw new Error("Tarayıcı fotoğraflı paylaşımı desteklemiyor. Chrome / Safari ile açın; kayıt ve fotoğraflar beklemede kalır");
-        else if (navigator.share) { await navigator.share({ text }); ok = true; }
-        else { location.href = "https://wa.me/?text=" + encodeURIComponent(text); ok = true; }
-      } catch (e) { toast(e?.name === "AbortError" ? "Paylaşım iptal edildi; kayıtlar telefonda duruyor" : "Paylaşılamadı: " + (e.message || e), "err"); }
-      return ok ? out.map((c) => c._e) : null;
+      const rows = out.map(c => c._e);
+      if (!rows.length) throw new Error("Bu pakete kayıt sığmadı; tek kayıtla yeniden deneyin");
+      return { rows, files, text, bytes: totalBytes, remaining: requested - rows.length,
+        snapshots: rows.map(e => [e.id, JSON.stringify(e)]) };
     };
     const shareRows = async (list) => {
       if (sharing || busy || photoBusy || !list.length) return;
       if (expired) return toast("Bağlantı süresi doldu. Ayarlar bölümünden yeni bağlantıyı kurun; kayıtlar korunuyor", "err");
       sharing = true; lockForm();
+      const releaseUpdate = startActivity("Şoför paketi hazırlanıyor veya paylaşılıyor");
+      const trigger = qs("[data-send]", root);
+      if (trigger) trigger.textContent = "Kayıt ve fotoğraflar kontrol ediliyor…";
       try {
-        const done = await send(list);
+        const packet = await prepare(list);
+        const done = await reviewDriverPacket({ packet, cfg, entryLine: core.entryLine, root,
+          readEntries: () => JSON.parse(localStorage.getItem(K_ENT) || "[]"),
+          readConfig: () => JSON.parse(localStorage.getItem(K_CFG) || "null") });
         if (done) {
           const at = new Date().toISOString();
           for (const e of done) e.sent = at;
@@ -550,8 +559,9 @@ export async function screen(ctx) {
           toast(left ? `${done.length} kayıt için paylaşım ekranı açıldı. ${left} kayıt kaldı — tekrar basın` : "Paylaşım ekranı açıldı — WhatsApp'ta gönderildiğini kontrol edin. Gitmediyse tekrar paylaşın.", "ok");
         }
       } catch (e) { toast("Paylaşım tamamlanamadı: " + (e.message || e) + ". Kayıtlar telefonda korunuyor.", "err"); }
-      finally { sharing = false; draw(); }
+      finally { sharing = false; releaseUpdate(); draw(); }
     };
+    qs("[data-review-saved]", root)?.addEventListener("click", () => shareRows(entries.filter(e => e.id === lastSavedId && !e.sent)));
     qs("[data-send]", root)?.addEventListener("click", () => shareRows(entries.filter(e => !e.sent)));
     qs("[data-resend]", root)?.addEventListener("click", () => {
       const last = entries.filter(e => e.sent).map(e => e.sent).sort().at(-1);
@@ -687,7 +697,7 @@ async function setupScreen(ctx) {
   const setupBusy = value => { creating = value; for (const el of qsa("[data-share], [data-copy], [data-pid], [data-vid], [data-days]", root)) el.disabled = value; };
   qs("[data-share]", root).addEventListener("click", async () => {
     if (creating) return; setupBusy(true);
-    try { const { p, url } = await link(); await shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Sonra ana ekrandaki "SAHAPRO Şoför" simgesinden aç.\nAkşam "Patrona gönder"e basman yeterli.`); } catch (e) { toast(e.message || String(e), "err"); } finally { setupBusy(false); }
+    try { const { p, url } = await link(); await shareText(`Merhaba ${p.name}, iş kayıtlarını buradan gir:\n${url}\n\nAndroid: bağlantıyı aç → Chrome menüsü (⋮) → "Ana ekrana ekle".\niPhone: bağlantıyı Safari'de aç → Paylaş (⬆) → "Ana Ekrana Ekle". Sonra ana ekrandaki "SAHAPRO Şoför" simgesinden aç.\nKayıtlarını kaydet → "Paketi hazırla" → fotoğrafları kontrol et → "WhatsApp’ta paylaş". Paylaşım ekranını açmak, patronun aldığı anlamına gelmez.`); } catch (e) { toast(e.message || String(e), "err"); } finally { setupBusy(false); }
   });
   qs("[data-copy]", root).addEventListener("click", async () => {
     if (creating) return; setupBusy(true);
