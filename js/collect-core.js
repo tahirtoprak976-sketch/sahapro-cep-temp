@@ -198,12 +198,13 @@ export function collectBoardItems(d, { today = todayStr(), notes = {} } = {}) {
 
 // Müşterinin tüm cari hareketleri: kayıtlı cari hareketler + hakedişe girmemiş fiyatlı işler ("İş" satırı).
 // Cari ekranı, müşteri kartı, ekstre ve asistan aynı bakiyeyi gösterir.
-export function customerLedgerMovements(d, customerId) {
-  const billed = new Set(
+export function customerLedgerMovements(d, customerId, sources = {}) {
+  // Optional per-render indexes keep the same calculation without rescanning every customer.
+  const billed = sources.billed ?? new Set(
     live(d, "hakedis").filter((h) => h.status === "Kesinleşti").flatMap((h) => (h.items || []).map((i) => i.work_record_id)),
   );
-  const out = live(d, "cari_movements").filter((m) => m.customer_id === customerId);
-  for (const w of live(d, "work_records").filter((w) => w.customer_id === customerId && !billed.has(w.id))) {
+  const out = (sources.movements ?? d.cari_movements ?? []).filter(isActive).filter((m) => m.customer_id === customerId);
+  for (const w of (sources.works ?? d.work_records ?? []).filter(isActive).filter((w) => w.customer_id === customerId && !billed.has(w.id))) {
     const a = workAmount(w);
     if (a > 0 && w.date) out.push({ id: "is:" + w.id, ref_id: w.id, date: w.date, customer_id: customerId, type: "Is", amount: a, note: workLabel(d, w), created_at: w.created_at });
   }
