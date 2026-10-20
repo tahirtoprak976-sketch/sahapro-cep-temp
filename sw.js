@@ -1,7 +1,8 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261020-driver-transfer-38";
+const CACHE = "sahapro-solo-v3-20261020-driver-bundle-39";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
+  "./js/driver-bundle.js",
   "./js/driver-transfer.js",
   "./js/driver-cash-context.js",
   "./js/driver-customer.js",
@@ -169,7 +170,7 @@ self.addEventListener("fetch", (event) => {
         const fd = await event.request.formData();
         // WhatsApp "Sohbeti dışa aktar" → SAHAPRO: sohbet dosyası (.txt / .zip) + medya → WhatsApp toplu işleme
         const all = fd.getAll("photos").filter((f) => f && f.size);
-        const hasTransfer=all.some(f=>/\.sahapro(?:\s*\(\d+\))?\.txt$/i.test(f.name||""));
+        const hasTransfer=all.some(f=>/\.sahapro(?:\s*\(\d+\))?\.(txt|zip)$/i.test(f.name||""));
         const chat = !hasTransfer && (all.find((f) => /\.zip$/i.test(f.name || "") || /zip/.test(f.type || "")) || all.find((f) => /\.txt$/i.test(f.name || "") || f.type === "text/plain"));
         if (chat) {
           await caches.delete("sahapro-wa");
