@@ -1,3 +1,4 @@
+import { exploreWorks, workURL, workFlags, workCSV } from "./work-explorer.js";
 import { workHours } from "./enterprise-core.js";
 import { kdvRateOf } from "./core.js";
 // SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
@@ -71,37 +72,24 @@ async function work(ctx) {
 
 async function workList(ctx) {
   const { root, db, names, query } = ctx;
-  const filter = query.f || "all";
-  const q = query.q || "";
-  let rows = (await db.getAll("work_records")).filter(isActive);
-  const today = todayStr();
-  if (filter === "today") rows = rows.filter((r) => r.date === today);
-  if (filter === "week") {
-    const from = new Date();
-    from.setDate(from.getDate() - 7);
-    const fs = td(from); // yerel tarih (UTC değil: gece 00–03 arası bir gün kaymasın)
-    rows = rows.filter((r) => r.date >= fs);
-  }
-  // Tarih aralığı (asistan komutu ya da grafik dokunuşu): ?from=YYYY-MM-DD&to=YYYY-MM-DD
-  const isD = (x) => /^\d{4}-\d{2}-\d{2}$/.test(String(x || ""));
-  const dFrom = isD(query.from) ? query.from : null, dTo = isD(query.to) ? query.to : dFrom;
-  if (dFrom) rows = rows.filter((r) => r.date >= dFrom && r.date <= dTo);
-  if (filter === "noslip") rows = rows.filter((r) => !r.slip_id);
-  if (filter === "musterisiz") rows = rows.filter((r) => !r.customer_id);
-  if (filter === "fiyatsiz") {
-    const { hasWorkPrice } = await import("./collect-core.js");
-    const internal = new Set((await db.listActive("customers")).filter((c) => c.internal).map((c) => c.id));
-    rows = rows.filter((r) => !internal.has(r.customer_id) && !hasWorkPrice(r) && !(Number(r.customer_fuel_allowance_l) > 0));
-  }
-  rows = rows.filter((r) =>
-    matchSearch(
-      `${names.customers[r.customer_id] || ""} ${names.sites[r.site_id] || ""} ${names.vehicles[r.vehicle_id] || ""} ${names.personnel[r.personnel_id] || ""} ${r.work_type} ${r.description || ""} ${r.material || ""}`,
-      q,
-    ),
-  );
-  rows.sort((a, b) =>
-    b.date + (b.created_at || "") < a.date + (a.created_at || "") ? -1 : 1,
-  );
+  const [all, customers, vehicles, personnel, sites] = await Promise.all([
+    db.getAll("work_records"), db.listActive("customers"), db.listActive("vehicles"), db.listActive("personnel"), db.listActive("sites"),
+  ]);
+  const today = todayStr(), internal = new Set(customers.filter(c => c.internal).map(c => c.id));
+  const model = exploreWorks(all, names, query, { today, internal });
+  const { rows, state, units, counts } = model;
+  const filter = state.f, q = state.q, dFrom = state.from, dTo = state.to;
+  const options = (list, value, label) => `<option value="">${esc(label)}</option>` +
+    (value && !list.some(r => r.id === value) ? `<option value="${esc(value)}" selected>${esc(value)} (arşiv / listede yok)</option>` : "") +
+    list.map(r => `<option value="${esc(r.id)}" ${r.id === value ? "selected" : ""}>${esc(r.name)}</option>`).join("");
+  const values = (key) => [...new Set(all.filter(isActive).map(w => w[key]).filter(Boolean).map(String))].sort((a,b)=>a.localeCompare(b,"tr"));
+  const textOptions = (key, label) => `<option value="">${esc(label)}</option>` + (state[key] && !values(key).includes(state[key]) ? `<option value="${esc(state[key])}" selected>${esc(state[key])}</option>` : "") + values(key).map(v => `<option value="${esc(v)}" ${state[key] === v ? "selected" : ""}>${esc(v)}</option>`).join("");
+  const activeKeys = ["customer_id","vehicle_id","personnel_id","site_id","work_type","unit"];
+  const activeFilters = activeKeys.filter(k => state[k]);
+  const filterLabels = { customer_id: "Müşteri", site_id: "Şantiye", vehicle_id: "Araç", personnel_id: "Personel", work_type: "İş", unit: "Birim" };
+  const labelOf = key => ({ customer_id: names.customers, site_id: names.sites, vehicle_id: names.vehicles, personnel_id: names.personnel }[key]?.[state[key]] || state[key]);
+  const scope = dFrom || dTo ? `${dFrom ? trDate(dFrom) : "Başlangıçtan"} – ${dTo ? trDate(dTo) : "Tüm tarihlere"}` : "Tüm tarihler";
+  const renderHash = location.hash;
 
   root.innerHTML =
     appbar("İş Kayıtları", `${rows.length} kayıt${dFrom ? " · " + trDate(dFrom) + (dTo !== dFrom ? " – " + trDate(dTo) : "") : ""}`, {
@@ -109,18 +97,27 @@ async function workList(ctx) {
     }) +
     `
     <div class="history-tools"><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div style="height:10px"></div>
-    ${segBar(
-      [
-        { v: "all", t: "Tümü" },
-        { v: "today", t: "Bugün" },
-        { v: "week", t: "7 Gün" },
-        { v: "noslip", t: "Fişsiz" },
-        { v: "fiyatsiz", t: "Fiyatsız" },
-      ],
-      filter,
-      (v) => `#/isler?f=${v}${q ? "&q=" + encodeURIComponent(q) : ""}`,
-    )}
-    ${searchBar("Müşteri, araç, personel, iş…", q)}
+    <div class="work-explorer-summary card" data-work-summary>
+      <div class="row between"><b>İş özeti</b><span class="tiny muted">${esc(scope)}</span></div>
+      ${state.error ? notice("danger", state.error) : `<div class="work-explorer-metrics"><div><strong>${rows.length}</strong><span>iş kaydı</span></div><div><strong>${model.days}</strong><span>farklı gün</span></div>${Object.entries(units).map(([u,n])=>`<div><strong>${fmtNum(n)}</strong><span>${esc(u)}</span></div>`).join("")}</div><p class="tiny muted">Özet ve CSV bütün filtre sonucunu kapsar. Sefer, saat ve ton ayrı hesaplanır; bu ekran alacak veya kâr toplamı değildir.</p>`}
+    </div>
+    ${segBar([{v:"all",t:"Tüm tarihler"},{v:"today",t:"Bugün"},{v:"week",t:"Son 7 gün"},{v:"month",t:"Bu ay"}],query.from || query.to ? "custom" : state.period,v=>workURL(query,{f:filter,period:v,from:null,to:null}))}
+    ${segBar([{v:"all",t:"Tüm işler"},{v:"noslip",t:"Fişsiz"},{v:"fiyatsiz",t:"Fiyatsız"},{v:"musterisiz",t:"Müşterisiz"},{v:"driver",t:"Şoförden"}],filter,v=>workURL(query,{f:v,period:state.period}))}
+    ${searchBar("Müşteri, araç, personel, iş, fiş no…", q)}
+    ${activeFilters.length || query.from || query.to ? `<div class="work-explorer-checks" aria-label="Etkin filtreler">${activeFilters.map(key=>`<button class="btn sm" data-go="${esc(workURL(query,{[key]:null,...(key==="customer_id"?{site_id:null}:{})}))}" title="${esc(filterLabels[key]+": "+labelOf(key))}">${esc(filterLabels[key])}: ${esc(labelOf(key))} ×</button>`).join("")}${query.from || query.to ? `<button class="btn sm" data-go="${esc(workURL(query,{from:null,to:null,period:"all"}))}">Özel tarih ×</button>` : ""}</div>` : ""}
+    <details class="card" data-work-filters ${state.error ? "open" : ""}><summary>Filtreler · tarih, müşteri, araç, personel</summary>
+      <div class="formgrid2" style="margin-top:12px">
+        <div class="field"><label>Başlangıç</label><input type="date" data-wfilter="from" value="${esc(dFrom)}"></div>
+        <div class="field"><label>Bitiş</label><input type="date" data-wfilter="to" value="${esc(dTo)}"></div>
+        <div class="field"><label>Müşteri</label><select data-wfilter="customer_id">${options(customers,state.customer_id,"Tüm müşteriler")}</select></div>
+        <div class="field"><label>Şantiye</label><select data-wfilter="site_id">${options(sites.filter(x=>!state.customer_id||x.customer_id===state.customer_id),state.site_id,"Tüm şantiyeler")}</select></div>
+        <div class="field"><label>Araç / makine</label><select data-wfilter="vehicle_id">${options(vehicles,state.vehicle_id,"Tüm araçlar")}</select></div>
+        <div class="field"><label>Şoför / operatör</label><select data-wfilter="personnel_id">${options(personnel,state.personnel_id,"Tüm personel")}</select></div>
+        <div class="field"><label>İş türü</label><select data-wfilter="work_type">${textOptions("work_type","Tüm iş türleri")}</select></div>
+        <div class="field"><label>Birim</label><select data-wfilter="unit">${textOptions("unit","Tüm birimler")}</select></div>
+      </div><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-work-apply>Filtreleri uygula</button><button class="btn" data-go="#/isler">Tümünü temizle</button></div>
+    </details>
+    ${!state.error && rows.length ? `<div class="work-explorer-checks" aria-label="Seçili işler kontrolü">${[["noslip","fişsiz"],["fiyatsiz","fiyatsız"],["musterisiz","müşterisiz"],["driver","şoförden"]].filter(([k])=>counts[k]).map(([k,label])=>`<button class="btn sm" data-go="${esc(workURL(query,{f:k,period:state.period}))}">${counts[k]} ${label}</button>`).join("")}<button class="btn sm" data-work-csv>Filtreli CSV · ${rows.length} kayıt</button></div>` : ""}
     <div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/isler/new">+ Yeni İş Kaydı</button></div>`;
 
@@ -128,22 +125,22 @@ async function workList(ctx) {
   if (!rows.length)
     listEl.innerHTML = emptyState(
       "⚒",
-      "Kayıt yok",
-      '<button class="btn primary" data-go="#/isler/new">+ İş Kaydı</button>',
+      state.error ? "Tarih filtresini düzeltin" : "Bu filtrelere uyan kayıt yok",
+      '<button class="btn" data-go="#/isler">Filtreleri temizle</button> <button class="btn primary" data-go="#/isler/new">+ İş Kaydı</button>',
     );
   else {
     // Gerçek iş tarihine göre gruplu (en yeni üstte); sayfalama tarih grubunu bölmez
     const { groupByDate, pageGroups } = await import("./date-groups.js");
     const pages = pageGroups(groupByDate(rows), 30);
-    const row = (w) =>
-      li({
-        ic: "⚒",
-        href: "#/isler/" + w.id,
-        t1: `<span class="strong">${esc(names.customers[w.customer_id] || "Müşteri yok")}</span>`,
-        t2: `${esc(w.work_type || "İş")} · ${esc(names.vehicles[w.vehicle_id] || "araç yok")} — ${esc(names.personnel[w.personnel_id] || "personel yok")}${w.site_id ? " · " + esc(names.sites[w.site_id]) : ""}`,
-        badgeHtml: w.slip_id ? badge("Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : "",
-        end: `<div class="amt nowrap" style="font-size:16px">${fmtNum(w.quantity)} ${esc(w.unit || "")}</div>`,
-      });
+    const row = (w) => {
+      const flags = workFlags(w, internal);
+      return `<a class="li work-explorer-row" href="#/isler/${esc(encodeURIComponent(w.id))}">
+        <div class="work-explorer-row-head"><strong>${esc(names.customers[w.customer_id] || "Müşteri yok")}</strong><strong class="work-explorer-quantity">${fmtNum(w.quantity)} ${esc(w.unit || "")}</strong></div>
+        <div class="small">${esc(w.work_type || "İş")}${w.site_id ? " · " + esc(names.sites[w.site_id] || "Şantiye arşivde") : ""}</div>
+        <div class="small muted">${esc(names.vehicles[w.vehicle_id] || "Araç belirtilmedi")} · ${esc(names.personnel[w.personnel_id] || "Personel belirtilmedi")}</div>
+        <div class="work-explorer-row-tags">${w.slip_id || w.digital_slip_no ? badge(w.digital_slip_no ? "Dijital fiş" : "Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : badge("Fiş yok", "")}${flags.fiyatsiz ? badge("Fiyat yok", "warn") : ""}${flags.driver ? badge("Şoförden", "info") : ""}${Number(w.customer_fuel_allowance_l)>0 ? badge("Mazot karşılığı", "info") : ""}${w.slip_no || w.digital_slip_no ? `<span class="tiny muted">${esc(w.slip_no || w.digital_slip_no)}</span>` : ""}</div>
+      </a>`;
+    };
     let shown = 0;
     const more = () => {
       qs("[data-more]", listEl)?.remove();
@@ -160,12 +157,32 @@ async function workList(ctx) {
   }
 
   let st;
-  qs("[data-search]", root).addEventListener("input", (e) => {
+  const search = qs("[data-search]", root);
+  search.addEventListener("input", () => {
     clearTimeout(st);
-    st = setTimeout(
-      () => go(`#/isler?f=${filter}&q=${encodeURIComponent(e.target.value)}`),
-      450,
-    );
+    st = setTimeout(() => { if (location.hash === renderHash) go(workURL(query, { q: search.value, f: filter, period: state.period })); }, 450);
+  });
+  for (const button of qsa('button[data-go^="#/isler?"]', root)) button.addEventListener("click", () => {
+    clearTimeout(st);
+    const params = Object.fromEntries(new URLSearchParams(button.dataset.go.split("?")[1]));
+    button.dataset.go = workURL(params, { q: search.value });
+  });
+  qs("[data-work-apply]", root).onclick = () => {
+    clearTimeout(st);
+    const patch = Object.fromEntries(qsa("[data-wfilter]", root).map(el => [el.dataset.wfilter, el.value]));
+    go(workURL(query, { ...patch, q: search.value, f: filter, period: "all" }));
+  };
+  qs('[data-wfilter="customer_id"]', root).onchange = (ev) => {
+    const site = qs('[data-wfilter="site_id"]', root);
+    const owner = sites.find(s => s.id === site.value)?.customer_id;
+    const selected = owner && ev.target.value && owner !== ev.target.value ? "" : site.value;
+    site.innerHTML = options(sites.filter(s => !ev.target.value || s.customer_id === ev.target.value), selected, "Tüm şantiyeler");
+  };
+  qs("[data-work-csv]", root)?.addEventListener("click", async (ev) => {
+    const button = ev.currentTarget; button.disabled = true;
+    try { await shareOrDownload(new Blob([workCSV(rows, names)], { type: "text/csv;charset=utf-8" }), `SAHAPRO_Isler_${today}_${rows.length}.csv`, `${rows.length} filtreli iş kaydı`); }
+    catch (e) { if (e.name !== "AbortError") toast("CSV hazırlanamadı: " + (e.message || e), "err"); }
+    finally { button.disabled = false; }
   });
 }
 

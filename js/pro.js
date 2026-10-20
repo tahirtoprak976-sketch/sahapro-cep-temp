@@ -1698,13 +1698,13 @@ export async function augment(ctx) {
   }
   root.insertAdjacentHTML(
     "afterbegin",
-    `<div class="exportbar"><button class="btn sm" data-go="#/raporlar?store=${store}${route === "cari" && id ? "&customer_id=" + id : ""}">Filtreli PDF / CSV / Paylaş</button>${["vehicles", "personnel", "contractors", "sites"].includes(store) ? `<button class="btn sm" data-go="#/${route}/new">Yeni Kart</button>` : ""}${store === "work_records" ? '<button class="btn sm" data-bulk-price>Toplu Fiyatlandır</button>' : ""}</div>`,
+    `<div class="exportbar"><button class="btn sm" data-go="#/raporlar?store=${store}${route === "cari" && id ? "&customer_id=" + id : ""}">${store === "work_records" ? "Rapor merkezi · ayrı filtreler" : "Filtreli PDF / CSV / Paylaş"}</button>${["vehicles", "personnel", "contractors", "sites"].includes(store) ? `<button class="btn sm" data-go="#/${route}/new">Yeni Kart</button>` : ""}${store === "work_records" ? '<button class="btn sm" data-bulk-price>Tüm işlerde fiyat uygula</button>' : ""}</div>`,
   );
   qs("[data-bulk-price]", root)?.addEventListener("click", async () => {
     if (
       !(await confirmDialog(
         "Fiyatları uygula",
-        "Yalnızca fiyatı olmayan, kesinleşmemiş işlere mevcut kurallar uygulanır.",
+        "Bu işlem İşler ekranındaki filtrelerle sınırlı değildir. Tüm kayıtlar içindeki fiyatı olmayan, kesinleşmemiş işlere mevcut kurallar uygulanır.",
         "Uygula",
       ))
     )
