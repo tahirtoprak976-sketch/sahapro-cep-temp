@@ -1416,17 +1416,19 @@ export async function augment(ctx) {
     const sources=[...(record?.source_document_id?[{document_id:record.source_document_id,page:record.source_page,quote:record.source_quote}]:[]),...(record?.source_pdf_links||[])];
     if (sources.length) root.insertAdjacentHTML("beforeend", `<section class="card" data-pdf-provenance><h3>Kaynak PDF</h3>${sources.map(s=>`<p>Sayfa ${esc(String(s.page || "?"))}</p><p class="small">${esc(s.quote || "")}</p><button class="btn block" data-go="#/belgeler/${esc(s.document_id)}">Orijinal PDF arşivini aç</button>`).join('')}</section>`);
   }
+  // One read-only snapshot for all customer sections. Sharing still reads fresh data on click.
+  const customerData=route === "musteriler" && id ? await db.dumpAll() : null;
   // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
   if (route === "musteriler" && id) {
-    try { await customerDashboard(ctx, id); } catch (e) { console.error(e); }
-    try { await customerWorks(ctx, id); } catch (e) {}
+    try { await customerDashboard(ctx, id, customerData); } catch (e) { console.error(e); }
+    try { await customerWorks(ctx, id, customerData); } catch (e) {}
   }
   // Müşteri kartı: mazotla ödeme kuralları ve mazot hesabı (ör. Kılıç Hafriyat: 75 L/sefer, ücret yalnız mazot)
   if (route === "musteriler" && id) {
     try {
-      const me = await db.get("customers", id);
+      const me = (customerData.customers||[]).find(c=>c.id===id);
       const R = await import("./assistant-rules.js");
-      const d0 = await db.dumpAll();
+      const d0 = customerData;
       const rules = R.fuelRulesOf(me);
       const L = R.customerFuelLedger(d0, id);
       if (me && (rules.length || L.works)) {
@@ -1453,12 +1455,12 @@ export async function augment(ctx) {
   // Müşteri kartı: ana firma / taşeronları (Ağırtaş Mimarlık → Hisar Polat)
   if (route === "musteriler" && id) {
     try {
-      const cs = (await db.getAll("customers")).filter((c) => !c.deleted_at);
+      const cs = (customerData.customers||[]).filter((c) => !c.deleted_at);
       const me = cs.find((c) => c.id === id);
       const parent = me?.parent_customer_id ? cs.find((c) => c.id === me.parent_customer_id) : null;
       const subs = cs.filter((c) => c.parent_customer_id === id);
       if (me && (parent || subs.length)) {
-        const works = (await db.getAll("work_records")).filter((w) => !w.deleted_at);
+        const works = (customerData.work_records||[]).filter((w) => !w.deleted_at);
         const month = new Date().toISOString().slice(0, 7);
         const cnt = (cid) => { const ws = works.filter((w) => w.customer_id === cid); return `${ws.filter((w) => String(w.date).startsWith(month)).length} iş bu ay · ${ws.length} toplam`; };
         const html = '<section class="card"><h2>' + (parent ? "Ana firma" : "Taşeronları") + "</h2>" +
@@ -1706,9 +1708,8 @@ export function customerWorksText(name, res, label) {
   lines.push("", "Toplam: " + Object.entries(res.units).map(([u, q]) => `${tl(q)} ${u.toLocaleLowerCase("tr-TR")}`).join(", ") + (res.amount ? ` · ${tl(res.amount)} ₺` : ""));
   return lines.join("\n");
 }
-async function customerWorks(ctx, id) {
-  const { root, db } = ctx;
-  const d = await db.dumpAll();
+async function customerWorks(ctx, id, d) {
+  const { root } = ctx;
   const me = (d.customers || []).find((c) => c.id === id);
   if (!me) return;
   const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);
@@ -1742,10 +1743,9 @@ async function customerWorks(ctx, id) {
 }
 
 // ---- Müşteri panosu + ayrıntılı PDF ----
-async function customerDashboard(ctx, id) {
+async function customerDashboard(ctx, id, d) {
   const { root, db } = ctx;
   const CR = await import("./customer-report.js");
-  const d = await db.dumpAll();
   const me = (d.customers || []).find((c) => c.id === id);
   if (!me) return;
   const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);

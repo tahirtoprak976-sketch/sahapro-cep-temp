@@ -1,6 +1,6 @@
 // Read-only customer directory. TL and litres use the existing ledger sources.
 import {isActive, matchSearch, toKurus, fromKurus} from './core.js';
-import {customerBalances, missingCustomerWorkPrice} from './collect-core.js';
+import {customerLedgerMovements, missingCustomerWorkPrice} from './collect-core.js';
 import {customerFuelLedger, fuelRulesOf} from './assistant-rules.js';
 
 export const CUSTOMER_VIEWS = {all:'Tümü', receivable:'TL alacağı', fuel:'Mazot alacağı', unpriced:'Fiyatı eksik', subcontractor:'Taşeronlar', inactive:'Pasif'};
@@ -8,19 +8,26 @@ export const CUSTOMER_SORTS = {name:'Ada göre', balance:'TL alacağına göre',
 
 export function customerDirectory(d) {
   const customers=(d.customers||[]).filter(isActive), names=new Map(customers.map(c=>[c.id,c]));
-  const balances=customerBalances(d).bal;
   const billed=new Set((d.hakedis||[]).filter(h=>isActive(h)&&h.status==='Kesinleşti').flatMap(h=>(h.items||[]).map(i=>i.work_record_id)));
-  const groups=new Map();
-  for(const w of (d.work_records||[]).filter(isActive)){
-    const group=groups.get(w.customer_id)||[];group.push(w);groups.set(w.customer_id,group);
-  }
+  const groupByCustomer=records=>{
+    const groups=new Map();
+    for(const record of records||[])if(isActive(record)){
+      const group=groups.get(record.customer_id)||[];group.push(record);groups.set(record.customer_id,group);
+    }
+    return groups;
+  };
+  // Index once per snapshot; retain source record order for identical rounding.
+  const groups=groupByCustomer(d.work_records),movements=groupByCustomer(d.cari_movements);
+  const fuelRows=groupByCustomer(d.fuel_records),tankRows=groupByCustomer(d.fuel_tank_movements);
   return customers.filter(c=>!c.internal).map(customer=>{
     const works=groups.get(customer.id)||[];
+    const sources={billed,works,movements:movements.get(customer.id)||[],fuel:fuelRows.get(customer.id)||[],tank:tankRows.get(customer.id)||[]};
+    const balance=fromKurus(customerLedgerMovements(d,customer.id,sources).reduce((sum,m)=>sum+toKurus(m.amount),0));
     const unpriced=works.filter(w=>missingCustomerWorkPrice(w,billed.has(w.id))).length;
     const lastWork=works.reduce((last,w)=>w.date&&(!last||w.date>last.date)?w:last,null);
-    const ledger=customerFuelLedger(d,customer.id);
+    const ledger=customerFuelLedger(d,customer.id,sources);
     const fuel=fuelRulesOf(customer).length||ledger.works||ledger.receipts?ledger:null;
-    return {customer,parent:names.get(customer.parent_customer_id)||null,balance:balances[customer.id]||0,fuel,works:works.length,unpriced,lastWork};
+    return {customer,parent:names.get(customer.parent_customer_id)||null,balance:balance||0,fuel,works:works.length,unpriced,lastWork};
   });
 }
 

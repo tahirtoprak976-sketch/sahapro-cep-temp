@@ -129,10 +129,10 @@ export function applyFuelPay(d, fields, text = "") {
 }
 
 // Müşterinin mazot hesabı (litre): hak edilen (sefer × L) − alınan (araca verilen + depoya alınan)
-export function customerFuelLedger(d, customerId) {
-  const works = live(d, "work_records").filter((w) => w.customer_id === customerId && Number(w.customer_fuel_allowance_l) > 0);
-  const fuel = live(d, "fuel_records").filter((f) => f.fuel_source === "Müşteri Verdi" && f.customer_id === customerId);
-  const tank = live(d, "fuel_tank_movements").filter((m) => m.move_type === "GİRİŞ" && m.customer_id === customerId);
+export function customerFuelLedger(d, customerId, sources = {}) {
+  const works = (sources.works ?? d.work_records ?? []).filter(isActive).filter((w) => w.customer_id === customerId && Number(w.customer_fuel_allowance_l) > 0);
+  const fuel = (sources.fuel ?? d.fuel_records ?? []).filter(isActive).filter((f) => f.fuel_source === "Müşteri Verdi" && f.customer_id === customerId);
+  const tank = (sources.tank ?? d.fuel_tank_movements ?? []).filter(isActive).filter((m) => m.move_type === "GİRİŞ" && m.customer_id === customerId);
   const r1 = (n) => Math.round(n * 10) / 10;
   const earned = r1(works.reduce((n, w) => n + Number(w.customer_fuel_allowance_l), 0));
   const received = r1(fuel.reduce((n, f) => n + (Number(f.liters) || 0), 0) + tank.reduce((n, m) => n + (Number(m.liters) || 0), 0));
