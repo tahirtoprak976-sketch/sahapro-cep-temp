@@ -1,7 +1,7 @@
 // Müşteri panosu ve ayrıntılı müşteri raporu (PDF). Hesaplar saf (customerReportData), çizim ve PDF ayrı.
 // Rakamlar diğer ekranlarla aynı kaynaklardan: bakiye = collect-core, mazot = assistant-rules, ekstre = statement.
 import { isActive, toKurus, fromKurus, todayStr, addDays, trDate } from "./core.js";
-import { customerLedgerMovements, customerOpenItems, chequeRows, workAmount } from "./collect-core.js";
+import { customerLedgerMovements, customerOpenItems, chequeRows, workAmount, hasWorkPrice, missingCustomerWorkPrice } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
 import { customerFuelLedger, fuelRulesOf } from "./assistant-rules.js";
 
@@ -33,13 +33,14 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const ids = new Set([id, ...(subs ? children.map((c) => c.id) : [])]);
   const nm = (s, x) => (x ? live(d, s).find((r) => r.id === x)?.name || "" : "");
   const inR = (x) => x && (!from || x >= from) && (!to || x <= to);
+  const billed=new Set(live(d,"hakedis").filter(h=>h.status==="Kesinleşti").flatMap(h=>(h.items||[]).map(i=>i.work_record_id)));
   const works = live(d, "work_records").filter((w) => ids.has(w.customer_id) && inR(w.date))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")))
     .map((w) => ({
-      id: w.id, date: w.date, customer: w.customer_id !== id ? nm("customers", w.customer_id) : "", vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
+      id: w.id, priced:hasWorkPrice(w), unpriced:missingCustomerWorkPrice(w,billed.has(w.id)), date: w.date, customer: w.customer_id !== id ? nm("customers", w.customer_id) : "", vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
       type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
       from: nm("quarries", w.quarry_id) || w.quarry || "", site: nm("sites", w.site_id), to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
-      tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: Number(w.price_snapshot?.unit_price) || 0, amount: workAmount(w),
+      tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: w.price_snapshot?.unit_price==null || w.price_snapshot.unit_price==='' ? null : Number(w.price_snapshot.unit_price), amount: workAmount(w),
       fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil", locked: !!w.price_snapshot?.locked, note: w.description || "",
       kdv_included: w.price_snapshot ? !!w.price_snapshot.kdv_included : null, kdv_rate: w.price_snapshot?.kdv_rate ?? null,
     }));
@@ -78,7 +79,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const collected = r2(collections.reduce((n, c) => n + c.amount, 0));
   return {
     customer: me, parent, children, from, to, subs, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, cheques,
-    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), unpriced: works.filter((w) => !w.amount && !w.fuelL && !w.included).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
+    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
 
@@ -130,7 +131,7 @@ export function customerReportSpec(R, { audience = "customer", chart = null, pho
     widths: [7, 9, 8, 11, 7, 17, 8, 5, 7, 8, 9],
     rows: R.works.map((w) => [trDate(w.date), w.vehicle, w.personnel, w.type + (w.customer ? ` [${w.customer}]` : ""), `${fmt(w.qty)} ${w.unit}`,
       [w.from, w.site, w.to].filter(Boolean).join(" → "), w.material, w.tonnage ? fmt(w.tonnage) : "", w.slip,
-      w.unit_price ? tl(w.unit_price) : "", w.amount ? tl(w.amount) : w.fuelL ? `${fmt(w.fuelL)} L mazot` : "fiyatsız"]) });
+      w.priced && w.unit_price!=null ? tl(w.unit_price) : "", w.amount ? tl(w.amount) : w.fuelL ? `${fmt(w.fuelL)} L mazot` : w.included ? "Sözleşmeye dahil" : w.priced ? tl(0) : "fiyatsız"]) });
   S.push({ title: "İş türüne göre", headers: ["İş türü", "İş sayısı", "Miktar", "Tutar"], widths: [40, 15, 25, 20],
     rows: Object.entries(R.byType).map(([k, v]) => [k, String(v.count), unitsText(v.units), tl(v.amount)]) });
   S.push({ title: "Araca göre", headers: ["Araç / makine", "İş sayısı", "Miktar", "Tutar"], widths: [40, 15, 25, 20],

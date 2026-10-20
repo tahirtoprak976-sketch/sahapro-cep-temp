@@ -1,6 +1,6 @@
 // Müşteri panosu sunumu (TEST VERİSİ): litre hesabı ve TL rakamları ayrı ve anlamlarıyla; hesap mantığı değişmez.
 import assert from "node:assert/strict";
-import { customerReportData, panelModel } from "../js/customer-report.js";
+import { customerReportData, panelModel, customerReportSpec } from "../js/customer-report.js";
 const T = "2026-10-18";
 let seq = 0;
 const rec = (o) => ({ id: "r" + ++seq, created_at: "2026-10-01T10:00:00Z", ...o });
@@ -36,5 +36,20 @@ test("iş tutarı KDV temeli: hariç / dahil / karışık", () => {
 test("mazot kuralı olmayan müşteride mazot bloğu yok", () => {
   const x = d(); x.customers[0].fuel_rules = []; x.work_records = []; x.fuel_records = [];
   assert.equal(panelModel(customerReportData(x, "K", { from: "", to: T, today: T })).fuel, null);
+});
+test("açık sıfır fiyat eksik fiyat sayılmaz; müşteri PDF'inde 0 TL olarak görünür", () => {
+  const x=d();x.customers[0].fuel_rules=[];x.fuel_records=[];
+  x.work_records=[
+    rec({customer_id:'K',date:T,quantity:1,unit:'Saat',price_snapshot:{unit_price:0,amount:0}}),
+    rec({customer_id:'K',date:T,quantity:1,unit:'Saat'}),
+    rec({customer_id:'K',date:T,quantity:1,unit:'Saat',price_snapshot:{price_source:'Sözleşmeye dahil'}}),
+  ];
+  const R=customerReportData(x,'K',{today:T,to:T});
+  assert.equal(R.totals.unpriced,1);
+  assert.equal(R.balanceNow,0);
+  const table=customerReportSpec(R).sections.find(s=>s.title==='İş Dökümü');
+  assert.equal(table.rows[0].at(-1),'0,00 ₺');
+  assert.equal(table.rows[1].at(-1),'fiyatsız');
+  assert.equal(table.rows[2].at(-1),'Sözleşmeye dahil');
 });
 console.log(`customer-panel: ${n} test geçti`);

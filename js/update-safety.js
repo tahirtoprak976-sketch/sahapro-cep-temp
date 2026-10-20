@@ -9,7 +9,7 @@ export function updateRisk(root) {
   return { busy: false, unsaved };
 }
 export function trackUpdateEdits(root) {
-  const mark = e => { const el = e.target; if (!el.matches?.('input,textarea,select') || el.matches('[data-search],[data-wfilter],input[type=search]')) return; edited.add(el); };
+  const mark = e => { const el = e.target; if (!el.matches?.('input,textarea,select') || el.matches('[data-search],[data-wfilter],[data-customer-sort],input[type=search]')) return; edited.add(el); };
   root.addEventListener('input', mark, true); root.addEventListener('change', mark, true);
   return () => { root.removeEventListener('input', mark, true); root.removeEventListener('change', mark, true); };
 }

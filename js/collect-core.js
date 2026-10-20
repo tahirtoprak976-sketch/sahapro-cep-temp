@@ -34,6 +34,12 @@ export function hasWorkPrice(w) {
   return valid(p.unit_price)&&Number(w.quantity)>0&&Number.isFinite(Number(w.quantity))&&Number.isFinite(Number(p.unit_price)*Number(w.quantity));
 }
 
+// Presentation only: a deliberately zero-priced, billed or non-TL job is not missing a price.
+export function missingCustomerWorkPrice(w, billed = false) {
+  return !billed && !w.price_snapshot?.locked && !hasWorkPrice(w) && !(Number(w.customer_fuel_allowance_l)>0) &&
+    !['Mazot karşılığı','Sözleşmeye dahil','İç iş (kendi depo)'].includes(w.price_snapshot?.price_source);
+}
+
 function workLabel(d, w) {
   const site = live(d, "sites").find((s) => s.id === w.site_id)?.name;
   const q = Number(w.quantity) ? `${Number(w.quantity).toLocaleString("tr-TR")} ${String(w.unit || "").toLocaleLowerCase("tr-TR")} ` : "";

@@ -7,7 +7,7 @@ def check(c, m):
     print(("  ✓ " if c else "  ✗ ") + m)
     if not c: FAIL.append(m)
 with sync_playwright() as p:
-    b = p.chromium.launch(); errs = []
+    b = p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']); errs = []
     ctx = b.new_context(viewport={'width': 360, 'height': 800}); ctx.add_init_script("try{localStorage.setItem('sp_role','boss');localStorage.setItem('spx_role','boss')}catch(e){}")
     pg = ctx.new_page(); pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(U + "index.html"); pg.wait_for_timeout(5000)

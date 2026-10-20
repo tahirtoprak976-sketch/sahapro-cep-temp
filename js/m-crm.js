@@ -74,44 +74,46 @@ async function customers(ctx) {
   if (sub && ctx.parts[2] === "edit") return customerForm(ctx, sub);
   if (sub) return customerDetail(ctx, sub);
   const { root, db, query } = ctx;
-  const q = query.q || "";
-  // "Kendi Depo (iç iş)" müşteri değildir: depodan çıkış seferleri Kendi Depo ekranında izlenir
-  let rows = (await db.listActive("customers")).filter((c) => !c.internal).sort((a, b) =>
-    String(a.name).localeCompare(String(b.name), "tr"),
-  );
-  rows = rows.filter((r) =>
-    matchSearch(`${r.name} ${r.contact || ""} ${r.phone || ""}`, q),
-  );
-  root.innerHTML =
-    appbar("Müşteriler", `${rows.length} kayıt`) +
-    `
-    <div style="height:10px"></div>${searchBar("Müşteri ara…", q)}<div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/musteriler/new">+ Müşteri</button></div>`;
-  const listEl = qs("[data-list]", root);
-  if (!rows.length)
-    listEl.innerHTML = emptyState(
-      "🏢",
-      "Müşteri yok",
-      '<button class="btn primary" data-go="#/musteriler/new">+ Müşteri Ekle</button>',
-    );
-  else
-    pagedRender(listEl, rows, (c) =>
-      li({
-        ic: "🏢",
-        href: "#/musteriler/" + c.id,
-        t1: esc(c.name),
-        t2: [c.contact, c.phone].filter(Boolean).map(esc).join(" · "),
-        badgeHtml: c.active === false ? badge("Pasif", "") : "",
-      }),
-    );
-  let st;
-  qs("[data-search]", root).addEventListener("input", (e) => {
-    clearTimeout(st);
-    st = setTimeout(
-      () => go("#/musteriler?q=" + encodeURIComponent(e.target.value)),
-      450,
-    );
-  });
+  const {customerDirectory,filterCustomerDirectory,customerDirectoryTotals,CUSTOMER_VIEWS,CUSTOMER_SORTS}=await import('./customer-directory.js');
+  const rows=customerDirectory(await db.dumpAll());
+  let view=Object.hasOwn(CUSTOMER_VIEWS,query.view)?query.view:'all';
+  let sort=Object.hasOwn(CUSTOMER_SORTS,query.sort)?query.sort:'name';
+  let q=query.q||'',overviewOpen=false;
+  root.innerHTML=appbar('Müşteriler',`${rows.length} müşteri`,{right:'<button class="btn sm" data-go="#/musteriler/new">+ Müşteri</button>'}) + `<section class="customer-directory" data-customer-directory>
+    ${searchBar('Müşteri, ana firma, yetkili veya telefon ara…',q)}
+    <div class="row" style="gap:6px;flex-wrap:wrap;margin:10px 0" aria-label="Müşteri filtreleri">${Object.entries(CUSTOMER_VIEWS).map(([key,label])=>`<button class="chip" data-customer-view="${key}">${esc(label)}</button>`).join('')}</div>
+    <div class="field customer-list-sort"><label for="customer-directory-sort">Sıralama</label><select id="customer-directory-sort" data-customer-sort>${Object.entries(CUSTOMER_SORTS).map(([key,label])=>`<option value="${key}">${esc(label)}</option>`).join('')}</select></div>
+    <div data-customer-totals></div><p class="tiny muted">TL ve mazot ayrıdır. Taşeronların hesabı ana firmaya eklenmez; fiyatı eksik işler TL alacağına katılmaz.</p>
+    <p class="small" role="status" data-customer-count></p><div data-list></div></section>
+    `;
+  const listEl=qs('[data-list]',root),search=qs('[data-search]',root),sorting=qs('[data-customer-sort]',root);
+  sorting.value=sort;
+  const persistFilters=()=>{
+    const params=new URLSearchParams();if(q)params.set('q',q);if(view!=='all')params.set('view',view);if(sort!=='name')params.set('sort',sort);
+    history.replaceState(history.state,'','#/musteriler'+(params.size?'?'+params.toString():''));
+  };
+  const draw=()=>{
+    const filtered=filterCustomerDirectory(rows,{q,view,sort}),totals=customerDirectoryTotals(filtered);
+    for(const b of qsa('[data-customer-view]',root)){const selected=b.dataset.customerView===view;b.classList.toggle('on',selected);b.setAttribute('aria-pressed',String(selected));}
+    qs('[data-customer-totals]',root).innerHTML=`<details class="customer-overview" ${overviewOpen?'open':''}><summary>Hesap özeti · ${filtered.length} müşteri</summary><div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">${stat(fmtTL(totals.receivable)+' ₺','TL alacağımız','warn')}${stat(fmtTL(totals.credit)+' ₺','Müşterilerin TL alacağı')}${stat(fmtNum(totals.fuel)+' L','Mazot alacağımız','accent')}${stat(fmtNum(totals.fuelExcess)+' L','Fazla alınan mazot')}</div></details>`;
+    qs('.customer-overview',root).ontoggle=e=>{overviewOpen=e.target.open;};
+    qs('[data-customer-count]',root).textContent=`${filtered.length} / ${rows.length} müşteri · hesap özeti bu listeyi kapsar`;
+    if(!filtered.length){listEl.innerHTML=emptyState('🏢',rows.length?'Bu arama ve filtreye uyan müşteri yok':'Henüz müşteri eklenmemiş');return;}
+    pagedRender(listEl,filtered,r=>{
+      const c=r.customer,balanceLabel=r.balance>0?'TL alacağımız':r.balance<0?'Müşterinin TL alacağı':'TL bakiyesi';
+      return `<a class="card customer-summary" data-customer-card="${esc(c.id)}" href="#/musteriler/${encodeURIComponent(c.id)}"><div class="row between" style="gap:8px"><strong class="grow">${esc(c.name)}</strong>${c.active===false?badge('Pasif',''):''}</div>
+        ${c.parent_customer_id?`<p class="small muted">Taşeron · Ana firma: ${esc(r.parent?.name||'Kartı bulunamadı')}</p>`:''}
+        ${c.contact||c.phone?`<p class="small muted">${esc([c.contact,c.phone].filter(Boolean).join(' · '))}</p>`:''}
+        <div class="row between customer-account-line"><span>${balanceLabel}</span><b>${fmtTL(Math.abs(r.balance))} ₺</b></div>
+        ${r.fuel?`<div class="row between customer-account-line"><span>${r.fuel.balance>=0?'Mazot alacağımız':'Fazla alınan mazot'}</span><b>${fmtNum(Math.abs(r.fuel.balance))} L</b></div>`:''}
+        <p class="small">${r.works} iş${r.unpriced?' · '+badge(r.unpriced+' işin fiyatı eksik','warn'):''}</p>
+        <p class="tiny muted">${r.lastWork?'Son iş: '+esc(trDate(r.lastWork.date))+' · '+esc(r.lastWork.work_type||'İş'):'Henüz iş kaydı yok'}</p></a>`;
+    });
+  };
+  for(const b of qsa('[data-customer-view]',root))b.onclick=()=>{view=b.dataset.customerView;persistFilters();draw();};
+  sorting.onchange=()=>{sort=sorting.value;persistFilters();draw();};
+  search.oninput=()=>{q=search.value;persistFilters();draw();};
+  draw();
 }
 
 async function customerDetail(ctx, id) {
