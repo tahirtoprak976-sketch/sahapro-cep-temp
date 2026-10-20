@@ -120,14 +120,26 @@ export function stripDriverBlocks(text) {
   return String(text || "").split("\n").filter((l) => !/SAHAPRO şoför kaydı|SP1:[A-Za-z0-9_-]{8,}|^(?:\[[^\]]*\]\s*[^:]{1,60}:\s*)?[🚚⛽💸🔧] \d{2}\.\d{2}\.\d{4} · /u.test(l)).join("\n").trim();
 }
 
+// Counts alone cannot identify the origin of attachments from rejected packets.
+export function driverPhotoPolicy(payloads, photoCount = 0, { rejected = false } = {}) {
+  let expected = 0, valid = Number.isSafeInteger(photoCount) && photoCount >= 0;
+  for (const p of payloads) for (const e of p.e || []) {
+    const n = e.ph == null ? 0 : e.ph;
+    if (!Number.isSafeInteger(n) || n < 0 || n > 20 || (e.sg != null && ![0, 1, false, true].includes(e.sg))) valid = false;
+    else expected += n + (e.sg ? 1 : 0);
+  }
+  const reason = !valid ? 'invalid' : rejected && (expected > 0 || photoCount > 0) ? 'rejected' : photoCount < expected ? 'missing' : photoCount > expected ? 'extra' : '';
+  return { expected: valid ? expected : null, attached: photoCount, reason, allowed: !reason };
+}
+
 // Kodlardan asistan planı (Gemini'nin döndürdüğü biçimle aynı) + her işin ek bilgisi (kimlik, fotoğraf, ton)
-export function payloadsToPlan(payloads, d, { photoCount = 0 } = {}) {
+export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true } = {}) {
   const works = [], fuel = [], meta = [], fuelMeta = [], expenses = [], expMeta = [], maintenance = [], mainMeta = [];
   let photo = 0;
-  const expectedPhotos = payloads.reduce((n,p)=>n+p.e.reduce((m,e)=>m+(Number(e.ph)||0)+(e.sg?1:0),0),0);
+  const photoPolicy = driverPhotoPolicy(payloads, photoCount);
   const has = (s, id) => !!id && live(d, s).some((x) => x.id === id);
   // Fotoğraflar şoförün gönderdiği sırayla (kayıt sırası) dağıtılır
-  const takePhotos = (n) => { if (photoCount < expectedPhotos) return []; const out = []; for (let i = 0; i < (Number(n) || 0) && photo < photoCount; i++) out.push(photo++); return out; };
+  const takePhotos = (n) => { if (!allowPhotos || !photoPolicy.allowed) return []; const out = []; for (let i = 0; i < (Number(n) || 0) && photo < photoCount; i++) out.push(photo++); return out; };
   for (const p of payloads) for (const e of p.e) {
     const supId = has("suppliers", e.sup) ? e.sup : null;
     const supName = supId ? live(d, "suppliers").find((x) => x.id === supId).name : e.sn || "";

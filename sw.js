@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261020-driver-32";
+const CACHE = "sahapro-solo-v3-20261020-critic-33";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./js/driver-share-ui.js",
@@ -179,7 +179,8 @@ self.addEventListener("fetch", (event) => {
         const text = [fd.get("title"), fd.get("text"), fd.get("url")].filter(Boolean).join("\n");
         await cache.put("./__share/text", new Response(text));
         let i = 0;
-        for (const f of fd.getAll("photos").slice(0, 10))
+        if (all.length > 20) await cache.put("./__share/error", new Response("Paylaşımda " + all.length + " dosya var; en fazla 20 dosya alınabilir. İşleme durduruldu. Bu mesaja ait dosyaları yeniden seçin veya ekleri temizleyin."));
+        for (const f of all.slice(0, 20))
           if (f && f.size) await cache.put(`./__share/file-${i++}`, new Response(f, { headers: { "content-type": f.type || "image/jpeg", "x-name": encodeURIComponent(f.name || "foto.jpg") } }));
       } catch (e) {}
       return Response.redirect("./index.html#/akilli-asistan?shared=1", 303);
