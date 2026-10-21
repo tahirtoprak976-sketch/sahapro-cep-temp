@@ -2,6 +2,7 @@
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
 import {customerNameKey} from "./driver-customer.js";
+import {customerFuelRows} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
@@ -290,6 +291,7 @@ export function assistantSystem(rules = "") {
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\",\"invoice\":(fotoğraf fatura/fiş ise) {\"no\":fatura/fiş no,\"ettn\",\"seller_tax_no\":SATICININ VKN/TCKN,\"net\":KDV hariç toplam,\"kdv\":KDV tutarı,\"kdv_rate\",\"items\":[{\"code\":stok kodu,\"desc\":açıklama (yazdığı gibi),\"qty\",\"unit\",\"unit_price\":KDV hariç birim fiyat,\"kdv_rate\",\"amount\":KDV hariç satır tutarı}] (HER satırı ayrı yaz)}; company: satıcının tam ünvanı,\"place\":faturadaki yer/saha adı (fatura notu ya da sevk adresinde, ör. ARNAVUTKÖY/BOĞAZKÖY)}]. DÖKÜM FATURASI (İSTAÇ vb. döküm sahasının KG/ton toprak-hafriyat faturası) da expenses'e category Döküm ile, invoice ayrıntısı ve place ile yazılır (uygulama döküm hesabına bağlar, gider saymaz).",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
+    "MÜŞTERİNİN KENDİ FORKLİFTİNE verilen mazot customer_fuel dizisine yazılır: {date,customer_id,liters,unit_price,total,machine:'Forklift',source:'Depo Tankı',quote:mesajdan birebir teslimat cümlesi}. Kendi depomuz azalır ve müşteriye TL borç doğar; fuel/expenses/works/collections/tank_in dizilerine aynı teslimatı tekrar yazma. Bu, müşterinin BİZE verdiği mazotun ters yönüdür. Litre fiyatı veya toplam bedel yoksa null bırak; depo alış fiyatını satış bedeli sayma. Müşteri belirsizse sormadan seçme.",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\",\"photo\":fatura fotoğrafı sırası,\"company\":satıcı (petrol firması) tam ünvanı,\"irsaliye_no\",\"invoice_no\":fatura no,\"ettn\",\"seller_tax_no\":satıcı VKN,\"net\":KDV hariç,\"kdv\":KDV tutarı}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma). AKARYAKIT FATURASI (Motorin/Mazot) toplu alımsa (yüzlerce/binlerce litre, plaka bizim araçlarımızdan değilse — tankerin plakasıdır) bu bir DEPO GİRİŞİDİR: tank_in'e yaz, expenses'e ve fuel'e YAZMA. Toplam = Ödenecek Tutar (KDV dahil), unit_price = toplam ÷ litre.",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
     "\"maintenance\":[{\"date\",\"vehicle_id\",\"maint_type\",\"status\",\"description\",\"cost\",\"service_company\",\"supplier_id\",\"credit\"}] (arıza/bakım; maint_type: " + MAINT_TYPES.join(", ") + "; status: " + MAINT_STATUS.join(", ") + "),",
@@ -386,7 +388,7 @@ export function quoteFound(quote, src) {
   return !!q && q.length >= 2 && (` ${t} `).includes(` ${q} `);
 }
 export function validatePlan(plan, { message = "", d, today = todayStr(), photoCount = 0, negatives = [] } = {}) {
-  const out = { works: [], expenses: [], fuel: [], questions: [], newCustomers: [] };
+  const out = { works: [], expenses: [], fuel: [], fuelOut: [], questions: [], newCustomers: [] };
   plan = plan && typeof plan === "object" ? plan : {};
   const customers = live(d, "customers"), sites = live(d, "sites"), vehicles = live(d, "vehicles"),
     personnel = live(d, "personnel"), suppliers = live(d, "suppliers");
@@ -753,8 +755,15 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   out.dumpSites = live(d, "dump_sites").filter((x) => !x.own_yard).map((x) => [x.id, x.name]);
   out.tankStock = calcTankBalance(d.fuel_tank_movements || []).remaining;
   let stock = out.tankStock + out.tankIn.filter((t) => t.ok && !t.match).reduce((n, t) => n + t.liters, 0);
+  out.fuelOut = customerFuelRows(plan, {message, d, today});
+  for (const r of out.fuelOut) {
+    if (r.liters > stock) { r.issues.push(`Depoda ${Math.max(0, stock)} L var; teslim için stok yetersiz`); r.ok = false; }
+    else if (r.ok) stock -= r.liters;
+  }
   const STATION = /istasyon|petrol|opet|shell|\bbp\b|total|aytemiz|lukoil|alpet|akaryak|pompac/i;
   for (const f of (Array.isArray(plan.fuel) ? plan.fuel : []).slice(0, 10)) {
+    // Aynı dış teslimat şirket aracına tüketim ya da müşteriden alınan mazot diye ikinci kez yazılmaz.
+    if (out.fuelOut.some(r => r.quote === message || f.quote && f.quote === r.quote)) continue;
     const issues = [];
     const photo = Number.isInteger(f.photo) && f.photo >= 0 && f.photo < photoCount ? f.photo : null;
     const r = { date: validDate(f.date, today) || today, vehicle_id: byId(vehicles, f.vehicle_id)?.id || null,
@@ -1114,6 +1123,7 @@ export function assistantSchema() {
         // Fatura ayrıntısı serbest nesne (biçimi komutta yazılı); şablon Gemini'nin boyut sınırını aşmasın diye açılmadı
         invoice: { type: ["object", "null"] } }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, km: NN, machine_hours: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
+      customer_fuel: row({ date: NS, customer_id: NS, liters: NN, unit_price: NN, total: NN, machine: NS, source: NS }),
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS, photo: { type: ["integer", "null"] }, company: NS, irsaliye_no: NS,
         invoice_no: NS, ettn: NS, seller_tax_no: NS, net: NN, kdv: NN }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),

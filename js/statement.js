@@ -3,7 +3,7 @@
 // Müşteriye giden metinde iç not / düzeltme nedeni yer almaz.
 import { isActive, toKurus, fromKurus, toCSV } from "./core.js";
 
-const LABEL = { Hakedis: "Hakediş", Tahsilat: "Tahsilat", Duzeltme: "Düzeltme", Is: "İş" };
+const LABEL = { Hakedis: "Hakediş", Tahsilat: "Tahsilat", Duzeltme: "Düzeltme", Is: "İş", MazotTeslimi: 'Mazot teslimi' };
 const tl = (n) =>
   Number(n).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const trDate = (d) => (d ? d.split("-").reverse().join(".") : "");

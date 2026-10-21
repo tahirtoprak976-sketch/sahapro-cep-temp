@@ -308,11 +308,11 @@ async function tank(ctx) {
   const attN = await db.attachmentsCountMap();
   listEl.innerHTML = rows.length
     ? rows
-        .map((m) => (m.move_type === "GİRİŞ" ? `<div data-tk="${esc(m.id)}" style="cursor:pointer">` : "<div>") +
+        .map((m) => (m.move_type === "GİRİŞ" ? `<div data-tk="${esc(m.id)}" style="cursor:pointer">` : m.delivery_kind === "customer_fuel" ? `<div data-customer-fuel="${esc(m.id)}" style="cursor:pointer">` : "<div>") +
           li({
             ic: m.move_type === "GİRİŞ" ? "📥" : "📤",
             t1: `${m.move_type} · ${fmtNum(m.liters)} Lt${m.move_type === "GİRİŞ" && Number(m.total) > 0 ? " · " + fmtTL(m.total) + " ₺" : ""}${m.invoice_no || attN[m.id] ? " · 📄" : ""}`,
-            t2: `${trDate(m.date)} · ${esc(m.company || names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.unit_price ? " · " + fmtTL(m.unit_price) + " ₺/L" : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
+            t2: `${trDate(m.date)} · ${esc(m.delivery_kind === "customer_fuel" ? (names.customers[m.recipient_customer_id] || "Müşteri") + " · " + m.recipient_machine + " · Cari borç " + fmtTL(m.charge_total) + " ₺" : m.company || names.personnel[m.personnel_id] || "—")}${m.vehicle_id ? " · " + esc(names.vehicles[m.vehicle_id]) : ""}${m.unit_price ? " · " + fmtTL(m.unit_price) + " ₺/L" : ""}${m.signature_name ? " · ✍ " + esc(m.signature_name) : ""}${m.pump_no ? " · #" + esc(m.pump_no) : ""}`,
           }) + "</div>",
         )
         .join("")
@@ -320,6 +320,19 @@ async function tank(ctx) {
 
   for (const el of qsa("[data-tk]", listEl))
     el.addEventListener("click", (ev) => { ev.preventDefault(); tankInSheet(ctx, rows.find((m) => m.id === el.dataset.tk)); });
+  for (const el of qsa('[data-customer-fuel]',listEl)) el.addEventListener('click', () => {
+    const m = rows.find(r => r.id === el.dataset.customerFuel);
+    const sh = sheet(`<h3>Müşteriye mazot teslimi</h3>${kv('Müşteri',names.customers[m.recipient_customer_id] || '—')}${kv('Makine',m.recipient_machine)}${kv('Tarih',trDate(m.date))}${kv('Depodan verilen',fmtNum(m.liters)+' L')}${kv('Cari borç',fmtTL(m.charge_total)+' ₺')}<button class="btn block" data-go="#/musteriler/${esc(m.recipient_customer_id)}">Müşteri hesabını aç</button><button class="btn danger block" data-cancel-fuel>Teslimi ve borcu birlikte iptal et</button>`);
+    let busy=false;
+    qs('[data-cancel-fuel]',sh).onclick=async()=>{
+      if(busy)return;busy=true;
+      try {
+        const why=await promptDialog('Teslim iptali','Neden iptal ediliyor? Depodaki litre geri gelecek, müşteri borcu kaldırılacak.');
+        if(!why?.trim())return;
+        await db.cancelCustomerFuelDelivery(m.id,why);sheetClose();toast('Mazot teslimi ve cari borcu birlikte iptal edildi','ok');ctx.reload();
+      }catch(e){toast(e.message,'err');}finally{busy=false;}
+    };
+  });
   for (const b of qsa("[data-merge]", root))
     b.addEventListener("click", async () => {
       const p = dupPairs[Number(b.dataset.merge)];

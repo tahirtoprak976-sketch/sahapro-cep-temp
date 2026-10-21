@@ -1,5 +1,6 @@
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {assistantTurn} from './assistant-turn.js';
+import {customerFuelDraft, customerFuelFields} from './customer-fuel.js';
 import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
 import {isDriverTransferFile,readDriverTransfer} from "./driver-transfer.js";
 import {driverCashContextHTML} from "./driver-cash-context.js";
@@ -8,7 +9,7 @@ import {driverCashContextHTML} from "./driver-cash-context.js";
 // fişin fotoğrafı ve kaynak mesaj kayda birlikte yazılır. Doğrulamadan geçmeyen satır işaretsiz gelir.
 import {customerLabel,customerNameKey} from "./driver-customer.js";
 import {guideHTML,bindGuide} from "./assistant-guide.js";
-import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, todayStr, trDate } from "./ui.js";
+import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, fmtNum, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, applyTicketReread, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
@@ -33,7 +34,7 @@ export async function screen(ctx) {
     appbar("Akıllı Asistan", "Yerel komutlar · mesaj ve belge okuma") +
     `<div style="height:10px"></div>
     ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
-    ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Şoför aktarım dosyaları, yerel özetler, ekran açma ve işlem rehberi anahtarsız çalışır. Mesaj/fotoğraf okumak için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    ${g.ready ? notice("info", "Mesajı yazın veya WhatsApp'tan yapıştırın, fiş fotoğraflarını ekleyin. Gemini müşteri, şantiye ve araç listenizi bilerek okur. Kaydetmeden önce kartları kontrol edin; şüpheli satırlar işaretsiz gelir.") : notice("warn", "Şoför aktarımı, yerel özetler ve müşterinin forkliftine mazot teslimi anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     ${guideHTML()}
     <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
     <details class="card assistant-guide"><summary><b>Diğer asistan araçları</b></summary>
@@ -216,12 +217,13 @@ export async function screen(ctx) {
       }
     }
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
+    const localFuelPlan = !refine && !files.length && /forklift/i.test(message) ? customerFuelDraft(message, await db.dumpAll()) : null;
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
-    if (!g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
+    if (!localFuelPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = bundleFiles || files.filter((f) => !isAudio(f) && !isTransfer(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
-    if (!navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
+    if (!localFuelPlan && !navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
     btn.disabled = true;
     out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
@@ -231,7 +233,7 @@ export async function screen(ctx) {
       {
         const yc0 = await import("./yard-core.js");
         const d0 = await db.dumpAll();
-        if (!transferFiles.length && yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
+        if (!localFuelPlan && !transferFiles.length && yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
           if (!yc0.yardSite(d0)) await db.saveNew("dump_sites", { name: yc0.YARD_SITE_NAME, own_yard: true, note: "Kendi depo / stok sahası (asistan kurdu)" }, "Kendi depo kuruldu");
           if (!yc0.yardCustomer(d0)) await db.saveNew("customers", { name: yc0.YARD_CUSTOMER_NAME, internal: true, note: "Depodan döküm sahalarına giden iç seferler. Hakedişe para yazılmaz." }, "Kendi depo kuruldu");
           toast("Kendi depo kuruldu (Ayarlar → Kendi depo)", "ok");
@@ -253,7 +255,7 @@ export async function screen(ctx) {
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
       // Şoför kodu Gemini'siz çözülür; anahtar yoksa kalan serbest yazı okunmaz (kullanıcıya söylenir)
-      const useGemini = !transferFiles.length && g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      const useGemini = !localFuelPlan && !transferFiles.length && g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
       if (!g.ready && drvAll.length && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8) toast("Gemini anahtarı yok: şoför kodu okundu, mesajdaki diğer yazı okunmadı", "err");
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
@@ -286,10 +288,10 @@ export async function screen(ctx) {
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
-      const askP = !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message).catch(() => null) : Promise.resolve(null);
+      const askP = !localFuelPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message).catch(() => null) : Promise.resolve(null);
       let plan = useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
-      }) : {};
+      }) : localFuelPlan ? {customer_fuel:[localFuelPlan]} : {};
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
       if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
       const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length, allowPhotos: photoPolicy.allowed }) : null;
@@ -459,7 +461,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
   const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
-  const total = v.works.length + v.expenses.length + v.fuel.length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length + (v.prices || []).length + (v.actions || []).length + (v.settings || []).length;
+  const total = v.works.length + v.expenses.length + v.fuel.length + (v.fuelOut || []).length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length + (v.prices || []).length + (v.actions || []).length + (v.settings || []).length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi", quarries: "Malzeme ocağı", dump_sites: "Döküm / dolgu sahası" };
   const quarries = live("quarries").map((x) => [x.id, x.name]);
   const personnel = live("personnel").map((p) => [p.id, p.name]);
@@ -614,6 +616,19 @@ function render(ctx, out, v, d, { message, files, ms }) {
         </div>${r.match ? `<div class="notice info" style="margin-top:6px"><div>📌 ${trDate(r.match.date)} tarihinde elle girilmiş <b>${r.match.liters.toLocaleString("tr-TR")} L</b> depo girişi var${r.match.total ? ` (${r.match.total.toLocaleString("tr-TR")} ₺)` : " (fiyatsız)"}. Aynı teslimatsa faturayı ona bağlayın; depo iki kez artmaz.${r.match.bill != null ? `<br>Bu girişin petrolcü borcu zaten yazılmış (${r.match.bill.toLocaleString("tr-TR")} ₺); yeni borç yazılmaz.` : ""}</div></div>
           <div class="field"><label>Bu fatura</label><select name="tank_link">${opt([["link", "Elle girdiğim girişe bağla (önerilen)"], ["new", "Ayrı, yeni bir teslimat"]], "link")}</select></div>` : ""}${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
+    (v.fuelOut || [])
+      .map((r,i) => `<div class="card" data-kind="fuelout" data-i="${i}">
+        <label class="history-check"><input type="checkbox" data-pick ${r.ok ? 'checked' : ''}> <b>Müşteriye mazot teslimi</b></label>
+        <div class="small">Kendi depomuzdan müşterinin makinesine · kayıtlı stok ${fmtNum(v.tankStock)} L</div>
+        <div class="formgrid2">
+          <div class="field"><label>Teslim tarihi</label><input type="date" name="date" value="${esc(r.date)}"></div>
+          <div class="field"><label>Mazotu alan müşteri</label><select name="customer">${opt(customers,r.customer_id,'— müşteriyi seçin —')}</select></div>
+          <div class="field"><label>Müşterinin makinesi</label><input name="machine" value="${esc(r.machine)}" maxlength="120"></div>
+          <div class="field"><label>Verilen litre</label><input type="number" step="any" name="liters" value="${r.liters ?? ''}"></div>
+          <div class="field"><label>Müşteriye yazılacak litre fiyatı (₺)</label><input type="number" step="any" name="unit_price" value="${r.unit_price ?? ''}"></div>
+        </div><div class="notice info" data-fuel-charge></div><div class="tiny muted" data-fuelout-issues></div>
+        <div class="tiny muted">Bu teslimat tahsilat veya fatura oluşturmaz. Litre fiyatı müşteriye yazılacak son bedeldir.</div>
+      </div>`).join('') +
     v.fuel
       .map((r, i) => `<div class="card" data-kind="fuel" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>Yakıt</b> <span class="muted small">· depoda kayıtlı ${Math.round(v.tankStock)} L</span></label>
@@ -763,6 +778,26 @@ function render(ctx, out, v, d, { message, files, ms }) {
     show();
   }
   let saveInFlight = false;
+  for (const card of qsa('[data-kind=fuelout]',out)) {
+    let priceReviewed = false;
+    const update = ev => {
+      if (ev?.target?.name === 'unit_price') priceReviewed = true;
+      const row = v.fuelOut[Number(card.dataset.i)];
+      const liters = Number(qs('[name=liters]',card).value), price = Number(qs('[name=unit_price]',card).value);
+      qs('[data-fuel-charge]',card).textContent = liters > 0 && price > 0 && Number.isFinite(liters * price)
+        ? `Depodan ${fmtNum(liters)} L düşecek · Müşteriye ${fmtTL(Math.round(liters * price * 100) / 100)} ₺ borç yazılacak. Para alınmış sayılmaz.`
+        : 'Litre ve müşteriye yazılacak fiyatı tamamlayın. Bedel tahmin edilmeyecek.';
+      const pending = row.issues.filter(t =>
+        t.startsWith('Mazotu alan müşteriyi') ? !qs('[name=customer]',card).value :
+        t.startsWith('Verilen litre') ? !(liters > 0) :
+        t.startsWith('Teslim tarihini') ? !qs('[name=date]',card).value :
+        t.startsWith('Müşteriye yazılacak litre fiyatı') ? !(price > 0) :
+        t.startsWith('Litre fiyatı ile toplam') ? !priceReviewed :
+        t.startsWith('Depoda ') ? liters > v.tankStock : true);
+      qs('[data-fuelout-issues]',card).textContent = pending.length ? '⚠ ' + pending.join(' · ') : '';
+    };
+    card.addEventListener('input',update);update();
+  }
   qs("[data-save]", out)?.addEventListener("click", async (ev) => {
     if (saveInFlight) return;
     saveInFlight = true;
@@ -795,6 +830,7 @@ async function save(ctx, out, v, d, { message, files }) {
     const miss =
       k === "work" ? !val(c, "customer") || !val(c, "vehicle") || !val(c, "work_type") || !(Number(val(c, "quantity")) > 0) || !val(c, "unit")
       : k === "expense" ? !(Number(val(c, "amount")) > 0)
+      : k === "fuelout" ? v.fuelOut[Number(c.dataset.i)].blocked || !val(c,'customer') || !val(c,'machine').trim() || !val(c,'date') || !(Number(val(c,'liters')) > 0) || !(Number(val(c,'unit_price')) > 0)
       : k === "fuel" ? !val(c, "vehicle") || !(Number(val(c, "liters")) > 0) || (val(c, "source") === "Müşteri Verdi" && !val(c, "fuel_customer"))
       : k === "tank" ? !(Number(val(c, "liters")) > 0) || (val(c, "supplier") && !(Number(val(c, "total")) > 0 || Number(val(c, "unit_price")) > 0))
       : k === "collection" ? !val(c, "customer") || !(Number(val(c, "amount")) > 0) || (val(c, "method") === "Havale" && !val(c, "bank"))
@@ -809,11 +845,15 @@ async function save(ctx, out, v, d, { message, files }) {
       c.scrollIntoView({ behavior: "smooth", block: "center" });
       return toast(k === "doc" ? "Belge kartında eksik/uyumsuz alan var (araç belgesi araca, personel belgesi personele)" : "İşaretli kartta eksik alan var", "err");
     }
+    if (k === 'fuelout') {
+      try {customerFuelFields({date:val(c,'date'),customer_id:val(c,'customer'),machine:val(c,'machine'),liters:val(c,'liters'),unit_price:val(c,'unit_price')});}
+      catch(e) {return toast(e.message,'err');}
+    }
   }
   // Depo stoku: işaretli depo girişleri + mevcut stok, depodan verilen yakıta yetmeli
   {
     const sum = (kind, f) => cards.filter((c) => c.dataset.kind === kind && f(c)).reduce((n, c) => n + Number(val(c, "liters")), 0);
-    const need = sum("fuel", (c) => (val(c, "source") || "Depo Tankı") === "Depo Tankı");
+    const need = sum("fuel", (c) => (val(c, "source") || "Depo Tankı") === "Depo Tankı") + sum("fuelout", () => true);
     const have = v.tankStock + sum("tank", () => true);
     if (need > have + 0.001)
       return toast(`Depoda kayıtlı ${Math.round(have)} L var, ${need} L verilmek isteniyor. Önce depoya yakıt girişi yapın (mesaja "depoya X litre geldi" yazabilirsiniz) ya da kaynağı İstasyon seçin.`, "err");
@@ -824,7 +864,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const undo = await import("./undo.js");
   const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
-  const done = { already: 0, conflict: 0, action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
+  const done = { already: 0, conflict: 0, action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, fuelOut: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -870,7 +910,7 @@ async function save(ctx, out, v, d, { message, files }) {
     const msgKey = await db.opHash({ m: nrm(message) });
     // Satır anahtarı plandan türetilir (işaretlenen kartların sırasından DEĞİL): alıntı varsa alıntı + aynı alıntının
     // kaçıncı tekrarı ("Kaya 3 sefer" iki kez yazıldıysa iki ayrı iş), yoksa plandaki sıra. Her Kaydet'te yeni kimlik üretilmez.
-    const LISTS = { work: v.works, expense: v.expenses, collection: v.collections, maintenance: v.maintenance, fuel: v.fuel };
+    const LISTS = { work: v.works, expense: v.expenses, collection: v.collections, maintenance: v.maintenance, fuel: v.fuel, fuelout: v.fuelOut };
     const rowKey = (kind, i) => {
       const list = LISTS[kind] || [], q = nrm(list[i]?.quote);
       if (!q) return "#" + i;
@@ -1481,6 +1521,13 @@ async function save(ctx, out, v, d, { message, files }) {
         if (r.remove) await db.softDelete(r.store, r.id, "Asistan: " + r.reason);
         else await db.saveExisting(r.store, cur, r.changes, "Asistan düzeltmesi: " + message.slice(0, 200));
         done.edit++;
+      } else if (k === 'fuelout') {
+        const fields = customerFuelFields({date:val(c,'date'),customer_id:val(c,'customer'),machine:val(c,'machine'),liters:val(c,'liters'),unit_price:val(c,'unit_price'),note:message});
+        const gate = await opGate('fuelout',c.dataset.i,fields,`Müşteriye mazot ${fields.date} · ${fields.liters} L`);
+        if (!gate || gate.existing) continue;
+        const rec = await db.saveCustomerFuelDelivery(fields,'Asistan: müşteriye mazot teslimi',{op:gate.op});
+        if (rec._existing) {done.already++;continue;}
+        done.fuelOut++;
       } else {
         const r = v.fuel[Number(c.dataset.i)];
         const liters = Number(val(c, "liters")), total = Number(val(c, "total")) || null;
@@ -1505,7 +1552,7 @@ async function save(ctx, out, v, d, { message, files }) {
         done.fuel++;
       }
     }
-    const parts = [[done.already, "kayıt bu mesajdan zaten yazılmıştı (yeniden yazılmadı)"], [done.conflict, "satır daha önce farklı bilgilerle kaydedildiği için atlandı"], [done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
+    const parts = [[done.already, "kayıt bu mesajdan zaten yazılmıştı (yeniden yazılmadı)"], [done.conflict, "satır daha önce farklı bilgilerle kaydedildiği için atlandı"], [done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.fuelOut, "müşteriye mazot teslimi (depodan düştü, TL borç yazıldı)"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır
@@ -1536,7 +1583,7 @@ async function save(ctx, out, v, d, { message, files }) {
         try {
           const fresh = await db.dumpAll(); if (!out.isConnected) return;
           const remaining = { ...v, _done: false, newCustomers: [], answer: null, asked: null, open: null, heard: null, driverPhotoBlocked: false, driverPhotoWarn: null, driverReject: null, driverNote: "İş kayıtları ayrı saklandı. Bu nakit bildirimleri henüz onaylanmadı; para şoförde olarak kaydedilir." };
-          for (const key of ["works","fuel","expenses","maintenance","collections","personnel","edits","cards","memory","tickets","docs","tankIn","prices","actions","settings","questions"]) remaining[key] = [];
+          for (const key of ["works","fuel","fuelOut","expenses","maintenance","collections","personnel","edits","cards","memory","tickets","docs","tankIn","prices","actions","settings","questions"]) remaining[key] = [];
           remaining.collections = pendingCash.map(r => {
             const matches = (fresh.customers || []).filter(c => isActive(c) && customerNameKey(c.name) === customerNameKey(r.new_customer) && (c.parent_customer_id || null) === (r.new_customer_parent_id || null));
             return { ...r, ok: false, ...(r.new_customer && matches.length === 1 ? { customer_id: matches[0].id, new_customer: null } : {}) };

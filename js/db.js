@@ -1,4 +1,5 @@
 import { validDate } from "./driver-delivery.js";
+import {customerFuelFields, validateCustomerFuelLinks} from './customer-fuel.js';
 import { customerNameKey } from "./driver-customer.js";
 import { linkVerdict } from "./security-core.js";
 import { ENTERPRISE_STORES, workHours } from "./enterprise-core.js";
@@ -112,6 +113,7 @@ export async function listActive(store) {
   return (await getAll(store)).filter(isActive);
 }
 export async function softDelete(store, id, reason) {
+  if (store === 'customers' && (await listActive('fuel_tank_movements')).some(m => m.delivery_kind === 'customer_fuel' && m.recipient_customer_id === id)) throw Error('Mazot teslimine bağlı müşteri silinemez; pasife alın');
   if (['customers','sites','vehicles','personnel','dump_sites'].includes(store)) {
     const key={customers:'customer_id',sites:'site_id',vehicles:'vehicle_id',personnel:'personnel_id',dump_sites:'dump_site_id'}[store];
     if ((await getAll('inbox_messages')).some(m=>isActive(m)&&(m.review_rows||[]).some(r=>r[key]===id))) throw Error('Kontrol edilmiş mesaj taslağına bağlı kart silinemez; pasife alın');
@@ -656,6 +658,7 @@ async function putPlainOp(store, fields, auditReason, op) {
   });
 }
 export async function saveNew(store, fields, auditReason, { op = null } = {}) {
+  if ((store === 'fuel_tank_movements' && fields.delivery_kind === 'customer_fuel') || (store === 'cari_movements' && fields.type === 'MazotTeslimi')) throw Error('Müşteri mazotu stok ve cariyle birlikte kaydedilmeli');
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından oluşturulmalı");
   fields = await validateFields(store, fields);
@@ -887,6 +890,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   const current = await get(store, rec.id);
+  if ((store === 'fuel_tank_movements' && (current?.delivery_kind === 'customer_fuel' || fields.delivery_kind === 'customer_fuel')) || (store === 'cari_movements' && (current?.type === 'MazotTeslimi' || fields.type === 'MazotTeslimi'))) throw Error('Müşteri mazotu tek başına değiştirilemez; Depo ekranından teslimi iptal edip doğru bilgilerle yeniden kaydedin');
   // Şoför kaydı kimliği sonradan eklenemez / değiştirilemez (doğrulanmamış kayıt "şoför kaydı" gibi gösterilmesin)
   if ("driver_entry_id" in fields && (fields.driver_entry_id || null) !== (current?.driver_entry_id || null)) throw Error("Şoför kaydı kimliği değiştirilemez");
   if (store === "sites" && (current?.deal?.measurement || current?.deal?.charge) && (("deal" in fields && (JSON.stringify(fields.deal?.measurement || null) !== JSON.stringify(current.deal.measurement || null) || JSON.stringify(fields.deal?.charge || null) !== JSON.stringify(current.deal.charge || null) || Number(fields.deal?.price) !== Number(current.deal.price) || Number(fields.deal?.kdv_rate) !== Number(current.deal.kdv_rate) || !!fields.deal?.kdv_included !== !!current.deal.kdv_included || fields.deal?.basis !== current.deal.basis)) || ("customer_id" in fields && fields.customer_id !== current.customer_id)))
@@ -1264,6 +1268,85 @@ async function validateFields(store, fields) {
   assertNumericFields(f);
   return f;
 }
+// Dış alıcıya teslim: stok çıkışı + TL cari borcu + işlem kimliği tek transaction.
+// Şirket aracına yakıt tüketimi veya müşteriden alınan mazot kaydı OLUŞTURMAZ.
+export async function saveCustomerFuelDelivery(fields, reason = 'Müşteriye mazot teslimi', {op = null} = {}) {
+  const f = customerFuelFields(fields);
+  const d = await openDB();
+  return new Promise((resolve, reject) => {
+    const t = d.transaction(['customers','fuel_tank_movements','cari_movements','meta','audit_log'], 'readwrite');
+    let result, error;
+    const customer = t.objectStore('customers').get(f.customer_id);
+    const prior = op ? t.objectStore('meta').get(OP + op.id) : null;
+    const all = t.objectStore('fuel_tank_movements').getAll();
+    all.onsuccess = () => {
+      const fail = e => {error = e; t.abort();};
+      const write = () => {
+        try {
+          if (!customer.result || !isActive(customer.result) || customer.result.active === false || customer.result.internal) throw Error('Mazotu alan aktif müşteri bulunamadı');
+          const remaining = all.result.filter(isActive).reduce((s,m) => s + (m.move_type === 'GİRİŞ' ? 1 : -1) * Number(m.liters), 0);
+          if (!Number.isFinite(remaining)) throw Error('Depo stoku hesaplanamadı; kayıtları kontrol edin');
+          if (f.liters > remaining + 0.000001) throw Error('Tank stokundan fazla teslim: kalan ' + remaining + ' L');
+          const event_id = uuid(), cari = newRecord({date:f.date, customer_id:f.customer_id, type:'MazotTeslimi', amount:f.total, event_id,
+            note:`${f.machine} · ${f.liters} L mazot × ${f.unit_price.toLocaleString('tr-TR', {maximumFractionDigits:6})} ₺/L`});
+          const move = newRecord({date:f.date, move_type:'ÇIKIŞ', delivery_kind:'customer_fuel', recipient_customer_id:f.customer_id,
+            recipient_machine:f.machine, liters:f.liters, charge_unit_price:f.unit_price, charge_total:f.total,
+            cari_movement_id:cari.id, event_id, note:f.note});
+          cari.ref_id = move.id;
+          validateCustomerFuelLinks({fuel_tank_movements:[move], cari_movements:[cari]});
+          t.objectStore('fuel_tank_movements').put(move); t.objectStore('cari_movements').put(cari);
+          opPut(t, op, 'fuel_tank_movements', move.id);
+          for (const [entity, rec] of [['fuel_tank_movements',move], ['cari_movements',cari]]) t.objectStore('audit_log').put({id:uuid(), entity, entity_id:rec.id, action:'create', new:rec, reason, at:nowISO()});
+          result = move;
+        } catch(e) {fail(e);}
+      };
+      if (op && prior.result?.value) {
+        const x = prior.result.value;
+        if (x.hash !== op.hash || x.store !== 'fuel_tank_movements') {fail(opConflict(x)); return;}
+        const q = t.objectStore('fuel_tank_movements').get(x.record_id);
+        q.onsuccess = () => {
+          if (!q.result || q.result.deleted_at) {write(); return;}
+          const m = q.result;
+          if (m.date !== f.date || m.recipient_customer_id !== f.customer_id || m.recipient_machine !== f.machine || m.liters !== f.liters || m.charge_unit_price !== f.unit_price || m.charge_total !== f.total) {fail(opConflict(x));return;}
+          const c = t.objectStore('cari_movements').get(q.result.cari_movement_id);
+          c.onsuccess = () => {try {validateCustomerFuelLinks({fuel_tank_movements:[q.result],cari_movements:c.result ? [c.result] : []});result = {...q.result,_existing:true};} catch(e){fail(e);}};
+        };
+      } else write();
+    };
+    t.oncomplete = () => resolve(result);
+    t.onabort = t.onerror = () => reject(error || t.error || Error('Mazot teslimi iptal edildi'));
+  });
+}
+
+export async function cancelCustomerFuelDelivery(id, reason) {
+  if (!String(reason || '').trim()) throw Error('Teslim iptal nedeni zorunlu');
+  const d = await openDB();
+  return new Promise((resolve,reject) => {
+    const t = d.transaction(['fuel_tank_movements','cari_movements','audit_log'], 'readwrite');
+    let result, error;
+    const q = t.objectStore('fuel_tank_movements').get(id);
+    q.onsuccess = () => {
+      const m = q.result;
+      if (!m || m.delivery_kind !== 'customer_fuel') {error=Error('Müşteri mazot teslimi bulunamadı');t.abort();return;}
+      const c = t.objectStore('cari_movements').get(m.cari_movement_id);
+      c.onsuccess = () => {
+        try {
+          validateCustomerFuelLinks({fuel_tank_movements:[m],cari_movements:c.result ? [c.result] : []});
+          if (m.deleted_at) {result=m;return;}
+          const now = nowISO();
+          for (const [entity,rec] of [['fuel_tank_movements',m],['cari_movements',c.result]]) {
+            const next={...rec,deleted_at:now,updated_at:now};
+            t.objectStore(entity).put(next);
+            t.objectStore('audit_log').put({id:uuid(),entity,entity_id:rec.id,action:'soft_delete',old:rec,new:next,reason,at:now});
+            if(entity==='fuel_tank_movements')result=next;
+          }
+        } catch(e) {error=e;t.abort();}
+      };
+    };
+    t.oncomplete=()=>resolve(result);t.onabort=t.onerror=()=>reject(error||t.error||Error('Teslim iptal edilemedi'));
+  });
+}
+
 export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {}) {
   assertNumericFields(fields);
   if (!fields.vehicle_id || !(Number(fields.liters) > 0))

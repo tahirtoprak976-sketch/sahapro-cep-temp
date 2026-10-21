@@ -330,7 +330,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.tables.push(grp((f) => f.fuel_source, "Kaynak"));
     R.tables.push(grp((f) => monthName(String(f.date).slice(0, 7)), "Ay"));
     if (tank.length) R.tables.push({ title: "Depo tankı hareketleri", headers: ["Tarih", "Hareket", "Litre", "Tutar", "Araç / tedarikçi", "Not"], widths: [10, 10, 10, 14, 24, 32],
-      rows: tank.map((t) => [trDate(t.date), t.move_type || "", num(t.liters), t.total ? tl(t.total) : "", nm("vehicles", t.vehicle_id) || nm("suppliers", t.supplier_id), t.description || t.note || ""]) });
+      rows: tank.map((t) => [trDate(t.date), t.move_type || "", num(t.liters), t.delivery_kind === "customer_fuel" ? tl(t.charge_total) + " (cari borç)" : t.total ? tl(t.total) : "", t.delivery_kind === "customer_fuel" ? nm("customers", t.recipient_customer_id) + " · " + t.recipient_machine : nm("vehicles", t.vehicle_id) || nm("suppliers", t.supplier_id), t.description || t.note || ""]) });
   } else if (k === "gider") {
     const exps = live(d, "expense_records").filter((e) => (id ? fold(e.category) === fold(id) : true) && inR(e.date)).sort(byDate);
     R.info = [["Gider", id || K.all]];
