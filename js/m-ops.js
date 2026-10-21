@@ -61,45 +61,7 @@ export async function screen(ctx) {
 async function fuel(ctx) {
   const sub = ctx.parts[1];
   if (sub === "new") return fuelForm(ctx);
-  const { root, db, names, query } = ctx;
-  const q = query.q || "";
-  let rows = (await db.getAll("fuel_records"))
-    .filter(isActive)
-    .sort((a, b) => (b.date < a.date ? -1 : 1));
-  rows = rows.filter((r) =>
-    matchSearch(
-      `${names.vehicles[r.vehicle_id] || ""} ${names.personnel[r.personnel_id] || ""} ${r.description || ""}`,
-      q,
-    ),
-  );
-  const totalLt = rows.reduce((s, r) => s + (Number(r.liters) || 0), 0);
-  root.innerHTML =
-    appbar("Yakıt Kayıtları", `${rows.length} kayıt · ${fmtNum(totalLt)} Lt`) +
-    `
-    <div class="notice info" style="margin-top:10px"><span>ℹ</span><span>Yakıt müşteri hakedişine otomatik girmez (iç maliyet).</span></div>
-    ${searchBar("Araç, personel…", q)}
-    <div data-list></div>
-    <div class="actionbar"><button class="btn primary" data-go="#/yakit/new">+ Yakıt Kaydı</button></div>`;
-  const listEl = qs("[data-list]", root);
-  if (!rows.length) listEl.innerHTML = emptyState("⛽", "Yakıt kaydı yok");
-  else
-    pagedRender(listEl, rows, (f) =>
-      li({
-        ic: "⛽",
-        href: "#/yakit/" + f.id,
-        t1: `${esc(names.vehicles[f.vehicle_id] || "—")} · ${fmtNum(f.liters)} Lt`,
-        t2: `${trDate(f.date)} · ${esc(names.personnel[f.personnel_id] || "—")} · ${esc(f.fuel_source || "")}${f.total ? " · " + fmtTL(f.total) + " ₺" : ""}${f.km ? " · " + fmtNum(f.km) + " km" : ""}${f.machine_hours ? " · " + fmtNum(f.machine_hours) + " sa" : ""}`,
-        badgeHtml: f.receipt === "Hayır" ? badge("Fişsiz", "warn") : f.fuel_source === "Depo Tankı" ? badge("Depo", "") : "",
-      }),
-    );
-  let st;
-  qs("[data-search]", root).addEventListener("input", (ev) => {
-    clearTimeout(st);
-    st = setTimeout(
-      () => go("#/yakit?q=" + encodeURIComponent(ev.target.value)),
-      450,
-    );
-  });
+  return (await import('./operation-history-ui.js')).operationHistory(ctx,'fuel');
 }
 
 // Yakıt kaydı ekranına eklenen kart: "depodan verildi" düzeltmesi + silme (depo hareketi de geri alınır)
@@ -619,40 +581,7 @@ async function maint(ctx) {
   if (sub === "new") return maintForm(ctx);
   if (sub && ctx.parts[2] === "edit") return maintForm(ctx, sub);
   if (sub) return maintDetail(ctx, sub);
-  const { root, db, names, query } = ctx;
-  const f = query.f || "open";
-  let rows = (await db.getAll("maintenance_records"))
-    .filter(isActive)
-    .sort((a, b) => (b.date < a.date ? -1 : 1));
-  if (f === "open") rows = rows.filter((r) => r.status !== "Tamamlandı");
-  if (f === "done") rows = rows.filter((r) => r.status === "Tamamlandı");
-  root.innerHTML =
-    appbar("Bakım / Arıza", `${rows.length} kayıt`) +
-    `
-    <div style="height:10px"></div>
-    ${segBar(
-      [
-        { v: "open", t: "Açık" },
-        { v: "all", t: "Tümü" },
-        { v: "done", t: "Tamamlanan" },
-      ],
-      f,
-      (v) => `#/bakim?f=${v}`,
-    )}
-    <div data-list></div>
-    <div class="actionbar"><button class="btn" data-go="#/bakim-takvimi">🗓 Bakım Takvimi</button><button class="btn primary" data-go="#/bakim/new">+ Arıza / Bakım</button></div>`;
-  const listEl = qs("[data-list]", root);
-  if (!rows.length) listEl.innerHTML = emptyState("🔧", "Kayıt yok");
-  else
-    pagedRender(listEl, rows, (m) =>
-      li({
-        ic: "🔧",
-        href: "#/bakim/" + m.id,
-        t1: `${esc(names.vehicles[m.vehicle_id] || "—")} · ${esc(m.maint_type || "")}`,
-        t2: `${trDate(m.date)} · ${esc(names.personnel[m.personnel_id] || "—")}${m.cost ? " · " + fmtTL(m.cost) + " ₺" : ""}${m.description ? " · " + esc(m.description) : ""}`,
-        badgeHtml: statusBadge(m.status || "Açık"),
-      }),
-    );
+  return (await import('./operation-history-ui.js')).operationHistory(ctx,'maintenance');
 }
 
 async function maintForm(ctx, editId) {
