@@ -1,5 +1,6 @@
 import { customerBankReceipt } from "./enterprise-db.js";
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
+import {bindSafeFormSave} from './safe-form-save.js';
 import { kdvRateOf } from "./core.js";
 import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
@@ -1566,35 +1567,28 @@ async function expenseForm(ctx) {
     qs("[data-reimb]", root).style.display =
       pmSel.value === "Personel Ödedi" ? "block" : "none";
   });
-  qs("[data-save]", root).addEventListener("click", async () => {
-    const val = collectForm(qs("[data-form]", root));
+  bindSafeFormSave(root,db,async save => {
+    const val = save.values;
     if (!(Number(val.amount) > 0)) {
       toast("Pozitif tutar girin", "err");
       return;
     }
     if (val.supplier_id) {
       // Veresiye: gider yeniden yazılmaz, usta hesabına borç olarak (tek kayıt) girilir.
-      const d = await db.dumpAll();
-      const s = d.suppliers.find((x) => x.id === val.supplier_id);
-      try {
-        const res = await createCreditBill(ctx, d, s, {
-          date: val.date,
-          amount: val.amount,
-          description: val.description || val.category,
-          category: val.category,
-          vehicle_id: val.vehicle_id || null,
-          kdv_rate: val.kdv_rate,
-          file: qs("input[name=photo]", root).files[0],
-        });
-        if (!res) return;
-        toast("Veresiye olarak " + s.name + " hesabına yazıldı", "ok");
-        go("#/esnaf/" + s.id);
-      } catch (e) {
-        toast(e.message || String(e), "err");
-      }
+      const saved = await save.external('payables',val,async key=>{
+        const d=await db.dumpAll(),s=d.suppliers.find(x=>x.id===val.supplier_id);
+        const res=await createCreditBill(ctx,d,s,{
+          date:val.date,amount:val.amount,description:val.description||val.category,
+          category:val.category,vehicle_id:val.vehicle_id||null,kdv_rate:val.kdv_rate,
+        },{key});
+        return res?.rec||null;
+      });
+      if(!saved)return;
+      await save.attach('payable',save.files.photo);
+      save.finish(()=>{toast('Veresiye alış kaydedildi','ok');go('#/esnaf/'+val.supplier_id);});
       return;
     }
-    {
+    if(!save.record) {
       const d = await db.dumpAll();
       const dup = findDuplicates(d, { date: val.date, amount: val.amount }).bills;
       if (dup.length) {
@@ -1626,10 +1620,8 @@ async function expenseForm(ctx) {
       company: val.company || "",
       description: val.description || "",
     };
-    const created = await db.saveNew("expense_records", fields, "Gider");
-    const file = qs("input[name=photo]", root).files[0];
-    if (file) await db.addAttachment("expense", created.id, file);
-    toast("Gider kaydedildi", "ok");
-    go(entrySaveHash(entry,'expense',fields)||"#/gider");
+    await save.saveNew("expense_records", fields, "Gider");
+    await save.attach('expense',save.files.photo);
+    save.finish(()=>{toast("Gider kaydedildi", "ok");go(entrySaveHash(entry,'expense',fields)||"#/gider");});
   });
 }

@@ -1,5 +1,6 @@
 import { vehicleDocumentStatus } from "./business.js";
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
+import {bindSafeFormSave} from './safe-form-save.js';
 // SAHAPRO SOLO — Operasyon: Yakıt · Depo Tankı · Filo · Bakım · Personel · Taşeron
 import {
   qs,
@@ -209,8 +210,8 @@ async function fuelForm(ctx) {
   tt.addEventListener("input", () => {
     tt.dataset.manual = "1";
   });
-  qs("[data-save]", root).addEventListener("click", async () => {
-    const val = collectForm(qs("[data-form]", root));
+  bindSafeFormSave(root,db,async save => {
+    const val = save.values;
     if (!val.vehicle_id) {
       toast("Araç seçin", "err");
       return;
@@ -222,14 +223,14 @@ async function fuelForm(ctx) {
     if (!val.fuel_source) return toast("Yakıtın kaynağını seçin", "err");
     const byCust = val.fuel_source === "Müşteri Verdi";
     if (byCust && !val.customer_id) return toast("Mazotu veren müşteriyi seçin", "err");
-    await db.saveNew(
+    await save.saveNew(
       "fuel_records",
       {
         date: val.date,
         vehicle_id: val.vehicle_id,
         personnel_id: val.personnel_id || null,
         liters: Number(val.liters),
-        full_tank: !!qs("[name=full_tank]",root)?.checked,
+        full_tank: !!val.full_tank,
         unit_price: val.unit_price ? Number(val.unit_price) : null,
         total: val.total ? Number(val.total) : null,
         fuel_source: val.fuel_source,
@@ -247,8 +248,7 @@ async function fuelForm(ctx) {
       },
       "Yakıt kaydı",
     );
-    toast("Yakıt kaydedildi", "ok");
-    go(entrySaveHash(entry,'fuel',val)||"#/yakit");
+    save.finish(()=>{toast("Yakıt kaydedildi", "ok");go(entrySaveHash(entry,'fuel',val)||"#/yakit");});
   });
 }
 
@@ -700,8 +700,8 @@ async function maintForm(ctx, editId) {
       <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/*"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
-  qs("[data-save]", root).addEventListener("click", async () => {
-    const val = collectForm(qs("[data-form]", root));
+  bindSafeFormSave(root,db,async save => {
+    const val = save.values;
     if (!val.vehicle_id) {
       toast("Araç seçin", "err");
       return;
@@ -725,19 +725,17 @@ async function maintForm(ctx, editId) {
     };
     let saved;
     if (editId) {
-      saved = await db.saveExisting(
+      saved = await save.update(
         "maintenance_records",
         rec,
         fields,
         "Bakım güncellendi",
       );
     } else {
-      saved = await db.saveNew("maintenance_records", fields, "Bakım kaydı");
+      saved = await save.saveNew("maintenance_records", fields, "Bakım kaydı");
     }
-    const file = qs("input[name=photo]", root).files[0];
-    if (file) await db.addAttachment("maintenance", saved.id, file);
-    toast("Kaydedildi", "ok");
-    go(entrySaveHash(entry,'maintenance',fields)||"#/bakim/" + saved.id);
+    await save.attach('maintenance',save.files.photo);
+    save.finish(()=>{toast("Kaydedildi", "ok");go(entrySaveHash(entry,'maintenance',fields)||"#/bakim/" + saved.id);});
   });
 }
 
