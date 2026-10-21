@@ -10,6 +10,7 @@ export const ASSISTANT_TASKS=[
  {id:'quantity',group:'Kayıt',title:'İş miktarını düzelt',detail:'Örneği doldurur. Kayıt seçimi, tutar önizlemesi ve onay gerekir.',text:'Dünkü işi 3 saat yap'},
  {id:'work',group:'Kayıt',title:'Yeni iş kaydı',detail:'Müşteri, araç, miktar ve fiş bilgilerini formda gir.',hash:'#/isler/new'},
  {id:'cash',group:'Kayıt',title:'Tahsilat gir',detail:'Müşteriden alınan para. Kaydetmeden önce tutarı kontrol et.',hash:'#/finans/kasa/new'},
+ {id:'customer_fuel',group:'Kayıt',title:'Müşterinin forkliftine mazot',detail:'Depodan düş ve müşteriye TL borç yaz. Tarih, müşteri, litre ve fiyatı kontrol edip onayla; internetsiz çalışır.',text:'Müşteri adının forkliftine 20 litre mazot verildi, litresi 45 TL'},
  {id:'fuel',group:'Kayıt',title:'Yakıt kaydı',detail:'Litre, araç ve kaynağı formda seç.',hash:'#/yakit/new'},
  {id:'expense',group:'Kayıt',title:'Gider kaydı',detail:'Tutarı, kategori ve ödeme durumunu gir.',hash:'#/gider/new'},
  {id:'maintenance',group:'Kayıt',title:'Bakım / arıza bildir',detail:'İlgili araç ve açıklamayla kayıt aç.',hash:'#/bakim/new'},

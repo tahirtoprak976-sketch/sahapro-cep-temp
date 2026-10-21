@@ -1,4 +1,5 @@
 import { startActivity } from "./update-safety.js";
+import {validateCustomerFuelLinks} from './customer-fuel.js';
 import { validateSmartData } from "./message-smart-core.js";
 import { validateSoloData, SOLO_STORES } from "./solo-core.js";
 import {
@@ -407,6 +408,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
       )
         throw Error("Yedekte kopuk tank / yakıt olayı");
     }
+  validateCustomerFuelLinks(Object.fromEntries(Object.entries(merged).map(([s,m]) => [s,[...m.values()]])));
   validateEnterpriseData(
     Object.fromEntries(
       Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),

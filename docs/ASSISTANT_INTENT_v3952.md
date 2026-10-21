@@ -14,8 +14,9 @@ Gerçek Chromium'da yapay veri ve taklit Gemini yanıtıyla ölçüldü:
 Kullanıcı daha sonra örnek verdi: müşterinin kendi forkliftine verilen 20 L
 mazot, müşteri adı yazılmasına rağmen istenen şekilde işlenmemiş. Bu ayrı yakıt
 yönü/alıcısı senaryosudur; depodan düşme ve müşteri hesabına bedel yazma tercihi
-netleştirilmeden finansal sonuç varsayılmaz. Bu sürüm o yeni kayıt yolunu
-eklemez. Yukarıdaki bulgular o olayın kesin sebebi diye sunulmaz. Öncelikler ve bekleyen döküm işleri
+netleştirilmeden finansal sonuç varsayılmaz. Kullanıcı ardından kendi deposundan
+çıkış + müşteriye TL borç istediğini doğruladı. Bu kayıt yolu ayrı v3.9.53
+güncellemesinde eklendi; v3.9.52 yalnız istek/düzeltme ayrımını değiştirir. Yukarıdaki bulgular o olayın kesin sebebi diye sunulmaz. Öncelikler ve bekleyen döküm işleri
 [plan dosyasına](ONCELIKLER_ASISTAN_DOKUM.md) kaydedildi.
 
 ## Yeni davranış

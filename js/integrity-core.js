@@ -4,6 +4,7 @@
 import { duplicateDocuments, calcHakedisTotals, toKurus } from "./core.js";
 import { customerBalances, customerOpenItems, customerLedgerMovements } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
+import {validateCustomerFuelLinks} from './customer-fuel.js';
 import { signedSlipChanges } from "./driver-core.js";
 import { vatContractReport } from "./vat-contract.js";
 import { leaveDays as leaveDaysOf } from "./leave-core.js";
@@ -24,6 +25,7 @@ const LABEL = { work_records: "İş", fuel_records: "Yakıt", fuel_tank_movement
 export function integrityCheck(d, { today, attachments = [], restoreSets = [] } = {}) {
   const out = [];
   const add = (sev, code, text, sub = "", href = "", fix = null) => out.push({ sev, code, text, sub, href, fix });
+  try {validateCustomerFuelLinks(d);} catch(e) {add('error','customer-fuel-link',e.message,'Depo çıkışı ve müşteri borcu birlikte incelenmeli','#/depo');}
   const idx = {};
   const byId = (s) => (idx[s] ||= new Map((d[s] || []).map((r) => [r.id, r])));
   const exists = (s, id) => { const r = byId(s).get(id); return r ? (r.deleted_at ? "deleted" : "ok") : "missing"; };
