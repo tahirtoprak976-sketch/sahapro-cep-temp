@@ -1,5 +1,14 @@
 # İşletme sahibinin öncelikleri — 21.10.2026
 
+## Güncel hedef: uygulamayı sohbet ederek yönetme
+
+Kullanıcı “ChatGPT gibi, istediğimi yapabilsin” istedi. v3.9.54'te bounded
+cihaz içi sohbet geçmişi, seçilebilir konuşma bağlamı, eksik bilgiye devam
+cevabı ve gerçek işlem sonucu ayrımı eklendi. Genel dil Gemini ile çalışır;
+keyfi kod/yetki veya sınırsız işlem iddiası yoktur. Sonraki araçlar gerçek
+kullanıcı kabul örnekleriyle genişletilecek. Dosyalı kalıcı görev ve çoklu
+bağımsız taslak henüz yoktur. Ayrıntı: [sohbet katmanı](ASSISTANT_CONVERSATION_v3954.md).
+
 ## Öncelik 1: asistanın istenen işi doğru anlaması
 
 Kullanıcı: “Asistanı geliştirmemiz lazım; yazdığım şeyleri tam istediğim gibi

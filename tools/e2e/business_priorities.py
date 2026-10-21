@@ -82,7 +82,7 @@ with sync_playwright() as p:
  assert pg.locator('[data-business-priorities]').count()==0
  pg.evaluate(restore);pg.click('[data-badv]');pg.wait_for_selector('[data-business-priorities]')
  pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_selector('[data-msg]');pg.evaluate(fault)
- pg.fill('[data-msg]','Önceliklerim');pg.click('[data-ask]');pg.get_by_text('Kayıtlar okunamadı; öneri hazırlanmadı.',exact=False).wait_for()
+ pg.fill('[data-msg]','Önceliklerim');pg.click('[data-ask]');pg.locator('[data-out]').get_by_text('Kayıtlar okunamadı; öneri hazırlanmadı.',exact=False).wait_for()
  assert pg.locator('[data-answer]').count()==0
  pg.evaluate(restore);pg.click('[data-ask]');pg.wait_for_selector('[data-answer]')
  assert snapshot()==updated and not calls
