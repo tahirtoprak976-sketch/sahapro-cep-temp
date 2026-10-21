@@ -13,6 +13,7 @@ export function customerNameAnswer(value) {
   const name=cleanName(value),f=fold(name);
   if(name.length<2||name.length>120||!/[\p{L}]/u.test(name)||/[\n\r<>:=!?;{}]|https?:|SP1:|AIza/i.test(String(value)))return null;
   if(/^(?:bunu|bu|onu|o|evet|hayir|tamam|onayla|kaydet|vazgec|merhaba|selam|yardim|iptal|musteri(?:nin)?\s*adi?)$/u.test(f))return null;
+  if(/^(?:odemelerim|is kayitlari|bugunku isler|du[n]?ku isler|yedek al|gun(?:un)? ozeti|musterileri listele|ne yapabilirsin|neler yapabilirsin)$/u.test(f))return null;
   if(/\b(?:olustur\w*|ekle\w*|kaydet\w*|goster\w*|sil|silme|iptal|odedi\w*|odeme|tahsilat|verildi|verilmis\w*|alindi|yapti\w*|yapildi|tasindi|guncelle\w*|degistir\w*|olmasin|olusturma|ekleme|acma|ac|olsun|borc|litre|sefer|saat|mazot|forklift|toplam|tutar|fiyat|telefon|ana\s+firma)\b/u.test(f)||/\d\s*(?:tl|lt|ton|₺)\b/u.test(f))return null;
   return name;
 }

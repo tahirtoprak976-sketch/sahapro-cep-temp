@@ -26,6 +26,8 @@ Bu komutlar anahtarsız ve çevrimdışı çalışır. Oluşturulacak ad düzenl
 
 Yerel isim akışı bilinçli olarak kısa, açık müşteri oluşturma isteklerini karşılar. İşlem cümlesi, olumsuz talimat, telefonla birlikte karmaşık istek veya birden fazla müşteri isteği ad kabul edilmez; mevcut model planlayıcısına gider. Yalnız ad yazmak tek başına kart açma yetkisi değildir. Ad sorusunun durumu sohbetle saklanır; onaylanmamış form alanları sayfa yenilendikten sonra otomatik işleme alınmaz. Genel konuşma/belge okuma mevcut Gemini bağlantısına bağlıdır.
 
+Ad sorusundan sonraki “Ödemelerim”, “Bugünkü işler”, “Yedek al” gibi bağımsız komutlar müşteri adı sayılmaz; mevcut komut/planlayıcı yolunda kalır. Ödemelerim akışı gerçek tarayıcıda ayrıca doğrulandı.
+
 ## Doğrulama
 
 - `tests/assistant-customer.test.mjs`: kullanıcının iki adı, Türkçe/ASCII komutlar, sayıların korunması, kısa devam mesajları, olumsuz/finansal cümlelerin reddi, ana firma kimliği.
