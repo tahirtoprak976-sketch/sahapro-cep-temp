@@ -345,22 +345,36 @@ export async function audit(entity, entityId, action, oldV, newV, reason) {
 }
 
 // Name + explicit parent is one identity; concurrent approvals must reuse the same card.
-export async function ensureCustomerCard(name, parent = null) {
+export async function ensureCustomerCard(name, parent = null, options = {}) {
   name = String(name || "").trim(); if (!name) throw new Error("Müşteri adı gerekli");
+  if (name.length > 120) throw new Error("Müşteri adı en fazla 120 karakter olabilir");
+  const fields = {};
+  for (const key of ['phone','note']) if (options.fields?.[key] != null) fields[key] = String(options.fields[key]).trim().slice(0,key==='phone'?40:300);
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction(["customers", "audit_log"], "readwrite"), store = t.objectStore("customers");
+    const t = d.transaction(["customers", "audit_log", ...(options.conversation?['meta']:[])], "readwrite"), store = t.objectStore("customers");
     let result, error;
+    if(options.conversation){
+      const chat=t.objectStore('meta').get('assistant_conversation_v1');
+      chat.onsuccess=()=>{
+        const state=chat.result?.value,turn=options.conversation;
+        if(state?.id!==turn.epoch||!state?.turns?.some(x=>x.id===turn.id&&x.status!=='cancelled')){
+          error=new Error('Sohbet yenilendi veya taslak kapandı. Müşteri isteğini yeniden gönderin.');t.abort();
+        }
+      };
+    }
     const q = store.getAll();
     q.onsuccess = () => {
-      const active = q.result.filter(isActive);
-      if (parent && !active.some(c => c.id === parent)) { error = new Error("Ana firma artık kullanılamıyor; müşteriyi tekrar seçin"); t.abort(); return; }
-      const matches = active.filter(c => customerNameKey(c.name) === customerNameKey(name) && (c.parent_customer_id || null) === (parent || null));
-      if (matches.length > 1) { error = new Error("Aynı ad ve ana firmayla birden fazla müşteri var; doğru kartı seçin"); t.abort(); return; }
-      if (matches.length) { result = { ...matches[0], _existing: true }; return; }
-      result = newRecord({ name, note: "Asistan ile açıldı", ...(parent ? { parent_customer_id: parent } : {}) });
-      store.put(result);
-      t.objectStore("audit_log").put({ id: uuid(), entity: "customers", entity_id: result.id, action: "create", old: null, new: result, reason: "Asistan: yeni müşteri", at: nowISO() });
+      try {
+        const active = q.result.filter(isActive);
+        if (parent && !active.some(c => c.id === parent)) { error = new Error("Ana firma artık kullanılamıyor; müşteriyi tekrar seçin"); t.abort(); return; }
+        const matches = active.filter(c => customerNameKey(c.name) === customerNameKey(name) && (c.parent_customer_id || null) === (parent || null));
+        if (matches.length > 1) { error = new Error("Aynı ad ve ana firmayla birden fazla müşteri var; doğru kartı seçin"); t.abort(); return; }
+        if (matches.length) { result = { ...matches[0], _existing: true }; return; }
+        result = newRecord({ name, note: "Asistan ile açıldı", ...fields, ...(parent ? { parent_customer_id: parent } : {}) });
+        store.put(result);
+        t.objectStore("audit_log").put({ id: uuid(), entity: "customers", entity_id: result.id, action: "create", old: null, new: result, reason: String(options.reason||"Asistan: yeni müşteri").slice(0,300), at: nowISO() });
+      } catch(e) { error=e; try{t.abort();}catch{} }
     };
     t.oncomplete = () => resolve(result);
     t.onerror = t.onabort = () => reject(error || t.error);

@@ -9,6 +9,11 @@ keyfi kod/yetki veya sınırsız işlem iddiası yoktur. Sonraki araçlar gerçe
 kullanıcı kabul örnekleriyle genişletilecek. Dosyalı kalıcı görev ve çoklu
 bağımsız taslak henüz yoktur. Ayrıntı: [sohbet katmanı](ASSISTANT_CONVERSATION_v3954.md).
 
+v3.9.55: kullanıcının açamadığı **Gürçelik Sürücü Kursu** ve **Kemer Country No 53**
+örnekleriyle müşteri oluşturma yerel diyaloğu eklendi. Ad → “bunu yeni oluştur”,
+ad sorusuna devam, benzer kartı kullanıcıya seçtirme ve atomik mükerrer koruması.
+Ayrıntı: [müşteri oluşturma](ASSISTANT_CUSTOMER_v3955.md).
+
 ## Öncelik 1: asistanın istenen işi doğru anlaması
 
 Kullanıcı: “Asistanı geliştirmemiz lazım; yazdığım şeyleri tam istediğim gibi

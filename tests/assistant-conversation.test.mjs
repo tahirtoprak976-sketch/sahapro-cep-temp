@@ -35,3 +35,5 @@ assert.equal(clarificationField('Kaya',{v:{questions:[]}},d,today),null);
 assert.equal(clarificationField('Kaya',prev,{...d,customers:[...d.customers,{id:'D',name:'Kaya'}]},today),null);
 assert.equal(clarificationField('3 sefer',{v:{_done:true,questions:['Kaç sefer?']}},d,today),null);
 console.log('assistant conversation: bounded history, immutable updates, epochs, redaction, factual status, concrete clarification replies PASS');
+
+const intent=changeConversation(raw,'S',{id:'T',intent:'customer.create'});assert.equal(intent.turns[0].intent,'customer.create');assert.equal(changeConversation(intent,'S',{id:'T',intent:null}).turns[0].intent,undefined);assert.equal(cleanConversation({turns:[{id:'X',intent:'execute.sql',status:'clarify'}]}).turns[0].intent,undefined);
