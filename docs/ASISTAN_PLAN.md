@@ -1,5 +1,8 @@
 # SAHAPRO SOLO — Akıllı asistan, görünüm ve şoför akışı: mevcut durum ve plan
 
+> Bu belgenin aşağıdaki envanteri v3.9.06–13 dönemine aittir. Güncel kullanıcı
+> önceliği ve bekleyen döküm planı: [Öncelikler](ONCELIKLER_ASISTAN_DOKUM.md).
+
 - **Taban:** canlı `e80a45a` (v3.9.06).
 - **Kapsam:** yalnız SOLO; YZ2'ye dokunulmaz.
 - **Bu belge** mevcut kodun incelenmesinden çıkarıldı. "Var" denen her şey kodda bulunuyor; gerçek telefonda tek tek denenmiş değildir.
