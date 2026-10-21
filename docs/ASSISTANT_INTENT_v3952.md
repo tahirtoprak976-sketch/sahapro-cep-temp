@@ -11,9 +11,11 @@ Gerçek Chromium'da yapay veri ve taklit Gemini yanıtıyla ölçüldü:
 - Gönder düğmesinin kilidi ilk asenkron okumalardan sonra konuyordu; aynı
   isteğin eşzamanlı işlenmesini baştan engelleyen bir kilit yoktu.
 
-Bu bulgular, kullanıcının henüz aynen paylaşmadığı başarısız mesajın kesin
-sebebi diye sunulmaz. Gerçek mesaj + beklenen sonuç ayrı regresyon girdisi
-olarak toplanacak. Öncelikler ve bekleyen döküm işleri
+Kullanıcı daha sonra örnek verdi: müşterinin kendi forkliftine verilen 20 L
+mazot, müşteri adı yazılmasına rağmen istenen şekilde işlenmemiş. Bu ayrı yakıt
+yönü/alıcısı senaryosudur; depodan düşme ve müşteri hesabına bedel yazma tercihi
+netleştirilmeden finansal sonuç varsayılmaz. Bu sürüm o yeni kayıt yolunu
+eklemez. Yukarıdaki bulgular o olayın kesin sebebi diye sunulmaz. Öncelikler ve bekleyen döküm işleri
 [plan dosyasına](ONCELIKLER_ASISTAN_DOKUM.md) kaydedildi.
 
 ## Yeni davranış

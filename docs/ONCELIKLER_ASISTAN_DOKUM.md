@@ -15,6 +15,12 @@ yapmıyor.” Döküm geliştirmelerinden önce bu ihtiyaç ele alınacak.
   eksik bilgi veya kullanılabilecek kaynak ekran açıkça belirtilecek.
 - Her doğrulanan kullanıcı örneği anlamlı bir regresyon senaryosu olacak.
   Model okuması ve uygulamanın doğrulaması ayrı incelenecek.
+- Kullanıcının verdiği somut örnek: müşteri adı yazılmış olmasına rağmen
+  müşterinin kendi forkliftine verilen 20 L mazot istediği şekilde işlenmedi.
+  Bu, “müşteri bize mazot verdi” işleminden ayrılmalı. Mazotun kendi depodan
+  çıkıp çıkmadığı ve müşteriye TL borç yazılıp yazılmayacağı soruldu; finansal
+  sonuç cevap gelmeden varsayılmayacak. Mevcut yakıt doğrulaması kayıtlı araç
+  istiyor ve müşteri alanını yalnız “Müşteri Verdi” kaynağında koruyor.
 - Mali kayıtlar, imzalı şoför aktarımı, fiş/fotoğraf kimliği ve mükerrer
   korumalar korunacak. “Her şeyi anlıyor” garantisi verilmeyecek.
 
