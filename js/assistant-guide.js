@@ -1,5 +1,6 @@
 import {qs,qsa,esc,confirmDialog,toast} from './ui.js';
 export const ASSISTANT_TASKS=[
+ {id:'payment_agenda',group:'Rapor',title:'Kime ödeme yapacağım?',detail:'Alış belgelerinde kayıtlı vadeler ve bağlı ödemeler sonrası kalan borçlar. İnternetsiz çalışır.',text:'Kime ödeme yapacağım?'},
  {id:'overview',group:'Rapor',title:'İşletme panosu',detail:'Dönem seç, grafiğe dokun, kaynak kayıtlarını aç.',hash:'#/isletme-panosu'},
  {id:'priorities',group:'Kontrol',title:'Bugün ne yapmalıyım?',detail:'Tahsilat, personelde nakit, bakım ve eksik kayıtlar için nedenleriyle öncelik önerir. İnternetsiz çalışır.',text:'Bugün ne yapmalıyım?'},
  {id:'today',group:'Rapor',title:'Bugünkü durum',detail:'İş, tahsilat, maliyet ve ayrı birim özeti. İnternetsiz çalışır.',text:'Bugünkü durum'},

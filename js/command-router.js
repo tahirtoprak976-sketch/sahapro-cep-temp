@@ -3,6 +3,7 @@
 // Emin değilse null döner (mesaj Gemini'ye gider). Birden çok aday varsa rastgele seçmez, listeler.
 import {localOverviewCommand} from "./business-overview.js";
 import {localBusinessPriorityCommand} from "./business-priorities.js";
+import {localPaymentAgendaCommand} from './payment-agenda.js';
 import { isActive, addDays } from "./core.js";
 import { customerSpans } from "./money-roles.js";
 import { customerFuelLedger } from "./assistant-rules.js";
@@ -126,6 +127,7 @@ export function routeCommand(text, d, today, ctx = {}) {
   if (!raw || raw.length > 140 || raw.includes("\n")) return null;
   const f = fold(raw);
   const priorities=localBusinessPriorityCommand(raw,d,today,ctx.priorityMeta);if(priorities)return priorities;
+  const payments=localPaymentAgendaCommand(raw,d,today);if(payments)return payments;
   const overview=localOverviewCommand(raw,d,today);if(overview)return overview;
   // Miktarı belirsiz düzeltme komutu modelin yeniden yorumuna bırakılmaz.
   if (/\d.*(?:saat|sa|sefer|yevmiye|ton|adet|m³)\s+(?:yap|düzelt|duzelt|değiştir|degistir|güncelle|guncelle)[.!?]?$/u.test(f) && !parseWorkQuantityChange(raw))

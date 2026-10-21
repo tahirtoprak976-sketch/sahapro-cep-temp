@@ -4,6 +4,7 @@ import {receivables,chequeRows} from './collect-core.js';
 import {maintenanceBoard} from './maint-core.js';
 import {attentionItems} from './attention.js';
 import {realDate} from './work-explorer.js';
+import {paymentAgenda,paymentPriorityItems} from './payment-agenda.js';
 
 const live=(d,s)=>(d[s]||[]).filter(isActive);
 const money=n=>Number(n).toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₺';
@@ -44,6 +45,7 @@ export function businessPriorities(d,{today=todayStr(),meta=[]}={}){
    money(q.amount)+' · '+(q.status==='Karşılıksız'?'Kayıtlı durum: Karşılıksız.':'Kayıtlı vade '+trDate(q.due_date)+'.'),
    'Çek / senet kaydını incele','#/ceksenet/'+encodeURIComponent(q.id));
  }
+ for(const p of paymentPriorityItems(paymentAgenda(d,{today})))add(p.key,p.urgency,p.order,p.category,p.title,p.why,p.action,p.hash);
  for(const c of live(d,'cash_records').filter(c=>c.cash_type==='Müşteriden Para Alındı'&&['PERSONELDE','TESLIM_BILDIRILDI'].includes(c.cash_status)&&Number(c.amount)>0&&realDate(c.date)&&c.date<=today)){
   const person=live(d,'personnel').find(p=>p.id===c.personnel_id)?.name||'Personel';
   const c0=live(d,'customers').find(x=>x.id===c.customer_id),parent=live(d,'customers').find(x=>x.id===c0?.parent_customer_id);

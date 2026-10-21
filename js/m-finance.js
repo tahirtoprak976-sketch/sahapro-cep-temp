@@ -96,6 +96,7 @@ async function hub(ctx) {
     ["#/kasa", "💰", "Kasa", "tahsilat akışı"],
     ["#/gider", "💸", "Gider", "fişli takip"],
     ["#/esnaf", "🔧", "Esnaf Hesabı", "usta borçları"],
+    ["#/odeme-takibi", "📅", "Ödeme Takibi", "kayıtlı vadeler ve kalan borçlar"],
     ["#/fiyat", "🏷", "Fiyat Listesi", "fiyatlar + vinç tarifesi"],
   ];
   root.innerHTML =
