@@ -37,6 +37,7 @@ export const FIELD_TR = { name: "Ad", phone: "Telefon", note: "Not", parent_cust
 
 // Açılabilecek ekranlar (yalnız bunlar)
 export const SCREENS = {
+  odeme_takibi:['#/odeme-takibi','Kayıtlı ödeme takibi'],
   ana_sayfa: ["#/", "Ana sayfa"], isler: ["#/isler", "İşler"], yeni_is: ["#/isler/new", "Yeni iş kaydı"], yakit: ["#/yakit", "Yakıt"], depo: ["#/depo", "Depo tankı"],
   gider: ["#/gider", "Giderler"], kasa: ["#/finans/kasa", "Kasa"], tahsilat: ["#/tahsilat", "Tahsilat takibi"], teklif_asistani: ["#/teklif-hesap", "Teklif asistanı (fiyat hesapla)"], whatsapp_toplu: ["#/whatsapp-toplu", "WhatsApp grubu toplu işleme"], puantaj: ["#/puantaj", "Puantaj ve maaş"], sofor_baglantisi: ["#/sofor-kur", "Şoföre bağlantı gönder (şoför ekranı)"], puantaj_kisi: ["#/puantaj/{id}", "Personelin puantajı / maaşı"], tahsilat_musteri: ["#/tahsilat/{id}", "Müşteri tahsilatı"],
   cari: ["#/cari/{id}", "Cari ekstre"], musteri: ["#/musteriler/{id}", "Müşteri kartı"], musteriler: ["#/musteriler", "Müşteriler"], filo: ["#/filo", "Araçlar"],

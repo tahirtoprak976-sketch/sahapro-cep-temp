@@ -184,10 +184,11 @@ export async function screen(ctx) {
     if (!refine && !files.length && typed) {
       const { routeCommand } = await import("./command-router.js");
       const { isBusinessPriorityCommand } = await import("./business-priorities.js");
+      const { isPaymentAgendaCommand } = await import('./payment-agenda.js');
       const cx = readCtx();
       let cmd;
       try {
-        const snapshot = isBusinessPriorityCommand(typed) ? await db.readSnapshot({ attachments:false }) : null;
+        const snapshot = isBusinessPriorityCommand(typed)||isPaymentAgendaCommand(typed) ? await db.readSnapshot({ attachments:false }) : null;
         cmd = routeCommand(typed, snapshot?.data || await db.dumpAll(), todayStr(), { ...cx, priorityMeta:snapshot?.meta });
       } catch (e) { qs('[data-out]',root).innerHTML=notice('warn','Kayıtlar okunamadı; öneri hazırlanmadı. Yeniden deneyin. '+(e.message||e));return; }
       if (cmd) {
