@@ -85,7 +85,7 @@ with sync_playwright() as p:
  fault="""()=>{window.__tx=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(stores,mode,...rest){if(mode==='readonly'&&(Array.from(typeof stores==='string'?[stores]:stores).includes('payables')))throw Error('TEST read unavailable');return window.__tx.call(this,stores,mode,...rest)}}"""
  pg.evaluate(fault);pg.click('[data-payment-refresh]');pg.get_by_text('Ödeme kayıtları okunamadı;',exact=False).wait_for();assert pg.locator('[data-payment-bucket]').count()==0
  pg.evaluate("()=>{IDBDatabase.prototype.transaction=window.__tx}");pg.click('[data-payment-retry]');pg.wait_for_selector('[data-payment-list]')
- pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_selector('[data-msg]');pg.evaluate(fault);pg.fill('[data-msg]','Ödemelerim');pg.click('[data-ask]');pg.get_by_text('Kayıtlar okunamadı; öneri hazırlanmadı.',exact=False).wait_for();assert pg.locator('[data-answer]').count()==0
+ pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_selector('[data-msg]');pg.evaluate(fault);pg.fill('[data-msg]','Ödemelerim');pg.click('[data-ask]');pg.locator('[data-out]').get_by_text('Kayıtlar okunamadı; öneri hazırlanmadı.',exact=False).wait_for();assert pg.locator('[data-answer]').count()==0
  pg.evaluate("()=>{IDBDatabase.prototype.transaction=window.__tx}");pg.click('[data-ask]');pg.wait_for_selector('[data-answer]')
  assert snapshot()==paid and not errors and not calls,(errors,calls)
  print('PASS failed reads hide totals in agenda/assistant and retry succeeds; no uncaught browser errors or external AI requests',flush=True)

@@ -74,7 +74,7 @@ with sync_playwright() as p:
  assert len(bodies)==n and snapshot()==before
  print('PASS fresh photo-only input is processed after a pending result; an empty model result does not capture the next command; zero business/audit writes',flush=True)
  # Request failure preserves text, releases the lock and permits a corrected retry.
- http_error=True;pg.fill('[data-msg]','TEST Leda TEST Makine 1 sefer moloz');pg.click('[data-ask]');pg.get_by_text('TEST request failure',exact=False).wait_for();pg.wait_for_function("()=>!document.querySelector('[data-ask]').disabled")
+ http_error=True;pg.fill('[data-msg]','TEST Leda TEST Makine 1 sefer moloz');pg.click('[data-ask]');pg.locator('[data-out]').get_by_text('TEST request failure',exact=False).wait_for();pg.wait_for_function("()=>!document.querySelector('[data-ask]').disabled")
  assert pg.input_value('[data-msg]')=='TEST Leda TEST Makine 1 sefer moloz' and pg.locator('[data-msg]').is_enabled()
  http_error=False;reply=work(ids['d'],1);send('TEST Leda TEST Makine 1 sefer moloz');assert snapshot()==before
  c.set_offline(True);pg.reload();pg.wait_for_selector('[data-msg]');pg.fill('[data-msg]','Ödemelerim');pg.click('[data-ask]');pg.wait_for_selector('[data-answer]');c.set_offline(False)
