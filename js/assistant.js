@@ -1,4 +1,5 @@
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
+import {assistantTurn} from './assistant-turn.js';
 import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
 import {isDriverTransferFile,readDriverTransfer} from "./driver-transfer.js";
 import {driverCashContextHTML} from "./driver-cash-context.js";
@@ -47,7 +48,8 @@ export async function screen(ctx) {
       <p class="tiny muted">En fazla 20 dosya. SAHAPRO iş özeti PDF’ini (.sahapro.pdf) veya eski tek paketi (.sahapro.zip) seçmeniz yeterlidir; fotoğraflar içindedir. Eski .sahapro.txt yönteminde dosyayı ve bütün fotoğrafları birlikte ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
-      <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine checked> ↻ <b>Önceki sonucu düzelt</b> — yazdığın düzeltme ("müşteri Kaya olacak", "2 sefer", "fiş ikinci işin") öncekine uygulanır<div class="muted tiny" data-refine-prev></div></label>
+      <div data-turn-intent class="small" role="status" aria-live="polite" style="margin-top:8px">Yeni istek veya belge gönderebilirsiniz.</div>
+      <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine><span><b>↻ Önceki sonucu düzelt</b><span style="display:block;margin-top:4px">“Müşteri Kaya olacak”, “2 sefer” gibi kısa düzeltmeler tanınır. Bu kutuyla seçimi değiştirebilirsiniz.</span><span class="muted tiny" style="display:block;margin-top:4px" data-refine-prev></span></span></label>
       <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
     </div>
     <div data-lastundo></div>
@@ -72,7 +74,15 @@ export async function screen(ctx) {
       qs("[data-ctxclear]", box).onclick = () => { try { sessionStorage.removeItem("sp_asst_ctx"); } catch (e) {} box.remove(); };
     }
   }
-  let prev = null; // son sonuç (kaydedilmediyse düzeltme için)
+  let prev = null,manualRefine=null,asking=false; // pending result and explicit per-turn override
+  const turnPreview=()=>{
+    const turn=assistantTurn({text:qs('[data-msg]',root).value,previous:prev,manual:manualRefine});
+    const hint=qs('[data-turn-intent]',root);if(hint.textContent!==turn.reason)hint.textContent=turn.reason;
+    qs('[data-turn-intent]',root).dataset.turnMode=turn.mode;
+    if(manualRefine===null)qs('[data-refine]',root).checked=turn.mode==='refine';
+  };
+  qs('[data-msg]',root).addEventListener('input',turnPreview);
+  qs('[data-refine]',root).addEventListener('change',()=>{manualRefine=qs('[data-refine]',root).checked;turnPreview();});
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
   let files = [], attachmentError = "";
   const attachmentLimit = 20;
@@ -164,6 +174,10 @@ export async function screen(ctx) {
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
+    if(asking)return;asking=true;
+    const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
+    for(const el of locked)el.disabled=true;
+    try {
     if (attachmentError) return toast(attachmentError, "err");
     if(files.some(f=>!isTransfer(f)&&(/\.pdf$/i.test(f.name||'')||f.type==='application/pdf')))return toast("Bu normal PDF. Geçmiş işleri PDF’den aktar ekranını kullanın; şoför aktarımı için .sahapro.pdf iş özeti seçin", "err");
     if(files.some(f=>!isTransfer(f)&&(/\.(txt|zip)$/i.test(f.name||'')||f.type==='text/plain'||/zip/.test(f.type||''))))return toast("Bu dosya SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
@@ -173,12 +187,8 @@ export async function screen(ctx) {
     const bundled=transferFiles.length&&(isDriverBundle(transferFiles[0])||isDriverPDF(transferFiles[0]));
     if(bundled&&files.length!==1)return toast("Tek paketin fotoğrafları içindedir. Yanındaki diğer ekleri kaldırıp yalnız paketi seçin", "err");
     if(transferFiles.length){try{if(bundled){const opened=await (isDriverPDF(transferFiles[0])?openDriverPDF(transferFiles[0]):openDriverBundle(transferFiles[0]));typed=opened.message;bundleFiles=opened.files;}else typed=await readDriverTransfer(transferFiles[0]);}catch(e){return toast(e.message,"err");}}
-    // Düzeltme: önceki sonuç kaydedilmediyse ve kullanıcı yeni bir şey yazdıysa, önceki mesaj + düzeltme birlikte gider
-    // Uzun ya da WhatsApp dışa aktarımı gibi görünen metin YENİ mesajdır: düzeltme kutusu işaretli kalmış olsa bile önceki taslağa eklenmez
-    const looksNew = typed.length > 160 || /^\s*\[?\d{1,2}[./]\d{1,2}[./]\d{2,4}[ ,]+\d{1,2}:\d{2}/m.test(typed);
-    const refine = !transferFiles.length && prev && !prev.v._done && qs("[data-refine]", root).checked && typed && typed !== prev.message && !looksNew ? prev : null;
-    if (prev && !prev.v._done && qs("[data-refine]", root).checked && looksNew) toast("Yeni mesaj olarak gönderildi (önceki sonucun düzeltmesi sayılmadı)", "ok");
-    if (prev && !prev.v._done && !refine && !typed) return toast("Düzeltme yazın ya da yeni mesaj girin", "err");
+    const turn=assistantTurn({text:typed,previous:prev,manual:manualRefine,transfer:!!transferFiles.length});
+    const refine=turn.mode==='refine'?prev:null;
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
     // Yerel komut (ekran aç, listele, düzeltilecek kaydı bul): Gemini'ye gitmez, internetsiz çalışır
     if (!refine && !files.length && typed) {
@@ -194,6 +204,7 @@ export async function screen(ctx) {
       if (cmd) {
         clearTimeout(draftT);draftT=null;
         await db.metaSet("assistant_draft", "");
+        prev=null;manualRefine=null;qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;turnPreview();
         if (cmd.customer_id) writeCtx({ customer_id: cmd.customer_id });
         const out = qs("[data-out]", root);
         if (cmd.kind === "work_quantity") { await showWorkQuantityCommand(ctx, out, cmd); return; }
@@ -369,15 +380,22 @@ export async function screen(ctx) {
       prev = { message, plan, v };
       const rw = qs("[data-refine-wrap]", root);
       rw.hidden = false;
-      qs("[data-refine]", root).checked = true;
+      manualRefine=null;
+      qs("[data-refine]", root).checked = false;
       msgEl.value = "";
-      msgEl.placeholder = "Düzeltme yazın (ör. müşteri Kaya olacak) — yeni bir mesaj için alttaki kutucuğu kaldırın";
+      msgEl.placeholder = "Yeni istek veya düzeltme yazın. Örn: Kaya 2 sefer moloz / müşteri Kaya olacak";
       qs("[data-refine-prev]", root).textContent = typed ? `Önceki mesaj: "${typed.slice(0, 120)}${typed.length > 120 ? "…" : ""}"` : "";
       render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
+      turnPreview();
     } catch (e) {
       out.innerHTML = notice("warn", e.message || String(e));
     }
-    btn.disabled = false;
+    } catch(error) {
+      if(root.isConnected)qs('[data-out]',root).innerHTML=notice('warn','İstek tamamlanamadı. Mesajınızı kontrol edip tekrar deneyin. '+(error.message||error));
+    } finally {
+      asking=false;
+      for(const el of locked)if(el.isConnected)el.disabled=false;
+    }
   });
   // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)
   if (ctx.query?.hazir) {
