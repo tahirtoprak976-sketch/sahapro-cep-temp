@@ -1,5 +1,6 @@
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {assistantTurn} from './assistant-turn.js';
+import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
 import {openConversation,CONVERSATION_SYSTEM,safeAssistantReply,resultReply,conversationCommand,CAPABILITIES_REPLY,clarificationField} from './assistant-conversation.js';
 import {customerFuelDraft, customerFuelFields} from './customer-fuel.js';
 import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
@@ -42,7 +43,7 @@ export async function screen(ctx) {
     appbar("Akıllı Asistan", "Yerel komutlar · mesaj ve belge okuma") +
     `<div style="height:10px"></div>
     ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
-    ${g.ready ? notice("info", "İsteğini yaz. Eksik bilgiyi birlikte tamamlayalım; kayıtlar onayından sonra uygulanır. Genel sohbet ve belge okuma mevcut Gemini bağlantısını kullanır.") : notice("warn", "Şoför aktarımı, yerel özetler ve müşterinin forkliftine mazot teslimi anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    ${g.ready ? notice("info", "İsteğini yaz. Eksik bilgiyi birlikte tamamlayalım; kayıtlar onayından sonra uygulanır. Genel sohbet ve belge okuma mevcut Gemini bağlantısını kullanır.") : notice("warn", "Yeni müşteri oluşturma, şoför aktarımı, yerel özetler ve müşterinin forkliftine mazot teslimi anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     <section class="assistant-conversation" aria-label="Sohbet">
       <div class="row between"><b>Sohbet</b><button class="btn sm" data-new-chat disabled>Yeni sohbet</button></div>
       <div data-chat-log class="assistant-chat-log" aria-label="Önceki mesajlar"></div>
@@ -226,9 +227,20 @@ export async function screen(ctx) {
     const turn=resolveTurn(typed,!!transferFiles.length);
     const refine=turn.mode==='refine'?prev:null;
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
+    const previousChat=conversation.previous();
     if(typed || files.length)chatTurn=await conversation.begin(typed || (files.some(isAudio)?'Ses kaydı gönderdim.':'Belge/fotoğraf gönderdim.'));
     const conversationData=qs('[data-chat-context]',root).checked?conversation.context():[];
     if(!files.length && !transferFiles.length){
+      const customerRequest=customerCreateRequest(typed,previousChat);
+      if(customerRequest){
+        const customers=await db.listActive('customers');
+        const reply=customerRequest.kind==='ask'?'Yeni müşterinin adı ne olsun? Yalnız adını yazabilir veya aşağıdaki alana girebilirsiniz. Henüz kayıt açılmadı.':`“${customerRequest.name}” için müşteri kartı hazırladım. Aşağıdaki adı kontrol edip Müşteriyi oluştur düğmesine basın; henüz kayıt açılmadı.`;
+        if(!await finishChat({status:customerRequest.kind==='ask'?'clarify':'draft',intent:CUSTOMER_CREATE_INTENT,reply}))return;
+        if(!msgEl.isConnected)return;
+        prev=null;manualRefine=null;qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
+        showCustomerCreate(ctx,qs('[data-out]',root),customerRequest,customers,conversation,chatTurn);
+        clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');msgEl.value='';turnPreview();return;
+      }
       // A single external fuel draft can be completed by an explicit price/date reply, offline.
       const field=turn.mode==='refine'?clarificationField(typed,prev,prev?.d,todayStr()):null;
       const fuelCard=prev&&!prev.v._done&&prev.v.fuelOut?.length===1?qs('[data-kind=fuelout]',root):null;
@@ -250,9 +262,11 @@ export async function screen(ctx) {
       const cc=conversationCommand(typed);
       if(cc){
         const out=qs('[data-out]',root);
-        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):prev&&!prev.v._done?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
+        const customerDraft=!!qs('[data-customer-create]',out);
+        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Adı kontrol edip aşağıdaki Müşteriyi oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına müşteri açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
+        if(cc==='cancel'&&customerDraft){await conversation.finish(previousChat,{status:'cancelled',reply:'Müşteri taslağından vazgeçildi.',intent:null});out.innerHTML='';}
         if(cc==='cancel' && prev&&!prev.v._done){prev=null;manualRefine=null;out.innerHTML='';qs('[data-refine-wrap]',root).hidden=true;turnPreview();}
-        if(!out.textContent.trim() || cc==='help'&&!qs('[data-save],[data-work-confirm]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+'</div>';
+        if(!out.textContent.trim() || cc==='help'&&!qs('[data-save],[data-work-confirm],[data-customer-create]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+'</div>';
         await finishChat({status:cc==='cancel'?'cancelled':'answer',reply});
         clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
       }
@@ -288,7 +302,7 @@ export async function screen(ctx) {
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
     const localFuelPlan = !refine && !files.length && /forklift/i.test(message) ? customerFuelDraft(message, await db.dumpAll()) : null;
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
-    if (!localFuelPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
+    if (!localFuelPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: yeni müşteri oluşturma (\"Gürçelik Sürücü Kursu adında müşteri oluştur\"), ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = bundleFiles || files.filter((f) => !isAudio(f) && !isTransfer(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
@@ -1018,8 +1032,11 @@ async function save(ctx, out, v, d, { message, files }) {
         const r = v.actions[Number(c.dataset.i)];
         const why = "Asistan: " + (r.reason || message.slice(0, 120));
         if (r.op === "create") {
-          const rec = await db.saveNew(r.store, { ...r.changes, note: r.changes.note || "Asistan ile açıldı" }, why);
+          const rec = r.store==='customers'
+            ? await db.ensureCustomerCard(r.changes.name,r.changes.parent_customer_id||null,{fields:r.changes,reason:why,conversation:v._chatTurn})
+            : await db.saveNew(r.store, { ...r.changes, note: r.changes.note || "Asistan ile açıldı" }, why);
           if (r.store === "customers") newIds.set("c:" + rec.name, rec.id);
+          if(rec._existing){done.already++;continue;}
         } else {
           const cur = await db.get(r.store, r.id);
           if (!cur || cur.deleted_at) continue;

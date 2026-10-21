@@ -49,3 +49,8 @@ assert.equal(validateOpen({ open: { screen: "cari", id: "nope" } }, { d }), null
 assert.ok(actionsContext(d, "JCB muayenesi").documents.length === 1);
 assert.ok(!actionsContext(d, "bugün 3 sefer").documents);
 console.log("assistant-actions ok");
+
+// Customer identity includes its explicitly selected parent. Same child name under a different parent is distinct.
+const pd={...d,customers:[...d.customers,{id:'CH',name:'Çatıcı',parent_customer_id:'H'}]};
+for(const parent of [null,'K'])assert.equal(validateActions({actions:[{op:'create',store:'customers',fields:{name:'Çatıcı',...(parent?{parent_customer_id:parent}:{})}}]},{message:'Çatıcı yeni müşteri oluştur',d:pd})[0].ok,true);
+assert.match(validateActions({actions:[{op:'create',store:'customers',fields:{name:'Çatıcı',parent_customer_id:'H'}}]},{message:'Çatıcı yeni müşteri oluştur',d:pd})[0].issues.join(),/zaten kayıtlı/);

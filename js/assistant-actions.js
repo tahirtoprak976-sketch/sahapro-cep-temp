@@ -9,6 +9,7 @@ import { foldTr } from "./parser.js";
 import { writtenNumbers } from "./ai-assist.js";
 import { moneyInText } from "./assistant-core.js";
 import { FUEL_RULE_UNITS } from "./assistant-rules.js";
+import {customerNameKey} from './driver-customer.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -53,6 +54,7 @@ export const ACTIONS_PROMPT = [
   "UYGULAMAYI YÖNETME (kullanıcı kayıt dışı bir şey isterse):",
   "\"actions\":[{\"op\":\"create\"|\"update\"|\"delete\",\"store\":" + Object.keys(ACTION_STORES).map((s) => `"${s}"`).join("|") + ",\"id\" (update/delete için listedeki ID),\"fields\":{alan:değer},\"reason\"}]",
   "  alanlar: " + Object.entries(ACTION_STORES).map(([s, x]) => `${s}(${Object.keys(x.fields).join(",")})`).join("; ") + ". 'Leda'nın telefonu 0532…', 'Kaya'nın ana firması Hisar Polat', 'JCB'nin muayenesi 12.03.2027'de bitiyor', 'Ahmet artık 34ABC123'ü kullanıyor', 'Erdem Yapı kartını sil'.",
+  "Yeni müşteri aç/oluştur/ekle isteğinde actions create customers kullan; fields.name kullanıcının söylediği tam ad olsun. Örnek: Gürçelik Sürücü Kursu, Kemer Country No 53. İsimdeki sayı ve sözcükleri koru; benzer kayıtla kendiliğinden değiştirme. Ad eksikse questions ile sor. Müşteri kartı açmak iş, borç veya tahsilat açmak değildir.",
   "\"settings\":[{\"key\":\"rule\"|\"promise\"|\"iban\"|\"fuel_ref_price\"|\"fuel_rule\",\"value\",\"customer_id\",\"date\",\"amount\",\"per\",\"unit\",\"match\",\"only_pay\"}]",
   "  rule: 'bundan sonra şunu unutma / kural ekle' → value=kural metni (asistan kurallarına eklenir). promise: 'Kaya cuma ödeyecek' → customer_id, date, amount. iban: value. fuel_ref_price: mazot litre fiyatı value. fuel_rule: 'X sefer başı 75 litre mazotla ödüyor' → customer_id, per, unit, match (hangi işler: 'gravak maslak'), only_pay (yalnız mazotla mı).",
   "\"open\":{\"screen\":" + Object.keys(SCREENS).map((s) => `"${s}"`).join("|") + ",\"id\"} (kullanıcı bir ekranı görmek isterse: 'Leda'nın ekstresini aç' → cari + müşteri ID).",
@@ -118,7 +120,9 @@ export function validateActions(plan, { message = "", d } = {}) {
     if (op === "create") {
       if (!r.changes.name) r.issues.push("Ad yok");
       for (const k of def.need || []) if (!r.changes[k]) r.issues.push(`${FIELD_TR[k]} seçilmeli`);
-      const twin = r.changes.name && live(d, a.store).find((x) => norm(x.name) === norm(r.changes.name));
+      const twin = r.changes.name && live(d, a.store).find((x) => a.store==='customers'
+        ? customerNameKey(x.name)===customerNameKey(r.changes.name)&&(x.parent_customer_id||null)===(r.changes.parent_customer_id||null)
+        : norm(x.name)===norm(r.changes.name));
       if (twin) r.issues.push(`"${twin.name}" zaten kayıtlı`);
     }
     if (!Object.keys(r.changes).length && op === "update") r.issues.push("Değişiklik yok");

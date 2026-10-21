@@ -30,7 +30,7 @@ export function cleanConversation(raw) {
   const rows = Array.isArray(raw?.turns) ? raw.turns : [];
   const seen = new Set();
   const turns = rows.filter(x => x && typeof x.id === 'string' && x.id.length <= 80 && !seen.has(x.id) && seen.add(x.id)).slice(-CHAT_LIMIT)
-    .map(x => ({id:x.id,at:typeof x.at==='string'?x.at.slice(0,30):'',user:chatText(x.user),reply:chatText(x.reply),status:states.has(x.status)?x.status:'error'}));
+    .map(x => ({id:x.id,at:typeof x.at==='string'?x.at.slice(0,30):'',user:chatText(x.user),reply:chatText(x.reply),status:states.has(x.status)?x.status:'error',...(x.intent==='customer.create'?{intent:x.intent}:{})}));
   return {version:1,id,turns};
 }
 export function changeConversation(raw, expected, patch) {
@@ -119,6 +119,7 @@ export async function openConversation(db, draw) {
   paint();
   return {
     context:()=>conversationContext(state),
+    previous:()=>state.turns.filter(t=>t.status!=='pending').at(-1),
     async begin(user){const id=uuid(),epoch=state.id;if(!await patch(id,{user,reply:'Yanıt hazırlanıyor…',status:'pending',at:nowISO()},epoch))throw Error('Sohbet başka sekmede yenilendi. Mesajı yeniden gönderin.');return {id,epoch};},
     async finish(turn,result){return turn ? patch(turn.id,result,turn.epoch) : false;},
     async receipt(turn,result){
