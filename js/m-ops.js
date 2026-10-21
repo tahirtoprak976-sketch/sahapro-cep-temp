@@ -1,4 +1,5 @@
 import { vehicleDocumentStatus } from "./business.js";
+import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
 // SAHAPRO SOLO — Operasyon: Yakıt · Depo Tankı · Filo · Bakım · Personel · Taşeron
 import {
   qs,
@@ -142,6 +143,8 @@ async function fuelForm(ctx) {
     db.listActive("personnel"),
     db.listActive("customers"),
   ]);
+  const entry=entryContext(ctx.query,vehicles);
+  if(entry?.error){root.innerHTML=appbar('+ Yakıt')+entryContextHTML(entry);return;}
   const { hasFuelRules } = await import("./assistant-rules.js");
   // Asistanın yerel okumasından gelindiyse: litre ve tarih dolu gelir; KAYNAK ve ARAÇ kullanıcıya seçtirilir (tahmin edilmez)
   const fromAsst = Number(ctx.query?.litre) > 0;
@@ -149,16 +152,17 @@ async function fuelForm(ctx) {
   const fuelCustomers = [...allCust.filter(hasFuelRules), ...(askedCust && !hasFuelRules(askedCust) ? [askedCust] : [])];
   root.innerHTML =
     appbar("+ Yakıt", "Litre zorunlu; fiyat/tutar opsiyonel") +
+    entryContextHTML(entry) +
     (fromAsst ? notice("info", `Asistan mesajda ${Number(ctx.query.litre)} L yakıt gördü. Aracı ve kaynağı (depo, istasyon, müşteri verdi) siz seçin.${askedCust ? " Mesaja göre " + askedCust.name + " vermiş olabilir." : ""}`) : "") +
     `
     <form data-form novalidate>
-      ${fDate("Tarih", "date", /^\d{4}-\d{2}-\d{2}$/.test(ctx.query?.tarih || "") ? ctx.query.tarih : todayStr())}
+      ${fDate("Tarih", "date", entry?.values.date||(/^\d{4}-\d{2}-\d{2}$/.test(ctx.query?.tarih || "") ? ctx.query.tarih : todayStr()))}
       <div class="formgrid2">
         ${fSelect(
           "Araç / Makine",
           "vehicle_id",
           vehicles.map((v) => ({ v: v.id, t: v.name })),
-          "",
+          entry?.values.vehicle_id||"",
           { req: true },
         )}
         ${fSelect(
@@ -244,7 +248,7 @@ async function fuelForm(ctx) {
       "Yakıt kaydı",
     );
     toast("Yakıt kaydedildi", "ok");
-    go("#/yakit");
+    go(entrySaveHash(entry,'fuel',val)||"#/yakit");
   });
 }
 
@@ -654,13 +658,16 @@ async function maint(ctx) {
 async function maintForm(ctx, editId) {
   const { root, db } = ctx;
   const rec = editId ? await db.get("maintenance_records", editId) : null;
-  const v = rec || {};
   const [vehicles, personnel] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
   ]);
+  const entry=!editId?entryContext(ctx.query,vehicles):null;
+  if(entry?.error){root.innerHTML=appbar('+ Arıza / Bakım')+entryContextHTML(entry);return;}
+  const v=rec||entry?.values||{};
   root.innerHTML =
     appbar(editId ? "Bakım Düzenle" : "+ Arıza / Bakım", "") +
+    entryContextHTML(entry) +
     `
     <form data-form novalidate>
       ${fDate("Tarih", "date", v.date)}
@@ -730,7 +737,7 @@ async function maintForm(ctx, editId) {
     const file = qs("input[name=photo]", root).files[0];
     if (file) await db.addAttachment("maintenance", saved.id, file);
     toast("Kaydedildi", "ok");
-    go("#/bakim/" + saved.id);
+    go(entrySaveHash(entry,'maintenance',fields)||"#/bakim/" + saved.id);
   });
 }
 

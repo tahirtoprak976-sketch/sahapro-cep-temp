@@ -1,4 +1,5 @@
 import { customerBankReceipt } from "./enterprise-db.js";
+import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
 import { kdvRateOf } from "./core.js";
 import { customerWorkLines } from "./business.js";
 // SAHAPRO SOLO — Finans: Teklif · Fiyat Listesi · Hakediş · Cari · Kasa · Gider
@@ -1475,12 +1476,16 @@ async function expenseForm(ctx) {
     db.listActive("expense_categories"),
     db.listActive("suppliers"),
   ]);
+  const entry=entryContext(ctx.query,vehicles);
+  if(entry?.error){root.innerHTML=appbar('+ Gider')+entryContextHTML(entry);return;}
   root.innerHTML =
     appbar("+ Gider", "Fiş fotoğrafı eklenebilir") +
+    entryContextHTML(entry) +
+    (entry?'<p class="tiny muted">Veresiye gider kaydedilirse esnaf hesabı açılır; Saha Akışı’nda normal gider satırı oluşturulmaz.</p>':'') +
     `
     <div class="notice info" style="margin-top:10px"><span>ℹ</span><span>Veresiye (açık hesap) çalıştığınız ustaysa aşağıdan ustayı seçin; borç <a href="#/esnaf">Esnaf Hesabı</a>'na yazılır. Aynı iş iki yerden girilirse sistem engeller.</span></div>
     <form data-form novalidate>
-      ${fDate("Tarih", "date", todayStr())}
+      ${fDate("Tarih", "date", entry?.values.date||todayStr())}
       <div class="formgrid2">
         ${fSelect("Kategori", "category", [...new Set([...EXPENSE_CATEGORIES, ...categories.map((c) => c.name)])], "Yakıt", { empty: false })}
         ${fNum("Tutar (₺)", "amount", "", { req: true, step: "any" })}
@@ -1497,7 +1502,7 @@ async function expenseForm(ctx) {
           "İlgili Araç",
           "vehicle_id",
           vehicles.map((v) => ({ v: v.id, t: v.name })),
-          "",
+          entry?.values.vehicle_id||"",
         )}
       </div>
       <div class="formgrid2">
@@ -1625,6 +1630,6 @@ async function expenseForm(ctx) {
     const file = qs("input[name=photo]", root).files[0];
     if (file) await db.addAttachment("expense", created.id, file);
     toast("Gider kaydedildi", "ok");
-    go("#/gider");
+    go(entrySaveHash(entry,'expense',fields)||"#/gider");
   });
 }
