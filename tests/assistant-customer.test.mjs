@@ -17,6 +17,7 @@ for(const value of ['','a','bunu','onayla','vazgeç','müşteri adı','Ali 20 li
   assert.equal(parse(value,{status:'clarify',intent:'customer.create'}),null,value);
 }
 for(const cmd of ['Ali müşteri oluşturma','Ali müşteri ekleme','Yeni müşteri açma','Kemer country no 53 işlerini göster','Kemer country no 53 2 sefer yaptı','Gürçelik telefon 05321112233 adında müşteri aç','Ali ve Veli müşteri oluştur'])assert.equal(parse(cmd),null,cmd);
+for(const cmd of ['Ödemelerim','İş kayıtları','Bugünkü işler','Dünkü işler','Yedek al','Günün özeti','Müşterileri listele','Neler yapabilirsin'])assert.equal(parse(cmd,{status:'clarify',intent:'customer.create'}),null,cmd);
 assert.equal(parse(names[0],{status:'saved',intent:'customer.create'}),null);
 const rows=[{id:'1',name:'Kemer Country No 53'},{id:'2',name:'Kemer Country No 54'},{id:'3',name:'Kemer Country No 53',parent_customer_id:'P'},{id:'4',name:'Kemer Country No 53',deleted_at:'x'},{id:'P',name:'Ana Firma'}];
 assert.deepEqual(customerCreateMatches('kemer country no 53',null,rows).exact.map(c=>c.id),['1']);

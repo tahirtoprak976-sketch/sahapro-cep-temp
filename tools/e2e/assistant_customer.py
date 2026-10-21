@@ -42,6 +42,9 @@ with sync_playwright() as p:
  send('TEST Geçici B adında müşteri oluştur');pg.click('[data-cancel-customer]');pg.wait_for_function("()=>!document.querySelector('[data-customer-create]')");assert state()==cancel_before
  send('Yeni müşteri oluştur');send('TEST Kaya 3 sefer yaptı');assert pg.input_value('[data-msg]')=='TEST Kaya 3 sefer yaptı' and state()==cancel_before
  print('PASS both cancellation controls write nothing; a transaction following the name question is never mistaken for a customer name',flush=True)
+ send('Yeni müşteri oluştur');independent=state();send('Ödemelerim')
+ assert not pg.locator('[data-customer-create]').count() and pg.locator('[data-answer]').count()==1 and state()==independent
+ print('PASS independent payment command after customer name question uses the actual local answer and creates no customer',flush=True)
  # The database helper serializes approvals from independent tabs; reuse cannot overwrite an existing phone.
  c.set_offline(False);pg2=c.new_page();pg2.goto(U+'index.html#/akilli-asistan');pg2.wait_for_selector('[data-msg]')
  for tab in [pg,pg2]:
