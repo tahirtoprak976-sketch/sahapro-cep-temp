@@ -30,6 +30,7 @@ for(const t of [
  text.replace('20 lt','-20 lt'),text.replace('20 lt','10-20 lt'),text.replace('20 lt','1/20 lt'),text.replace('20 lt','+20 lt'),
  text+'; Demir forkliftine 30 lt mazot verildi',text+'\nDemir forkliftine 30 lt mazot verildi',text+' 2 sefer çalıştı',
  'Kaya bize 20 lt mazot verdi','Kaya forkliftine 20 lt mazot verilecek',
+ text+' borç yazma',text+' bedelsiz',text+' ama sonra geri alındı',text+' değildi',text+' litresi 45 TL litresi 50 TL',
 ]) assert.equal(draft(t,d,today),null,t);
 // Unsupported/forged model rows cannot invent a price, direction, recipient or quantity.
 let v=rows({customer_fuel:[{quote:text,customer_id:'D',liters:200,unit_price:99}]},{message:'Güvenilmeyen başka metin',d,today});assert.equal(v[0].blocked,true);assert.equal(v[0].liters,null);

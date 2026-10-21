@@ -15,13 +15,14 @@ export function customerFuelDraft(message, d, today = todayStr()) {
   if (text.length > 500 || /[\n;]|\b(?:calisti|sefer|tahsilat|odeme|ode[dn]|aldi[mk]|aldik|geldi)\b/.test(f)) return null;
   if (/bizim\s+(?:forklift|makine)/.test(f)) return null;
   if (!/forklift(?:ine|e|i|in)?\b/.test(f) || !/mazot|motorin/.test(f) || !/\b(?:verildi|verilmisti|verdim|verdik)\b/.test(f)) return null;
-  if (/verilmedi|vermedik|vermedim|verilmesin|\?|\b(?:mi|mu|nasil|kac|iptal|sil|ornek|degil|yerine|iade|nakit|havale|ucretsiz|hediye|odendi|veya|yaklasik|tahminen)\b|\bya da\b/.test(f)) return null;
+  if (/verilmedi|vermedik|vermedim|verilmesin|degil|borc(?:a)?\s+yazma|borclandirma|\?|\b(?:mi|mu|nasil|kac|iptal|sil|ornek|yerine|iade|nakit|havale|ucretsiz|hediye|bedelsiz|emanet|takas|mahsup|odendi|veya|yaklasik|tahminen|geri|sonra|ama|fakat|ancak)\b|\bya da\b/.test(f)) return null;
   const liters = [...f.matchAll(new RegExp(number + '\\s*(?:litre|lt|l)(?:n)?(?=\\s|mazot|motorin|$|[.,])', 'g'))];
   if (liters.length !== 1) return null;
   if (/[\d\-+/:.,]\s*$/.test(f.slice(0,liters[0].index))) return null;
   const spans = customerSpans(text, (d.customers || []).filter(isActive), (d.aliases || []).filter(isActive));
   const strongest = spans.filter(s => !spans.some(t => t.start <= s.start && t.end >= s.end && t.key.length > s.key.length));
   const ids = [...new Set(strongest.map(s => s.id))];
+  if ([...f.matchAll(/\b(?:litresi|litre(?:\s+birim)?\s+fiyati|birim\s+fiyat(?:i)?)\s*[:=]?\s*\d/g)].length > 1) return null;
   const price = f.match(new RegExp('(?:litresi|litre(?:\\s+birim)?\\s+fiyati|birim\\s+fiyat(?:i)?)\\s*[:=]?\\s*' + number + '\\s*(?:tl|₺|lira)'))
     || f.match(new RegExp(number + '\\s*(?:tl|₺|lira)\\s*/\\s*(?:litre|lt|l)\\b'));
   const total = f.match(new RegExp('(?:toplam|bedel(?:i)?|tutar(?:i)?)\\s*[:=]?\\s*' + number + '\\s*(?:tl|₺|lira)'));
