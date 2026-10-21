@@ -1118,3 +1118,5 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 .customer-directory .customer-list-sort{display:flex;align-items:center;gap:12px}.customer-list-sort label{margin:0;flex:none}.customer-list-sort select{flex:1;min-width:0}
 
 .business-priorities{border-top:1px solid var(--border);margin-top:12px;padding-top:12px;overflow-wrap:anywhere}.business-priorities>.row{gap:8px;flex-wrap:wrap}.business-priority{border:1px solid var(--border);border-radius:12px;padding:12px;margin:10px 0;min-width:0}.business-priority>b{display:block;margin-top:8px}.business-priority p{margin:8px 0}.business-priority .btn{white-space:normal;min-height:44px;text-align:left}
+
+[data-entry-context]{overflow-wrap:anywhere}[data-entry-context] p{margin:6px 0}
