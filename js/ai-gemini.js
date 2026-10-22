@@ -347,6 +347,45 @@ export async function geminiText(prompt, { key, model, system, fetchFn, maxToken
   return text(data).trim();
 }
 
+// Unified read / ask / propose loop. The registry supplied by the application contains no business writes.
+export async function geminiAgent(parts,{key,model,system,tools,runTool,fetchFn,maxRounds=6,maxCalls=16,onTool}={}){
+  const contents=[{role:'user',parts}],trace=[],allowed=new Set(tools.map(t=>t.name));
+  const terminals=new Set(['prepare_plan','revise_draft','ask_user']);let count=0;
+  for(let round=0;round<Math.min(6,maxRounds);round++){
+    const data=await call(`/models/${encodeURIComponent(model)}:generateContent`,key,{
+      systemInstruction:{parts:[{text:system}]},contents,
+      tools:[{functionDeclarations:tools}],toolConfig:{functionCallingConfig:{mode:'AUTO'}},
+      generationConfig:{temperature:0,maxOutputTokens:16384},
+    },fetchFn);
+    const content=data?.candidates?.[0]?.content,returned=content?.parts||[],calls=returned.filter(p=>p.functionCall);
+    if(!calls.length){
+      const reply=returned.map(p=>p.text||'').join('').trim();
+      if(!reply||data?.candidates?.[0]?.finishReason==='MAX_TOKENS')throw Error('Asistan yanıtı tamamlanamadı. İstek korunuyor; yeniden deneyin.');
+      const parsed=parseJsonText(reply);
+      const result=await runTool('prepare_plan',{goal:'İstek',plan_json:JSON.stringify(parsed||{answer:reply})});
+      return {...result,trace,legacy:true};
+    }
+    if(calls.length>6||count+calls.length>Math.min(16,maxCalls))throw Error('Asistanın sorgu sınırına ulaşıldı. Hiçbir işlem kaydedilmedi; isteği daraltıp yeniden deneyin.');
+    contents.push({role:'model',parts:returned}); // preserve every thoughtSignature and call ID verbatim
+    const responses=[];
+    for(const part of calls){
+      const {name,args,id}=part.functionCall;count++;
+      let result;
+      try{
+        if(!allowed.has(name))throw Error('Bilinmeyen araç; çalıştırılmadı.');
+        if(terminals.has(name)&&calls.length!==1)throw Error('Önce okuma sonuçlarını değerlendir; son hazırlama çağrısını ayrı yap.');
+        onTool?.(name,count);
+        result=await runTool(name,args||{});
+        if(terminals.has(name)&&result?.terminal)return {...result,trace,legacy:false};
+      }catch(e){result={error:String(e.message||e).slice(0,500)};}
+      trace.push({name,args:args||{},result});
+      responses.push({functionResponse:{name,...(id?{id}:{}),response:{result}}});
+    }
+    contents.push({role:'user',parts:responses});
+  }
+  throw Error('Asistan sorgulamayı bu turda tamamlayamadı. Hiçbir işlem kaydedilmedi; isteği daraltıp tekrar deneyin.');
+}
+
 // Fonksiyon çağrısı döngüsü: model araç ister → telefon hesaplar → sonuç modele döner (en çok 3 tur).
 // Modelin içerik parçaları (düşünce imzaları dahil) DEĞİŞTİRİLMEDEN geri gönderilir.
 export async function geminiAsk(question, { key, model, system, tools, runTool, fetchFn, maxRounds = 3 } = {}) {

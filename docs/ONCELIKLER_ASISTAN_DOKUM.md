@@ -18,6 +18,13 @@ v3.9.56: beş işlem türünde ortak taslak motoru, eksik alan panosu, hedef se�
 yerel devam cevapları ve kayıt öncesi güncel alan/kart kontrolü. Ayrıntı:
 [ortak iş asistanı motoru](ASSISTANT_WORKFLOW_v3956.md).
 
+v3.9.57: çevrimiçi serbest yazılı istekte native kayıt arama/okuma/hesap/soru
+döngüsü; tek kalıcı açık istek, hedef satır yamaları, sohbet/revizyon koruması
+ve gerçek kayıt onayından önce kalıcı görev kilidi. Yeni sohbet görevi de
+temizler; tamamlanan/kısmi görevi otomatik tekrar uygulamaz. Dosyalı görev
+ve çoklu görev arşivi hâlâ yoktur. Ayrıntı:
+[sorgulayan iş asistanı](ASSISTANT_AGENT_v3957.md).
+
 ## Öncelik 1: asistanın istenen işi doğru anlaması
 
 Kullanıcı: “Asistanı geliştirmemiz lazım; yazdığım şeyleri tam istediğim gibi

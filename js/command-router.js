@@ -13,7 +13,7 @@ import { vehicleSummary } from "./attention.js";
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/[’`]/g, "'").replace(/\s+/g, " ").trim();
 // Türkçe harfler \b ile çalışmaz: harf olmayan sınır (lookaround, u bayrağı)
-const OPEN = /(?<![\p{L}])(aç|ac|açar mısın|göster|goster|getir|listele|bul|hazırla|hazirla|görmek istiyorum|nerede)(\p{L}{0,6})?(?![\p{L}])/u;
+const OPEN = /(?<![\p{L}])(aç(?!ıkla)|ac(?!ikla)|açar mısın|göster|goster|getir|listele|bul|hazırla|hazirla|görmek istiyorum|nerede)(\p{L}{0,6})?(?![\p{L}])/u;
 const EDIT = /(?<![\p{L}])(düzelt|duzelt|değiştir|degistir|güncelle|guncelle)\p{L}*/u;
 const RECORDISH = /\d+(?:[.,]\d+)?\s*(?:sefer|saat|sa\b|ton|litre|lt\b|l\b|tl|₺|lira|bin|yevmiye)/;
 
