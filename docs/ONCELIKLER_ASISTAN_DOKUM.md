@@ -14,6 +14,10 @@ v3.9.55: kullanıcının açamadığı **Gürçelik Sürücü Kursu** ve **Kemer
 ad sorusuna devam, benzer kartı kullanıcıya seçtirme ve atomik mükerrer koruması.
 Ayrıntı: [müşteri oluşturma](ASSISTANT_CUSTOMER_v3955.md).
 
+v3.9.56: beş işlem türünde ortak taslak motoru, eksik alan panosu, hedef seçimi,
+yerel devam cevapları ve kayıt öncesi güncel alan/kart kontrolü. Ayrıntı:
+[ortak iş asistanı motoru](ASSISTANT_WORKFLOW_v3956.md).
+
 ## Öncelik 1: asistanın istenen işi doğru anlaması
 
 Kullanıcı: “Asistanı geliştirmemiz lazım; yazdığım şeyleri tam istediğim gibi

@@ -24,13 +24,13 @@ with sync_playwright() as p:
  def work(customer,quantity):return {'works':[{'date':ids['date'],'customer_id':customer,'vehicle_id':ids['v'],'work_type':'Moloz Nakliye','quantity':quantity,'unit':'Sefer'}]}
  def message_part():return bodies[-1]['contents'][0]['parts'][-1]['text']
  def double():pg.evaluate("()=>{const b=document.querySelector('[data-ask]');b.dispatchEvent(new MouseEvent('click',{bubbles:true}));b.dispatchEvent(new MouseEvent('click',{bubbles:true}))}")
- def send(text,twice=False):
+ def send(text,twice=False,model=True):
   pg.fill('[data-msg]',text);n=len(bodies)
   if twice:double()
   else:pg.click('[data-ask]')
-  assert pg.locator('[data-ask]').is_disabled() and pg.locator('[data-msg]').is_disabled()
+  if model:assert pg.locator('[data-ask]').is_disabled() and pg.locator('[data-msg]').is_disabled()
   pg.wait_for_function("()=>!document.querySelector('[data-ask]').disabled&&document.querySelector('[data-msg]').value===''")
-  assert len(bodies)==n+1,(n,len(bodies))
+  assert len(bodies)==n+(1 if model else 0),(n,len(bodies))
  before=snapshot();pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_selector('[data-msg]')
  reply=work(ids['c'],2);send('TEST Kaya TEST Makine 2 sefer moloz',twice=True)
  assert pg.locator('[data-out] [data-kind=work]').count()==1 and '[DÜZELTME]' not in message_part()
@@ -45,9 +45,9 @@ with sync_playwright() as p:
  print('PASS short independent work is sent alone and selects its returned customer instead of inheriting the prior work context',flush=True)
  # Clear corrections preserve the old source and plan, with an explicit visible mode.
  reply=work(ids['d'],2);pg.fill('[data-msg]','2 sefer');assert pg.get_attribute('[data-turn-intent]','data-turn-mode')=='refine' and pg.locator('[data-refine]').is_checked()
- send('2 sefer');assert '[DÜZELTME] 2 sefer' in message_part() and 'TEST Leda TEST Makine 3 sefer' in message_part()
- assert any('ÖNCEKİ TASLAK' in x.get('text','') for x in bodies[-1]['contents'][0]['parts'])
- reply=work(ids['c'],2);send('müşteri TEST Kaya olacak');assert '[DÜZELTME] müşteri TEST Kaya olacak' in message_part()
+ send('2 sefer',model=False);assert pg.input_value('[data-kind=work] [name=quantity]')=='2'
+ assert pg.locator('[data-draft-workflow]').count()==1
+ reply=work(ids['c'],2);send('müşteri TEST Kaya olacak',model=False)
  assert pg.input_value('[data-kind=work] [name=customer]')==ids['c']
  for width in [320,360,768]:
   pg.set_viewport_size({'width':width,'height':850});assert pg.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width

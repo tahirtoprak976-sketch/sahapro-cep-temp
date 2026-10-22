@@ -1,6 +1,7 @@
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {assistantTurn} from './assistant-turn.js';
 import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
+import {startDraftPlan,bindDraftWorkflow,draftPreflight,applyDraftPlan,DRAFT_FIELDS} from './assistant-workflow.js';
 import {openConversation,CONVERSATION_SYSTEM,safeAssistantReply,resultReply,conversationCommand,CAPABILITIES_REPLY,clarificationField} from './assistant-conversation.js';
 import {customerFuelDraft, customerFuelFields} from './customer-fuel.js';
 import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
@@ -43,7 +44,7 @@ export async function screen(ctx) {
     appbar("Akıllı Asistan", "Yerel komutlar · mesaj ve belge okuma") +
     `<div style="height:10px"></div>
     ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
-    ${g.ready ? notice("info", "İsteğini yaz. Eksik bilgiyi birlikte tamamlayalım; kayıtlar onayından sonra uygulanır. Genel sohbet ve belge okuma mevcut Gemini bağlantısını kullanır.") : notice("warn", "Yeni müşteri oluşturma, şoför aktarımı, yerel özetler ve müşterinin forkliftine mazot teslimi anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
+    ${g.ready ? notice("info", "İsteğini yaz. Eksik bilgiyi birlikte tamamlayalım; kayıtlar onayından sonra uygulanır. Genel sohbet ve belge okuma mevcut Gemini bağlantısını kullanır.") : notice("warn", "Müşteri oluşturma ve iş, tahsilat, gider, yakıt, bakım taslaklarını adım adım tamamlama anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
     <section class="assistant-conversation" aria-label="Sohbet">
       <div class="row between"><b>Sohbet</b><button class="btn sm" data-new-chat disabled>Yeni sohbet</button></div>
       <div data-chat-log class="assistant-chat-log" aria-label="Önceki mesajlar"></div>
@@ -270,6 +271,32 @@ export async function screen(ctx) {
         await finishChat({status:cc==='cancel'?'cancelled':'answer',reply});
         clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
       }
+      const workflow=manualRefine!==false&&!prev?.v._done?prev?.v._workflow:null;
+      const completion=workflow?.resolve(typed);
+      if(completion){
+        const clearInput=async()=>{clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');msgEl.value='';turnPreview();};
+        const apply=async change=>{
+          if(!await finishChat({status:'draft',reply:`${change.label}: ${Object.keys(change.updates).map(f=>DRAFT_FIELDS[f]).join(', ')} bilgisi kontrol kartına aktarılıyor; kayıt yapılmadı.`}))return;
+          const result=workflow.apply(change,typed);
+          prev.plan=applyDraftPlan(prev.plan,result.row,change.updates);prev.message+='\n[DÜZELTME] '+typed;
+          if(prev.v._chatTurn)await conversation.finish(prev.v._chatTurn,{status:'answer',reply:'Bu taslak sonraki mesajla tamamlandı; güncel kart aşağıdadır.'});
+          prev.v._chatTurn=chatTurn;
+          await finishChat({status:'draft',reply:`${change.label} güncellendi. ${result.missing.length?'Eksik: '+result.missing.map(f=>DRAFT_FIELDS[f]).join(', ')+'.':'Alanlar tamam; kontrol edip kartı işaretleyin.'} Henüz kaydedilmedi; Kaydet düğmesiyle onaylayın.`});
+        };
+        if(completion.type==='apply')await apply(completion);
+        else {
+          if(!await finishChat({status:'clarify',reply:completion.message}))return;
+          const box=workflow.panel.querySelector('[data-draft-reply]');
+          box.innerHTML=notice('info',completion.message)+(completion.choices||[]).map((choice,i)=>`<button class="btn block" data-draft-choice="${i}" style="margin-top:6px">${esc(choice.label+' · '+Object.keys(choice.updates).map(f=>DRAFT_FIELDS[f]).join(', '))}</button>`).join('');
+          for(const btn of box.querySelectorAll('[data-draft-choice]'))btn.onclick=async()=>{
+            if(asking||prev?.v._workflow!==workflow)return;
+            asking=true;const controls=qsa('button,input,select,textarea',root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
+            try{await apply(completion.choices[Number(btn.dataset.draftChoice)]);}catch(e){toast(e.message,'err');}
+            finally{asking=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
+          };
+        }
+        await clearInput();return;
+      }
     }
     // Yerel komut (ekran aç, listele, düzeltilecek kaydı bul): Gemini'ye gitmez, internetsiz çalışır
     if (!refine && !files.length && typed) {
@@ -301,12 +328,19 @@ export async function screen(ctx) {
     }
     if (!message && !files.length) return toast("Mesaj yazın, fotoğraf veya ses ekleyin", "err");
     const localFuelPlan = !refine && !files.length && /forklift/i.test(message) ? customerFuelDraft(message, await db.dumpAll()) : null;
+    const localStarter=!files.length?startDraftPlan(typed):null;
+    const localPlan=localFuelPlan?{customer_fuel:[localFuelPlan]}:localStarter;
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
-    if (!localFuelPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) { qs("[data-out]", root).innerHTML = notice("warn", "Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: yeni müşteri oluşturma (\"Gürçelik Sürücü Kursu adında müşteri oluştur\"), ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz."); return; }
+    if (!localPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) {
+      const slot=prev?.v._workflow?.panel.querySelector('[data-draft-reply]');
+      const reply=slot?.isConnected?'Bu ifadeyi yerel alanlara eşleyemedim. Açık taslağınız korunuyor. Alan adını ve tam seçeneği yazabilir veya karttan seçebilirsiniz. Genel serbest konuşma için Gemini bağlantısı gerekir.':"Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: yeni iş / tahsilat / gider / yakıt / bakım taslağı oluşturma, yeni müşteri oluşturma (\"Gürçelik Sürücü Kursu adında müşteri oluştur\"), ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz.";
+      if(slot?.isConnected)slot.innerHTML=notice('warn',reply);else qs('[data-out]',root).innerHTML=notice('warn',reply);
+      await finishChat({status:'clarify',reply});return;
+    }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = bundleFiles || files.filter((f) => !isAudio(f) && !isTransfer(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
-    if (!localFuelPlan && !navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
+    if (!localPlan && !navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
     btn.disabled = true;
     out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
@@ -316,7 +350,7 @@ export async function screen(ctx) {
       {
         const yc0 = await import("./yard-core.js");
         const d0 = await db.dumpAll();
-        if (!localFuelPlan && !transferFiles.length && yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
+        if (!localPlan && !transferFiles.length && yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
           if (!yc0.yardSite(d0)) await db.saveNew("dump_sites", { name: yc0.YARD_SITE_NAME, own_yard: true, note: "Kendi depo / stok sahası (asistan kurdu)" }, "Kendi depo kuruldu");
           if (!yc0.yardCustomer(d0)) await db.saveNew("customers", { name: yc0.YARD_CUSTOMER_NAME, internal: true, note: "Depodan döküm sahalarına giden iç seferler. Hakedişe para yazılmaz." }, "Kendi depo kuruldu");
           toast("Kendi depo kuruldu (Ayarlar → Kendi depo)", "ok");
@@ -338,7 +372,7 @@ export async function screen(ctx) {
       // Kod var ama açılmıyor: mesaj WhatsApp'ta / kopyalarken kesilmiş. Yazıdan okunursa dijital fiş ve imza kaybolur.
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
       // Şoför kodu Gemini'siz çözülür; anahtar yoksa kalan serbest yazı okunmaz (kullanıcıya söylenir)
-      const useGemini = !localFuelPlan && !transferFiles.length && g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      const useGemini = !localPlan && !transferFiles.length && g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
       if (!g.ready && drvAll.length && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8) toast("Gemini anahtarı yok: şoför kodu okundu, mesajdaki diğer yazı okunmadı", "err");
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
@@ -372,10 +406,10 @@ export async function screen(ctx) {
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
-      const askP = !localFuelPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData}).catch(() => null) : Promise.resolve(null);
+      const askP = !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData}).catch(() => null) : Promise.resolve(null);
       let plan = useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
-      }) : localFuelPlan ? {customer_fuel:[localFuelPlan]} : {};
+      }) : localPlan || {};
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
       if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
       const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length, allowPhotos: photoPolicy.allowed }) : null;
@@ -385,6 +419,7 @@ export async function screen(ctx) {
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = [message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
       if (drvRejected.length) {
         v.driverReject = drvRejected.map((x) => `${x.p.n || "Şoför"}: ${x.reject}`);
@@ -394,6 +429,7 @@ export async function screen(ctx) {
       }
       if (drvSecWarn.length) v.driverSecWarn = [...new Set(drvSecWarn.map((x) => `${x.p.n || "Şoför"}: ${x.warn}`))];
       Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
+      if(localStarter)for(const group of Object.keys(localStarter))for(const row of v[group]||[]){row.date='';row.ok=false;}
       if (drvPlan) {
         const seen = drv.seenDriverIds(d);
         const tag = (row, m) => {
@@ -549,7 +585,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const vehicles = live("vehicles").map((x) => [x.id, x.name]);
   const sites = live("sites");
   const suppliers = live("suppliers").map((s) => [s.id, s.name]);
-  const issues = (r) => (r.issues.length ? `<div class="muted tiny" style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : "");
+  const issues = (r) => (r.issues.length ? `<div class="muted tiny" data-row-issues style="margin-top:4px">⚠ ${esc(r.issues.join(" · "))}</div>` : '<div data-row-issues></div>');
   const total = v.works.length + v.expenses.length + v.fuel.length + (v.fuelOut || []).length + v.collections.length + v.maintenance.length + v.personnel.length + v.edits.length + v.cards.length + v.memory.length + v.tickets.length + v.docs.length + v.tankIn.length + (v.prices || []).length + (v.actions || []).length + (v.settings || []).length;
   const KIND_TR = { customers: "Müşteri", sites: "Şantiye", vehicles: "Araç / makine", personnel: "Personel", suppliers: "Esnaf / tedarikçi", quarries: "Malzeme ocağı", dump_sites: "Döküm / dolgu sahası" };
   const quarries = live("quarries").map((x) => [x.id, x.name]);
@@ -904,6 +940,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   // Belge kartı: "Yeni personel / araç" seçilince ilgili alanlar görünür
   for (const sel of qsa('[data-kind=doc] select[name="owner"]', out))
     sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
+  v._workflow=bindDraftWorkflow(out,v,d);
 }
 
 async function save(ctx, out, v, d, { message, files }) {
@@ -912,6 +949,11 @@ async function save(ctx, out, v, d, { message, files }) {
     .filter((c) => qs("[data-pick]", c).checked)
     .sort((a, b) => (["card", "memory", "tank", "price", "action", "setting"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price", "action", "setting"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
+  const workflowRows=v._workflow?.read().filter(r=>r.selected)||[];
+  if(workflowRows.length){
+    const problem=draftPreflight(workflowRows,await db.dumpAll());
+    if(problem){const row=workflowRows.find(r=>r.key===problem.key),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);card.scrollIntoView({block:'center'});qs(`[name="${problem.field}"]`,card)?.focus({preventScroll:true});return toast(problem.message,'err');}
+  }
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
   for (const c of cards) {
@@ -983,7 +1025,7 @@ async function save(ctx, out, v, d, { message, files }) {
     return newIds.get(key);
   };
   const newIds = new Map();
-  const source = "Asistan: " + message.slice(0, 300);
+  const source = "Asistan: " + [message,...(v._workflowReplies||[])].join('\n').slice(0, 1200);
   let current = null;
   try {
     const { priceSnapshot } = await import("./business.js");
@@ -996,7 +1038,7 @@ async function save(ctx, out, v, d, { message, files }) {
     // Kalıcı işlem kimliği: aynı mesajın aynı satırı (uygulama kapanıp açılsa, iki sekmede de) ikinci kez yazılmaz.
     // Kimlik = mesaj + kart türü + satırın kaynağı (Gemini alıntısı ya da sıra) + tarih; içerik özeti ayrıca saklanır.
     const nrm = (x) => String(x || "").replace(/\s+/g, " ").trim().toLocaleLowerCase("tr-TR");
-    const msgKey = await db.opHash({ m: nrm(message) });
+    const msgKey = await db.opHash({ m: v._draftOperation || nrm(message) });
     // Satır anahtarı plandan türetilir (işaretlenen kartların sırasından DEĞİL): alıntı varsa alıntı + aynı alıntının
     // kaçıncı tekrarı ("Kaya 3 sefer" iki kez yazıldıysa iki ayrı iş), yoksa plandaki sıra. Her Kaydet'te yeni kimlik üretilmez.
     const LISTS = { work: v.works, expense: v.expenses, collection: v.collections, maintenance: v.maintenance, fuel: v.fuel, fuelout: v.fuelOut };
