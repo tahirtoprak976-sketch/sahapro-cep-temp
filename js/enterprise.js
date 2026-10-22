@@ -198,7 +198,7 @@ function listTable(store, rows, d) {
           ? rules.serviceState(
               r,
               d.vehicles.find((v) => v.id === r.vehicle_id),
-              active(d, "fuel_records"),
+              active(d, "fuel_records"), core.todayStr(), d,
             ).status
           : r.status,
       ],
@@ -217,6 +217,7 @@ function listTable(store, rows, d) {
         "Tedarikçi Ödeme",
         "Fiyatsız İş",
         "Eksik Fiş",
+        "Kaynak Kontrolü",
       ],
       (r) => [
         r.date,
@@ -226,6 +227,7 @@ function listTable(store, rows, d) {
         amount(r.summary.supplier_payments),
         r.summary.missing_price,
         r.summary.missing_slip,
+        rules.closingSummary(d, r.date).source_signature === r.summary.source_signature ? "Güncel" : "Kaynaklar değişti",
       ],
     ],
     instruments: [
@@ -1093,7 +1095,9 @@ async function detail(ctx, d, store, r, label) {
         })),
       ) +
       '<button class="btn primary" data-service-done>Bakımla Eşleştir ve Kapat</button>';
-    actionsHTML =
+    const state = rules.serviceState(r, d.vehicles.find(v=>v.id===r.vehicle_id), active(d,"fuel_records"), core.todayStr(), d);
+    extra += `<div class="notice info">${esc(state.status)} · ${state.leftKm == null ? "" : esc(state.leftKm) + " km kaldı · "}${state.leftHours == null ? "" : esc(state.leftHours) + " saat kaldı · "}${state.estimated ? "Saat değeri son okumadan sonraki işlerden tahmin edilmiştir; sayaç ölçümüyle doğrulayın." : "Kayıtlı sayaç değerleri kullanıldı."}</div>`;
+    actionsHTML = button("Periyodik Bakım Takvimi", "#/bakim-takvimi/" + r.vehicle_id) +
       button("Bakım Kaydı", "#/bakim/new") +
       button("Araç Kartı", "#/filo/" + r.vehicle_id);
   }
@@ -1443,7 +1447,7 @@ async function costReport(ctx, d) {
     summary = [
       {
         pairs: [
-          ["Kesinleşmiş Gelir (KDV Hariç)", amount(p.revenue)],
+          ["Hakediş ve Sözleşme Geliri (KDV Hariç)", amount(p.revenue)],
           ["KDV Ayrımı Bilinen Maliyet", amount(p.known_cost)],
           ["KDV Ayrımı Olmayan Brüt Maliyet", amount(p.unknown_cost)],
           ["Geçici Operasyon Sonucu", amount(p.provisional_result)],
@@ -1476,6 +1480,7 @@ async function costReport(ctx, d) {
               fuel_records: "yakit",
               maintenance_records: "bakim",
               payroll_entries: "ucretler",
+              work_records: "isler",
             }[r.source_store] +
             "/" +
             r.source_id,
@@ -1581,8 +1586,8 @@ export async function augment(ctx) {
     root.insertAdjacentHTML(
       "beforeend",
       '<div class="card">' +
-        kv("Ücret / Avans Kalanı", amount(rules.payrollBalance(rows, id))) +
-        "</div>",
+        kv("Ücret defteri bakiyesi (tüm dönemler)", amount(rules.payrollBalance(rows, id))) +
+        "<p class=small>Yalnız ücret defteri kayıtlarını gösterir. Saha avansları, masraf iadeleri ve aylık kalan için Puantaj / Maaş bölümünü kullanın.</p>" + button("Puantaj / Maaş", "#/puantaj/" + id) + "</div>",
     );
   }
   if (route === "gunsonu")
@@ -1640,7 +1645,7 @@ export async function augment(ctx) {
         rules.serviceState(
           r,
           d.vehicles.find((v) => v.id === r.vehicle_id),
-          active(d, "fuel_records"),
+          active(d, "fuel_records"), core.todayStr(), d,
         ).status !== "Planlı",
     );
     if (late.length || tasks.length || plans.length)

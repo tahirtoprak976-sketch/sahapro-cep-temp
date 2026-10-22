@@ -14,7 +14,7 @@ import {driverCashContextHTML} from "./driver-cash-context.js";
 import {customerLabel,customerNameKey} from "./driver-customer.js";
 import {guideHTML,bindGuide} from "./assistant-guide.js";
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, fmtNum, todayStr, trDate } from "./ui.js";
-import { WORK_TYPES, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
+import { WORK_TYPES, EXPENSE_CATEGORIES, expenseCategoryNames, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
 import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, applyTicketReread, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
@@ -742,7 +742,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <div class="formgrid2">
           <div class="field"><label>Tarih</label><input type="date" name="date" value="${esc(r.date)}"></div>
           <div class="field"><label>Tutar (₺)</label><input type="number" step="any" name="amount" value="${r.amount ?? ""}"></div>
-          <div class="field"><label>Kategori</label><select name="category">${opt(EXPENSE_CATEGORIES.map((x) => [x, x]), r.category, "Diğer")}</select></div>
+          <div class="field"><label>Kategori</label><select name="category">${opt(expenseCategoryNames(d).map((x) => [x, x]), r.category, "Diğer")}</select></div>
           <div class="field"><label>Firma</label><input name="company" value="${esc(r.company)}"></div>
           <div class="field"><label>Araç</label><select name="vehicle">${opt(vehicles, r.vehicle_id, "— yok —")}</select></div>
           <div class="field"><label>Ödeme</label><select name="pay">${opt([["Şirket Ödedi", "🏢 Şirket (belirtilmedi)"], ["Nakit", "💵 Nakit"], ["Kart", "💳 Kart"], ["Havale", "🏦 Havale / EFT"], ...personnel.map(([id, n]) => ["p:" + id, "👷 " + n + " cebinden ödedi"])],

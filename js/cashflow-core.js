@@ -1,3 +1,4 @@
+import { billBalance, PARTY_STORES } from "./enterprise-core.js";
 // Nakit tahmini (önümüzdeki 5 hafta) — SAF katman. "Param yetecek mi?" sorusunun cevabı.
 // KESİN: ödeme sözleri, çek/senet vadeleri, esnaf borçları, maaş kalanı, yenilenecek belge (eski tutarıyla).
 // TAHMİNİ: sözü olmayan müşteri alacakları (ödeme alışkanlığına göre), mazot / gider / bakım (son günlerin ortalaması).
@@ -55,17 +56,15 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
 
   // ---- Çıkışlar ----
   // Esnaf / tedarikçi borçları (vade yoksa belge tarihi + 30 gün)
-  const bills = live(d, "payables").filter((b) => b.party_type === "supplier" && b.status !== "İptal");
-  const pays = live(d, "supplier_payments");
-  const parties = new Map();
-  for (const b of bills) { const o = parties.get(b.party_id) || { bills: [], paid: 0 }; o.bills.push(b); parties.set(b.party_id, o); }
-  for (const p of pays) { const o = parties.get(p.party_id); if (o) o.paid += Number(p.amount) || 0; }
-  for (const [pid, o] of parties) {
-    let paid = o.paid;
-    for (const b of o.bills.sort((a, b2) => String(a.date).localeCompare(String(b2.date)))) {
-      const g = Number(b.gross_total) || 0, use = Math.min(paid, g); paid -= use;
-      if (g - use > 0) add(b.due_date || addDays(b.date, 30), "out", true, g - use, `${nm("suppliers", pid) || "Esnaf"} borcu`, b.cost_category || b.description || "", "#/esnaf/" + pid);
-    }
+  const bills = live(d, "payables").filter(b => b.status !== "İptal" && b.date <= today && PARTY_STORES[b.party_type]);
+  const pays = live(d, "supplier_payments").filter(p => p.date <= today);
+  for (const b of bills) {
+    const remaining = billBalance(b, pays.filter(p => p.payable_id)).remaining;
+    // Eski, belge kimliği olmayan ödemeler yalnız tek açık belgeli tarafta kesin eşleşebilir.
+    const orphan = pays.filter(p => !p.payable_id && p.party_id === b.party_id && (!p.party_type || p.party_type === b.party_type));
+    const single = bills.filter(x => x.party_id === b.party_id && x.party_type === b.party_type).length === 1;
+    const amount = Math.max(0, remaining - (single ? sumBy(orphan, p => p.amount) : 0));
+    add(b.due_date || addDays(b.date, 30), "out", !!b.due_date, amount, `${nm(PARTY_STORES[b.party_type], b.party_id) || "İşletme"} borcu`, [b.cost_category || b.description, !b.due_date ? "vade bilinmiyor; +30 gün tahmini" : "", orphan.length && !single ? "belgesiz ödeme var; eşleştirme gerekli" : ""].filter(Boolean).join(" · "), "#/alislar/" + b.id);
   }
   // Maaşlar: bu ay kalan (ay sonu + 1) + geçen ay ödenmemiş kalan (hemen)
   const per = today.slice(0, 7);

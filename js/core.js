@@ -3,7 +3,7 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.57";
+export const APP_VERSION = "SAHAPRO SOLO v3.9.58";
 export const SCHEMA_VERSION = 5;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -55,6 +55,10 @@ export const ENTITY_STORES = [
   "downtime_records", "maintenance_parts", "cost_allocations", "bank_import_rows", "stock_counts",
 ];
 export const SYSTEM_STORES = ["attachments", "meta", "drafts"];
+
+export function expenseCategoryNames(data = {}) {
+  return [...new Set([...EXPENSE_CATEGORIES, "Yedek Parça", ...(data.expense_categories || []).filter(r => isActive(r) && r.active !== false).map(r => r.name).filter(Boolean)])];
+}
 
 // ---- UUID ----
 export function uuid() {

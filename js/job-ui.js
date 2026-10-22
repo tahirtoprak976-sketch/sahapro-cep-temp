@@ -36,6 +36,7 @@ async function list(ctx) {
   };
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
   root.innerHTML = appbar("İş Sözleşmeleri", "Götürü, metreküp ya da sefer anlaşmaları") + `
+    <div class="card"><p>Bu bölüm şantiyenin iş anlaşmasını, fiyatlandırmasını ve onaylanmış götürü / metraj gelirini yönetir. İmzalı sözleşme metinleri ayrıca Sözleşme Belgelerinde saklanır; iki kayıt kendiliğinden birbirini değiştirmez.</p><button class="btn" data-go="#/sozlesmeler">Sözleşme Belgeleri / İmzalar</button></div>
     <div class="card tap" data-go="#/is-sozlesmeleri/oku" data-readlink><div class="row between"><span><b>📄 Sözleşmeden oluştur</b><br><span class="tiny muted">PDF ya da fotoğrafı okuyup işi kurar — siz onaylamadan kaydetmez</span></span><span class="muted">›</span></div></div>
     <div class="card" data-newjob>
       <div class="section-title" style="margin:0 0 6px">Yeni iş sözleşmesi</div>

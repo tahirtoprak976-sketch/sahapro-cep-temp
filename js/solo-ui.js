@@ -318,6 +318,7 @@ async function list(ctx, d, store, title) {
     .live(d, store)
     .filter(
       (r) =>
+        (store !== "maintenance_parts" || !r.tracking) &&
         (!query.from || r.date >= query.from) &&
         (!query.to || r.date <= query.to) &&
         [
@@ -333,6 +334,7 @@ async function list(ctx, d, store, title) {
     .reverse();
   root.innerHTML =
     appbar(title, rows.length + " kayıt") +
+    (store === "maintenance_parts" ? button("Araç Yedek Parça ve Garanti Takibi", "#/yedek-parca") : "") +
     `<div class="solo-intro">${store === "bank_import_rows" ? "Dosyadan gelen satırlar onaylanmadan hesap/cari bakiyesini değiştirmez." : store === "inbox_messages" ? "Mesajlar taslaktır. İş ve yakıt kayıtları ayrı kontrol ekranından onaylanır." : store === "maintenance_parts" ? "Bu kalemler bakım maliyetinin dökümüdür; toplam maliyete ikinci kez eklenmez." : "Kayıtlar bu cihazda saklanır; değişiklikler izlenir."}</div><form data-filter><div class="formgrid2">${fDate("Başlangıç", "from", query.from || "", false)}${fDate("Bitiş", "to", query.to || "", false)}</div>${fText("Ara", "q", query.q || "")}<button class="btn" type="submit">Filtrele</button></form>${button(store === "inbox_messages" ? "Mesaj / Dosya Ekle" : store === "bank_import_rows" ? "CSV Dosyası Seç" : "Yeni Kayıt", "#/" + parts[0] + "/new")}${toolbar()}<div data-s-list></div>`;
   qs("[data-filter]", root).onsubmit = (e) => {
     e.preventDefault();
@@ -1172,7 +1174,7 @@ async function resultScreen(ctx, d) {
   );
   const summary = {
     pairs: [
-      ["Kesinleşmiş hakediş geliri (KDV hariç)", money(result.revenue)],
+      ["Hakediş ve sözleşme geliri (KDV hariç)", money(result.revenue)],
       [
         "Hakedişe alınmamış fiyatlı işler (gelire eklenmedi)",
         money(result.unbilled_value),
@@ -1486,6 +1488,7 @@ export async function augment(ctx) {
   }
   if (route === "filo" && id)
     links =
+      button("Yedek Parça / Garanti", "#/yedek-parca?vehicle_id=" + id) +
       button("Sayaç Oku", "#/sayac/new?vehicle_id=" + id) +
       button("Sayaç Geçmişi", "#/sayac?vehicle_id=" + id) +
       button("Duruş Başlat", "#/duruslar/new?vehicle_id=" + id) +
@@ -1600,6 +1603,11 @@ export async function augment(ctx) {
           "</div></div>",
         10,
       );
+  }
+  if (["gider", "bakim", "alislar"].includes(route) && id && id !== "new") {
+    const store = {gider:"expense_records",bakim:"maintenance_records",alislar:"payables"}[route];
+    const linkedParts = (await db.listActive("maintenance_parts")).filter(r=>r.tracking && r.cost_source_store===store && r.cost_source_id===id);
+    links += linkedParts.map(r=>button("Parça / Garanti: " + r.description, "#/yedek-parca/" + r.id)).join("");
   }
   if (links)
     root.insertAdjacentHTML(

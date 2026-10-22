@@ -1,3 +1,5 @@
+import { validateStoredPart } from "./parts-core.js";
+import { applyAllocations } from "./ledger-policy.js";
 // SOLO extensions: deterministic rules. No remote credentials or automatic financial writes.
 import { isActive, toKurus, fromKurus, todayStr, normKey } from "./core.js";
 import {
@@ -295,32 +297,7 @@ export function allocationFields(d, f) {
     status: "Aktif",
   };
 }
-export function allocatedCosts(d, f = {}) {
-  const base = costLedger(d),
-    alloc = live(d, "cost_allocations").filter((r) => r.status === "Aktif"),
-    rows = [];
-  for (const r of base) {
-    const a = alloc.find(
-      (a) => a.source_store === r.source_store && a.source_id === r.source_id,
-    );
-    if (a)
-      for (const t of a.targets)
-        rows.push({ ...r, ...t, known_tax: r.known_tax, allocation_id: a.id });
-    else
-      rows.push({
-        ...r,
-        unallocated: !r.site_id && !r.vehicle_id && !r.work_record_id,
-      });
-  }
-  return rows.filter(
-    (r) =>
-      (!f.from || r.date >= f.from) &&
-      (!f.to || r.date <= f.to) &&
-      ["customer_id", "site_id", "vehicle_id", "personnel_id"].every(
-        (k) => !f[k] || r[k] === f[k],
-      ),
-  );
-}
+export function allocatedCosts(d, f = {}) { return applyAllocations(d, costLedger(d), f); }
 export function resultReport(d, f = {}) {
   const original = operatingResult(d, f),
     costs = allocatedCosts(d, f),
@@ -835,6 +812,7 @@ export function validateSoloData(d) {
     downtimeHours(r);
   }
   for (const r of live(d, "maintenance_parts")) {
+    if (r.tracking) { validateStoredPart(d, r); continue; }
     const m = reference(d, "maintenance_records", r.maintenance_id);
     if (
       m.vehicle_id !== r.vehicle_id ||

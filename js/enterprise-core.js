@@ -1,3 +1,6 @@
+import { recognizedBill, pricedBill, applyAllocations } from "./ledger-policy.js";
+import { dumpFeeRows } from "./dump-fees.js";
+import { meterNow } from "./maint-core.js";
 // İşletme defterleri: TRY/kuruş hesapları, kaynak bağlantısı ve deterministik raporlar.
 import {
   isActive,
@@ -235,15 +238,15 @@ export function workHours(start, end, breakMinutes = 0) {
     throw Error("Mola çalışma süresinden küçük olmalı");
   return Math.round(((duration - rest) / 60) * 10000) / 10000;
 }
-export function serviceState(plan, vehicle = {}, fuel = [], asOf = todayStr()) {
+export function serviceState(plan, vehicle = {}, fuel = [], asOf = todayStr(), data = null) {
   const readings = fuel.filter(
     (f) => isActive(f) && f.vehicle_id === plan.vehicle_id,
   );
-  const km = Math.max(
+  const km = data ? (meterNow(data, vehicle, "km", { today: asOf })?.value || 0) : Math.max(
     Number(vehicle.km) || 0,
     ...readings.map((f) => Number(f.km) || 0),
   );
-  const hours = Math.max(
+  const hours = data ? (meterNow(data, vehicle, "hours", { today: asOf })?.value || 0) : Math.max(
     Number(vehicle.machine_hours) || 0,
     ...readings.map((f) => Number(f.machine_hours) || 0),
   );
@@ -266,6 +269,7 @@ export function serviceState(plan, vehicle = {}, fuel = [], asOf = todayStr()) {
     (leftHours != null && leftHours <= Number(plan.warn_hours ?? 25));
   return {
     status: overdue ? "Bakım Geldi" : soon ? "Bakım Yaklaşıyor" : "Planlı",
+    estimated: data ? !!meterNow(data, vehicle, "hours", { today: asOf })?.est : false,
     leftDays,
     leftKm,
     leftHours,
@@ -292,7 +296,7 @@ export function costLedger(data, f = {}) {
     (data.payables || [])
       .filter(
         (b) =>
-          isActive(b) && b.status !== "İptal" && b.source_store && b.source_id,
+          pricedBill(b) && b.source_store && b.source_id,
       )
       .map((b) => b.source_store + ":" + b.source_id),
   );
@@ -307,12 +311,10 @@ export function costLedger(data, f = {}) {
   };
   for (const b of data.payables || []) {
     if (
-      !isActive(b) ||
-      b.status === "İptal" ||
-      b.bill_kind === "Açılış / Devir"
+      !recognizedBill(b) || (["expense_records", "maintenance_records", "fuel_records"].includes(b.source_store) && !pricedBill(b))
     )
       continue;
-    for (const item of b.items || []) {
+    for (const item of (b.items?.length ? b.items : [{ description: b.description || "Alış", gross: Number(b.gross_total) || 0 }])) {
       const w = workMap.get(item.work_record_id) || {};
       add({
         date: b.date,
@@ -325,10 +327,10 @@ export function costLedger(data, f = {}) {
         site_id: w.site_id || b.site_id,
         vehicle_id: w.vehicle_id || b.vehicle_id,
         personnel_id: w.personnel_id || b.personnel_id,
-        net: b.kdv_unknown ? null : item.net,
-        tax: b.kdv_unknown ? null : item.tax,
+        net: b.kdv_unknown || item.net == null ? null : item.net,
+        tax: b.kdv_unknown || item.tax == null ? null : item.tax,
         gross: item.gross,
-        known_tax: !b.kdv_unknown,
+        known_tax: !b.kdv_unknown && item.net != null && item.tax != null,
         party_type: b.party_type,
         party_id: b.party_id,
       });
@@ -340,7 +342,7 @@ export function costLedger(data, f = {}) {
     ["maintenance_records", "Bakım", "cost"],
   ])
     for (const r of data[store] || []) {
-      if (!isActive(r) || linked.has(store + ":" + r.id)) continue;
+      if (!isActive(r) || r.dump_deposit || (store === "fuel_records" && r.fuel_source === "Müşteri Verdi") || linked.has(store + ":" + r.id)) continue;
       const gross = Number(r[key] ?? r.total_amount) || 0;
       if (!gross) continue;
       const known = r.kdv_rate !== "" && r.kdv_rate != null;
@@ -370,10 +372,14 @@ export function costLedger(data, f = {}) {
         known_tax: true,
       });
   }
+  for (const fee of dumpFeeRows(data, f)) {
+    if (!(fee.amount > 0) || (data.payables || []).some(b => recognizedBill(b) && b.party_type === "dump_site" && (b.items || []).some(i => i.work_record_id === fee.w.id))) continue;
+    add({ ...fee.w, date: fee.w.date, source_store: "work_records", source_id: fee.w.id, work_record_id: fee.w.id, category: "Döküm ücreti", description: fee.site, net: null, tax: null, gross: fee.amount, known_tax: false, estimated: !!fee.estimated });
+  }
   return rows;
 }
 export function operatingResult(data, f = {}) {
-  const costs = costLedger(data, f);
+  const costs = applyAllocations(data, costLedger(data), f);
   const workMap = new Map((data.work_records || []).map((w) => [w.id, w]));
   let revenueKurus = 0;
   const source = [];
@@ -385,7 +391,7 @@ export function operatingResult(data, f = {}) {
       const context = {
         ...i,
         customer_id: h.customer_id,
-        site_id: i.site_id || h.site_id,
+        site_id: i.site_id || h.site_id || w.site_id,
         vehicle_id: i.vehicle_id || w.vehicle_id,
         personnel_id: w.personnel_id,
         date,
@@ -402,6 +408,16 @@ export function operatingResult(data, f = {}) {
       const v = { net: line.amount, tax: line.kdv, gross: line.total };
       revenueKurus += toKurus(v.net);
       source.push({ ...context, net: v.net, tax: v.tax, gross: v.gross });
+    }
+  }
+  for (const site of (data.sites || []).filter(isActive)) {
+    for (const [kind, charge] of [["goturu", site.deal?.charge], ["metraj", site.deal?.measurement]]) {
+      if (!charge?.cari_id) continue;
+      const movement = (data.cari_movements || []).find(m => isActive(m) && m.id === charge.cari_id && m.customer_id === site.customer_id && m.type === "Hakedis" && m.source === kind && m.ref_id === site.id && toKurus(m.amount) === toKurus(charge.gross));
+      if (!movement || !Number.isFinite(Number(charge.net))) continue;
+      const context = { date: movement.date, customer_id: site.customer_id, site_id: site.id, source_store: "sites", source_id: site.id, kind, net: Number(charge.net), tax: Number(charge.kdv) || 0, gross: Number(charge.gross) };
+      if ((f.from && context.date < f.from) || (f.to && context.date > f.to) || ["customer_id", "site_id", "vehicle_id", "personnel_id"].some(k => f[k] && context[k] !== f[k])) continue;
+      revenueKurus += toKurus(context.net); source.push(context);
     }
   }
   const knownCost = costs
@@ -649,6 +665,7 @@ export function validateEnterpriseData(data) {
     if (r.bank_movement_id) {
       require("bank_movements", r.bank_movement_id);
       const m = data.bank_movements.find((m) => m.id === r.bank_movement_id);
+      if (isActive(r) && !isActive(m)) throw Error("Yedekte çek/senet silinmiş banka hareketine bağlı");
       if (
         m.direction !== (r.direction === "Alınan" ? "IN" : "OUT") ||
         toKurus(m.amount) !== toKurus(r.amount)

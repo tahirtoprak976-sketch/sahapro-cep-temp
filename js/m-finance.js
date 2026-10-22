@@ -53,7 +53,7 @@ import {
   QUOTE_TYPES,
   PAYMENT_METHODS,
   CASH_TYPES,
-  EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORIES, expenseCategoryNames,
   REIMBURSEMENT_STATUS,
   WORK_UNITS,
   WORK_TYPES,
@@ -88,7 +88,7 @@ async function hub(ctx) {
   const monthT = cur.collected;
   const monthG = cur.cost;
   const items = [
-    ["#/sozlesmeler", "▤", "Sözleşmeler", "şablonlar + imzalar"],
+    ["#/sozlesmeler", "▤", "Sözleşme Belgeleri", "şablonlar + imzalar"],
     ["#/teklif-hesap", "🧮", "Teklif Asistanı", "Kaça vermeliyim? Maliyet + geçmiş fiyat"],
     ["#/teklif", "📄", "Teklif", "4 teklif türü + PDF"],
     ["#/hakedis", "📑", "Hakediş", "snapshot + kesinleştirme"],
@@ -1489,7 +1489,7 @@ async function expenseForm(ctx) {
     <form data-form novalidate>
       ${fDate("Tarih", "date", entry?.values.date||todayStr())}
       <div class="formgrid2">
-        ${fSelect("Kategori", "category", [...new Set([...EXPENSE_CATEGORIES, ...categories.map((c) => c.name)])], "Yakıt", { empty: false })}
+        ${fSelect("Kategori", "category", expenseCategoryNames({expense_categories:categories}), "Yakıt", { empty: false })}
         ${fNum("Tutar (₺)", "amount", "", { req: true, step: "any" })}
       </div>
       ${fNum("KDV % (biliniyorsa; tutar KDV dahil)", "kdv_rate", "", { step: "any" })}
