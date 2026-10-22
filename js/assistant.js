@@ -2,6 +2,7 @@ import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {assistantTurn} from './assistant-turn.js';
 import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
 import {startDraftPlan,bindDraftWorkflow,draftPreflight,applyDraftPlan,DRAFT_FIELDS} from './assistant-workflow.js';
+import {readTask,taskOpen,taskContext,saveTaskProposal,transitionTask,hasTaskProposal} from './assistant-task.js';
 import {openConversation,CONVERSATION_SYSTEM,safeAssistantReply,resultReply,conversationCommand,CAPABILITIES_REPLY,clarificationField} from './assistant-conversation.js';
 import {customerFuelDraft, customerFuelFields} from './customer-fuel.js';
 import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
@@ -41,7 +42,7 @@ export async function screen(ctx) {
   const { geminiSettings } = await import("./ai-gemini.js");
   const g = await geminiSettings(db);
   root.innerHTML =
-    appbar("Akıllı Asistan", "Yerel komutlar · mesaj ve belge okuma") +
+    appbar("Akıllı Asistan", "Sohbetle yönetim · kayıt ve hesap araçları") +
     `<div style="height:10px"></div>
     ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
     ${g.ready ? notice("info", "İsteğini yaz. Eksik bilgiyi birlikte tamamlayalım; kayıtlar onayından sonra uygulanır. Genel sohbet ve belge okuma mevcut Gemini bağlantısını kullanır.") : notice("warn", "Müşteri oluşturma ve iş, tahsilat, gider, yakıt, bakım taslaklarını adım adım tamamlama anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
@@ -49,9 +50,9 @@ export async function screen(ctx) {
       <div class="row between"><b>Sohbet</b><button class="btn sm" data-new-chat disabled>Yeni sohbet</button></div>
       <div data-chat-log class="assistant-chat-log" aria-label="Önceki mesajlar"></div>
       <div class="tiny muted">Son 20 konuşma turu bu telefonda saklanır. Eski mesajlar güncel hesap yerine geçmez.</div>
-      <label class="history-check small"><input type="checkbox" data-chat-context checked> Önceki sohbeti Gemini ile bağlam olarak paylaş</label>
+      <label class="history-check small"><input type="checkbox" data-chat-context checked> Önceki sohbeti ve açık isteği Gemini ile bağlam olarak paylaş</label>
     </section>
-    <div class="card">
+    <div data-agent-task></div><div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="3" placeholder="Ne yapmak istiyorsunuz? İşi anlatın; eksik bilgiyi birlikte tamamlayalım."></textarea></div>
       <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/*,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos></div>
       <p class="tiny muted">En fazla 20 dosya. SAHAPRO iş özeti PDF’ini (.sahapro.pdf) veya eski tek paketi (.sahapro.zip) seçmeniz yeterlidir; fotoğraflar içindedir. Eski .sahapro.txt yönteminde dosyayı ve bütün fotoğrafları birlikte ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
@@ -79,7 +80,7 @@ export async function screen(ctx) {
     if(asking)return;
     if(!(await confirmDialog('Yeni sohbet','Bu telefondaki son sohbet temizlenecek. İş ve kasa kayıtlarınız korunur.','Yeni sohbet')))return;
     try {
-      await conversation.reset();prev=null;manualRefine=null;
+      await conversation.reset();prev=null;manualRefine=null;activeTask=null;paintTask();
       qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
       qs('[data-msg]',root).value='';qs('[data-out]',root).innerHTML='';
       qs('[data-clearfiles]',root).click();clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');
@@ -120,6 +121,15 @@ export async function screen(ctx) {
   qs('[data-msg]',root).addEventListener('input',turnPreview);
   qs('[data-refine]',root).addEventListener('change',()=>{manualRefine=qs('[data-refine]',root).checked;turnPreview();});
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
+  let activeTask=await readTask(db);
+  const paintTask=()=>{
+    const box=qs('[data-agent-task]',root);if(!box)return;
+    box.innerHTML=activeTask&&['draft','clarify','applying','review'].includes(activeTask.status)?`<section class="card"><b>Devam eden istek</b><p class="small">${esc(activeTask.goal)}</p><p class="small">${esc(taskOpen(activeTask)?(activeTask.plan.questions||[]).join(' · ')||'Kontrol kartları onay bekliyor.':'Kayıt sonucu kontrol gerektiriyor. Eski plan otomatik tekrar uygulanmaz.')}</p>${taskOpen(activeTask)?'<button class="btn block" data-task-resume>İsteğe devam et</button><button class="btn block" data-task-cancel style="margin-top:6px">Bu isteği kapat</button>':''}</section>`:'';
+    qs('[data-task-resume]',box)?.addEventListener('click',()=>{if(asking)return;if(!qs('[data-chat-context]',root).checked)return toast('Devam etmek için önceki sohbet ve açık istek bağlamını paylaş seçeneğini açın.','err');msgEl.value='Bu isteğe devam edelim; eksik bilgiyi sor.';msgEl.dispatchEvent(new Event('input',{bubbles:true}));qs('[data-ask]',root).click();});
+    qs('[data-task-cancel]',box)?.addEventListener('click',async()=>{if(asking)return;try{activeTask=await transitionTask(db,activeTask,'cancelled','Kullanıcı açık isteği kapattı.');if(prev?.v._agentTask?.id===activeTask.id){prev=null;qs('[data-out]',root).innerHTML='';}paintTask();}catch(e){toast(e.message,'err');}});
+  };
+  paintTask();
+  ctx.assistantTaskChanged=task=>{activeTask=task;paintTask();};
   let files = [], attachmentError = "";
   const attachmentLimit = 20;
   const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f)||isDriverPDF(f);
@@ -226,7 +236,7 @@ export async function screen(ctx) {
     if(bundled&&files.length!==1)return toast("Tek paketin fotoğrafları içindedir. Yanındaki diğer ekleri kaldırıp yalnız paketi seçin", "err");
     if(transferFiles.length){try{if(bundled){const opened=await (isDriverPDF(transferFiles[0])?openDriverPDF(transferFiles[0]):openDriverBundle(transferFiles[0]));typed=opened.message;bundleFiles=opened.files;}else typed=await readDriverTransfer(transferFiles[0]);}catch(e){return toast(e.message,"err");}}
     const turn=resolveTurn(typed,!!transferFiles.length);
-    const refine=turn.mode==='refine'?prev:null;
+    const refine=turn.mode==='refine'&&qs('[data-chat-context]',root).checked?prev:null;
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
     const previousChat=conversation.previous();
     if(typed || files.length)chatTurn=await conversation.begin(typed || (files.some(isAudio)?'Ses kaydı gönderdim.':'Belge/fotoğraf gönderdim.'));
@@ -244,7 +254,7 @@ export async function screen(ctx) {
       }
       // A single external fuel draft can be completed by an explicit price/date reply, offline.
       const field=turn.mode==='refine'?clarificationField(typed,prev,prev?.d,todayStr()):null;
-      const fuelCard=prev&&!prev.v._done&&prev.v.fuelOut?.length===1?qs('[data-kind=fuelout]',root):null;
+      const fuelCard=prev&&!prev.v._done&&!prev.v._agentTask&&prev.v.fuelOut?.length===1?qs('[data-kind=fuelout]',root):null;
       if(field&&fuelCard&&field.field==='amount'){
         await finishChat({status:'clarify',reply:'Bu tutar litre fiyatı mı, toplam bedel mi? Örneğin “litresi 45 TL” veya “toplam 900 TL” yazın. Fiyatı tahmin ederek borç yazmayacağım.'});
         clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
@@ -264,7 +274,8 @@ export async function screen(ctx) {
       if(cc){
         const out=qs('[data-out]',root);
         const customerDraft=!!qs('[data-customer-create]',out);
-        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Adı kontrol edip aşağıdaki Müşteriyi oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına müşteri açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
+        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Adı kontrol edip aşağıdaki Müşteriyi oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına müşteri açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':taskOpen(activeTask)?'Devam eden isteği İsteğe devam et düğmesiyle açıp kartlarını kontrol edin. Henüz kayıt yapılmadı.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done||taskOpen(activeTask)?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
+        if(cc==='cancel'&&taskOpen(activeTask)){activeTask=await transitionTask(db,activeTask,'cancelled',reply);paintTask();}
         if(cc==='cancel'&&customerDraft){await conversation.finish(previousChat,{status:'cancelled',reply:'Müşteri taslağından vazgeçildi.',intent:null});out.innerHTML='';}
         if(cc==='cancel' && prev&&!prev.v._done){prev=null;manualRefine=null;out.innerHTML='';qs('[data-refine-wrap]',root).hidden=true;turnPreview();}
         if(!out.textContent.trim() || cc==='help'&&!qs('[data-save],[data-work-confirm],[data-customer-create]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+'</div>';
@@ -279,6 +290,7 @@ export async function screen(ctx) {
           if(!await finishChat({status:'draft',reply:`${change.label}: ${Object.keys(change.updates).map(f=>DRAFT_FIELDS[f]).join(', ')} bilgisi kontrol kartına aktarılıyor; kayıt yapılmadı.`}))return;
           const result=workflow.apply(change,typed);
           prev.plan=applyDraftPlan(prev.plan,result.row,change.updates);prev.message+='\n[DÜZELTME] '+typed;
+          if(prev.v._agentTask){activeTask=await saveTaskProposal(db,{epoch:chatTurn.epoch,previous:prev.v._agentTask,result:{mode:'continue',task_id:prev.v._agentTask.id,goal:prev.v._agentTask.goal,plan:prev.plan},source:prev.message});prev.v._agentTask=activeTask;paintTask();}
           if(prev.v._chatTurn)await conversation.finish(prev.v._chatTurn,{status:'answer',reply:'Bu taslak sonraki mesajla tamamlandı; güncel kart aşağıdadır.'});
           prev.v._chatTurn=chatTurn;
           await finishChat({status:'draft',reply:`${change.label} güncellendi. ${result.missing.length?'Eksik: '+result.missing.map(f=>DRAFT_FIELDS[f]).join(', ')+'.':'Alanlar tamam; kontrol edip kartı işaretleyin.'} Henüz kaydedilmedi; Kaydet düğmesiyle onaylayın.`});
@@ -346,17 +358,8 @@ export async function screen(ctx) {
     out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
     try {
       const { geminiJson, blobToBase64, shrink, audioToWav } = await import("./ai-gemini.js");
-      // Mesaj kendi depodan söz ediyor ama depo henüz kurulmadıysa: kendiliğinden kurulur (iç müşteri + depo sahası)
-      {
-        const yc0 = await import("./yard-core.js");
-        const d0 = await db.dumpAll();
-        if (!localPlan && !transferFiles.length && yc0.mentionsYard(message) && (!yc0.yardSite(d0) || !yc0.yardCustomer(d0))) {
-          if (!yc0.yardSite(d0)) await db.saveNew("dump_sites", { name: yc0.YARD_SITE_NAME, own_yard: true, note: "Kendi depo / stok sahası (asistan kurdu)" }, "Kendi depo kuruldu");
-          if (!yc0.yardCustomer(d0)) await db.saveNew("customers", { name: yc0.YARD_CUSTOMER_NAME, internal: true, note: "Depodan döküm sahalarına giden iç seferler. Hakedişe para yazılmaz." }, "Kendi depo kuruldu");
-          toast("Kendi depo kuruldu (Ayarlar → Kendi depo)", "ok");
-        }
-      }
-      const d = await db.dumpAll();
+      // Sorgulama ve plan hazırlama işletme kartı/iş kaydı oluşturmaz.
+      let d = await db.dumpAll();
       const today = todayStr();
       // Şoför ekranından gelen kayıtlar (SP1 kodu): Gemini'siz, birebir; fotoğraflar sırayla o işlere. Kalan serbest metin Gemini'ye gider.
       const drv = await import("./driver-core.js");
@@ -373,6 +376,10 @@ export async function screen(ctx) {
       if (!drvAll.length && /SP1:[A-Za-z0-9_-]{8,}/.test(message) && !(await confirmDialog("Şoför kodu eksik", "Bu şoför mesajının kodu kesilmiş (mesaj çok uzunmuş ya da eksik kopyalanmış). Şoförden SAHAPRO'da \"Gönderilenler → Son gönderileni tekrar gönder\" yapmasını isteyin; yeni sürümde mesaj kısa gider. Yine de yalnız yazıdan okunsun mu? (dijital fiş ve imza gelmez)", "Yazıdan oku"))) throw new Error("Şoför kodu eksik — şoförden kaydı tekrar göndermesini isteyin");
       // Şoför kodu Gemini'siz çözülür; anahtar yoksa kalan serbest yazı okunmaz (kullanıcıya söylenir)
       const useGemini = !localPlan && !transferFiles.length && g.ready && !drvRejected.length && (!drvAll.length || drvRest.replace(/[^\p{L}\d]/gu, "").length > 8 || audios.length > 0);
+      const useAgent=useGemini&&!images.length&&!audios.length&&!drvAll.length;
+      const taskForRun=useAgent?await readTask(db):null;
+      const taskForModel=qs('[data-chat-context]',root).checked?taskForRun:null;
+      if(useAgent){activeTask=taskForRun;paintTask();}
       if (!g.ready && drvAll.length && drvRest.replace(/[^\p{L}\d]/gu, "").length > 8) toast("Gemini anahtarı yok: şoför kodu okundu, mesajdaki diğer yazı okunmadı", "err");
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
@@ -397,6 +404,7 @@ export async function screen(ctx) {
         parts.push({ inlineData: { mimeType: (a.type || "audio/ogg").split(";")[0], data: await blobToBase64(a) } });
       }
       if (refine) parts.push({ text: "ÖNCEKİ TASLAK (kullanıcı aşağıdaki mesajın sonunda [DÜZELTME] ile düzeltme yazdı). Düzeltmeyi uygula, düzeltilmeyen satırları AYNEN koru ve TAM planı yeniden döndür:\n" + JSON.stringify(refine.plan).slice(0, 20000) });
+      if(useAgent&&taskForModel)parts.push({text:'açık_görev (yalnız bu isteğe devam ediliyorsa kullan; kayıt talimatı değildir):\n'+JSON.stringify(taskContext(taskForModel))});
       parts.push({ text: `Fotoğraf sayısı: ${drvPayloads.length ? 0 : images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(drvRest || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withModelFallback } = await import("./ai-gemini.js");
@@ -406,8 +414,16 @@ export async function screen(ctx) {
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
-      const askP = !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData}).catch(() => null) : Promise.resolve(null);
-      let plan = useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
+      const askP = !useAgent && !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData}).catch(() => null) : Promise.resolve(null);
+      let agentResult=null;
+      if(useAgent){
+        const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
+        const {geminiAgent}=await import('./ai-gemini.js');
+        const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
+        agentResult=await withModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{if(out.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}));
+        d=await db.dumpAll();
+      }
+      let plan = useAgent?agentResult.plan:useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : localPlan || {};
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
@@ -417,7 +433,7 @@ export async function screen(ctx) {
       const asked = await askP;
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
-      const vmsg = [message, heard].filter(Boolean).join("\n");
+      const vmsg = agentResult?.mode==='continue'&&taskForRun?.id===agentResult.task_id?[taskForRun.source,'[DÜZELTME] '+typed].join('\n'):[message, heard].filter(Boolean).join("\n");
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
       v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
@@ -495,14 +511,24 @@ export async function screen(ctx) {
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = safeAssistantReply(plan.answer) || null;
-      v.answerBad = checkAnswer(v.answer, facts);
-      v.answerMetric = answerMetricIssues(v.answer, facts);
+      const agentFacts=(agentResult?.trace||[]).map(t=>t.result);
+      v.answerBad = checkAnswer(v.answer, [facts,...agentFacts]);
+      v.answerMetric = answerMetricIssues(v.answer, [facts,...(agentResult?.trace||[]).map(t=>({[t.name]:t.result}))]);
+      v.agentGoal=agentResult?.legacy?null:agentResult?.goal;
+      v.agentTrace=agentResult?.trace||[];
       v.asked = asked && asked.answer ? asked : null;
       if (v.asked) v.askedHtml = tools.answerHtml(v.asked);
       v._chatTurn=chatTurn;
       if(!await finishChat(resultReply(v))){prev=null;qs('[data-out]',root).innerHTML=notice('warn','Sohbet başka sekmede yenilendi. Yeni konuşmadan devam edin.');return;}
       if(!msgEl.isConnected)return;
-      prev = { message, plan, v, d };
+      if(useAgent&&(!agentResult.legacy||taskForRun?.native)&&hasTaskProposal(plan)){
+        const proposal=agentResult.legacy&&refine&&taskOpen(taskForRun)?{...agentResult,mode:'continue',task_id:taskForRun.id}:agentResult;
+        activeTask=await saveTaskProposal(db,{epoch:chatTurn.epoch,previous:taskForRun,result:proposal,source:vmsg});
+        v._agentTask=activeTask;
+        if(activeTask.native)v._draftOperation=v._draftOperation||'agent:'+activeTask.id;
+        paintTask();
+      }
+      prev = { message: vmsg, plan, v, d };
       const rw = qs("[data-refine-wrap]", root);
       rw.hidden = false;
       manualRefine=null;
@@ -594,7 +620,10 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const hasJobs = live("sites").some((x) => x.deal?.status === "Açık");
   const banks = live("bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]);
   const nameOf = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || id || "—";
+  const checkedTools={find_records:'Kayıt araması',get_records:'Kayıt incelemesi',work_totals:'İş toplamı',customer_balance:'Müşteri bakiyesi',fuel_totals:'Yakıt toplamı',expense_totals:'Gider toplamı',collection_totals:'Tahsilat toplamı',tank_status:'Depo durumu',customer_fuel:'Mazot hesabı',yard_stock:'Depo stoku',receivables:'Alacaklar',vehicle_profit:'Araç kârlılığı',customer_profit:'Müşteri kârlılığı',price_check:'Fiyat kontrolü',business_review:'İşletme değerlendirmesi',quote_price:'Teklif hesabı',payroll_status:'Puantaj / maaş',maintenance_due:'Bakım takvimi',esnaf_debt:'Esnaf borcu'};
+  const checks=(v.agentTrace||[]).filter(t=>checkedTools[t.name]);
   out.innerHTML =
+    (v.agentGoal?`<div class="card" data-agent-goal><b>Anladığım istek</b><p class="small">${esc(v.agentGoal)}</p>${checks.length?`<details data-agent-checks><summary>Kontrol edilenler (${checks.length})</summary>${checks.map(t=>`<p class="small">${esc(checkedTools[t.name])}: ${esc(t.result?.error?'Tamamlanamadı — '+t.result.error:t.result?.records?`${t.result.records.length} kayıt gösterildi${t.result.truncated?' (sonuç sınırlı)':''}`:'Hesaplandı')}</p>`).join('')}</details>`:''}</div>`:'') +
     `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="row between"><div class="strong small">🤖 Cevap</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak>🔊 Sesli oku</button>' : ""}</div><div style="white-space:pre-wrap;margin-top:6px" data-speaktext>${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
@@ -927,13 +956,14 @@ function render(ctx, out, v, d, { message, files, ms }) {
     if (saveInFlight) return;
     saveInFlight = true;
     const btn = ev.currentTarget; btn.disabled = true;
+    const controls=qsa('button,input,textarea,select',ctx.root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
     try {
       const rows = { work: v.works, fuel: v.fuel, expense: v.expenses, maintenance: v.maintenance };
       const affected = v.driverPhotoBlocked && qsa(".card[data-kind]", out).some(c => qs("[data-pick]", c)?.checked && rows[c.dataset.kind]?.[Number(c.dataset.i)]?.driver_entry_id);
       if (affected && !(await confirmDialog("Dosyalar eklenmeden kaydedilsin mi?", "Şoför dosyaları güvenle eşleştirilemedi. Seçili şoför kayıtlarına bu paketin fotoğrafları ve dosya olarak gelen imzaları eklenmeyecek. Sonradan aynı kodu tekrar almak dosyaları tamamlamaz; kayıt ayrıntısından elle eklemeniz gerekir. Önce dosyaları düzeltmek için vazgeçin.", "Dosyasız kaydet"))) return;
       if (out.isConnected) await save(ctx, out, v, d, { message, files });
     } catch (e) { toast("Kaydedilemedi: " + (e.message || e), "err"); }
-    finally { saveInFlight = false; if (btn.isConnected) btn.disabled = false; }
+    finally { saveInFlight = false;for(const el of controls)if(el.isConnected&&el.closest('[data-saved]')?.dataset.saved!=='1')el.disabled=false; if (btn.isConnected) btn.disabled = false; }
   });
   // Önizlemesi açılamayan fotoğraf: yerine yazı (CSP satır içi onerror'a izin vermez)
   for (const img of qsa("img[data-imgfb]", out)) img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("div"), { className: "small muted", textContent: img.alt })));
@@ -1028,6 +1058,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const source = "Asistan: " + [message,...(v._workflowReplies||[])].join('\n').slice(0, 1200);
   let current = null;
   try {
+    if(v._agentTask){v._agentTask=await transitionTask(db,v._agentTask,'applying','Kullanıcı kontrol kartlarını onayladı; kayıt sonucu bekleniyor.');ctx.assistantTaskChanged?.(v._agentTask);}
     const { priceSnapshot } = await import("./business.js");
     let prices = await db.listActive("price_book");
     const crane = { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") };
@@ -1708,6 +1739,12 @@ async function save(ctx, out, v, d, { message, files }) {
     }
     const savedCash = (await db.listActive("cash_records")).filter(r => r.driver_entry_id);
     const pendingCash = (v.collections || []).filter(r => r.driver_entry_id && !savedCash.some(x => x.driver_entry_id === r.driver_entry_id));
+    if(v._agentTask){
+      const unselected=qsa('.card[data-kind]',out).some(card=>!cards.includes(card)&&!card.dataset.saved);
+      const made=Object.values(done).some(n=>n>0);
+      try{v._agentTask=await transitionTask(db,v._agentTask,done.conflict||unselected||pendingCash.length||!made?'review':'complete','Seçilen kartların sonucu: '+(parts.join(', ')||'Yeni kayıt oluşmadı.'));ctx.assistantTaskChanged?.(v._agentTask);}
+      catch{toast('Kayıt tamamlandı; görev notu güncellenemedi. Yeniden uygulamadan kayıtları kontrol edin.','err');}
+    }
     if(v._chatTurn)await ctx.assistantConversation?.receipt(v._chatTurn,{
       status:done.conflict?'partial':Object.entries(done).some(([k,n])=>!['already','conflict'].includes(k)&&n>0)?'saved':'answer',
       reply:'Seçilen kartların sonucu: '+(parts.join(', ')||'Yeni kayıt oluşturulmadı.')+(pendingCash.length?' Şoför nakit bildirimi ayrıca onay bekliyor.':'')
@@ -1735,6 +1772,7 @@ async function save(ctx, out, v, d, { message, files }) {
     await db.metaSet("assistant_draft", "");
   } catch (e) {
     btn.disabled = false;
+    if(v._agentTask?.status==='applying')try{v._agentTask=await transitionTask(db,v._agentTask,'review','Kayıt sırasında hata: '+(e.message||String(e)));ctx.assistantTaskChanged?.(v._agentTask);}catch{}
     // Hata veren kart: bir kısmı yazılmış olabilir (ör. iş kaydedildi, fotoğraf eklenemedi) — işaretten çıkarılır, kontrol istenir
     if (current) {
       const pk = qs("[data-pick]", current);

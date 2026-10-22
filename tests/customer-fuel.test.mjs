@@ -48,3 +48,15 @@ assert.throws(()=>links({fuel_tank_movements:[],cari_movements:[c]}));
 const st=customerStatement([c],'C');assert.equal(st.closing,900);assert.equal(st.rows[0].type,'Mazot teslimi');
 assert.equal(customerFuelLedger({...d,fuel_tank_movements:[...d.fuel_tank_movements,m]},'C').received,0,'outgoing delivery does not settle customer fuel allowance');
 console.log('customer fuel: source/amount/direction/date ambiguity, model evidence, typed fields and ledger links PASS');
+
+// Multi-turn model proposals retain the first exact delivery and use a later exact user quote for price/date.
+const quote="Kaya İnşaat'ın forkliftine 20 litre mazot verilmişti",details='Litresi 50 TL, teslim tarihi 20.10.2026';
+const continued=rows({customer_fuel:[{quote,details_quote:details,unit_price:999}]},{message:quote+'\n[DÜZELTME] '+details,d,today})[0];
+assert.equal(continued.liters,20);assert.equal(continued.unit_price,50);assert.equal(continued.date,'2026-10-20');assert.equal(continued.total,1000);assert.equal(continued.ok,true);
+assert.equal(rows({customer_fuel:[{quote,details_quote:'Litresi 999 TL'}]},{message:quote+'\n'+details,d,today})[0].blocked,true,'invented clarification is not evidence');
+assert.equal(rows({customer_fuel:[{quote,details_quote:details}]},{message:details+'\n'+quote,d,today})[0].blocked,true,'earlier unrelated text cannot serve as later clarification');
+assert.equal(rows({customer_fuel:[{quote,details_quote:'bedelsiz'}]},{message:quote+'\n[DÜZELTME] bedelsiz',d,today})[0].blocked,true);
+
+const turns=['Litresi 50 TL','Teslim tarihi 20.10.2026'];
+const mult=rows({customer_fuel:[{quote,details_quotes:turns}]},{message:quote+'\n[DÜZELTME] '+turns.join('\n[DÜZELTME] '),d,today})[0];
+assert.equal(mult.total,1000);assert.equal(mult.date,'2026-10-20');assert.equal(mult.ok,true);

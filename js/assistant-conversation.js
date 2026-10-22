@@ -132,6 +132,6 @@ export async function openConversation(db, draw) {
       });
       state=next;paint();return state.id===turn.epoch;
     },
-    async reset(){state=cleanConversation({id:uuid(),turns:[]});await db.metaSet(CHAT_KEY,state);paint();},
+    async reset(){const next=cleanConversation({id:uuid(),turns:[]});await db.metaTxn([CHAT_KEY,'assistant_task_v1'],()=>({set:{[CHAT_KEY]:next,assistant_task_v1:null}}));state=next;paint();},
   };
 }

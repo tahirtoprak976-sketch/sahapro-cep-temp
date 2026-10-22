@@ -1123,7 +1123,7 @@ export function assistantSchema() {
         // Fatura ayrıntısı serbest nesne (biçimi komutta yazılı); şablon Gemini'nin boyut sınırını aşmasın diye açılmadı
         invoice: { type: ["object", "null"] } }),
       fuel: row({ date: NS, vehicle_id: NS, liters: NN, total: NN, km: NN, machine_hours: NN, photo: { type: ["integer", "null"] }, source: NS, customer_id: NS }),
-      customer_fuel: row({ date: NS, customer_id: NS, liters: NN, unit_price: NN, total: NN, machine: NS, source: NS }),
+      customer_fuel: row({ date: NS, customer_id: NS, liters: NN, unit_price: NN, total: NN, machine: NS, source: NS, quote: NS, details_quote: NS, details_quotes: { type: "array", items: { type: "string" } } }),
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS, photo: { type: ["integer", "null"] }, company: NS, irsaliye_no: NS,
         invoice_no: NS, ettn: NS, seller_tax_no: NS, net: NN, kdv: NN }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),

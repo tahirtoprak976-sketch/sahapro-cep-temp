@@ -41,3 +41,5 @@ test("tarih ifadeleri", () => {
   assert.deepEqual(dateWords("12.10 tarihli iş", T).slice(0, 2), ["2026-10-12", "2026-10-12"]);
 });
 console.log(`command-router: ${n} test geçti`);
+
+for(const text of ["Kaya İnşaat hesabındaki durumu güncel kayıtlarla değerlendirip açıklar mısın?","Kaya İnşaat'ın hesabını aciklar misin?"])assert.equal(routeCommand(text,d,T),null,'explain is not open-screen: '+text);

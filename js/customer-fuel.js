@@ -39,9 +39,13 @@ export function customerFuelRows(plan, { message, d, today = todayStr() }) {
   const rows = local ? [local] : (Array.isArray(plan.customer_fuel) ? plan.customer_fuel.slice(0, 10) : []);
   return rows.map(raw => {
     const issues = [], quote = String(raw.quote || '');
-    const source = raw.local ? raw : customerFuelDraft(quote, d, today);
+    const details=Array.isArray(raw.details_quotes)?raw.details_quotes:typeof raw.details_quote==='string'&&raw.details_quote.trim()?[raw.details_quote.trim()]:[];
+    const text=String(message),quoteAt=text.indexOf(quote);let after=quoteAt+quote.length;
+    // Every continuation is an exact later user quote, in order. A model number is never evidence.
+    const hasDetails=details.length>0&&details.length<=6&&quoteAt>=0&&details.every(part=>{if(typeof part!=='string'||!part.trim()||part.length>600)return false;const at=text.indexOf(part,after);if(at<after)return false;after=at+part.length;return true;});
+    const source = raw.local ? raw : details.length&&!hasDetails ? null : customerFuelDraft(hasDetails?[quote,...details].join(', '):quote, d, today);
     // Model çıktısı tek başına işlem kanıtı değildir: yön ve miktar kendi alıntısında doğrulanır.
-    const evidence = source && quote && String(message).includes(quote);
+    const evidence = source && quote && text.includes(quote);
     const customer_id = evidence && (d.customers || []).some(c => isActive(c) && c.id === source.customer_id) ? source.customer_id : null;
     const liters = evidence && positive(source.liters) ? source.liters : null;
     let unit_price = evidence && positive(source.unit_price) ? source.unit_price : null;
