@@ -765,6 +765,7 @@ async function contractScreen(ctx) {
     const spec = commercialSpec(r, names, core.calcQuoteTotals(r), true);
     root.innerHTML =
       appbar("Sözleşme #" + r.contract_no, r.status) +
+      `<button class="btn" data-go="#/is-sozlesmeleri?customer_id=${encodeURIComponent(r.customer_id || "")}">Bu Müşterinin İş Sözleşmeleri</button>` +
       exportBar() +
       '<div class="card">' +
       spec.sections[0].pairs
@@ -827,7 +828,7 @@ async function contractScreen(ctx) {
   const rows = await db.listActive("contracts");
   root.innerHTML =
     appbar("Sözleşmeler", "Teklif, kapsam ve koşulların bağımsız kaydı") +
-    '<button class="btn primary" data-go="#/sozlesmeler/new">Yeni Sözleşme</button><div data-list></div>';
+    '<div class="card"><p>Bu bölüm teklif, sözleşme metni ve imzaları saklar. İş fiyatlandırması ve götürü / metraj tahakkuku İş Sözleşmelerinde yönetilir; burada belge kaydetmek otomatik borç veya iş anlaşması oluşturmaz.</p><button class="btn" data-go="#/is-sozlesmeleri">İş Sözleşmeleri / Fiyat ve Tahakkuk</button></div><button class="btn primary" data-go="#/sozlesmeler/new">Yeni Sözleşme Belgesi</button><div data-list></div>';
   pagedRender(qs("[data-list]", root), rows, (r) =>
     li({
       href: "#/sozlesmeler/" + r.id,
@@ -1096,18 +1097,13 @@ async function card(ctx) {
   async function tab(s) {
     const el = qs("[data-card-content]", root);
     if (s === "cost") {
-      const data = await db.dumpAll(),
-        p = core.profitability(data, { vehicle_id: id });
-      el.innerHTML =
-        '<div class="card">' +
-        kv("Yakıt", core.fmtTL(p.yakit) + " TL") +
-        kv("Gider", core.fmtTL(p.gider) + " TL") +
-        kv("Bakım", core.fmtTL(p.bakim) + " TL") +
-        kv(
-          "Kayıtlı toplam maliyet",
-          core.fmtTL(p.yakit + p.gider + p.bakim) + " TL",
-        ) +
-        "</div>";
+      const data = await db.dumpAll(), p = operatingResult(data, { vehicle_id: id });
+      const categories = new Map();
+      for (const cost of p.costs) categories.set(cost.category || "Gider", (categories.get(cost.category || "Gider") || 0) + core.toKurus(cost.gross));
+      const total = p.costs.reduce((n,cost)=>n+core.toKurus(cost.gross),0);
+      el.innerHTML = '<div class="card">' + [...categories].map(([label,value])=>kv(label, core.fmtTL(core.fromKurus(value))+" TL")).join("") +
+        kv("Kayıtlı toplam maliyet (brüt)", core.fmtTL(core.fromKurus(total))+" TL") +
+        '<p class="small">Bağlı alışlar ve maliyet dağıtımları dahildir. Yalnız garanti takibi yapılan parçalar gider sayılmaz.</p><button class="btn" data-go="#/maliyet?vehicle_id='+encodeURIComponent(id)+'">Maliyet Kaynakları ve KDV Ayrımı</button></div>';
       return;
     }
     if (s === "general") {

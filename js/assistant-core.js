@@ -6,7 +6,7 @@ import {customerFuelRows} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
-import { isActive, resolvePrice, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
+import { isActive, resolvePrice, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, expenseCategoryNames, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
 import { moneyMentions, rolesOf, ROLE_TR, amountOwners, customerSpans, ownerOfMention } from "./money-roles.js";
@@ -257,6 +257,7 @@ export function assistantContext(d, today = todayStr(), message = "") {
     customer_hints: customerHints(d).filter(([id]) => okC(id)),
     bank_accounts: live(d, "bank_accounts").map((b) => [b.id, b.name || b.bank_name || "Banka"]),
     recent_works: recent,
+    expense_categories: expenseCategoryNames(d),
     recent_expenses: wantsEdit ? lastOf("expense_records", 15, (e) => [e.id, e.date, e.amount, e.category, e.company || ""].join("|")) : [],
     recent_fuel: wantsEdit ? lastOf("fuel_records", 10, (f) => [f.id, f.date, f.vehicle_id, f.liters, f.total ?? ""].join("|")) : [],
     recent_cash: wantsEdit ? lastOf("cash_records", 10, (c) => [c.id, c.date, c.cash_type, c.customer_id || "", c.amount].join("|")) : [],
@@ -285,7 +286,7 @@ export function assistantSystem(rules = "") {
     "Döküm/dolgu yeri listede yoksa to_place'e adını yaz ve to_is_dump=true ('Göktürk son durak dolgu' → to_place='Göktürk Son Durak Dolgu'; 'Bolluca döküm' → 'Bolluca').",
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
     "Sefer/gidiş/tur=Sefer, saat=Saat, yevmiye/gün=Yevmiye. İş türü listesi: " + WORK_TYPES.join(", ") + ".",
-    "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
+    "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Bağlamdaki expense_categories listesi özel kategoriler dahil önceliklidir. Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
     "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter). FATURA / FİŞ ise TÜM kalem satırlarını (stok kodu, açıklama, miktar, birim fiyat, KDV, tutar) ve toplamları eksiksiz yaz (en çok 3500 karakter).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
@@ -671,12 +672,13 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   for (const e of (Array.isArray(plan.expenses) ? plan.expenses : []).slice(0, 10)) {
     const issues = [];
     const photo = Number.isInteger(e.photo) && e.photo >= 0 && e.photo < photoCount ? e.photo : (photoCount === 1 && (plan.expenses || []).length === 1 && !(plan.tank_in || []).length && !(plan.fuel || []).length && !(plan.works || []).length ? 0 : null);
-    const r = { date: validDate(e.date, today) || today, amount: null, category: EXPENSE_CATEGORIES.includes(e.category) ? e.category : "Diğer",
+    const r = { date: validDate(e.date, today) || today, amount: null, category: expenseCategoryNames(d).includes(e.category) ? e.category : "Diğer",
       company: String(e.company || "").slice(0, 80), vehicle_id: byId(vehicles, e.vehicle_id)?.id || null,
       supplier_id: byId(suppliers, e.supplier_id)?.id || null, credit: !!e.credit, photo, note: String(e.note || "").slice(0, 200),
       payment_method: ["Nakit", "Kart", "Havale", "Personel Ödedi"].includes(e.payment_method) ? e.payment_method : null,
       paid_by: byId(personnel, e.paid_by_personnel_id)?.id || null };
     if (r.payment_method === "Personel Ödedi" && !r.paid_by) r.issues_pay = "Kim ödedi? Seçin";
+    if (e.category && !expenseCategoryNames(d).includes(e.category)) issues.push("Kategori tanınmadı; Diğer seçildi, kontrol edin");
     const a = Number(e.amount);
     if (Number.isFinite(a) && a > 0) {
       const k = Math.round(a * 100) / 100;
@@ -1028,7 +1030,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
         if (a) changes[k] = a; else issues.push(`Tutar ${v} mesajda yazmıyor`);
       } else if (k === "unit") { if (ASSIST_UNITS.includes(v)) changes[k] = v; else issues.push("Birim geçersiz"); }
       else if (k === "work_type") { if (WORK_TYPES.includes(v)) changes[k] = v; else issues.push("İş türü geçersiz"); }
-      else if (k === "category") { if (EXPENSE_CATEGORIES.includes(v)) changes[k] = v; else issues.push("Kategori geçersiz"); }
+      else if (k === "category") { if (expenseCategoryNames(d).includes(v)) changes[k] = v; else issues.push("Kategori geçersiz"); }
     }
     const remove = !!x.delete;
     if (!remove && !Object.keys(changes).length) issues.push("Değişiklik yok");

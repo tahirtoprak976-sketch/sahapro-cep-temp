@@ -796,13 +796,14 @@ async function reports(ctx) {
 async function more(ctx) {
   const { root } = ctx;
   const items = [
-    ["#/sozlesmeler", "▤", "Sözleşmeler"],
+    ["#/sozlesmeler", "▤", "Sözleşme Belgeleri"],
     ["#/dokum", "▱", "Döküm Sahaları"],
     ["#/ocak", "▱", "Malzeme Ocakları"],
     ["#/yakit", "⛽", "Yakıt"],
     ["#/depo", "🛢", "Depo Tankı"],
     ["#/filo", "🚜", "Filo"],
     ["#/bakim", "🔧", "Bakım"],
+    ["#/yedek-parca", "🔋", "Yedek Parça / Garanti"],
     ["#/bakim-takvimi", "🗓", "Bakım Takvimi"],
     ["#/personel", "👷", "Personel"],
     ["#/puantaj", "📅", "Puantaj / Maaş"],
@@ -839,7 +840,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.9.57")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.9.58")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;

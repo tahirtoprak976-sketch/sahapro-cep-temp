@@ -63,7 +63,7 @@ function audit(t, store, r, action) {
       entity_type: store,
       entity_id: r.id,
       action,
-      after: r,
+      after: store === "attachments" ? { ...r, blob: undefined } : r,
       reason: "İşletme defteri",
     }),
   );
@@ -264,7 +264,8 @@ export async function savePayable(f, key = uuid()) {
   );
 }
 export async function cancelPayable(id, reason) {
-  return transaction(["payables", "supplier_payments", "cost_allocations"], (d, t) => {
+  return transaction(["payables", "supplier_payments", "cost_allocations", "maintenance_parts"], (d, t) => {
+    if (active(d.maintenance_parts).some(r => r.tracking && r.cost_source_store === "payables" && r.cost_source_id === id)) throw Error("Parça / garanti kaydına bağlı alış iptal edilemez; önce parça bağlantısını kaldırın");
     if(active(d.cost_allocations).some(r=>r.status==='Aktif'&&r.source_store==='payables'&&r.source_id===id))throw Error("Borç iptalinden önce dağıtımı iptal edin");
     const b = owner(d, "payables", id);
     if (!reason?.trim()) throw Error("İptal nedeni zorunlu");
@@ -652,7 +653,7 @@ export async function savePayroll(f, key = uuid()) {
           method: ["Avans", "Ücret Ödemesi"].includes(f.kind) ? f.method : null,
           request_id: key,
         });
-      if (r.method) {
+      if (["Avans", "Ücret Ödemesi"].includes(r.kind)) {
         if (!["Nakit", "Banka"].includes(r.method))
           throw Error("Ödeme yöntemi zorunlu");
         if (r.method === "Banka") {
@@ -1065,7 +1066,7 @@ export async function paySupplierAccount(f, key = uuid()) {
 // hareket varsa hiçbir şey yazılmaz. key = ödeme grubu (batch_key) veya tek ödeme id'si.
 export async function reverseSupplierPayments(key, reason) {
   return transaction(
-    ["supplier_payments", "cash_records", "bank_movements", "bank_import_rows"],
+    ["supplier_payments", "cash_records", "bank_movements", "bank_import_rows", "instruments"],
     (d, t) => {
       if (!reason?.trim()) throw Error("Geri alma nedeni zorunlu");
       const pays = active(d.supplier_payments).filter(
@@ -1074,6 +1075,8 @@ export async function reverseSupplierPayments(key, reason) {
       if (!pays.length) throw Error("Ödeme bulunamadı veya zaten geri alınmış");
       const now = nowISO();
       for (const p of pays) {
+        if (p.bank_movement_id && active(d.instruments).some(i => i.bank_movement_id === p.bank_movement_id))
+          throw Error("Ödeme çek/senet kapanışına bağlı; geri alınamaz. Önce çek/senet bağlantısını inceleyin");
         if (
           p.bank_movement_id &&
           (d.bank_import_rows || []).some(

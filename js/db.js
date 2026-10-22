@@ -129,6 +129,7 @@ export async function softDelete(store, id, reason) {
   for(const [target,key] of extensionRefs[store]||[])if((await getAll(target)).some(r=>isActive(r)&&r[key]===id))throw Error('İşletme geçmişine bağlı kayıt silinemez; pasife alın');
   if(['vehicles','sites','customers'].includes(store)&&(await getAll('cost_allocations')).some(r=>(r.targets||[]).some(t=>t[{vehicles:'vehicle_id',sites:'site_id',customers:'customer_id'}[store]]===id)))throw Error('Maliyet geçmişine bağlı kart silinemez; pasife alın');
   if((await getAll('cost_allocations')).some(r=>isActive(r)&&r.status==='Aktif'&&r.source_store===store&&r.source_id===id))throw Error('Dağıtılmış maliyet kaynağı silinemez');
+  if ((await getAll("maintenance_parts")).some(r => isActive(r) && r.tracking && r.cost_source_store === store && r.cost_source_id === id)) throw Error("Parça / garanti kaydına bağlı maliyet silinemez; önce parça ekranından bağlantıyı kaldırın");
   const linked = (await getAll("payables")).some(
     (b) =>
       isActive(b) &&
@@ -205,15 +206,21 @@ export async function softDelete(store, id, reason) {
   if (store === "work_records" && rec.work_batch_id && rec.slip_id)
     throw Error("Toplu fişe bağlı iş tek başına silinemez");
   const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
-  await put(store, upd);
-  await audit(
-    store,
-    id,
-    "soft_delete",
-    { deleted_at: rec.deleted_at },
-    { deleted_at: upd.deleted_at },
-    reason || "",
-  );
+  const connection = await openDB();
+  await new Promise((resolve, reject) => {
+    const t = connection.transaction([...new Set([store, "maintenance_parts", "audit_log"])], "readwrite"); let error;
+    const q = t.objectStore("maintenance_parts").getAll();
+    q.onsuccess = () => {
+      if (q.result.some(r => isActive(r) && ((r.tracking && r.cost_source_store === store && r.cost_source_id === id) || (store === "vehicles" && r.vehicle_id === id) || (store === "maintenance_records" && r.maintenance_id === id)))) { error = Error("Parça / garanti geçmişine bağlı kayıt silinemez"); t.abort(); return; }
+      const get = t.objectStore(store).get(id);
+      get.onsuccess = () => {
+        if (JSON.stringify(get.result) !== JSON.stringify(rec)) { error = Error("Kayıt değişti; yeniden açın"); t.abort(); return; }
+        t.objectStore(store).put(upd);
+        t.objectStore("audit_log").put({id:uuid(),entity:store,entity_id:id,action:"soft_delete",old:{deleted_at:rec.deleted_at},new:{deleted_at:upd.deleted_at},reason:reason||"",at:nowISO()});
+      };
+    };
+    t.oncomplete = resolve; t.onabort = t.onerror = () => reject(error || t.error);
+  });
   return upd;
 }
 // Mükerrer depo GİRİŞİ silme (birleştirme sonrası). Sayım/çıkış hareketi ve borca bağlı giriş silinmez.
@@ -903,6 +910,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   const delta = fields; // çağıranın değiştirmek istediği alanlar (çakışma denetimi bunlara bakar)
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
+  if ((await getAll("maintenance_parts")).some(r => isActive(r) && r.tracking && r.cost_source_store === store && r.cost_source_id === rec.id) && Object.keys(fields).some(k => ['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k))) throw Error('Parça / garanti kaydına bağlı maliyet değiştirilemez; önce parça ekranından bağlantıyı kaldırın');
   const current = await get(store, rec.id);
   if ((store === 'fuel_tank_movements' && (current?.delivery_kind === 'customer_fuel' || fields.delivery_kind === 'customer_fuel')) || (store === 'cari_movements' && (current?.type === 'MazotTeslimi' || fields.type === 'MazotTeslimi'))) throw Error('Müşteri mazotu tek başına değiştirilemez; Depo ekranından teslimi iptal edip doğru bilgilerle yeniden kaydedin');
   // Şoför kaydı kimliği sonradan eklenemez / değiştirilemez (doğrulanmamış kayıt "şoför kaydı" gibi gösterilmesin)
@@ -1029,8 +1037,12 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   // başka sekmede/ekranda yapılan değişikliği ezemez. Okuma-karşılaştırma-yazma TEK transaction'da.
   const d = await openDB();
   const wrote = await new Promise((resolve, reject) => {
-    const t = d.transaction([store, "audit_log"], "readwrite");
+    const t = d.transaction([...new Set([store, "audit_log", "maintenance_parts"])], "readwrite");
     let error = null;
+    const partCheck = t.objectStore("maintenance_parts").getAll();
+    partCheck.onsuccess = () => {
+      if (Object.keys(delta).some(k => ['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k)) && partCheck.result.some(r => isActive(r) && r.tracking && r.cost_source_store === store && r.cost_source_id === rec.id)) { error = Error("Parça / garanti kaydına bağlı maliyet değiştirilemez; önce bağlantıyı kaldırın"); t.abort(); }
+    };
     const g = t.objectStore(store).get(rec.id);
     g.onsuccess = () => {
       const now = g.result;
