@@ -48,10 +48,10 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   for (const w of works) units[w.unit] = r2((units[w.unit] || 0) + w.qty);
   const byType = {}, byVehicle = {};
   for (const w of works) {
-    const t = byType[w.type || "Diğer"] ||= { count: 0, amount: 0, units: {} };
-    t.count++; t.amount = r2(t.amount + w.amount); t.units[w.unit] = r2((t.units[w.unit] || 0) + w.qty);
-    const v = byVehicle[w.vehicle || "—"] ||= { count: 0, amount: 0, units: {} };
-    v.count++; v.amount = r2(v.amount + w.amount); v.units[w.unit] = r2((v.units[w.unit] || 0) + w.qty);
+    const t = byType[w.type || "Diğer"] ||= { count: 0, amount: 0, fuelL: 0, units: {} };
+    t.count++; t.amount = r2(t.amount + w.amount); t.fuelL = r2(t.fuelL + w.fuelL); t.units[w.unit] = r2((t.units[w.unit] || 0) + w.qty);
+    const v = byVehicle[w.vehicle || "—"] ||= { count: 0, amount: 0, fuelL: 0, units: {} };
+    v.count++; v.amount = r2(v.amount + w.amount); v.fuelL = r2(v.fuelL + w.fuelL); v.units[w.unit] = r2((v.units[w.unit] || 0) + w.qty);
   }
   // Tahsilatlar: cari hareketlerden (nakit ve havale ikisi de buraya yazılır)
   const collections = live(d, "cari_movements").filter((m) => ids.has(m.customer_id) && m.type === "Tahsilat" && inR(m.date))
@@ -68,18 +68,38 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const open = [...ids].flatMap((x) => customerOpenItems(d, x, today).open).sort((a, b) => a.date.localeCompare(b.date));
   const aging = { b0: 0, b30: 0, b60: 0, b90: 0 };
   for (const o of open) aging[o.days <= 30 ? "b0" : o.days <= 60 ? "b30" : o.days <= 90 ? "b60" : "b90"] = r2(aging[o.days <= 30 ? "b0" : o.days <= 60 ? "b30" : o.days <= 90 ? "b60" : "b90"] + o.left);
-  // Son 12 ay: iş değeri ve tahsilat
+  // Son 12 ay, bugün itibarıyla. TL ve litre ayrı ölçeklerde tutulur.
+  const asOf = (r) => !r.date || r.date <= today;
+  const scopeWorks = live(d, "work_records").filter((w) => ids.has(w.customer_id) && asOf(w));
+  const fuelSources = {
+    works: scopeWorks,
+    fuel: live(d, "fuel_records").filter((f) => ids.has(f.customer_id) && f.fuel_source === "Müşteri Verdi" && asOf(f)),
+    tank: live(d, "fuel_tank_movements").filter((f) => ids.has(f.customer_id) && f.move_type === "GİRİŞ" && asOf(f)),
+  };
+  const fuelRules = [...ids].flatMap((x) => fuelRulesOf(live(d, "customers").find((c) => c.id === x)));
+  const fuel = fuelRules.length || scopeWorks.some((w) => Number(w.customer_fuel_allowance_l) > 0) || fuelSources.fuel.length || fuelSources.tank.length
+    ? [...ids].map((x) => customerFuelLedger(d, x, fuelSources)).reduce((sum, row) => {
+      for (const k of ["earned", "received", "balance", "trips", "works", "receipts"]) sum[k] = r2(sum[k] + row[k]);
+      for (const [u, q] of Object.entries(row.units)) sum.units[u] = r2((sum.units[u] || 0) + q);
+      return sum;
+    }, { earned: 0, received: 0, balance: 0, trips: 0, works: 0, receipts: 0, units: {} }) : null;
+  const fuelCollections = [
+    ...fuelSources.fuel.map((f) => ({ id: f.id, date: f.date, liters: Number(f.liters) || 0, target: nm("vehicles", f.vehicle_id) || "Araç / makine", customer: nm("customers", f.customer_id) })),
+    ...fuelSources.tank.map((f) => ({ id: f.id, date: f.date, liters: Number(f.liters) || 0, target: "Depo", customer: nm("customers", f.customer_id) })),
+  ].filter((f) => inR(f.date)).sort((a, b) => a.date.localeCompare(b.date));
   const months = [];
   { const d0 = new Date(today.slice(0, 8) + "01T12:00:00"); for (let i = 11; i >= 0; i--) { const x = new Date(d0); x.setMonth(x.getMonth() - i); months.push({ key: x.toISOString().slice(0, 7), work: 0, collected: 0 }); } }
-  for (const w of live(d, "work_records").filter((w) => ids.has(w.customer_id))) { const m = months.find((x) => x.key === monthKey(w.date)); if (m) m.work = r2(m.work + workAmount(w)); }
-  for (const c of live(d, "cari_movements").filter((m) => ids.has(m.customer_id) && m.type === "Tahsilat")) { const m = months.find((x) => x.key === monthKey(c.date)); if (m) m.collected = r2(m.collected - Number(c.amount)); }
-  const fuel = fuelRulesOf(me).length || works.some((w) => w.fuelL) ? customerFuelLedger(d, id) : null;
+  for (const w of scopeWorks) { const m = months.find((x) => x.key === monthKey(w.date)); if (m) m.work = r2(m.work + workAmount(w)); }
+  for (const c of live(d, "cari_movements").filter((m) => ids.has(m.customer_id) && m.type === "Tahsilat" && asOf(m))) { const m = months.find((x) => x.key === monthKey(c.date)); if (m) m.collected = r2(m.collected - Number(c.amount)); }
+  const fuelMonths = months.map(({ key }) => ({ key, work: 0, collected: 0 }));
+  for (const w of scopeWorks.filter((w) => Number(w.customer_fuel_allowance_l) > 0)) { const m = fuelMonths.find((x) => x.key === monthKey(w.date)); if (m) m.work = r2(m.work + Number(w.customer_fuel_allowance_l)); }
+  for (const f of [...fuelSources.fuel, ...fuelSources.tank]) { const m = fuelMonths.find((x) => x.key === monthKey(f.date)); if (m) m.collected = r2(m.collected + (Number(f.liters) || 0)); }
   const cheques = chequeRows(d, today).filter((q) => q.party_type === "customer" && ids.has(q.party_id));
   const workTotal = r2(works.reduce((n, w) => n + w.amount, 0));
   const collected = r2(collections.reduce((n, c) => n + c.amount, 0));
   return {
-    customer: me, parent, children, from, to, subs, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, cheques,
-    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
+    customer: me, parent, children, from, to, subs, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
+    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), fuelReceivedL: r2(fuelCollections.reduce((n, f) => n + f.liters, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
 
@@ -87,7 +107,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
 // Mazot: tüm zamanların güncel litre hesabı (customerFuelLedger) ile seçili dönemde hak edilen litre AYRI.
 // TL: seçili dönem toplamları ile bugünkü (tüm zamanlar) TL bakiye AYRI. İş tutarının KDV temeli: fiyat nasıl girildiyse.
 export function panelModel(R, label = "") {
-  const rules = fuelRulesOf(R.customer);
+  const rules = R.fuelRules || fuelRulesOf(R.customer);
   let fuel = null;
   if (R.fuel) {
     const units = Object.entries(R.fuel.units || {}).filter(([, q]) => q > 0);
@@ -96,7 +116,7 @@ export function panelModel(R, label = "") {
     fuel = {
       earned: R.fuel.earned, received: R.fuel.received, balance: R.fuel.balance, basis: perTxt,
       onlyPay: rules.length > 0 && rules.every((r) => r.only_pay !== false), mixedPay: rules.some((r) => r.only_pay === false),
-      periodEarned: R.totals.fuelL, periodLabel: label,
+      periodEarned: R.totals.fuelL, periodReceived: R.totals.fuelReceivedL, periodLabel: label,
     };
   }
   const priced = R.works.filter((w) => w.amount > 0);
@@ -111,7 +131,7 @@ export function panelModel(R, label = "") {
 const unitsText = (u) => Object.entries(u).map(([k, q]) => `${fmt(q)} ${String(k).toLocaleLowerCase("tr-TR")}`).join(", ") || "—";
 
 // PDF tanımı (document-engine bölümleri)
-export function customerReportSpec(R, { audience = "customer", chart = null, photos = [], company = "" } = {}) {
+export function customerReportSpec(R, { audience = "customer", chart = null, fuelChart = null, photos = [], company = "" } = {}) {
   const per = R.from ? `${trDate(R.from)} – ${trDate(R.to)}` : `Başlangıç – ${trDate(R.to)}`;
   const internal = audience === "internal";
   const S = [];
@@ -122,22 +142,25 @@ export function customerReportSpec(R, { audience = "customer", chart = null, pho
   S.push({ title: "Özet", layout: "totals", pairs: [
     ["İş sayısı", String(R.totals.works)], ["Miktar", unitsText(R.units)],
     ...(R.totals.tonnage ? [["Toplam ton (fiş)", fmt(R.totals.tonnage) + " ton"]] : []),
-    ...(R.totals.fuelL ? [["Dönemde hak edilen mazot", fmt(R.totals.fuelL) + " L"]] : []),
-    ["İş tutarı (dönem)", tl(R.totals.workTotal)], ["Tahsilat (dönem)", tl(R.totals.collected)],
+    ...(R.fuel ? [["Dönemde hak edilen mazot", fmt(R.totals.fuelL) + " L"], ["Mazot tahsilatı (dönem)", fmt(R.totals.fuelReceivedL) + " L"]] : []),
+    ["İş tutarı (dönem, TL)", tl(R.totals.workTotal)], ["Tahsilat (dönem, TL)", tl(R.totals.collected)],
     ["Dönem başı devir", tl(R.statement.opening)], ["Dönem sonu bakiye", tl(R.statement.closing)],
   ] });
-  if (chart) S.push({ title: "Son 12 ay: iş tutarı ve tahsilat", image: chart, image_width: 760, max_h: 200 });
+  if (fuelChart) S.push({ title: "Son 12 ay: hak edilen ve alınan mazot (L)", image: fuelChart, image_width: 760, max_h: 200 });
+  if (chart) S.push({ title: "Son 12 ay: iş tutarı ve tahsilat (TL)", image: chart, image_width: 760, max_h: 200 });
   S.push({ title: "İş Dökümü", headers: ["Tarih", "Araç", "Operatör", "İş", "Miktar", "Nereden → Nereye", "Malzeme", "Ton", "Fiş No", "Birim Fiyat", "Tutar"],
     widths: [7, 9, 8, 11, 7, 17, 8, 5, 7, 8, 9],
     rows: R.works.map((w) => [trDate(w.date), w.vehicle, w.personnel, w.type + (w.customer ? ` [${w.customer}]` : ""), `${fmt(w.qty)} ${w.unit}`,
       [w.from, w.site, w.to].filter(Boolean).join(" → "), w.material, w.tonnage ? fmt(w.tonnage) : "", w.slip,
-      w.priced && w.unit_price!=null ? tl(w.unit_price) : "", w.amount ? tl(w.amount) : w.fuelL ? `${fmt(w.fuelL)} L mazot` : w.included ? "Sözleşmeye dahil" : w.priced ? tl(0) : "fiyatsız"]) });
-  S.push({ title: "İş türüne göre", headers: ["İş türü", "İş sayısı", "Miktar", "Tutar"], widths: [40, 15, 25, 20],
-    rows: Object.entries(R.byType).map(([k, v]) => [k, String(v.count), unitsText(v.units), tl(v.amount)]) });
-  S.push({ title: "Araca göre", headers: ["Araç / makine", "İş sayısı", "Miktar", "Tutar"], widths: [40, 15, 25, 20],
-    rows: Object.entries(R.byVehicle).map(([k, v]) => [k, String(v.count), unitsText(v.units), tl(v.amount)]) });
+      w.priced && w.unit_price!=null ? tl(w.unit_price) : "", w.amount || w.fuelL ? breakdownLabel(w) : w.included ? "Sözleşmeye dahil" : w.priced ? tl(0) : "fiyatsız"]) });
+  S.push({ title: "İş türüne göre", headers: ["İş türü", "İş sayısı", "Miktar", R.fuel ? "Tutar / mazot" : "Tutar"], widths: [40, 15, 25, 20],
+    rows: Object.entries(R.byType).map(([k, v]) => [k, String(v.count), unitsText(v.units), breakdownLabel(v)]) });
+  S.push({ title: "Araca göre", headers: ["Araç / makine", "İş sayısı", "Miktar", R.fuel ? "Tutar / mazot" : "Tutar"], widths: [40, 15, 25, 20],
+    rows: Object.entries(R.byVehicle).map(([k, v]) => [k, String(v.count), unitsText(v.units), breakdownLabel(v)]) });
   S.push({ title: "Tahsilatlar", headers: ["Tarih", "Şekil", "Açıklama", "Tutar"], widths: [15, 20, 45, 20],
-    rows: R.collections.length ? R.collections.map((c) => [trDate(c.date), c.method, c.note, tl(c.amount)]) : [["", "", "Bu dönemde tahsilat yok", ""]] });
+    rows: R.collections.length ? R.collections.map((c) => [trDate(c.date), c.method, c.note, tl(c.amount)]) : [["", "", "Bu dönemde TL tahsilatı yok", ""]] });
+  if (R.fuel) S.push({ title: "Mazot tahsilatları (dönem, L)", headers: ["Tarih", "Müşteri", "Teslim yeri", "Alınan mazot"], widths: [15, 30, 35, 20],
+    rows: R.fuelCollections.length ? R.fuelCollections.map((f) => [trDate(f.date), f.customer, f.target, fmt(f.liters) + " L"]) : [["", "", "Bu dönemde mazot tahsilatı kaydedilmemiş", ""]] });
   S.push({ title: "Cari Ekstre", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Bakiye"], widths: [11, 12, 41, 12, 12, 12],
     rows: [["", "Devir", "", "", "", tl(R.statement.opening)], ...R.statement.rows.map((r) => [trDate(r.date), r.type, r.text, r.debit ? tl(r.debit) : "", r.credit ? tl(r.credit) : "", tl(r.balance)])] });
   if (R.open.length)
@@ -157,19 +180,39 @@ export function customerReportSpec(R, { audience = "customer", chart = null, pho
   };
 }
 
-// Pano: tarayıcıda SVG; PDF için aynı veriyi tuvale çizer
-export function monthsSvg(months) {
+// Pano ve PDF aynı aylık veri ve seri adlarını kullanır. Litre hiçbir zaman TL'ye çevrilmez.
+export const FUEL_CHART = Object.freeze({ unit: "L", workLabel: "Hak edilen mazot", collectedLabel: "Alınan mazot" });
+const MONEY_CHART = Object.freeze({ unit: "₺", workLabel: "İş tutarı", collectedLabel: "Tahsilat" });
+const html = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+export const hasMoneyChart = (R) => !R.fuel || R.months.some((m) => m.work || m.collected);
+const chartSums = (months) => months.reduce((s, m) => ({ work: r2(s.work + m.work), collected: r2(s.collected + m.collected) }), { work: 0, collected: 0 });
+export function monthsSvg(months, options = MONEY_CHART) {
+  const { unit, workLabel, collectedLabel } = options;
   const max = Math.max(1, ...months.flatMap((m) => [m.work, m.collected]));
-  const W = 340, H = 130, bw = 10, gap = 28 - bw * 2;
+  const W = 360, H = 148, bw = 10;
   const bars = months.map((m, i) => {
-    const x = 12 + i * 27, h1 = (m.work / max) * 90, h2 = (m.collected / max) * 90;
-    return `<rect x="${x}" y="${100 - h1}" width="${bw}" height="${Math.max(m.work ? 1.5 : 0, h1)}" rx="2" fill="#f5a623"><title>${m.key} iş ${fmt(m.work)} ₺</title></rect>` +
-      `<rect x="${x + bw + 1}" y="${100 - h2}" width="${bw}" height="${Math.max(m.collected ? 1.5 : 0, h2)}" rx="2" fill="#2e9e6b"><title>${m.key} tahsilat ${fmt(m.collected)} ₺</title></rect>` +
-      `<text x="${x + bw}" y="116" text-anchor="middle" style="font-size:8px;fill:#93a4b5">${m.key.slice(5)}</text>`;
+    const x = 12 + i * 29, h1 = m.work > 0 ? Math.max(1.5, (m.work / max) * 90) : 0, h2 = m.collected > 0 ? Math.max(1.5, (m.collected / max) * 90) : 0;
+    return `<rect data-series="earned" x="${x}" y="${100 - h1}" width="${bw}" height="${h1}" rx="2" fill="#f5a623"><title>${html(m.key)} ${html(workLabel)} ${fmt(m.work)} ${html(unit)}</title></rect>` +
+      `<rect data-series="received" x="${x + bw + 1}" y="${100 - h2}" width="${bw}" height="${h2}" rx="2" fill="#2e9e6b"><title>${html(m.key)} ${html(collectedLabel)} ${fmt(m.collected)} ${html(unit)}</title></rect>` +
+      `<text x="${x + bw}" y="116" text-anchor="middle" style="font-size:8px;fill:#53687b">${html(m.key.slice(5))}</text>` +
+      `<text x="${x + bw}" y="128" text-anchor="middle" style="font-size:7px;fill:#53687b">${html(m.key.slice(0, 4))}</text>`;
   }).join("");
-  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Son 12 ay iş tutarı ve tahsilat">${bars}<line x1="8" y1="100" x2="${W - 4}" y2="100" stroke="#cfd8e0"/></svg><div class="row small" style="gap:12px"><span><b style="color:#f5a623">■</b> İş tutarı</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span></div>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Son 12 ay: ${html(workLabel)} ve ${html(collectedLabel)} (${html(unit)})"><text x="8" y="9" style="font-size:8px;fill:#53687b">${fmt(max)} ${html(unit)}</text>${bars}<line x1="8" y1="100" x2="${W - 4}" y2="100" stroke="#cfd8e0"/></svg><div class="row small" style="gap:12px;flex-wrap:wrap"><span><b style="color:#f5a623">■</b> ${html(workLabel)} (${html(unit)})</span><span><b style="color:#2e9e6b">■</b> ${html(collectedLabel)} (${html(unit)})</span></div>`;
 }
-export async function monthsChartBlob(months) {
+export function customerChartsHtml(R) {
+  const series = [...(R.fuel ? [["fuel", R.fuelMonths, FUEL_CHART]] : []), ...(hasMoneyChart(R) ? [["money", R.months, MONEY_CHART]] : [])];
+  return series.map(([kind, months, opt]) => {
+    const total = chartSums(months);
+    return `<div data-customer-chart="${kind}" style="margin-top:14px"><div class="small strong">Son 12 ay · ${kind === "fuel" ? "Mazot (L)" : "Para (TL)"}</div>
+      ${monthsSvg(months, opt)}
+      <div class="small" style="margin-top:6px">${opt.workLabel}: <b>${fmt(total.work)} ${opt.unit}</b> · ${opt.collectedLabel}: <b>${fmt(total.collected)} ${opt.unit}</b></div>
+      ${!total.work && !total.collected ? '<div class="muted small">Son 12 ayda kayıt yok.</div>' : kind === "fuel" && !total.collected ? '<div class="muted small">Son 12 ayda müşteriden mazot alımı kaydedilmemiş.</div>' : ""}
+      <details style="margin-top:6px"><summary class="small">Aylık ${kind === "fuel" ? "mazot" : "TL"} dökümü</summary><div style="overflow-x:auto"><table class="small" style="width:100%"><thead><tr><th>Ay</th><th>${opt.workLabel} (${opt.unit})</th><th>${opt.collectedLabel} (${opt.unit})</th></tr></thead><tbody>${months.map((m) => `<tr><td>${m.key.slice(5)}.${m.key.slice(0, 4)}</td><td>${fmt(m.work)}</td><td>${fmt(m.collected)}</td></tr>`).join("")}</tbody></table></div></details>
+      <div class="muted tiny">${months[0]?.key.slice(5)}.${months[0]?.key.slice(0, 4)} – ${months.at(-1)?.key.slice(5)}.${months.at(-1)?.key.slice(0, 4)} · Bugüne kadar; üstteki dönem seçiminden bağımsız.${kind === "fuel" ? " Alınan mazot: müşterinin araca veya depoya verdiği mazot. TL hesabına eklenmez." : ""}</div></div>`;
+  }).join("");
+}
+export async function monthsChartBlob(months, options = MONEY_CHART) {
+  const { unit, workLabel, collectedLabel } = options;
   const c = document.createElement("canvas");
   c.width = 1600; c.height = 420;
   const x = c.getContext("2d");
@@ -179,20 +222,29 @@ export async function monthsChartBlob(months) {
   x.font = "22px sans-serif"; x.textAlign = "center";
   months.forEach((m, i) => {
     const x0 = 90 + i * step;
-    const h1 = (m.work / max) * 290, h2 = (m.collected / max) * 290;
+    const h1 = Math.max(0, (m.work / max) * 290), h2 = Math.max(0, (m.collected / max) * 290);
     x.fillStyle = "#f5a623"; x.fillRect(x0, base - h1, bw, h1);
     x.fillStyle = "#2e9e6b"; x.fillRect(x0 + bw + 4, base - h2, bw, h2);
     x.fillStyle = "#53687b"; x.fillText(m.key.slice(5) + "/" + m.key.slice(2, 4), x0 + bw, base + 30);
-    if (m.work) { x.fillStyle = "#142c42"; x.font = "17px sans-serif"; x.fillText(Math.round(m.work / 1000) + "k", x0 + bw / 2, base - h1 - 8); x.font = "22px sans-serif"; }
+    x.fillStyle = "#142c42"; x.font = "17px sans-serif";
+    if (m.work) x.fillText(fmt(m.work), x0 + bw / 2, base - h1 - 8);
+    if (m.collected) x.fillText(fmt(m.collected), x0 + bw * 1.5 + 4, base - h2 - 8);
+    x.font = "22px sans-serif";
   });
   x.strokeStyle = "#cfd8e0"; x.beginPath(); x.moveTo(60, base); x.lineTo(c.width - 20, base); x.stroke();
   x.textAlign = "left"; x.font = "22px sans-serif";
-  x.fillStyle = "#f5a623"; x.fillRect(60, 385, 22, 22); x.fillStyle = "#142c42"; x.fillText("İş tutarı (₺)", 90, 404);
-  x.fillStyle = "#2e9e6b"; x.fillRect(300, 385, 22, 22); x.fillStyle = "#142c42"; x.fillText("Tahsilat (₺)", 330, 404);
-  return new Promise((res) => c.toBlob(res, "image/png"));
+  x.fillStyle = "#f5a623"; x.fillRect(60, 385, 22, 22); x.fillStyle = "#142c42"; x.fillText(`${workLabel} (${unit})`, 90, 404);
+  x.fillStyle = "#2e9e6b"; x.fillRect(500, 385, 22, 22); x.fillStyle = "#142c42"; x.fillText(`${collectedLabel} (${unit})`, 530, 404);
+  return new Promise((res, rej) => c.toBlob((blob) => blob ? res(blob) : rej(Error("Grafik oluşturulamadı")), "image/png"));
 }
-export function barsHtml(obj, label = (v) => fmt(v.amount) + " ₺", val = (v) => v.amount || v.count) {
+export function breakdownLabel(v) {
+  return [v.amount || !v.fuelL ? tl(v.amount) : "", v.fuelL ? fmt(v.fuelL) + " L mazot" : ""].filter(Boolean).join(" · ");
+}
+export function barsHtml(obj, label = breakdownLabel, val = null) {
+  // Karma TL/litre gruplarını farklı birimleri toplayarak sıralamayız; o durumda çubuk iş sayısıdır.
+  const values = Object.values(obj), fuel = values.some((v) => v.fuelL), money = values.some((v) => v.amount);
+  val ||= fuel ? money ? (v) => v.count : (v) => v.fuelL : (v) => v.amount || v.count;
   const rows = Object.entries(obj).sort((a, b) => val(b[1]) - val(a[1])).slice(0, 8);
   const max = Math.max(1, ...rows.map(([, v]) => val(v)));
-  return rows.map(([k, v]) => `<div class="small" style="margin:4px 0"><div class="row between"><span class="ellipsis">${k.replace(/[<>&]/g, "")}</span><span class="muted">${v.count} iş · ${unitsText(v.units)} · ${label(v)}</span></div><div style="height:7px;background:var(--surface2,#edf2f6);border-radius:4px"><div style="height:7px;width:${Math.round((val(v) / max) * 100)}%;background:#f5a623;border-radius:4px"></div></div></div>`).join("") || '<div class="muted small">—</div>';
+  return rows.map(([k, v]) => `<div class="small" style="margin:4px 0"><div class="row between" style="gap:4px;flex-wrap:wrap"><span style="overflow-wrap:anywhere">${html(k)}</span><span class="muted">${v.count} iş · ${unitsText(v.units)} · ${label(v)}</span></div><div style="height:7px;background:var(--surface2,#edf2f6);border-radius:4px"><div style="height:7px;width:${Math.round((val(v) / max) * 100)}%;background:#f5a623;border-radius:4px"></div></div></div>`).join("") || '<div class="muted small">—</div>';
 }
