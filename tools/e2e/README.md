@@ -16,3 +16,7 @@ Gemini çağrıları sahte (page.route); şoför kodları Gemini'siz işlenir. P
 - `python3 tools/e2e/yedek_matris.py` — parçalı yedek hata matrisi.
 - `python3 tools/e2e/kismi.py` — tek işlemde yazılmayan yollar ve geri alma.
 - `python3 tools/e2e/geri_donus.py` — v3.9.05 verisiyle v3.9.04 koduna gerçek geri dönüş ve ileri dönüş.
+
+v3.9.62 doğrulaması: `customer_snapshot.py` müşteri kartında aynı okuma görüntüsünü ve taze paylaşımı; `transaction_errors.py` gerçek request hatasında Error nesnesi ve transaction geri sarmasını; `kismi.py` ön denetim reddini, transaction sırasında hata sonrası kısmi kayıt uyarısını ve geri almayı ölçer. `islem.py`, `denetim.py` ve `sim.py` güncel akış/seçicileri kullanır; FAIL varsa sıfır olmayan çıkış kodu döner. Bu eski dört suiti sistem Chromium'uyla çalıştırmak için `CHROMIUM_PATH=/usr/bin/chromium` verilebilir.
+
+`eski_preview.py` ve `geri_donus.py`, git geçmişindeki `1eaebf1` ağacını gerektirir. `.git` içermeyen kaynak ZIP'inde açıklamalı SKIP ve **77** çıkış kodu verir; bu sonuç PASS değildir. Yardımcı denetim `support/history_fixture.py` içindedir.

@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.35** — 20.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.62** — 23.10.2026
+
+Müşteri kartında tutarlı okuma ve Kimi denetimi sonrası test düzeltmeleri: [v3.9.62 notları](docs/KIMI_REVIEW_v3962.md).
+
+Müşteri panosunda mazot tahsilatı grafiği: [v3.9.61 notları](docs/FUEL_CHART_v3961.md).
 
 Şoförde alt müşteri ve nakit bildirimi: [v3.9.35 notları](docs/DRIVER_CASH_v3935.md).
 

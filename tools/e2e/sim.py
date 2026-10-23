@@ -28,7 +28,7 @@ def prompt(pg, val):
 def toast(pg): return pg.evaluate("[...document.querySelectorAll('.toast')].map(t=>t.textContent)")
 
 with sync_playwright() as p:
-    b = p.chromium.launch(); errs = []
+    b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH"), args=["--no-sandbox"]); errs = []
     # ---------------- Patron telefonu ----------------
     boss = b.new_context(viewport={'width': 412, 'height': 900}); boss.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
     boss.grant_permissions(["clipboard-read", "clipboard-write"], origin="http://localhost:8841")
@@ -277,8 +277,10 @@ with sync_playwright() as p:
     # Döküm hesabı: Bolluca'ya 100.000 yatır
     pg.goto(U + "index.html#/dokum-hesap"); pg.reload(); pg.wait_for_timeout(2500); unlock_if(pg)
     bid = pg.evaluate("async()=>{const db=await import('./js/db.js');return (await db.listActive('dump_sites')).find(x=>x.name==='Bolluca').id}")
-    pg.click(f"[data-dep='{bid}']"); pg.wait_for_timeout(500); pg.fill(".sheet [data-da]", "100000"); pg.click(".sheet [data-ok]"); pg.wait_for_timeout(1500)
-    da = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const a=await import('./js/dump-account.js');const d=await db.dumpAll();const [x]=a.dumpAccounts(d,{{today:'{TODAY}',siteId:'{bid}'}});return [x.dep,x.used,x.balance,x.trips]}}")
+    pg.goto(U + "index.html#/dokum-hesap/" + bid); pg.wait_for_selector('[data-dump-balance]')
+    pg.click('[data-new=TOPUP]'); pg.fill('.sheet [name=amount]', '100000'); pg.fill('.sheet [name=reference]', 'TEST-SIM-TOPUP')
+    pg.check('.sheet [data-confirm]'); pg.click('.sheet button[type=submit]'); pg.wait_for_selector('.sheet', state='detached')
+    da = pg.evaluate(f"async()=>{{const db=await import('./js/db.js');const a=await import('./js/dump-account.js');const d=await db.dumpAll();const [x]=a.dumpAccounts(d,{{today:'{TODAY}',siteId:'{bid}'}});return [x.credit,x.used,x.balance,x.trips]}}")
     check(da[0] == 100000 and abs(da[2] - (da[0] - da[1])) < 0.01, f"döküm hesabı: yatırılan {da[0]} − düşen {da[1]} = kalan {da[2]} ({da[3]} döküm)")
     # WhatsApp toplu: Olcay'ın mesajı grupta (dışa aktarım dosyası)
     dp = phones["Olcay"]; driver_work(dp, day(1), "Kaya İnşaat", 4, "B7777", 26); sh = driver_send(dp)
@@ -332,3 +334,5 @@ with sync_playwright() as p:
     check(not errs, f"sayfa hataları: {errs[:5]}")
     print("\nSONUÇ:", "BAŞARILI" if not FAIL else f"{len(FAIL)} SORUN"); [print("  -", f) for f in FAIL]
     b.close()
+
+raise SystemExit(bool(FAIL))

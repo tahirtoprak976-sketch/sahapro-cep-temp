@@ -264,13 +264,13 @@ const REL = {
   dump_site_id: "dump_sites",
   quarry_id: "quarries",
 };
-async function maps(db) {
+async function maps(db, data = null) {
   const names = {};
   await Promise.all(
     Object.keys(LABELS).map(
       async (s) =>
         (names[s] = Object.fromEntries(
-          (await db.listActive(s)).map((r) => [
+          (data ? (data[s] || []).filter(core.isActive) : await db.listActive(s)).map((r) => [
             r.id,
             r.name ||
               r.doc_no ||
@@ -1034,10 +1034,13 @@ const DETAIL_KIND = { dump_sites: "dokum", quarries: "ocak", customers: "musteri
 async function card(ctx) {
   const { root, db, parts } = ctx,
     store = STORES[parts[0]],
-    id = parts[1],
-    r = await db.get(store, id);
+    id = parts[1];
+  // Müşteri başlığı, ilişkiler, pano ve dışa aktarım aynı kayıt anını kullanır.
+  const customerData = store === "customers" ? await db.dumpAll() : null;
+  if (customerData) ctx.customerData = customerData;
+  const r = customerData ? customerData.customers.find((c) => c.id === id) : await db.get(store, id);
   if (!r) throw Error("Kart bulunamadı");
-  const names = await maps(db),
+  const names = await maps(db, customerData),
     spec = recordSpec(store, r, names),
     key =
       store === "vehicles"

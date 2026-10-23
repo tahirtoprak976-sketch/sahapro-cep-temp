@@ -15,7 +15,7 @@ def unlock_if(pg):
         pg.fill("#lock-root [data-pw]", PIN); pg.click("#lock-root [data-go-un]"); pg.wait_for_timeout(1200)
 
 with sync_playwright() as p:
-    b = p.chromium.launch(); errs = []
+    b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH"), args=["--no-sandbox"]); errs = []
     ctx = b.new_context(viewport={'width': 412, 'height': 900}); ctx.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
     PLANS = []; CALLS = []
     def gem(route):
@@ -43,13 +43,13 @@ with sync_playwright() as p:
         pg.fill("[data-msg]", msg); pg.click("[data-ask]"); pg.wait_for_timeout(3000)
     print("Kurulum:", TODAY)
 
-    # ---- 1) Yarım kalan kayıt: tekrar Kaydet çift kayıt yapmamalı ----
-    print("1) Yarım kalan kayıt + tekrar Kaydet")
+    # ---- 1) Ön denetim: silinen referans hiçbir satır yazdırmaz; düzeltince tek kayıt ----
+    print("1) Toplu ön denetim + düzeltme + tekrar Kaydet")
     w0, e0 = count("work_records"), count("expense_records")
     msg = f"{ids['vn']} Kaya İnşaat 3 sefer hafriyat. Yemek 450 TL"
     assistant(msg, {"works": [{"date": TODAY, "date_source": "mesaj", "customer_id": ids["k"], "vehicle_id": ids["v"], "work_type": "Hafriyat Nakliye", "quantity": 3, "unit": "Sefer", "quote": f"{ids['vn']} Kaya İnşaat 3 sefer hafriyat"}],
                     "expenses": [{"date": TODAY, "amount": 450, "category": "Yemek", "vehicle_id": ids["v2"]}]})
-    # Gider kartındaki aracı, kayıttan hemen önce silinmiş bir araca çevir → gider kaydı hata verir (iş kaydedilmiş olur)
+    # Gider aracı önizlemeden sonra silinir; ön denetim bütün seçimi yazmadan reddetmeli.
     ev(f"""async()=>{{const db=await import('./js/db.js');const v=await db.get('vehicles','{ids['v2']}');await db.softDelete('vehicles','{ids['v2']}','test');}}""")
     ev("(()=>{const s=document.querySelector('[data-kind=expense] [name=vehicle]'); if(s){ if(![...s.options].some(o=>o.value===s.value)) return; }})()")
     picked = ev("[...document.querySelectorAll('[data-out] [data-pick]')].filter(x=>x.checked).length")
@@ -63,8 +63,13 @@ with sync_playwright() as p:
                 if x.inner_text().strip() in ("Kaydet",): x.click(); break
             pg.wait_for_timeout(1500)
     w2 = count("work_records")
-    check(w1 - w0 == 1, f"hata öncesi iş kaydedildi ({w1 - w0})")
+    check(w1 == w0 and e1 == e0, f"ön denetim: silinen araçla iş/gider yazılmadı ({w1-w0}, {e1-e0})")
     check(w2 == w1, f"tekrar Kaydet aynı işi ikinci kez yazmadı ({w2 - w0})")
+    check(len(pg.query_selector_all('[data-out] .card[data-kind]')) == 2, "ön denetim reddinde iki kontrol kartı da korundu")
+    pg.select_option('[data-kind=expense] [name=vehicle]', ids['v'])
+    pg.click('[data-save]'); pg.wait_for_timeout(3000)
+    check(count('work_records') == w0 + 1 and count('expense_records') == e0 + 1, "araç düzeltildi: aynı önizlemeden tek iş ve tek gider kaydedildi")
+
 
     # ---- 2) KDV %0 korunur ----
     print("2) KDV %0")
@@ -349,3 +354,5 @@ with sync_playwright() as p:
     b.close()
 print("\nSONUÇ:", "BAŞARILI" if not FAIL else f"{len(FAIL)} SORUN")
 for f in FAIL: print("  -", f)
+
+raise SystemExit(bool(FAIL))

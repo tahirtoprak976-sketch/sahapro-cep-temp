@@ -962,7 +962,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       const affected = v.driverPhotoBlocked && qsa(".card[data-kind]", out).some(c => qs("[data-pick]", c)?.checked && rows[c.dataset.kind]?.[Number(c.dataset.i)]?.driver_entry_id);
       if (affected && !(await confirmDialog("Dosyalar eklenmeden kaydedilsin mi?", "Şoför dosyaları güvenle eşleştirilemedi. Seçili şoför kayıtlarına bu paketin fotoğrafları ve dosya olarak gelen imzaları eklenmeyecek. Sonradan aynı kodu tekrar almak dosyaları tamamlamaz; kayıt ayrıntısından elle eklemeniz gerekir. Önce dosyaları düzeltmek için vazgeçin.", "Dosyasız kaydet"))) return;
       if (out.isConnected) await save(ctx, out, v, d, { message, files });
-    } catch (e) { toast("Kaydedilemedi: " + (e.message || e), "err"); }
+    } catch (e) { toast("Kaydedilemedi: " + (e?.message || String(e)), "err"); }
     finally { saveInFlight = false;for(const el of controls)if(el.isConnected&&el.closest('[data-saved]')?.dataset.saved!=='1')el.disabled=false; if (btn.isConnected) btn.disabled = false; }
   });
   // Önizlemesi açılamayan fotoğraf: yerine yazı (CSP satır içi onerror'a izin vermez)
@@ -1767,6 +1767,7 @@ async function save(ctx, out, v, d, { message, files }) {
     qs("[data-msg]", ctx.root).value = "";
     await db.metaSet("assistant_draft", "");
   } catch (e) {
+    e ||= Error("Kayıt işlemi tamamlanamadı; kayıtları kontrol edin");
     btn.disabled = false;
     if(v._agentTask?.status==='applying')try{v._agentTask=await transitionTask(db,v._agentTask,'review','Kayıt sırasında hata: '+(e.message||String(e)));ctx.assistantTaskChanged?.(v._agentTask);}catch{}
     // Hata veren kart: bir kısmı yazılmış olabilir (ör. iş kaydedildi, fotoğraf eklenemedi) — işaretten çıkarılır, kontrol istenir

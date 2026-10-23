@@ -1,5 +1,5 @@
 # Paket 2 — asistanla ekran açma, listeleme, düzeltilecek kaydı bulma, bağlam, mevcut kayda fotoğraf. TEST VERİSİ, taklit Gemini.
-import sys, json, base64
+import sys, json, base64, os
 from playwright.sync_api import sync_playwright
 U = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8846/"; PIN = "482917"
 FAIL = []
@@ -8,7 +8,7 @@ def check(c, m):
     if not c: FAIL.append(m)
 PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 with sync_playwright() as p:
-    b = p.chromium.launch(); errs = []
+    b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH"), args=["--no-sandbox"]); errs = []
     ctx = b.new_context(viewport={'width': 360, 'height': 780}); ctx.add_init_script("try{localStorage.setItem('sp_role','boss');localStorage.setItem('spx_role','boss')}catch(e){}")
     CALLS = []
     ctx.route("https://generativelanguage.googleapis.com/**", lambda r: (CALLS.append(1), r.fulfill(status=200, content_type="application/json", body=json.dumps({"candidates": [{"content": {"parts": [{"text": "{}"}]}, "finishReason": "STOP"}]}))))
@@ -50,8 +50,9 @@ with sync_playwright() as p:
     say("Yedekleme ekranını aç")
     check("tab=yedek" in pg.url, "yedek ekranı açıldı")
     say("Mahir Bey’in dünkü işindeki süreyi 2,5 saat olarak düzelt")
-    items = ev("[...document.querySelectorAll('[data-out] .li')].map(e=>e.getAttribute('data-go'))")
-    check(sorted(items) == sorted([f"#/isler/{ids['w1']}/edit", f"#/isler/{ids['w2']}/edit"]) and "Rastgele seçilmez" in pg.inner_text("[data-out]"), f"iki aday listelendi, rastgele seçilmedi ({len(items)})")
+    items = ev("[...document.querySelectorAll('[data-work-choice]')].map(e=>e.dataset.workId)")
+    check(sorted(items) == sorted([ids['w1'], ids['w2']]) and "Hangi işi değiştirelim?" in pg.inner_text("[data-out]"), f"iki aday listelendi, rastgele seçilmedi ({len(items)})")
+    check(pg.query_selector('[data-work-confirm]') is None, "aday seçilmeden uygulama onayı üretilmedi")
     check(snap() == s0, "komutlar hiçbir kayıt değiştirmedi")
     check(len(CALLS) == 0, f"yerel komutlar Gemini'ye gitmedi ({len(CALLS)})")
     ctx.set_offline(False)
@@ -69,3 +70,5 @@ with sync_playwright() as p:
     check(not errs, f"sayfa hatası yok {errs[:2]}")
     b.close()
 print("\nSONUÇ:", "BAŞARILI" if not FAIL else f"{len(FAIL)} SORUN")
+
+raise SystemExit(bool(FAIL))

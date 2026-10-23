@@ -4,7 +4,9 @@
 # değişiyor → eski önizleme yeniden açılıyor. Canlı veriler korunmalı, eski çalışan yalnız kendini kaldırmalı.
 import os, sys, shutil, subprocess, socket, time, tempfile
 from playwright.sync_api import sync_playwright
+from support.history_fixture import require_git_ref
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+require_git_ref(ROOT, "1eaebf1")
 W = tempfile.mkdtemp(prefix="sahapro_eskiprev_")
 SITE = W + "/sahapro-cep-temp"
 shutil.copytree(ROOT, SITE, ignore=shutil.ignore_patterns(".git", "tests", "tools", "docs", "reports", "research_notes", "preview"))
