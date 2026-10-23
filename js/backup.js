@@ -1,3 +1,4 @@
+import {validateDumpData} from "./dump-ledger-core.js";
 import { startActivity } from "./update-safety.js";
 import {validateCustomerFuelLinks} from './customer-fuel.js';
 import { validateSmartData } from "./message-smart-core.js";
@@ -380,6 +381,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
     hakedis: "hakedis",
     work: "work_records",
     contract: "contracts",
+    dump_site: "dump_sites",
   };
   for (const doc of preview.stores.documents.new) {
     if (
@@ -410,6 +412,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
         throw Error("Yedekte kopuk tank / yakıt olayı");
     }
   validateCustomerFuelLinks(Object.fromEntries(Object.entries(merged).map(([s,m]) => [s,[...m.values()]])));
+  validateDumpData(Object.fromEntries(Object.entries(merged).map(([s,m])=>[s,[...m.values()]])));
   validateEnterpriseData(
     Object.fromEntries(
       Object.entries(merged).map(([s, m]) => [s, [...m.values()]]),

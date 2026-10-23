@@ -1,3 +1,4 @@
+import {freezeDumpTariff, liveDumpEntries} from "./dump-ledger-core.js";
 import { validDate } from "./driver-delivery.js";
 import {customerFuelFields, validateCustomerFuelLinks} from './customer-fuel.js';
 import { customerNameKey } from "./driver-customer.js";
@@ -24,7 +25,7 @@ import {
 } from "./core.js";
 
 const DB_NAME = "sahapro_cep_db"; // v1 ile AYNI isim — veri bu DB'de
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 let _db = null;
 
 // Test harness için: ?db=<isim> ile ayrı DB açılabilir (migration simülasyonu)
@@ -121,6 +122,7 @@ export async function softDelete(store, id, reason) {
 
   const rec = await get(store, id);
   if (!rec) return null;
+  if (store === "dump_entries") throw Error("Döküm işlemi ortak hesap ekranından yapılmalı");
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error(
       "İşletme defteri kaydı silinemez; ilgili işlem ekranını kullanın",
@@ -208,7 +210,10 @@ export async function softDelete(store, id, reason) {
   const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
   const connection = await openDB();
   await new Promise((resolve, reject) => {
-    const t = connection.transaction([...new Set([store, "maintenance_parts", "audit_log"])], "readwrite"); let error;
+    const t = connection.transaction([...new Set([store, "maintenance_parts", "dump_entries", "audit_log", ...(store==="dump_sites"?["expense_records","work_records"]:[])])], "readwrite"); let error;
+    if(store==="dump_sites")for(const s of ["expense_records","work_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===id)){error=Error("Eski döküm geçmişine bağlı saha silinemez");t.abort();}};}
+    const dumpCheck=t.objectStore("dump_entries").getAll();
+    dumpCheck.onsuccess=()=>{const key={expense_records:"expense_id",work_records:"work_record_id",dump_sites:"dump_site_id",vehicles:"vehicle_id",customers:"customer_id",sites:"site_id"}[store];if(key&&dumpCheck.result.some(e=>isActive(e)&&e[key]===id)){error=Error("Ortak döküm hesabına bağlı kayıt silinemez; döküm işlemini inceleyin");t.abort();}};
     const q = t.objectStore("maintenance_parts").getAll();
     q.onsuccess = () => {
       if (q.result.some(r => isActive(r) && ((r.tracking && r.cost_source_store === store && r.cost_source_id === id) || (store === "vehicles" && r.vehicle_id === id) || (store === "maintenance_records" && r.maintenance_id === id)))) { error = Error("Parça / garanti geçmişine bağlı kayıt silinemez"); t.abort(); return; }
@@ -679,7 +684,9 @@ async function putPlainOp(store, fields, auditReason, op) {
   });
 }
 export async function saveNew(store, fields, auditReason, { op = null } = {}) {
+  if(store==='expense_records'&&fields.dump_deposit&&fields.invoice_paid)throw Error('Döküm faturası kendiliğinden ödenmiş sayılamaz; gerçek yükleme veya açılış bakiyesi girin');
   if ((store === 'fuel_tank_movements' && fields.delivery_kind === 'customer_fuel') || (store === 'cari_movements' && fields.type === 'MazotTeslimi')) throw Error('Müşteri mazotu stok ve cariyle birlikte kaydedilmeli');
+  if (store === "dump_entries") throw Error("Döküm işlemi ortak hesap ekranından yapılmalı");
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından oluşturulmalı");
   fields = await validateFields(store, fields);
@@ -908,10 +915,12 @@ const DEPENDENT = {
 };
 export async function saveExisting(store, rec, fields, auditReason, _retry = 0, options = {}) {
   const delta = fields; // çağıranın değiştirmek istediği alanlar (çakışma denetimi bunlara bakar)
+  if (store === "dump_entries") throw Error("Döküm işlemi ortak hesap ekranından yapılmalı");
   if (ENTERPRISE_STORES.includes(store) || ["inbox_messages","meter_readings","shift_assignments","custody_records","downtime_records","maintenance_parts","cost_allocations","bank_import_rows","stock_counts"].includes(store))
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   if ((await getAll("maintenance_parts")).some(r => isActive(r) && r.tracking && r.cost_source_store === store && r.cost_source_id === rec.id) && Object.keys(fields).some(k => ['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k))) throw Error('Parça / garanti kaydına bağlı maliyet değiştirilemez; önce parça ekranından bağlantıyı kaldırın');
   const current = await get(store, rec.id);
+  if(store==="work_records" && "dump_tariff_snapshot" in fields && JSON.stringify(fields.dump_tariff_snapshot)!==JSON.stringify(current?.dump_tariff_snapshot))throw Error("Döküm tarife kopyası doğrudan değiştirilemez");
   if ((store === 'fuel_tank_movements' && (current?.delivery_kind === 'customer_fuel' || fields.delivery_kind === 'customer_fuel')) || (store === 'cari_movements' && (current?.type === 'MazotTeslimi' || fields.type === 'MazotTeslimi'))) throw Error('Müşteri mazotu tek başına değiştirilemez; Depo ekranından teslimi iptal edip doğru bilgilerle yeniden kaydedin');
   // Şoför kaydı kimliği sonradan eklenemez / değiştirilemez (doğrulanmamış kayıt "şoför kaydı" gibi gösterilmesin)
   if ("driver_entry_id" in fields && (fields.driver_entry_id || null) !== (current?.driver_entry_id || null)) throw Error("Şoför kaydı kimliği değiştirilemez");
@@ -1020,7 +1029,8 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
       fields = { ...fields, price_history: [...(current.price_history || []), { ...old, until: nowISO(), reason: auditReason || "" }].slice(-50) };
     }
   }
-  fields = await validateFields(store, { ...current, ...fields });
+  fields = await validateFields(store, { ...current, ...fields }, current);
+  if(store==="dump_sites" && ["fee","fee_unit","fee_effective_from"].some(k=>k in delta && String(delta[k]??"")!==String(current[k]??""))) return (await import("./dump-ledger-db.js")).changeDumpTariff(rec,fields,auditReason);
   const upd = {
     ...touchRecord(rec),
     ...fields,
@@ -1037,8 +1047,16 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   // başka sekmede/ekranda yapılan değişikliği ezemez. Okuma-karşılaştırma-yazma TEK transaction'da.
   const d = await openDB();
   const wrote = await new Promise((resolve, reject) => {
-    const t = d.transaction([...new Set([store, "audit_log", "maintenance_parts"])], "readwrite");
+    const t = d.transaction([...new Set([store, "audit_log", "maintenance_parts", "dump_entries", ...(store==="dump_sites"&&delta.own_yard?["work_records","expense_records"]:[])])], "readwrite");
     let error = null;
+    if(store==="dump_sites"&&delta.own_yard)for(const s of ["work_records","expense_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===rec.id)){error=Error("Geçmişi olan döküm sahası iç depoya çevrilemez");t.abort();}};}
+    const dumpCheck = t.objectStore("dump_entries").getAll();
+    dumpCheck.onsuccess=()=>{
+      const key={expense_records:"expense_id",work_records:"work_record_id"}[store];
+      const protectedKeys=store==="work_records"?["date","quantity","unit","vehicle_id","customer_id","site_id","dump_site_id","dump_cost","dump_tariff_snapshot","tonnage"]:["amount","date","vehicle_id","dump_site_id","dump_deposit","dump_entry_id","invoice_paid","deleted_at"];
+      if(key&&Object.keys(delta).some(k=>protectedKeys.includes(k))&&dumpCheck.result.some(e=>isActive(e)&&e[key]===rec.id)){error=Error("Döküm fişine/yüklemesine bağlı kayıt burada değiştirilemez; önce ortak hesaptaki işlemi inceleyin");t.abort();}
+      if(store==="dump_sites"&&delta.own_yard&&dumpCheck.result.some(e=>isActive(e)&&e.dump_site_id===rec.id)){error=Error("Hareketi olan saha iç depoya çevrilemez");t.abort();}
+    };
     const partCheck = t.objectStore("maintenance_parts").getAll();
     partCheck.onsuccess = () => {
       if (Object.keys(delta).some(k => ['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k)) && partCheck.result.some(r => isActive(r) && r.tracking && r.cost_source_store === store && r.cost_source_id === rec.id)) { error = Error("Parça / garanti kaydına bağlı maliyet değiştirilemez; önce bağlantıyı kaldırın"); t.abort(); }
@@ -1143,7 +1161,7 @@ function assertNumericFields(f) {
     if(f.price_snapshot.kdv_included!=null&&typeof f.price_snapshot.kdv_included!=='boolean')throw Error('KDV dahil/hariç bilgisi geçersiz');
   }
 }
-async function validateFields(store, fields) {
+async function validateFields(store, fields, previous = null) {
   assertNumericFields(fields);
   const f = { ...fields };
   if (f.date) {
@@ -1220,6 +1238,9 @@ async function validateFields(store, fields) {
       (f.type === "Duzeltme" && !f.reason?.trim()))
   )
     throw Error("Cari tutarı veya düzeltme nedeni geçersiz");
+  if (store === "work_records" && f.dump_site_id) {
+    f.dump_tariff_snapshot = freezeDumpTariff(f, await get("dump_sites",f.dump_site_id), previous);
+  }
   if (store === "work_records") {
     if (f.time_start || f.time_end) {
       if (f.unit !== "Saat")
@@ -1918,21 +1939,30 @@ export async function signSlip(id, file) {
 // Koşullu tek kayıt güncellemesi: okuma, koşul denetimi, yazma ve audit AYNI transaction'da.
 // İki sekme aynı düzeltmeyi aynı anda onaylarsa yalnız biri yazar; öteki { skipped: true } alır.
 export async function updateIf(store, id, pred, fields, auditReason) {
+  if(store === "dump_entries") throw Error("Döküm işlemi ortak hesap ekranından yapılmalı");
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction([store, "audit_log"], "readwrite");
-    let out = { skipped: true };
+    const t = d.transaction([...new Set([store, "audit_log", "dump_entries"])], "readwrite");
+    let out = { skipped: true }, error;
     const q = t.objectStore(store).get(id);
     q.onsuccess = () => {
       const cur = q.result;
       if (!cur || cur.deleted_at || !pred(cur)) return;
-      const rec = { ...cur, ...fields, updated_at: nowISO() };
-      t.objectStore(store).put(rec);
-      t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: id, action: "update", old: Object.fromEntries(Object.keys(fields).map((k) => [k, cur[k] ?? null])), new: fields, reason: auditReason || "", at: nowISO() });
-      out = rec;
+      const linked = t.objectStore("dump_entries").getAll();
+      linked.onsuccess = () => {
+        const key={work_records:"work_record_id",expense_records:"expense_id"}[store];
+        const protectedKeys=store==="work_records"?["date","quantity","unit","vehicle_id","customer_id","site_id","dump_site_id","dump_cost","dump_tariff_snapshot","tonnage","deleted_at"]:["amount","date","vehicle_id","dump_site_id","dump_deposit","dump_entry_id","invoice_paid","deleted_at"];
+        if(key && Object.keys(fields).some(k=>protectedKeys.includes(k)) && linked.result.some(e=>isActive(e)&&e[key]===id)){
+          error=Error("Döküm fişine bağlı kayıt burada değiştirilemez; ortak hesap işlemini inceleyin");t.abort();return;
+        }
+        const rec = { ...cur, ...fields, updated_at: nowISO() };
+        t.objectStore(store).put(rec);
+        t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: id, action: "update", old: Object.fromEntries(Object.keys(fields).map((k) => [k, cur[k] ?? null])), new: fields, reason: auditReason || "", at: nowISO() });
+        out = rec;
+      };
     };
     t.oncomplete = () => resolve(out);
-    t.onerror = t.onabort = () => reject(t.error);
+    t.onerror = t.onabort = () => reject(error || t.error);
   });
 }
 

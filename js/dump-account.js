@@ -1,21 +1,29 @@
+import {sharedDumpBalance,dumpReceiptRows} from "./dump-ledger-core.js";
 // Döküm sahası ön ödemeli hesap — SAF katman.
 // Döküm sahasına önce para yatırılır (barkod alınır), her dökümde hesaptan düşer.
 // Yatırılan para: gider kaydı (kategori "Döküm", dump_deposit: true, dump_site_id) — kâr/zararda GİDER SAYILMAZ (ön ödeme),
 // maliyet döküm yapıldıkça (fişteki ton × ücret) yazılır. Nakit tahmininde ise gerçek para çıkışıdır.
 import { isActive, todayStr, addDays } from "./core.js";
-import { dumpFee } from "./dump-fees.js";
+import { dumpFee, calculatedDumpFee } from "./dump-fees.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/\s+/g, " ").trim();
 export const isDumpDeposit = (e) => !!e?.dump_deposit;
 
-// Gider kaydı döküm hesabına yükleme mi? (kategori Döküm + firma/açıklamada döküm sahası adı)
+export const dumpDepositIntent = e => !!e.dump_deposit || /(yat[ıi]r|y[uü]kle|[oö]n [oö]deme|barkod.{0,20}al)/i.test(fold([e.description,e.note].join(" ")));
+// Yükleme niyeti ve tek anlamlı saha eşleşmesi gerekir; yalnız saha adı gideri yüklemeye çevirmez.
 export function depositSiteOf(d, e) {
+  if(!dumpDepositIntent(e))return null;
   if (e.dump_site_id) return live(d, "dump_sites").find((s) => s.id === e.dump_site_id) || null;
   if (!/döküm|dokum/i.test(e.category || "")) return null;
   const t = fold([e.company, e.description, e.note].join(" "));
-  return live(d, "dump_sites").filter((s) => !s.own_yard && fold(s.name).length >= 3).find((s) => t.includes(fold(s.name).split(" ")[0])) || null;
+  const sites=live(d,"dump_sites").filter(s=>!s.own_yard&&fold(s.name).length>=3);
+  const exact=sites.filter(s=>t.includes(fold(s.name)));
+  if(exact.length===1)return exact[0];
+  if(exact.length>1)return null;
+  const candidates=sites.filter(s=>{const token=fold(s.name).split(" ")[0];return token.length>=3&&(" "+t.replace(/[^\p{L}\p{N}]+/gu," ")+" ").includes(" "+token+" ")});
+  return candidates.length===1?candidates[0]:null;
 }
 
 // ---- Döküm faturası (İSTAÇ vb.) ----
@@ -62,52 +70,40 @@ export function dumpInvoices(d, siteId) {
 }
 
 export function dumpAccounts(d, { today = todayStr(), siteId = null } = {}) {
-  const sites = live(d, "dump_sites").filter((s) => !s.own_yard && (!siteId || s.id === siteId));
-  const deps = live(d, "expense_records").filter(isDumpDeposit);
-  const works = live(d, "work_records");
-  const out = [];
-  for (const s of sites) {
-    const deposits = deps.filter((e) => e.dump_site_id === s.id).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    if (!deposits.length && !dumpInvoices(d, s.id).length && siteId == null) continue;
-    const first = deposits[0]?.date || "";
-    // Hesaptan düşen: ilk yüklemeden sonraki bu sahaya yapılan dökümler (elle yazılan döküm maliyeti dahil)
-    const allUses = works.filter((w) => w.dump_site_id === s.id || (!w.dump_site_id && w.dump_area && fold(w.dump_area) === fold(s.name)))
-      .map((w) => ({ w, f: dumpFee(d, w) })).filter((x) => x.f && x.f.amount > 0)
-      .sort((a, b) => String(a.w.date).localeCompare(String(b.w.date)));
-    const invDocs = dumpInvoices(d, s.id);
-    // Fatura varsa hesap ilk faturanın döneminden başlar (geçmiş dönem faturası "ödenmiş" sayılabilir)
-    const start = invDocs.length ? [first, addDays(invDocs[0].date, -31)].filter(Boolean).sort()[0] : first;
-    const uses = allUses.filter((x) => x.w.date >= start);
-    const dep = r2(deposits.reduce((n, e) => n + (Number(e.amount) || 0), 0));
-    const used = r2(uses.reduce((n, x) => n + x.f.amount, 0));
-    const usedEst = r2(uses.filter((x) => x.f.estimated).reduce((n, x) => n + x.f.amount, 0));
-    const recent = uses.filter((x) => x.w.date > addDays(today, -14));
-    const perDay = r2(recent.reduce((n, x) => n + x.f.amount, 0) / 14);
-    const balanceCalc = r2(dep - used);
-    // Faturaya göre: faturalanan tutar sahanın gerçekten düştüğüdür; son faturadan sonraki dökümler tahminle eklenir
-    const invoices = invDocs.map((x, i, arr) => {
-      const prev = arr[i - 1]?.date || addDays(x.date, -31);
-      const ours = allUses.filter((u) => u.w.date > prev && u.w.date <= x.date);
-      return { doc: x, from: prev, ton: Number(x.ton) || 0, amount: Number(x.amount) || 0, ourTon: r2(ours.reduce((n, u) => n + (Number(u.f.ton) || 0), 0)), ourAmount: r2(ours.reduce((n, u) => n + u.f.amount, 0)), ourTrips: ours.length, ourEst: ours.filter((u) => u.f.estimated).length,
-        perTon: Number(x.ton) > 0 ? r2(Number(x.amount) / Number(x.ton)) : null };
-    });
-    const lastInv = invoices.at(-1)?.doc.date || null;
-    const invTotal = r2(invoices.reduce((n, x) => n + x.amount, 0));
-    const after = r2(allUses.filter((u) => lastInv && u.w.date > lastInv).reduce((n, u) => n + u.f.amount, 0));
-    const balanceInv = invoices.length ? r2(dep - invTotal - after) : null;
-    const balance = balanceInv ?? balanceCalc; // fatura varsa saha faturası esas alınır
-    out.push({ site: s, deposits, uses, dep, used, usedEst, balance, perDay, daysLeft: perDay > 0 ? Math.floor(Math.max(0, balance) / perDay) : null,
-      invoices, invTotal, lastInv, balanceInv, balanceCalc, afterInv: after, trips: uses.length, missingTon: uses.filter((x) => x.f.estimated).length, reported: s.account_reported || null });
+ const out=[];
+ for(const site of live(d,"dump_sites").filter(s=>!s.own_yard&&(!siteId||s.id===siteId))){
+  const state=sharedDumpBalance(d,site.id,{today}),invoices=dumpInvoices(d,site.id).filter(doc=>doc.date<=today);
+  const works=live(d,"work_records").filter(w=>w.dump_site_id===site.id&&w.date<=today);
+  if(!siteId&&!state.deposits.length&&!state.receipts.length&&!state.opening&&!invoices.length&&!works.length&&!state.assumed_deposits.length)continue;
+  const allReceipts=dumpReceiptRows(d).filter(e=>e.dump_site_id===site.id&&e.date<=today);
+  const pending=[];
+  for(const w of works){
+   if(state.start&&w.date<state.start)continue;
+   if(w.dump_payer==="customer")continue;
+   const confirmed=allReceipts.filter(e=>e.work_record_id===w.id).reduce((n,e)=>n+e.trips,0),expected=w.unit==="Sefer"?Number(w.quantity):1,remaining=Math.max(0,expected-confirmed);
+   if(!remaining)continue;const base=calculatedDumpFee(d,w);
+   pending.push({w,f:base,remaining_trips:remaining,amount:base?.amount>0?r2(base.amount*remaining/expected):null});
   }
-  return out.sort((a, b) => a.balance - b.balance);
+  const estimated=r2(pending.reduce((n,x)=>n+(x.amount||0),0));
+  const inv=invoices.map(doc=>{
+   const complete=!!doc.period_from&&!!doc.period_to,rows=complete?allReceipts.filter(e=>e.date>=doc.period_from&&e.date<=doc.period_to):[];
+   const account=rows.filter(e=>e.payer==='company_account');
+   return {doc,from:doc.period_from||null,to:doc.period_to||null,period_known:complete,ton:Number(doc.ton)||0,amount:Number(doc.amount)||0,ourTon:complete?r2(account.reduce((n,e)=>n+(e.tonnage||0),0)):null,ourAmount:complete?r2(account.reduce((n,e)=>n+e.amount,0)):null,ourTrips:complete?account.reduce((n,e)=>n+e.trips,0):null,perTon:Number(doc.ton)>0?r2(Number(doc.amount)/Number(doc.ton)):null};
+  });
+  const recent=state.account_receipts.filter(e=>e.date>addDays(today,-14)),perDay=r2(recent.reduce((n,e)=>n+e.amount,0)/14);
+  const reported=site.account_reported,reportedBalance=reported?.date&&reported.date<=today?sharedDumpBalance(d,site.id,{today:reported.date}).balance:null;
+  out.push({...state,site,dep:state.credit,usedEst:estimated,pending,pending_count:pending.length,pending_unknown:pending.filter(x=>x.amount==null).length,projected_balance:r2(state.balance-estimated),trips:state.account_receipts.reduce((n,e)=>n+e.trips,0),perDay,daysLeft:perDay>0?Math.floor(Math.max(0,state.balance)/perDay):null,invoices:inv,invTotal:r2(inv.reduce((n,e)=>n+e.amount,0)),balanceCalc:state.balance,balanceInv:null,reported:reported||null,reported_balance:reportedBalance,reported_difference:reportedBalance==null?null:r2(Number(reported.amount)-reportedBalance),missingTon:pending.filter(x=>x.f?.estimated).length});
+ }
+ return out.sort((a,b)=>a.balance-b.balance);
 }
 
 // Ana sayfa / brifing uyarıları
 export function dumpAccountAlerts(d, { today = todayStr() } = {}) {
   const items = [];
   for (const a of dumpAccounts(d, { today })) {
+    if(a.pending_count)items.push({kind:"warn",text:`${a.site.name}: ${a.pending_count} işte döküm kesintisi kontrolü bekliyor`,sub:`${a.usedEst.toLocaleString("tr-TR")} ₺ yalnız tahmin; kayıtlı ortak bakiyeden düşülmedi`,href:"#/dokum-hesap/"+a.site.id});
     if (a.balance < 0) items.push({ kind: "alert", text: `${a.site.name} döküm hesabı eksiye düştü`, sub: `Hesaplanan bakiye ${a.balance.toLocaleString("tr-TR")} ₺ — para yatırın ya da fişleri kontrol edin`, href: "#/dokum-hesap/" + a.site.id });
-    else if (a.daysLeft != null && a.daysLeft <= 3) items.push({ kind: "warn", text: `${a.site.name} döküm hesabında ~${Math.round(a.balance).toLocaleString("tr-TR")} ₺ kaldı`, sub: `Günde ~${Math.round(a.perDay).toLocaleString("tr-TR")} ₺ harcanıyor → ~${a.daysLeft} gün yeter`, href: "#/dokum-hesap/" + a.site.id });
+    else if (a.daysLeft != null && a.daysLeft <= 3) items.push({ kind: "warn", text: `${a.site.name} döküm hesabında ~${Math.round(a.balance).toLocaleString("tr-TR")} ₺ kaldı`, sub: `Günde ~${Math.round(a.perDay).toLocaleString("tr-TR")} ₺ harcanıyor → yalnız kayıtlı fişlere göre ~${a.daysLeft} gün yeter`, href: "#/dokum-hesap/" + a.site.id });
   }
   return items;
 }

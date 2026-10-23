@@ -1,3 +1,4 @@
+import {linkedDumpExpenseIds} from "./dump-ledger-core.js";
 import { recognizedBill, pricedBill } from "./ledger-policy.js";
 // Tüm masraflar tek listede: gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış (gidere/bakıma bağlı değilse).
 // Ana sayfa grafiği, Finans özeti, Giderler ekranı ve Yönetici paneli aynı tanımı kullanır.
@@ -5,7 +6,7 @@ import { recognizedBill, pricedBill } from "./ledger-policy.js";
 // Depoya alınan mazot (tank girişi) masraf sayılmaz: araca verildikçe "Yakıt" olarak sayılır (çift sayım olmasın).
 import { isActive, toKurus, fromKurus } from "./core.js";
 import { fuelPrice } from "./finance-chart.js";
-import { dumpFeeRows } from "./dump-fees.js";
+import { dumpFeeRows, unassignedDumpCosts } from "./dump-fees.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 export const COST_KINDS = { gider: "Gider", yakit: "Yakıt", bakim: "Bakım / Arıza", esnaf: "Alış belgesi", dokum: "Döküm ücreti", personel: "Personel maaşı" };
@@ -20,10 +21,11 @@ export function billTotal(b) {
 export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
   const inR = (x) => x && (!from || x >= from) && (!to || x <= to);
   const rows = [];
+  const dumpLinked = linkedDumpExpenseIds(d);
   const linked = new Set(live(d, "payables").filter(pricedBill).filter(b => b.source_store && b.source_id).map(b => b.source_store + ":" + b.source_id));
   const name = (s, id) => (id ? live(d, s).find((x) => x.id === id)?.name || "" : "");
   for (const e of live(d, "expense_records"))
-    if (inR(e.date) && Number(e.amount) > 0 && !e.dump_deposit && !linked.has("expense_records:" + e.id)) // döküm hesabına yükleme gider değil (döküm ücreti ayrıca yazılır)
+    if (inR(e.date) && Number(e.amount) > 0 && !e.dump_deposit && !dumpLinked.has(e.id) && !linked.has("expense_records:" + e.id)) // döküm hesabına yükleme gider değil (döküm ücreti ayrıca yazılır)
       rows.push({ kind: "gider", id: e.id, date: e.date, amount: Number(e.amount), label: e.category || "Gider", sub: [e.company, e.description].filter(Boolean).join(" · "), vehicle_id: e.vehicle_id || null, href: null });
   for (const f of live(d, "fuel_records")) {
     if (!inR(f.date) || f.fuel_source === "Müşteri Verdi" || linked.has("fuel_records:" + f.id)) continue;
@@ -43,7 +45,8 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
   // Döküm ücreti: döküm sahası kartındaki ücret × fişteki ton (ya da aracın ortalama yükü) / sefer
   for (const f of dumpFeeRows(d, { from, to }))
     if (f.amount > 0 && !live(d, "payables").some(b => recognizedBill(b) && b.party_type === "dump_site" && (b.items || []).some(i => i.work_record_id === f.w.id)))
-      rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, label: `${f.site} · ${f.manual ? "elle yazılan" : f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺" : f.trips + " sefer × " + f.fee + " ₺"}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
+      rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, estimated: !!(f.provisional || f.estimated), confirmed: !!f.confirmed, label: `${f.site} · ${f.confirmed ? "gerçek fiş kesintisi" : (f.manual ? "elle yazılan tahmin" : f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺ (tahmin)" : f.trips + " sefer × " + f.fee + " ₺ (tahmin)")}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
+  for(const e of unassignedDumpCosts(d,{from,to}))rows.push({kind:"dokum",id:e.id,date:e.date,amount:e.amount,label:"Fişli döküm · iş bağlantısı bekliyor",sub:e.receipt_no||e.note||"",vehicle_id:e.vehicle_id,href:"#/dokum-hesap/"+e.dump_site_id});
   // Personel maaşı: puantajda ay kapatılınca yazılan "Ücret Tahakkuku" (avans ve ödemeler ayrıca sayılmaz → çift sayım yok)
   for (const p of live(d, "payroll_entries"))
     if (p.kind === "Ücret Tahakkuku" && inR(p.date) && Number(p.amount) > 0)

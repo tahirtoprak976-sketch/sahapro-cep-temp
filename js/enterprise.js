@@ -1481,6 +1481,7 @@ async function costReport(ctx, d) {
               maintenance_records: "bakim",
               payroll_entries: "ucretler",
               work_records: "isler",
+              dump_entries: "dokum-hareket",
             }[r.source_store] +
             "/" +
             r.source_id,

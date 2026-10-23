@@ -1392,7 +1392,8 @@ async function expenses(ctx) {
       ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}${tot.dokum ? chip("dokum", "Döküm", tot.dokum) : ""}${tot.personel ? chip("personel", "Maaş", tot.personel) : ""}
     </div>
     <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti + personel maaşı (puantajda ay kapatılınca; avans ayrıca sayılmaz). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
-    ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Döküm ücreti hem iş kayıtlarından hesaplanıyor hem de \"Döküm\" gideri olarak girilmiş. Aynı parayı iki kez saymamak için birini kullanın (döküm sahası kartındaki ücreti silin ya da gider kaydını silin).") : ""}
+    ${all.some(r => r.kind === "dokum" && r.estimated) ? notice("info", "Toplam masrafın " + fmtTL(all.filter(r => r.kind === "dokum" && r.estimated).reduce((n,r) => n+r.amount,0)) + " ₺ bölümü henüz fişle doğrulanmamış döküm tahminidir. Ortak saha bakiyesi yalnız gerçek yükleme ve kesintilerle değişir.") : ""}
+    ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Ayrıca yazılmış döküm giderleri var. Aynı kesintiyse Ortak Döküm Hesabı'nda fişe bağlayın; kayıtları silmeden tek maliyet olarak izleyin. Yüklemeyi yalnız gerçekten sahaya yatırılan paraysa yükleme olarak işaretleyin.") : ""}
     ${tot.personel && all.some((r) => r.kind === "gider" && /personel|maaş|maas|avans/i.test(r.label)) ? notice("warn", "Maaş puantajdan masrafa yazılıyor; giderlerde de \"Personel\" kaydı var. Aynı maaşı ya da avansı gider olarak da girdiyseniz iki kez sayılır — gider kaydını silin.") : ""}
     ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
     <div data-list></div>

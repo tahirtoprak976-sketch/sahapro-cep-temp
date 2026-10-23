@@ -22,7 +22,7 @@ const D = { ...d, expense_records: [{ id: "e", date: "2026-09-01", amount: 20000
   documents: [{ id: "f", category: "Döküm Faturası", owner_type: "dump_site", owner_id: "b", date: "2026-10-07", amount: 112612.8, ton: 680.029 }] };
 const [a] = dumpAccounts(D, { today: "2026-10-16", siteId: "b" });
 assert.equal(a.invoices.length, 1);
-assert.equal(a.invoices[0].ourTon, 30);
+assert.equal(a.invoices[0].ourTon, null,"dönem belirtilmeden fişler faturaya tahminen bağlanmaz");
 assert.equal(a.invoices[0].perTon, 165.6);
-assert.equal(a.balanceInv, Math.round((200000 - 112612.8 - 25 * 160) * 100) / 100);
+assert.equal(a.balanceInv,null);assert.equal(a.balance,200000,"fatura kendiliğinden hesap kesintisi değildir");
 console.log("dump-invoice ok");

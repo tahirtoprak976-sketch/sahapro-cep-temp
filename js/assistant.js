@@ -749,9 +749,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
             r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : r.payment_method === "Personel Ödedi" && r.paid_by ? "p:" + r.paid_by : r.payment_method || "Şirket Ödedi")}</select></div>
           <div class="field"><label>Veresiye esnaf</label><select name="supplier">${opt(suppliers, r.credit ? r.supplier_id : "", "— peşin —")}</select></div>
         </div>
-        ${r.dumpInv ? `<div class="notice info" style="margin-top:6px"><div>Bu bir <b>döküm sahası faturası</b>. Gider yazılmaz: para döküm hesabına yatırılırken ödendi, maliyet her dökümde ayrıca yazılıyor (yoksa iki kez sayılır). Fatura döküm hesabına bağlanır; faturadaki ton ve tutar kayıtlarımızla karşılaştırılır.${r.dumpInv.ton ? `<br><b>${r.dumpInv.ton.toLocaleString("tr-TR")} ton</b>${r.amount ? ` · ton başı ${(Math.round((r.amount / r.dumpInv.ton) * 100) / 100).toLocaleString("tr-TR")} ₺ (KDV dahil)` : ""}` : ""}${r.dumpInv.place ? ` · yer: ${esc(r.dumpInv.place)}` : ""}</div></div>
+        ${r.dumpInv ? `<div class="notice info" style="margin-top:6px"><div>Bu bir <b>döküm sahası faturası</b>. Fatura tek başına ödeme veya kesinti kanıtı değildir. Yüklemeler ve gerçek fişler ortak döküm hesabından ayrı kaydedilir. Fatura döküm hesabına bağlanır; faturadaki ton ve tutar kayıtlarımızla karşılaştırılır.${r.dumpInv.ton ? `<br><b>${r.dumpInv.ton.toLocaleString("tr-TR")} ton</b>${r.amount ? ` · ton başı ${(Math.round((r.amount / r.dumpInv.ton) * 100) / 100).toLocaleString("tr-TR")} ₺ (KDV dahil)` : ""}` : ""}${r.dumpInv.place ? ` · yer: ${esc(r.dumpInv.place)}` : ""}</div></div>
           <div class="formgrid2"><div class="field"><label>Döküm sahası</label><select name="dinv_site">${opt(v.dumpSites || [], r.dumpInv.site_id, "— seçin —")}</select></div>
-          <div class="field"><label>Nasıl kaydedilsin</label><select name="dinv_mode">${opt([["paid", "Geçmiş dönem: fatura tutarını ödenmiş say (giderlerde görünür)"], ["inv", "Yalnız fatura (para yatırma kayıtları girili)"], ["exp", "Düz gider (dökümler ayrıca sayılır — iki kez!)"]], r.dumpInv.hasDeposits ? "inv" : "paid")}</select></div></div>` : ""}
+          <div class="field"><label>Nasıl kaydedilsin</label><select name="dinv_mode">${opt([["inv", "Yalnız fatura / karşılaştırma belgesi"]], "inv")}</select></div></div>` : ""}
         <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.note || "")}" placeholder="ne alındı / yapıldı"></div>${r.issues_pay ? `<div class="muted tiny">⚠ ${esc(r.issues_pay)}</div>` : ""}${detailHtml(r)}${issues(r)}</div>`)
       .join("") +
     v.tankIn
@@ -1506,7 +1506,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const r = v.expenses[Number(c.dataset.i)];
         const file = r.photo != null ? files[r.photo] : null;
         // Döküm faturası → döküm hesabına bağlı belge (gider değil); saha VKN/yer adı öğrenilir
-        if (r.dumpInv && ["inv", "paid"].includes(val(c, "dinv_mode"))) {
+        if (r.dumpInv) {
           const sid = val(c, "dinv_site");
           if (!sid) { toast("Döküm faturası için döküm sahasını seçin", "err"); continue; }
           const D = r.detail || {}, amount = Number(val(c, "amount")) || r.amount, date = val(c, "date") || todayStr();
@@ -1518,15 +1518,8 @@ async function save(ctx, out, v, d, { message, files }) {
             drec = file ? await db.saveDocument(doc, file) : await db.saveNew("documents", doc, "Asistan: döküm faturası");
           } catch (e) { toast(e.message || String(e), "err"); continue; }
           const site = await db.get("dump_sites", sid);
-          // Geçmiş dönem: parça parça yatırılan paralar tek tek bilinmiyor → fatura tutarı döküm hesabına yatırılmış sayılır.
-          // Giderlerde görünür ve nakit çıkışıdır; kâr-zararda dökümler zaten ton × ücretle sayıldığından ikinci kez maliyet olmaz.
-          if (val(c, "dinv_mode") === "paid") {
-            const pay = val(c, "pay");
-            await db.saveNew("expense_records", { date, amount, category: "Döküm", company: site.name, dump_site_id: sid, dump_deposit: true, invoice_paid: true, invoice_no: D.no || null, dump_invoice_doc_id: drec?.id || null,
-              payment_method: pay && !pay.startsWith("p:") && pay !== "Şirket Ödedi" ? pay : "Şirket Ödedi", receipt: "Evet",
-              description: `${site.name} döküm faturası ${D.no || ""} — geçmiş dönem ödemesi (kart/havale parça parça; fatura belgede)`.replace(/\s+/g, " ") }, "Asistan: geçmiş dönem döküm ödemesi");
-            done.dumpinvPaid++;
-          } else done.dumpinv++;
+          // Fatura ödeme veya kesinti kanıtı değildir; gerçek bakiye yalnız yükleme/fişten oluşur.
+          done.dumpinv++;
           const learnF = {};
           if (D.seller_tax_no && !site.invoice_tax_no) learnF.invoice_tax_no = D.seller_tax_no;
           if (r.dumpInv.place && !String(site.invoice_place || "").toLocaleLowerCase("tr-TR").includes(r.dumpInv.place.toLocaleLowerCase("tr-TR"))) learnF.invoice_place = [site.invoice_place, r.dumpInv.place].filter(Boolean).join(" / ").slice(0, 160);
@@ -1553,6 +1546,9 @@ async function save(ctx, out, v, d, { message, files }) {
           const payer = pay.startsWith("p:") ? pay.slice(2) : null;
           // "Bolluca'ya 50.000 yatırdım" → döküm sahası ön ödemeli hesabına yükleme (gider sayılmaz, dökümde düşer)
           const dsite = (await import("./dump-account.js")).depositSiteOf(fresh, { category: f.category, company: val(c, "company"), description: val(c, "description") || source });
+          if(!dsite && /döküm|dokum/i.test(f.category) && (await import("./dump-account.js")).dumpDepositIntent({description:val(c,"description")||source})) {
+            toast("Para yüklemesinin döküm sahası belli değil. Ortak Döküm Hesaplarından doğru sahayı seçerek kaydedin; gider yazılmadı.","err");continue;
+          }
           if (dsite) done.dumpdep++;
           // Fatura ayrıntısı: aynı satıcının aynı fatura numarası daha önce girildiyse sor
           const D = r.detail;
@@ -1564,7 +1560,7 @@ async function save(ctx, out, v, d, { message, files }) {
             if (!eg) continue;
             if (eg.existing) { for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", eg.existing.id, image); continue; }
           }
-          const rec = await skipDup(db.saveNew("expense_records", {
+          const rec = dsite && !r.driver_entry_id ? await (async()=>{const {saveDumpEntry}=await import("./dump-ledger-db.js");const entry=await saveDumpEntry({kind:"TOPUP",date:f.date,dump_site_id:dsite.id,amount:f.amount,payment_method:payer?"Personel Ödedi":pay,personnel_id:payer||null,note:val(c,"description")||source},r.photos?.length?r.photos.map(pi=>files[pi]).filter(Boolean):file?[file]:[],eg?.op?.id||ctx.core.uuid());const expense=await db.get("expense_records",entry.expense_id);return {...expense,_existing:!!entry._existing};})() : await skipDup(db.saveNew("expense_records", {
             ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
             ...(dsite ? { dump_site_id: dsite.id, dump_deposit: true } : {}),
             date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: payer, vehicle_id: f.vehicle_id,
@@ -1572,8 +1568,8 @@ async function save(ctx, out, v, d, { message, files }) {
             company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
           }, "Asistan", { op: eg?.op || null }));
           if (!rec) continue;
-          if (rec._existing) { done.already++; for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image); continue; }
-          for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image);
+          if (rec._existing) { done.already++; if(!dsite||r.driver_entry_id)for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image); continue; }
+          if(!dsite||r.driver_entry_id)for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image);
           // Kalemlerde filtre/yağ/balata… varsa ve araç seçiliyse: bakım kaydı (maliyet giderde; bakım takvimi için)
           if (D?.items?.length && f.vehicle_id && qs("[data-mhint]", c)?.checked) {
             const { maintenanceHint } = await import("./receipt-detail.js");

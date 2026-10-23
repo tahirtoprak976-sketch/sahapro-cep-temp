@@ -95,6 +95,7 @@ const SECTION = {
   "detayli-rapor": "daha",
   nakit: "finans",
   "dokum-hesap": "daha",
+  "dokum-hareket": "daha",
   "is-sozlesmeleri": "daha",
   "is-sozlesmesi": "daha",
   "malzeme-katsayilari": "daha",
