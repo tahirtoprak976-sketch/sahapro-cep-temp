@@ -3,8 +3,8 @@
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.58";
-export const SCHEMA_VERSION = 5;
+export const APP_VERSION = "SAHAPRO SOLO v3.9.59";
+export const SCHEMA_VERSION = 6;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
 export const SW_CACHE = "sahapro-solo-v2";
@@ -52,7 +52,7 @@ export const ENTITY_STORES = [
   "daily_closings",
   "instruments",
   "inbox_messages", "meter_readings", "shift_assignments", "custody_records",
-  "downtime_records", "maintenance_parts", "cost_allocations", "bank_import_rows", "stock_counts",
+  "downtime_records", "maintenance_parts", "cost_allocations", "bank_import_rows", "stock_counts", "dump_entries",
 ];
 export const SYSTEM_STORES = ["attachments", "meta", "drafts"];
 

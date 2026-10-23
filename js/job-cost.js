@@ -62,7 +62,7 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   const noPerson = works.filter((w) => !personOf(w)).length;
   // ---- Döküm ve diğer giderler
   let dumpTL = 0, dumpEst = false;
-  for (const w of works) { try { const f = dumpFee(d, w); if (f?.amount) { dumpTL += f.amount; if (f.estimated) dumpEst = true; } } catch { /* yok */ } }
+  for (const w of works) { try { const f = dumpFee(d, w); if (f?.amount) { dumpTL += f.amount; if (f.estimated || f.provisional) dumpEst = true; } } catch { /* yok */ } }
   const exp = live(d, "expense_records").filter((e) => e.site_id === site.id);
   const otherTL = exp.reduce((n, e) => n + (Number(e.amount ?? e.total) || 0), 0);
   // ---- Gelir (net)

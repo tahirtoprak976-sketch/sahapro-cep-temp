@@ -1,134 +1,389 @@
-// Döküm hesabı ekranı (#/dokum-hesap, #/dokum-hesap/{saha}): yatırılan para, dökümde düşen, kalan, kaç gün yeter,
-// döküm sahasının söylediği bakiyeyle karşılaştırma (mutabakat).
-import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, sheet, sheetClose, confirmDialog } from "./ui.js";
-import { isActive, PAYMENT_METHODS } from "./core.js";
-import { dumpAccounts, depositSiteOf } from "./dump-account.js";
-
-const tl = (n) => (Number(n) < 0 ? "−" : "") + Math.abs(Math.round(Number(n) || 0)).toLocaleString("tr-TR") + " ₺";
-const num = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
-
-export async function screen(ctx) {
-  if (ctx.parts[0] !== "dokum-hesap") return false;
-  const { root, db } = ctx;
-  const today = todayStr();
-  const d = await db.dumpAll();
-  const sid = ctx.parts[1];
-  const sites = (d.dump_sites || []).filter((s) => isActive(s) && !s.own_yard);
-  // Eski "Döküm" giderleri: döküm ücreti ayrıca hesaplandığı için iki kez maliyet sayılıyordu → hesaba aktarılabilir
-  const legacy = (d.expense_records || []).filter((e) => isActive(e) && !e.dump_deposit && /döküm|dokum/i.test(e.category || ""));
-
-  const depositSheet = (site) => {
-    const sh = sheet(`<h3>${esc(site.name)} — para yatırdım</h3>
-      <div class="formgrid2"><div class="field"><label>Tarih</label><input type="date" data-dd value="${today}"></div>
-      <div class="field"><label>Tutar (₺)</label><input type="number" inputmode="decimal" data-da></div></div>
-      <div class="formgrid2"><div class="field"><label>Ödeme</label><select data-dm>${["Havale", "Nakit", "Kart"].concat(PAYMENT_METHODS.filter((m) => !["Havale", "Nakit", "Kart", "Personel Ödedi"].includes(m))).map((m) => `<option>${esc(m)}</option>`).join("")}</select></div>
-      <div class="field"><label>Barkod sayısı (isteğe bağlı)</label><input type="number" inputmode="numeric" data-db></div></div>
-      <div class="field"><label>Not</label><input data-dn placeholder="dekont no, kim yatırdı…"></div>
-      <div class="row" style="gap:8px"><button class="btn ghost grow" data-x>Vazgeç</button><button class="btn primary grow" data-ok>Kaydet</button></div>`, { modal: true });
-    qs("[data-x]", sh).onclick = () => sheetClose();
-    qs("[data-ok]", sh).onclick = async () => {
-      const amount = Number(String(qs("[data-da]", sh).value).replace(",", "."));
-      if (!(amount > 0)) return toast("Tutar yazın", "err");
-      const bc = Number(qs("[data-db]", sh).value) || null;
-      await db.saveNew("expense_records", { date: qs("[data-dd]", sh).value || today, amount, category: "Döküm", company: site.name, dump_site_id: site.id, dump_deposit: true, barcodes: bc,
-        payment_method: qs("[data-dm]", sh).value, receipt: "Hayır", description: [`${site.name} döküm hesabına yükleme`, bc ? bc + " barkod" : "", qs("[data-dn]", sh).value.trim()].filter(Boolean).join(" · ") }, "Döküm hesabına yükleme");
-      sheetClose(); toast("Kaydedildi", "ok"); ctx.reload();
-    };
+// Firma/saha ortak ön ödemeli hesap. Plakaya göre süzmek bakiyeyi değiştirmez.
+import * as ui from "./ui.js";
+import { isActive, todayStr, uuid, fmtTL, trDate } from "./core.js";
+import { dumpAccounts } from "./dump-account.js";
+import { dumpReceiptRows } from "./dump-ledger-core.js";
+import {
+  saveDumpEntry,
+  cancelDumpEntry,
+  linkDumpReceipt,
+  saveDumpReport,
+  setDumpInvoicePeriod,
+} from "./dump-ledger-db.js";
+import { startActivity } from "./update-safety.js";
+const {
+  qs,
+  qsa,
+  esc,
+  appbar,
+  notice,
+  kv,
+  fSelect,
+  fText,
+  fNum,
+  fDate,
+  fArea,
+  collectForm,
+  toast,
+  sheet,
+  sheetClose,
+  confirmDialog,
+} = ui;
+const money = (v) => fmtTL(v) + " ₺";
+const kindName = {
+  TOPUP: "Para yükleme",
+  RECEIPT: "Fiş / gerçek kesinti",
+  OPENING: "Açılış bakiyesi",
+  REFUND: "Sahadan para iadesi",
+};
+const payerName = {
+  company_account: "Ortak döküm hesabımız",
+  company_direct: "Şirket ayrıca ödedi (ortak hesaptan değil)",
+  customer: "Müşteri doğrudan ödedi",
+};
+const button = (label, hash) =>
+  `<button class="btn" data-go="${esc(hash)}">${esc(label)}</button>`;
+async function bindSheetForm(sh, fn) {
+  const form = qs("form", sh);
+  const releaseForm = startActivity("Döküm formu açık; kaydedin veya kapatın");
+  const observer = new MutationObserver(() => {
+    if (!sh.isConnected) {
+      releaseForm();
+      observer.disconnect();
+    }
+  });
+  observer.observe(sh.parentNode, { childList: true });
+  qs("[data-close]", sh)?.addEventListener("click", sheetClose);
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const b = qs("[type=submit]", form);
+    if (b.disabled) return;
+    b.disabled = true;
+    form.inert = true;
+    const finish = startActivity("Döküm hesabı işlemi");
+    try {
+      await fn(collectForm(form), form);
+      sheetClose();
+    } catch (error) {
+      qs("[data-error]", form).textContent = error.message;
+      toast(error.message, "err");
+    } finally {
+      finish();
+      b.disabled = false;
+      form.inert = false;
+    }
   };
-
-  if (!sid) {
-    const acc = dumpAccounts(d, { today });
-    const withAcc = new Set(acc.map((a) => a.site.id));
-    root.innerHTML = appbar("Döküm Hesapları", "Yatırılan para · dökümde düşen · kalan") + `
-      <div style="height:10px"></div>
-      ${legacy.length ? notice("warn", `${legacy.length} eski "Döküm" gideri var (${tl(legacy.reduce((n, e) => n + (Number(e.amount) || 0), 0))}). Döküm ücreti fişten ayrıca hesaplandığı için bunlar maliyete iki kez giriyordu.`) + '<button class="btn block" data-legacy style="margin-bottom:8px">Eski döküm giderlerini döküm hesabına aktar</button>' : ""}
-      ${acc.map((a) => `<div class="card tap" data-go="#/dokum-hesap/${esc(a.site.id)}" style="border-left:4px solid ${a.balance < 0 ? "#d9534f" : a.daysLeft != null && a.daysLeft <= 3 ? "#e0a030" : "#2e9e6b"}">
-        <div class="row between"><b>${esc(a.site.name)}</b><b style="color:${a.balance < 0 ? "#d9534f" : "inherit"}">${tl(a.balance)}</b></div>
-        <div class="tiny muted">Yatırılan ${tl(a.dep)} · dökümde düşen ${tl(a.used)} (${a.trips} döküm)${a.daysLeft != null ? ` · ~${a.daysLeft} gün yeter` : ""}${a.balanceInv != null ? " · faturaya göre" : ""}</div></div>`).join("") || notice("info", "Henüz döküm hesabına para yatırma kaydı yok. Aşağıdan sahayı seçip \"Para yatırdım\" deyin; ya da asistana \"Bolluca'ya 50.000 yatırdım\" yazın.")}
-      <div class="section-title">Para yatır</div>
-      ${sites.map((s) => `<div class="card"><div class="row between"><span>${esc(s.name)} <span class="tiny muted">${Number(s.fee) > 0 ? `${num(s.fee)} ₺ / ${String(s.fee_unit || "").toLocaleLowerCase("tr-TR")}` : "ücret yazılmamış"}</span></span><button class="btn sm${withAcc.has(s.id) ? "" : " primary"}" data-dep="${esc(s.id)}">+ Para yatırdım</button></div></div>`).join("")}
-      <div class="tiny muted" style="margin:8px 4px 80px">Döküm hesabına yatırılan para kâr-zararda gider sayılmaz; maliyet her dökümde (fişteki ton × sahanın ücreti) yazılır. Ton fişi yoksa aracın ortalama yükü kullanılır (tahmini). Nakit tahmininde yatırılan para gerçek çıkıştır.</div>`;
-    for (const b of qsa("[data-dep]", root)) b.addEventListener("click", () => depositSheet(sites.find((s) => s.id === b.dataset.dep)));
-    qs("[data-legacy]", root)?.addEventListener("click", async () => {
-      let moved = 0, skipped = 0;
-      if (!(await confirmDialog("Aktarılsın mı?", "Sahası anlaşılan eski döküm giderleri döküm hesabına yükleme olarak işaretlenir (gider olmaktan çıkar). Sahası anlaşılmayanlara dokunulmaz.", "Aktar"))) return;
-      for (const e of legacy) {
-        const s = depositSiteOf(d, e);
-        if (s) { await db.saveExisting("expense_records", e, { dump_site_id: s.id, dump_deposit: true }, "Döküm hesabına aktarıldı"); moved++; } else skipped++;
-      }
-      toast(`${moved} kayıt aktarıldı${skipped ? ` · ${skipped} kaydın sahası anlaşılamadı (açıklamaya saha adını yazın)` : ""}`, moved ? "ok" : "err");
-      ctx.reload();
+}
+const tail =
+  '<div data-error role="alert"></div><div class="row" style="gap:8px"><button class="btn" data-close type="button">Vazgeç</button><button class="btn primary" type="submit">Kaydet</button></div>';
+export async function screen(ctx) {
+  if (!["dokum-hesap", "dokum-hareket"].includes(ctx.parts[0])) return false;
+  const { root, db, parts, query: q } = ctx,
+    d = await db.dumpAll(),
+    today = todayStr();
+  const live = (s) => (d[s] || []).filter(isActive),
+    name = (s, id) => (d[s] || []).find((r) => r.id === id)?.name || "—";
+  const entry =
+    parts[0] === "dokum-hareket"
+      ? live("dump_entries").find((e) => e.id === parts[1])
+      : null;
+  const sid =
+    entry?.dump_site_id || (parts[0] === "dokum-hesap" ? parts[1] : null);
+  const sites = live("dump_sites").filter((s) => !s.own_yard),
+    site = sites.find((s) => s.id === sid);
+  function entrySheet(kind, work = null, legacy = null) {
+    const key = uuid();
+    const works = live("work_records").filter(
+      (w) => w.dump_site_id === site.id,
+    );
+    const label = (w) =>
+      `${trDate(w.date)} · ${name("vehicles", w.vehicle_id)} · ${name("customers", w.customer_id)} · ${w.quantity} ${w.unit}`;
+    const sh = sheet(
+      `<h3>${esc(site.name)} · ${kindName[kind]}</h3><form>${notice("info", kind === "RECEIPT" ? "Fiş/ekstredeki gerçek tutarı yazın. Tahmini ton × tarife otomatik kesin kesinti yapılmaz. Döküm dahil işte müşteriye ayrıca borç yazılmaz." : kind === "OPENING" ? "Bu tarihin gün başındaki ortak bakiyeyi girin. Önceki yükleme/kesintiler bu başlangıca dahil kabul edilir; kasa veya gider oluşmaz." : "Yükleme ve para iadesi iş maliyeti değildir. Bu ekran otomatik banka/kasa hareketi oluşturmaz; dekont ve ödeme yöntemi kayıtta saklanır.")}${fDate("Tarih", "date", legacy?.date || work?.date || today, true)}${fNum(kind === "OPENING" ? "Gün başı bakiye (₺)" : "Gerçek tutar (₺)", "amount", legacy?.amount ?? "", { req: true, step: "any" })}${
+        kind === "RECEIPT"
+          ? `${fSelect(
+              "Araç",
+              "vehicle_id",
+              live("vehicles").map((v) => ({ v: v.id, t: v.name })),
+              work?.vehicle_id || q.vehicle_id || "",
+              { req: true },
+            )}${fSelect(
+              "Bağlanacak iş (sonra da bağlanabilir)",
+              "work_record_id",
+              works.map((w) => ({ v: w.id, t: label(w) })),
+              work?.id || "",
+            )}${fSelect(
+              "Dökümü ödeyen",
+              "payer",
+              Object.entries(payerName).map(([v, t]) => ({ v, t })),
+              "company_account",
+              { empty: false },
+            )}<div class="formgrid2">${fText("Fiş / kesinti no", "receipt_no", work?.slip_no || "")}${fNum("Fişin kapsadığı sefer", "trips", 1, { step: 1, req: true })}${fNum("Fişteki net ton (opsiyonel)", "tonnage", "", { step: "any" })}</div>${fSelect(
+              "Önceden ayrıca gider yazıldıysa aynı gideri bağla",
+              "expense_id",
+              live("expense_records")
+                .filter((e) => !e.dump_deposit)
+                .map((e) => ({
+                  v: e.id,
+                  t: `${trDate(e.date)} · ${e.category} · ${money(e.amount)}`,
+                })),
+              "",
+            )}`
+          : kind === "TOPUP"
+            ? fSelect(
+                "Ödeme bilgisi",
+                "payment_method",
+                ["Havale", "Nakit", "Kart", "Personel Ödedi", "Diğer"],
+                "Havale",
+                { empty: false },
+              ) +
+              fSelect(
+                "Personel cebinden ödediyse",
+                "personnel_id",
+                live("personnel").map((p) => ({ v: p.id, t: p.name })),
+                legacy?.personnel_id || "",
+              )
+            : ""
+      }${fText("Barkod / referans (isteğe bağlı)", "barcode", "")}${fText("Dekont / ekstre referansı", "reference", "")}${fArea("Açıklama / belge kaynağı", "note", legacy ? "Kullanıcı kontrolüyle eski giderden yükleme" : "")}${legacy ? notice("warn", "Bu gideri yalnız gerçekten hesaba yatırılan paraysa yüklemeye dönüştürün. Seferdeki döküm ücretini burada yükleme yapmayın.") : ""}${["TOPUP", "RECEIPT"].includes(kind) ? '<div class="field"><label>Dekont / fiş fotoğrafı veya PDF (opsiyonel)</label><input type="file" name="proof" accept="image/jpeg,image/png,image/webp,application/pdf" multiple><small>En fazla 8 dosya / 30 MB; belgeler bu telefonda saklanır.</small></div>' : ""}<label class="history-check"><input type="checkbox" data-confirm required> Bilgileri kontrol ettim</label>${tail}</form>`,
+      { modal: true },
+    );
+    if (kind === "RECEIPT") {
+      qs("[name=work_record_id]", sh).onchange = (e) => {
+        const w = works.find((w) => w.id === e.target.value);
+        if (w) qs("[name=vehicle_id]", sh).value = w.vehicle_id;
+      };
+    }
+    bindSheetForm(sh, async (f, form) => {
+      if (!qs("[data-confirm]", form).checked)
+        throw Error("Bilgileri kontrol edip işaretleyin");
+      await saveDumpEntry(
+        {
+          ...f,
+          kind,
+          dump_site_id: site.id,
+          ...(legacy ? { expense_id: legacy.id } : {}),
+        },
+        qs("[name=proof]", form) ? [...qs("[name=proof]", form).files] : [],
+        key,
+      );
+      toast("Ortak döküm hesabına kaydedildi", "ok");
+      await ctx.reload();
     });
+  }
+  if (parts[0] === "dokum-hareket") {
+    if (!entry) {
+      root.innerHTML =
+        appbar("Döküm işlemi") + notice("warn", "İşlem bulunamadı");
+      return true;
+    }
+    root.innerHTML =
+      appbar(kindName[entry.kind], name("dump_sites", entry.dump_site_id)) +
+      `<div class="card">${kv("Tarih", trDate(entry.date))}${kv("Tutar", money(entry.amount))}${kv("Araç", name("vehicles", entry.vehicle_id))}${kv("Müşteri", name("customers", entry.customer_id))}${kv("Ödeyen", payerName[entry.payer] || entry.payment_method || "—")}${kv("Fiş no", entry.receipt_no || "—")}${kv("Barkod", entry.barcode || "—")}${kv("Açıklama", entry.note || "—")}${button("Ortak Hesabı Aç", "#/dokum-hesap/" + entry.dump_site_id)}${entry.work_record_id ? button("Bağlı İş", "#/isler/" + entry.work_record_id) : ""}<button class="btn" data-cancel-entry>Gerekçeyle İptal Et</button></div><div class="card" data-proof></div>`;
+    const holder = qs("[data-proof]", root),
+      atts = await db.attachmentsFor("dump_entries", entry.id);
+    holder.innerHTML = atts.length
+      ? ""
+      : notice("info", "Bu işleme belge eklenmemiş.");
+    const urls = [];
+    for (const a of atts) {
+      if (a.type?.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.alt = a.name;
+        img.loading = "lazy";
+        img.style.cssText = "width:100%;max-height:260px;object-fit:contain";
+        img.src = URL.createObjectURL(a.blob);
+        urls.push(img.src);
+        holder.append(img);
+      }
+      const b = document.createElement("button");
+      b.className = "btn block";
+      b.textContent = a.name;
+      b.onclick = () => ui.downloadBlob(a.blob, a.name);
+      holder.append(b);
+    }
+    const observer = new MutationObserver(() => {
+      if (!holder.isConnected) {
+        urls.forEach((u) => URL.revokeObjectURL(u));
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    qs("[data-cancel-entry]", root).onclick = () => {
+      const sh = sheet(
+        `<h3>Döküm işlemini iptal et</h3><form>${notice("warn", entry.expense_id ? "Bağlı yükleme/gider de iptal edilir. Belge ve işlem geçmişi saklanır." : "İşlem bakiyeden ve ilgili maliyetten çıkarılır. Bağlı işin kesinti kontrolü yeniden bekler.")}${fArea("Gerekçe", "reason", "")}${entry.kind === "RECEIPT" && entry.expense_id ? '<label><input type="checkbox" name="cancel_expense" data-cancel-expense> Bağlı gideri de iptal et</label>' : ""}${tail}</form>`,
+        { modal: true },
+      );
+      bindSheetForm(sh, async (f, form) => {
+        await cancelDumpEntry(entry.id, f.reason, {
+          expectedVersion: entry.updated_at,
+          cancelExpense: !!qs("[data-cancel-expense]", form)?.checked,
+        });
+        ctx.go("#/dokum-hesap/" + entry.dump_site_id);
+      });
+    };
     return true;
   }
-
-  const site = sites.find((s) => s.id === sid);
-  if (!site) { root.innerHTML = appbar("Döküm Hesabı") + notice("err", "Döküm sahası bulunamadı"); return true; }
-  const [a] = dumpAccounts(d, { today, siteId: sid });
-  const vname = (id) => (d.vehicles || []).find((v) => v.id === id)?.name || "";
-  const cname = (id) => (d.customers || []).find((v) => v.id === id)?.name || "";
-  const rep = site.account_reported;
-  const diff = rep ? Math.round(rep.amount - a.balance) : null;
-  root.innerHTML = appbar(site.name, "Döküm hesabı") + `
-    <div style="height:10px"></div>
-    <div class="formgrid2">
-      <div class="card" style="margin:0;padding:10px"><div class="tiny muted">Kalan (${a.invoices.length ? "faturaya göre" : "hesaplanan"})</div><b style="font-size:20px;color:${a.balance < 0 ? "#d9534f" : "inherit"}">${tl(a.balance)}</b>${a.daysLeft != null ? `<div class="tiny muted">günde ~${tl(a.perDay)} → ~${a.daysLeft} gün</div>` : ""}</div>
-      <div class="card" style="margin:0;padding:10px"><div class="tiny muted">Yatırılan / düşen</div><b>${tl(a.dep)}</b><div class="tiny muted">− ${tl(a.used)} · ${a.trips} döküm</div></div>
-    </div>
-    ${a.missingTon ? notice("info", `${a.missingTon} dökümde ton fişi yok; aracın ortalama yüküyle tahmin edildi (${tl(a.usedEst)}). Fiş girildikçe kesinleşir.`) : ""}
-    <div class="card">
-      <div class="row between"><span>Döküm sahasının söylediği bakiye</span><button class="btn sm" data-rep>${rep ? tl(rep.amount) : "Yaz"}</button></div>
-      ${rep ? `<div class="tiny muted">${trDate(rep.date)} tarihli</div>` + (Math.abs(diff) < 1 ? notice("ok", "Kayıtlarla tutuyor.") : notice(diff < 0 ? "warn" : "info", diff < 0 ? `Saha ${tl(-diff)} daha fazla düşmüş. Eksik girilen döküm, fazla ton ya da yanlış tarife olabilir — dökümleri fişlerle karşılaştırın.` : `Sahada ${tl(diff)} daha fazla para görünüyor. Kaydedilmiş ama yapılmamış döküm ya da fazla tahmin edilmiş ton olabilir.`)) : '<div class="tiny muted">Sahanın ekstresindeki / barkod sisteminde görünen kalanı yazın; fark varsa gösterir.</div>'}
-    </div>
-    ${a.invoices.length ? `<div class="card"><div class="small"><b>Kalan nasıl hesaplandı</b></div><div class="tiny muted">Yatırılan ${tl(a.dep)} − faturalanan ${tl(a.invTotal)} − son faturadan (${trDate(a.lastInv)}) sonraki dökümler ${tl(a.afterInv)} (tahmini) = <b>${tl(a.balanceInv)}</b>. Saha faturası gerçek düşen tutardır. Sahanın sisteminde görünen bakiyeyi yukarıya yazarsanız fark gösterilir.</div></div>` : ""}
-    <button class="btn primary block" data-dep style="margin:8px 0">+ Para yatırdım</button>
-    <div class="section-title">Faturalar (${a.invoices.length})</div>
-    ${a.invoices.slice().reverse().map((x) => {
-      const dt = x.ourTon ? Math.round((x.ton - x.ourTon) * 10) / 10 : null;
-      const feeOff = x.perTon && site.fee_unit === "Ton" && Number(site.fee) > 0 && Math.abs(x.perTon - Number(site.fee)) / Number(site.fee) > 0.01;
-      return `<div class="card" style="padding:10px 12px">
-        <div class="row between small"><span>${trDate(x.doc.date)} · ${esc(x.doc.doc_no || "no yok")}</span><b>${tl(x.amount)}</b></div>
-        <button class="btn sm" data-go="#/belgeler/${esc(x.doc.id)}" style="margin:4px 0">📄 Faturayı aç</button>
-        <div class="tiny muted">${x.ton ? `${num(x.ton)} ton` : "ton yok"}${x.perTon ? ` · ton başı ${num(x.perTon)} ₺ (KDV dahil)` : ""}${x.doc.place ? ` · ${esc(x.doc.place)}` : ""}</div>
-        <div class="small" style="margin-top:4px">Kayıtlarımız (${trDate(addDay(x.from))} – ${trDate(x.doc.date)}): ${x.ourTrips} döküm${x.ourTon ? `, ${x.ourEst ? "~" : ""}${num(x.ourTon)} ton` : ""}, ${tl(x.ourAmount)}</div>
-        ${x.ourTrips && dt != null && x.ton && Math.abs(dt) > Math.max(1, x.ton * 0.03) ? notice(dt > 0 ? "warn" : "info", dt > 0 ? `Saha ${num(dt)} ton fazla faturalamış ya da bizim kayıtlarda eksik döküm/ton var. Fişleri kontrol edin (fatura dönemi farklıysa fark normaldir).` : `Kayıtlarımızda ${num(-dt)} ton fazla var; ton tahmini yüksek ya da fatura dönemi farklı olabilir.`) : ""}
-        ${(d.expense_records || []).some((e) => isActive(e) && e.dump_invoice_doc_id === x.doc.id) ? '<div class="tiny muted" style="margin-top:4px">✓ Geçmiş dönem: fatura tutarı ödenmiş sayıldı (giderlerde)</div>' : `<button class="btn sm block" data-paid="${esc(x.doc.id)}" style="margin-top:6px">Geçmiş dönem: bu faturayı ödenmiş say</button>`}
-        ${!x.ourTrips ? '<div class="tiny muted">Bu dönemde bu sahaya kayıtlı döküm yok; fatura dönemi farklı olabilir.</div>' : ""}
-        ${feeOff ? `<div class="notice warn" style="margin-top:6px"><div>Kartta ${num(site.fee)} ₺/ton yazılı, faturada ${num(x.perTon)} ₺/ton (KDV dahil). Döküm maliyetleri yanlış hesaplanıyor.</div></div><button class="btn sm block" data-fee="${x.perTon}" style="margin-top:6px">Sahanın ücretini ${num(x.perTon)} ₺/ton yap</button>` : ""}
-      </div>`;
-    }).join("") || '<div class="muted small" style="margin:4px">Henüz fatura yok. Sahanın faturasını (İSTAÇ vb.) Akıllı Asistan\'a yükleyin; gider yazılmaz, buraya bağlanır.</div>'}
-    <div class="section-title">Yatırılan para (${a.deposits.length})</div>
-    ${a.deposits.map((e) => `<div class="card" style="padding:8px 12px"><div class="row between small"><span>${trDate(e.date)} · ${esc(e.payment_method || "")}${e.barcodes ? ` · ${e.barcodes} barkod` : ""}</span><b>${tl(e.amount)}</b></div>${e.description ? `<div class="tiny muted">${esc(e.description)}</div>` : ""}</div>`).reverse().join("") || '<div class="muted small" style="margin:4px">Kayıt yok</div>'}
-    <div class="section-title">Dökümler (${a.uses.length})</div>
-    <div class="card" style="overflow-x:auto;padding:8px"><table style="width:100%;border-collapse:collapse;font-size:12px">
-      <tr>${["Tarih", "Araç", "Müşteri", "Ton", "Fiş", "Tutar"].map((h) => `<th style="text-align:left;padding:5px;border-bottom:2px solid var(--border2);color:var(--muted)">${h}</th>`).join("")}</tr>
-      ${a.uses.slice().reverse().map((x) => `<tr data-go="#/isler/${esc(x.w.id)}" style="cursor:pointer">${[trDate(x.w.date), vname(x.w.vehicle_id), cname(x.w.customer_id), x.f.ton ? (x.f.estimated ? "~" : "") + num(x.f.ton) : x.f.manual ? "elle" : "", x.w.slip_no || "", (x.f.estimated ? "~" : "") + tl(x.f.amount)].map((c) => `<td style="padding:5px;border-bottom:1px solid var(--border);white-space:nowrap">${esc(c)}</td>`).join("")}</tr>`).join("")}
-    </table></div>
-    <div style="height:80px"></div>`;
-  qs("[data-dep]", root).addEventListener("click", () => depositSheet(site));
-  for (const b of qsa("[data-paid]", root))
-    b.addEventListener("click", async () => {
-      const x = a.invoices.find((i) => i.doc.id === b.dataset.paid);
-      if (!(await confirmDialog("Ödenmiş sayılsın mı?", `Bu dönemin parça parça yatırılan paraları tek tek girilmeyecekse fatura tutarı (${tl(x.amount)}) döküm hesabına yatırılmış sayılır. Giderlerde "Döküm" olarak görünür; kâr-zararda dökümler zaten sayıldığından iki kez girmez.`, "Ödenmiş say"))) return;
-      await db.saveNew("expense_records", { date: x.doc.date, amount: x.amount, category: "Döküm", company: site.name, dump_site_id: site.id, dump_deposit: true, invoice_paid: true, invoice_no: x.doc.doc_no || null, dump_invoice_doc_id: x.doc.id,
-        payment_method: "Şirket Ödedi", receipt: "Evet", description: `${site.name} döküm faturası ${x.doc.doc_no || ""} — geçmiş dönem ödemesi (kart/havale parça parça; fatura belgede)` }, "Geçmiş dönem döküm ödemesi");
-      toast("Kaydedildi", "ok"); ctx.reload();
-    });
-  for (const b of qsa("[data-fee]", root))
-    b.addEventListener("click", async () => {
-      if (!(await confirmDialog("Ücret güncellensin mi?", `${site.name}: ${num(site.fee)} → ${num(b.dataset.fee)} ₺/ton (KDV dahil). Bundan sonraki ve önceki dökümlerin maliyeti bu ücretle hesaplanır.`, "Güncelle"))) return;
-      await db.saveExisting("dump_sites", site, { fee: Number(b.dataset.fee) }, "Döküm faturasındaki ton fiyatı");
-      toast("Ücret güncellendi", "ok"); ctx.reload();
-    });
-  qs("[data-rep]", root).addEventListener("click", async () => {
-    const { promptDialog } = await import("./ui.js");
-    const v = await promptDialog("Sahanın söylediği bakiye", "Kalan (₺)", rep ? String(rep.amount) : "");
-    if (v === null) return;
-    const n = Number(String(v).replace(/\./g, "").replace(",", "."));
-    if (!Number.isFinite(n)) return toast("Sayı yazın", "err");
-    await db.saveExisting("dump_sites", site, { account_reported: { amount: n, date: today } }, "Döküm sahası bakiyesi");
-    ctx.reload();
+  if (!sid) {
+    const accounts = dumpAccounts(d, { today });
+    root.innerHTML =
+      appbar("Ortak Döküm Hesapları", "Saha bakiyesi · bütün araçlar") +
+      notice(
+        "info",
+        "Para yükleme gider değildir. Gerçek kesinti ilgili işe maliyet olur; fatura ve tahmin ayrıca bakiye düşürmez.",
+      ) +
+      accounts
+        .map(
+          (a) =>
+            `<div class="card tap" data-go="#/dokum-hesap/${esc(a.site.id)}"><b>${esc(a.site.name)}</b>${kv("Kayıtlı ortak bakiye", money(a.balance))}<p class="small">${a.pending_count} işte kesinti kontrolü bekliyor${a.pending_count ? " · tahmini " + money(a.usedEst) : ""}</p></div>`,
+        )
+        .join("") +
+      '<div class="section-title">Döküm Sahaları</div>' +
+      sites.map((s) => button(s.name, "#/dokum-hesap/" + s.id)).join("");
+    return true;
+  }
+  if (!site) {
+    root.innerHTML = appbar("Döküm hesabı") + notice("warn", "Saha bulunamadı");
+    return true;
+  }
+  const [a] = dumpAccounts(d, { today, siteId: sid }),
+    entries = live("dump_entries")
+      .filter((e) => e.dump_site_id === sid)
+      .sort(
+        (x, y) =>
+          y.date.localeCompare(x.date) ||
+          y.created_at.localeCompare(x.created_at),
+      );
+  const legacy = live("expense_records").filter(
+    (e) =>
+      !e.dump_deposit &&
+      /döküm|dokum/i.test(e.category || "") &&
+      !live("dump_entries").some((x) => x.expense_id === e.id),
+  );
+  root.innerHTML =
+    appbar(site.name, "Bütün araçların ortak döküm bakiyesi") +
+    `<section class="card" data-dump-balance>${kv("Kayıtlı ortak bakiye", money(a.balance))}${kv("Başlangıç bakiyesi", money(a.opening?.amount || 0))}${kv("Gerçek yüklemeler", money(a.credit))}${kv("Ortak hesaptan fişli kesinti", money(a.used))}${kv("Sahadan iade", money(a.refund))}${a.opening ? notice("info", trDate(a.opening.date) + " gün başı açılışından itibaren.") : notice("warn", "Açılış bakiyesi yok. Kayıtlardan önce içeride para varsa eksik görünür; hesap başlangıcını doğrulayın.")}${a.balance < 0 ? notice("warn", "Kayıtlı hesap eksi. Eksik yükleme/açılış veya fazla kesinti olabilir; gerçek kesinti gizlenmedi.") : ""}</section><section class="card">${kv("Kesinti kontrolü bekleyen iş", a.pending_count)}${kv("Bu işler için tahmini tutar", money(a.usedEst))}${a.pending_count ? kv("Bekleyenler de düşerse (tahmini)", money(a.projected_balance)) : ""}${a.pending_unknown ? notice("warn", a.pending_unknown + " işte ton veya tarife eksik; tahmine dahi dahil edilemedi.") : ""}<p class="small">Tahminler ortak bakiyeden kesin kesinti yapılmaz. İş raporlarında fişli kısım gerçek; fişsiz kayıtlar tahmini olarak ayrılır.</p></section><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-new="TOPUP">+ Para Yükle</button><button class="btn" data-new="RECEIPT">+ Gerçek Döküm Kesintisi</button><button class="btn" data-new="OPENING">Açılış Bakiyesi</button><button class="btn" data-new="REFUND">Sahadan Para İadesi</button></div>${a.assumed_credit ? notice("warn", "Eski faturadan varsayılmış " + money(a.assumed_credit) + " ödeme, gerçek yükleme kanıtı sayılmadığı için bakiyeye eklenmedi.") : ""}<section class="card"><h3>Saha Ekstresiyle Karşılaştır</h3>${a.reported ? kv(trDate(a.reported.date) + " gün sonu saha bakiyesi", money(a.reported.amount)) + kv("Aynı tarihte kayıtlarımız", money(a.reported_balance)) + notice(Math.abs(a.reported_difference) < 0.01 ? "ok" : "warn", "Fark: " + money(a.reported_difference)) : notice("info", "Sahanın gün sonu bakiyesini girin; aynı tarihli kayıtlarımızla karşılaştırılır. Fark otomatik para/gider oluşturmaz.")}<button class="btn" data-report>Bakiye Karşılaştır</button></section><div class="card">${fSelect(
+      "Araç filtresi (ortak bakiye değişmez)",
+      "vehicle_filter",
+      live("vehicles").map((v) => ({ v: v.id, t: v.name })),
+      q.vehicle_id || "",
+    )}${fSelect(
+      "Müşteri filtresi",
+      "customer_filter",
+      live("customers").map((c) => ({ v: c.id, t: c.name })),
+      "",
+    )}${fText("Fiş / barkod / açıklama ara", "receipt_search", "")}</div><div class="section-title">Kesinti Kontrolü Bekleyen İşler</div><div data-pending></div><div class="section-title">Doğrulanmış Hesap Hareketleri</div><div data-entries></div><div class="section-title">Eski Yükleme Kayıtları</div>${a.deposits
+      .filter((e) => !entries.some((x) => x.expense_id === e.id))
+      .map(
+        (e) =>
+          `<div class="card">${kv(trDate(e.date), money(e.amount))}<small>Eski kayıtta yükleme olarak işaretlenmiş; bakiyeye bir kez dahil.</small></div>`,
+      )
+      .join(
+        "",
+      )}<div class="section-title">Faturalar — karşılaştırma belgesi</div>${a.invoices.map((i) => `<div class="card">${kv(i.doc.doc_no || "Fatura", money(i.amount))}${i.period_known ? kv(trDate(i.from) + " – " + trDate(i.to) + " fiş toplamı", money(i.ourAmount)) : notice("info", "Fatura dönemi belirtilmemiş; fişlerle otomatik dönem eşleştirilmedi.")}${i.period_known ? notice(Math.abs(i.amount - i.ourAmount) < 0.01 ? "ok" : "warn", "Fatura ile kayıtlı ortak hesap kesintileri farkı: " + money(i.amount - i.ourAmount)) : ""}${button("Faturayı Aç", "#/belgeler/" + i.doc.id)}<button class="btn" data-period="${esc(i.doc.id)}">Dönem Belirt</button><p class="small">Bu fatura ikinci gider veya otomatik yükleme/kesinti oluşturmaz.</p></div>`).join("") || notice("info", "Fatura yok. Faturayı Asistana belge olarak yükleyebilirsiniz.")}<details class="card"><summary>Eski bağlantısız döküm giderleri (${legacy.length})</summary>${notice("warn", "Hepsini yükleme varsaymayın. Gerçek para yatırma ise tek tek dönüştürün; sefer gideriyse ilgili fişe aynı gideri bağlayın.")}${legacy.map((e) => `<p>${esc(trDate(e.date) + " · " + (e.company || e.description || "Döküm") + " · " + money(e.amount))}</p><button class="btn" data-legacy="${esc(e.id)}">Kontrol Ettim: Bu Kayıt Para Yükleme</button>`).join("")}</details><div class="card"><h3>Güncel Tarife</h3>${kv("Tahmin tarifesi", money(site.fee || 0) + " / " + (site.fee_unit || "belirtilmedi"))}<p class="small">Kaydedilen işin tarifesi korunur. Yeni tarife geçmiş fişlerin tutarını değiştirmez; kesin tutar her zaman gerçek fiş/kesintidir.</p>${button("Saha Kartı / Tarife", "#/dokum/" + site.id)}</div><p class="small">İşlemler bu telefonda saklanır; belgeleri içeren tam yedek alın. İSTAÇ/İBB hesabına otomatik bağlanılmaz.</p>`;
+  const renderRows = () => {
+    const v = qs("[name=vehicle_filter]", root).value,
+      c = qs("[name=customer_filter]", root).value,
+      search = qs("[name=receipt_search]", root).value.toLocaleLowerCase(
+        "tr-TR",
+      );
+    const matches = (e) =>
+      (!v || e.vehicle_id === v) &&
+      (!c || e.customer_id === c) &&
+      [e.receipt_no, e.barcode, e.note, e.reference]
+        .join(" ")
+        .toLocaleLowerCase("tr-TR")
+        .includes(search);
+    const ps = a.pending.filter(
+      (x) => (!v || x.w.vehicle_id === v) && (!c || x.w.customer_id === c),
+    );
+    qs("[data-pending]", root).innerHTML =
+      ps
+        .map(
+          (x) =>
+            `<div class="card"><b>${esc(trDate(x.w.date) + " · " + name("vehicles", x.w.vehicle_id))}</b>${kv("Müşteri", name("customers", x.w.customer_id))}${kv("Kontrol bekleyen sefer", x.remaining_trips)}${kv("Tahmin (kesinti değil)", x.amount == null ? "Hesaplanamadı" : money(x.amount))}${x.w.unit === "Sefer" && x.w.quantity > 1 && x.w.tonnage && (!x.w.tonnage_scope || x.w.tonnage_scope === "unknown") ? notice("warn", "Tonaj tek fiş mi toplam mı belirsiz. Gerçek fişleri sefer sayısıyla girin.") : ""}${button("İşi Aç", "#/isler/" + x.w.id)}<button class="btn primary" data-work-receipt="${esc(x.w.id)}">Fişten Gerçek Kesintiyi Gir</button></div>`,
+        )
+        .join("") || notice("ok", "Bu filtrede kontrol bekleyen iş yok.");
+    for (const b of qsa("[data-work-receipt]", root))
+      b.onclick = () =>
+        entrySheet(
+          "RECEIPT",
+          d.work_records.find((w) => w.id === b.dataset.workReceipt),
+        );
+    const rows = entries.filter(matches);
+    qs("[data-entries]", root).innerHTML =
+      rows
+        .map(
+          (e) =>
+            `<div class="card"><b>${esc(kindName[e.kind])} · ${esc(money(e.amount))}</b>${kv("Tarih", trDate(e.date))}${e.vehicle_id ? kv("Araç", name("vehicles", e.vehicle_id)) : ""}${e.payer ? kv("Ödeyen", payerName[e.payer]) : ""}${kv("Fiş / referans", e.receipt_no || e.reference || e.barcode || "—")}${button("Belge / İşlem Detayı", "#/dokum-hareket/" + e.id)}${e.kind === "RECEIPT" && !e.work_record_id ? '<button class="btn" data-link-receipt="' + esc(e.id) + '">İş Bağla</button>' : ""}</div>`,
+        )
+        .join("") || notice("info", "Bu filtrede doğrulanmış hareket yok.");
+    for (const b of qsa("[data-link-receipt]", root))
+      b.onclick = () => {
+        const e = entries.find((e) => e.id === b.dataset.linkReceipt),
+          works = live("work_records").filter(
+            (w) => w.dump_site_id === sid && w.vehicle_id === e.vehicle_id,
+          );
+        const sh = sheet(
+          `<h3>Fişi İşe Bağla</h3><form>${fSelect(
+            "İş",
+            "work_record_id",
+            works.map((w) => ({
+              v: w.id,
+              t:
+                trDate(w.date) +
+                " · " +
+                name("customers", w.customer_id) +
+                " · " +
+                w.quantity +
+                " " +
+                w.unit,
+            })),
+            "",
+            { req: true },
+          )}${tail}</form>`,
+          { modal: true },
+        );
+        bindSheetForm(sh, async (f) => {
+          await linkDumpReceipt(e.id, f.work_record_id, e.updated_at);
+          await ctx.reload();
+        });
+      };
+  };
+  root.addEventListener("input", (e) => {
+    if (e.target.closest("[data-sheet]")) return;
+    renderRows();
   });
+  root.addEventListener("change", renderRows);
+  renderRows();
+  for (const b of qsa("[data-new]", root))
+    b.onclick = () => entrySheet(b.dataset.new);
+  for (const b of qsa("[data-legacy]", root))
+    b.onclick = () =>
+      entrySheet(
+        "TOPUP",
+        null,
+        live("expense_records").find((e) => e.id === b.dataset.legacy),
+      );
+  qs("[data-report]", root).onclick = () => {
+    const sh = sheet(
+      `<h3>Sahanın Bildirdiği Gün Sonu Bakiye</h3><form>${fDate("Ekstre tarihi", "date", today, true)}${fNum("Sahanın gün sonu bakiyesi", "amount", "", { req: true, step: "any" })}${fArea("Referans / not", "note", "")}${tail}</form>`,
+      { modal: true },
+    );
+    bindSheetForm(sh, async (f) => {
+      await saveDumpReport(sid, f.amount, f.date, f.note);
+      await ctx.reload();
+    });
+  };
+  for (const b of qsa("[data-period]", root))
+    b.onclick = () => {
+      const sh = sheet(
+        `<h3>Fatura Dönemi</h3><form>${fDate("Dönem başlangıcı", "from", "", true)}${fDate("Dönem bitişi", "to", "", true)}${tail}</form>`,
+        { modal: true },
+      );
+      bindSheetForm(sh, async (f) => {
+        await setDumpInvoicePeriod(b.dataset.period, f.from, f.to);
+        await ctx.reload();
+      });
+    };
   return true;
 }
-function addDay(t) { const x = new Date(t + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + 1); return x.toISOString().slice(0, 10); }

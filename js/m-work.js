@@ -285,7 +285,8 @@ async function workForm(ctx, editId) {
         ${fText("Fiş No", "slip_no", v.slip_no || "")}
       </div>
       <div class="formgrid2">${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}${fNum("Döküm maliyeti (₺, elle — opsiyonel)", "dump_cost", v.dump_cost ?? "", { step: "any" })}</div>
-      <div class="muted tiny" style="margin:-4px 2px 8px">Döküm maliyeti: depodan çıkışta siz yazarsınız (boş = maliyet yok). Müşteri işinde boşsa döküm sahası ücretinden hesaplanır.</div>
+      ${fSelect("Tonajın kapsamı (toplu seferde)","tonnage_scope",[{v:"unknown",t:"Bilinmiyor — yalnız tahmin"},{v:"total",t:"Yazılan tonaj tüm seferlerin toplamı"},{v:"per_trip",t:"Yazılan tonaj bir sefer için"}],v.tonnage_scope||"unknown",{empty:false})}
+      <div class="muted tiny">Bu bilgiler maliyet tahminidir. Gerçek kesintiyi Ortak Döküm Hesabına fişle girin. Döküm dahil müşteri fiyatına ayrıca borç eklenmez.</div>
       <section class="card" style="margin:8px 0" data-slip-ai>
         <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/*,application/pdf" multiple data-wfiles></div>
         <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>
@@ -666,6 +667,7 @@ async function workForm(ctx, editId) {
         distance_km: val.distance_km ? Number(val.distance_km) : null,
         tonnage: Number(val.tonnage) > 0 ? Number(val.tonnage) : null,
         dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
+        tonnage_scope: val.tonnage_scope || "unknown",
       };
       if (!editId) {
         // Eşit öncelikli farklı fiyat kuralı varsa sessizce seçilmez: kullanıcıya sorulur

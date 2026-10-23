@@ -1,5 +1,6 @@
+import {linkedDumpExpenseIds} from "./dump-ledger-core.js";
 import { recognizedBill, pricedBill, applyAllocations } from "./ledger-policy.js";
-import { dumpFeeRows } from "./dump-fees.js";
+import { dumpFeeRows, unassignedDumpCosts } from "./dump-fees.js";
 import { meterNow } from "./maint-core.js";
 // İşletme defterleri: TRY/kuruş hesapları, kaynak bağlantısı ve deterministik raporlar.
 import {
@@ -292,6 +293,7 @@ export function payrollBalance(rows, personnelId) {
 export function costLedger(data, f = {}) {
   const rows = [];
   const workMap = new Map((data.work_records || []).map((w) => [w.id, w]));
+  const dumpLinked = linkedDumpExpenseIds(data);
   const linked = new Set(
     (data.payables || [])
       .filter(
@@ -342,7 +344,7 @@ export function costLedger(data, f = {}) {
     ["maintenance_records", "Bakım", "cost"],
   ])
     for (const r of data[store] || []) {
-      if (!isActive(r) || r.dump_deposit || (store === "fuel_records" && r.fuel_source === "Müşteri Verdi") || linked.has(store + ":" + r.id)) continue;
+      if (!isActive(r) || r.dump_deposit || (store==="expense_records"&&dumpLinked.has(r.id)) || (store === "fuel_records" && r.fuel_source === "Müşteri Verdi") || linked.has(store + ":" + r.id)) continue;
       const gross = Number(r[key] ?? r.total_amount) || 0;
       if (!gross) continue;
       const known = r.kdv_rate !== "" && r.kdv_rate != null;
@@ -374,8 +376,9 @@ export function costLedger(data, f = {}) {
   }
   for (const fee of dumpFeeRows(data, f)) {
     if (!(fee.amount > 0) || (data.payables || []).some(b => recognizedBill(b) && b.party_type === "dump_site" && (b.items || []).some(i => i.work_record_id === fee.w.id))) continue;
-    add({ ...fee.w, date: fee.w.date, source_store: "work_records", source_id: fee.w.id, work_record_id: fee.w.id, category: "Döküm ücreti", description: fee.site, net: null, tax: null, gross: fee.amount, known_tax: false, estimated: !!fee.estimated });
+    add({ ...fee.w, date: fee.w.date, source_store: "work_records", source_id: fee.w.id, work_record_id: fee.w.id, category: fee.confirmed ? "Döküm ücreti" : "Döküm ücreti (tahmin)", description: fee.site, net: null, tax: null, gross: fee.amount, known_tax: false, estimated: !!fee.estimated || !!fee.provisional, confirmed: !!fee.confirmed, pending_trips: fee.pending_trips || 0 });
   }
+  for(const e of unassignedDumpCosts(data,f))add({...e,source_store:"dump_entries",source_id:e.id,category:"Döküm ücreti",description:e.receipt_no||e.note||"İş bağlantısı bekliyor",net:null,tax:null,gross:e.amount,known_tax:false});
   return rows;
 }
 export function operatingResult(data, f = {}) {

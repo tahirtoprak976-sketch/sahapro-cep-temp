@@ -1,3 +1,4 @@
+import {dumpReceiptRows,companyDumpReceipt,dumpTariffFor} from "./dump-ledger-core.js";
 // Döküm ücreti: döküm sahasının kartındaki ücret (ton başı ya da sefer başı, KDV dahil) × işin tonu / seferi.
 // Ton: fişteki ton (iş kaydında "tonaj"); fiş yoksa aracın "ortalama yük"ü (kartta yoksa tır 27, kamyon 22 ton) × sefer — tahmin olarak işaretlenir.
 // Belediyenin resmi sahaları: Bolluca 160 ₺/ton, Cebeci 210 ₺/ton, İSTAÇ 235 ₺/ton (KDV dahil, Ekim 2026, işletme sahibinden).
@@ -21,7 +22,7 @@ export function loadTon(v) {
 }
 
 // Bir işin döküm ücreti. null: maliyet yok (döküm yeri/ücret tanımlı değil ya da depodan çıkışta elle yazılmamış)
-export function dumpFee(d, w) {
+export function calculatedDumpFee(d, w) {
   if (!w) return null;
   const s0 = live(d, "dump_sites").find((x) => x.id === w.dump_site_id);
   // Elle yazılan döküm maliyeti her zaman geçerli (iş kaydında "Döküm maliyeti ₺")
@@ -30,17 +31,20 @@ export function dumpFee(d, w) {
   if (live(d, "customers").find((c) => c.id === w.customer_id)?.internal) return null;
   if (!w.dump_site_id) return null;
   const s = s0;
-  const fee = Number(s?.fee) || 0;
-  if (!s || !(fee > 0) || !FEE_UNITS.includes(s.fee_unit)) return null;
+  const tariff=w.dump_tariff_snapshot?.site_id===s?.id?w.dump_tariff_snapshot:dumpTariffFor(s,w.date,w.created_at);
+  const fee = Number(tariff?.fee) || 0;
+  if (!s || !(fee > 0) || !FEE_UNITS.includes(tariff.fee_unit)) return null;
   const qty = Number(w.quantity) || 0;
   const trips = w.unit === "Sefer" ? qty : 1;
-  if (s.fee_unit === "Sefer") return { site: s.name, unit: "Sefer", fee, amount: r2(fee * trips), trips, ton: null, estimated: false };
+  if (tariff.fee_unit === "Sefer") return { site: s.name, unit: "Sefer", fee, amount: r2(fee * trips), trips, ton: null, estimated: false };
   let ton = Number(w.tonnage) || (w.unit === "Ton" ? qty : 0), estimated = false;
   // Birden çok seferlik kayıtta tek fiş tonu yazılmış olabilir: ton aracın sefer başı yükünün katı değilse kalan seferler o fişin tonuyla tahmin edilir
-  if (Number(w.tonnage) > 0 && w.unit === "Sefer" && trips > 1) {
+  if (Number(w.tonnage) > 0 && w.unit === "Sefer" && trips > 1 && w.tonnage_scope !== "total") {
+    if(w.tonnage_scope === "per_trip") { ton=r2(Number(w.tonnage)*trips); } else {
     const ref = loadTon(live(d, "vehicles").find((x) => x.id === w.vehicle_id));
     const k = ref > 0 ? Math.min(trips, Math.max(1, Math.round(Number(w.tonnage) / ref))) : trips;
     if (k < trips) { ton = r2((Number(w.tonnage) / k) * trips); estimated = true; }
+    }
   }
   if (!(ton > 0)) {
     const v = live(d, "vehicles").find((x) => x.id === w.vehicle_id);
@@ -49,6 +53,22 @@ export function dumpFee(d, w) {
   }
   if (!(ton > 0)) return { site: s.name, unit: "Ton", fee, amount: null, trips, ton: null, estimated: false, missing: true };
   return { site: s.name, unit: "Ton", fee, amount: r2(fee * ton), trips, ton: r2(ton), estimated };
+}
+
+export function dumpFee(d,w) {
+  if(!w)return null;
+  const receipts=dumpReceiptRows(d).filter(e=>e.work_record_id===w.id);
+  if(receipts.length){
+    const company=receipts.filter(companyDumpReceipt),site=live(d,"dump_sites").find(s=>s.id===w.dump_site_id);
+    if(!company.length)return null;
+    const amount=r2(company.reduce((n,e)=>n+e.amount,0)),trips=receipts.reduce((n,e)=>n+e.trips,0),expected=w.unit==="Sefer"?Number(w.quantity):1;
+    return {site:site?.name||"Döküm",unit:"Fiş",fee:null,amount,trips:company.reduce((n,e)=>n+e.trips,0),ton:r2(company.reduce((n,e)=>n+(e.tonnage||0),0))||null,estimated:false,confirmed:true,pending_trips:Math.max(0,expected-trips),receipt_ids:company.map(e=>e.id)};
+  }
+  if(w.dump_payer==="customer")return null;
+  const fee=calculatedDumpFee(d,w);return fee?{...fee,provisional:true}:fee;
+}
+export function unassignedDumpCosts(d,{from="",to=""}={}) {
+ return dumpReceiptRows(d).filter(e=>!e.work_record_id&&companyDumpReceipt(e)&&(!from||e.date>=from)&&(!to||e.date<=to));
 }
 
 export function dumpFeeRows(d, { from = "", to = "" } = {}) {

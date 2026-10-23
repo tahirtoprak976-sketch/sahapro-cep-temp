@@ -1230,6 +1230,7 @@ async function resultScreen(ctx, d) {
 export function sourceRoute(store, id) {
   const routes = {
     work_records: "isler",
+    dump_entries: "dokum-hareket",
     fuel_records: "yakit",
     maintenance_records: "bakim",
     expense_records: "gider",
@@ -1608,6 +1609,20 @@ export async function augment(ctx) {
     const store = {gider:"expense_records",bakim:"maintenance_records",alislar:"payables"}[route];
     const linkedParts = (await db.listActive("maintenance_parts")).filter(r=>r.tracking && r.cost_source_store===store && r.cost_source_id===id);
     links += linkedParts.map(r=>button("Parça / Garanti: " + r.description, "#/yedek-parca/" + r.id)).join("");
+  }
+  if(route==="isler"&&id&&id!=="new"){
+    const w=await db.get("work_records",id);
+    if(w?.dump_site_id){
+      const data=await db.dumpAll(),{dumpFee}=await import("./dump-fees.js"),fee=dumpFee(data,w);
+      const customerPaid=w.dump_payer === "customer" || data.dump_entries.some(e=>isActive(e) && e.kind==="RECEIPT" && e.work_record_id===w.id && e.payer==="customer");
+      const label=fee?.confirmed?"Fişli gerçek maliyet":customerPaid?"Müşteri doğrudan ödedi":"Fiş kesintisi bekleyen tahmin";
+      const amount=fee?.amount!=null?money(fee.amount):customerPaid?"Şirket gideri yok":"Tutar bilinmiyor";
+      root.insertAdjacentHTML("beforeend",'<section class="card"><h3>Döküm Maliyeti / Ortak Hesap</h3>'+kv(label,amount)+'<p class="small">Döküm dahil anlaşmada müşteriye ayrıca borç eklenmez. Müşterinin doğrudan ödediği fişler şirket gideri değildir.</p>'+button("Ortak Döküm Hesabında Kontrol Et","#/dokum-hesap/"+w.dump_site_id+"?vehicle_id="+encodeURIComponent(w.vehicle_id||""))+'</section>');
+    }
+  }
+  if(route==="gider"&&id&&id!=="new"){
+    const dumpLinks=(await db.listActive("dump_entries")).filter(e=>e.expense_id===id);
+    links+=dumpLinks.map(e=>button("Ortak Döküm İşlemi / Belgeler","#/dokum-hareket/"+e.id)).join("");
   }
   if (links)
     root.insertAdjacentHTML(

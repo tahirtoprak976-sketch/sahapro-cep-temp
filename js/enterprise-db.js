@@ -139,6 +139,7 @@ export async function savePayable(f, key = uuid()) {
       ...owners,
       "payables",
       "purchase_orders",
+      "dump_entries",
       "cost_allocations",
       "work_records",
       "expense_records",
@@ -195,6 +196,7 @@ export async function savePayable(f, key = uuid()) {
         )
           throw Error("Maliyet kaynağı geçersiz");
         if(active(d.cost_allocations).some(r=>r.status==='Aktif'&&r.source_store===f.source_store&&r.source_id===f.source_id))throw Error("Borçlandırmadan önce kaynak maliyet dağıtımını iptal edin");
+        if(f.source_store==="expense_records"&&(d.dump_entries||[]).some(e=>isActive(e)&&e.expense_id===f.source_id))throw Error("Ortak döküm işlemi alış belgesiyle yeniden borçlandırılamaz");
         const s = owner(d, f.source_store, f.source_id);
         if (
           active(d.payables).some(

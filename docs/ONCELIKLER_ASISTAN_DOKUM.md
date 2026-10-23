@@ -49,7 +49,20 @@ yapmıyor.” Döküm geliştirmelerinden önce bu ihtiyaç ele alınacak.
 - Mali kayıtlar, imzalı şoför aktarımı, fiş/fotoğraf kimliği ve mükerrer
   korumalar korunacak. “Her şeyi anlıyor” garantisi verilmeyecek.
 
-## Sonraki döküm geliştirmeleri (henüz yapılmadı)
+## Dökümde v3.9.59 ile tamamlanan bölüm
+
+İşletme sahibinin ön ödeme/barkod ve birden fazla araç kullanımını doğrulaması
+üzerine saha ortak hesabı, gerçek fiş kesintisi, tahminden ayrı bakiye, açılış,
+iade, tarihli bakiye karşılaştırması ve açık dönemli fatura karşılaştırması
+eklendi. Tarife kopyaları geçmiş iş maliyetini korur; yeni faturadan ödeme
+uydurulmaz. Ayrıntı ve sınırlar: [ortak döküm hesabı](SHARED_DUMP_v3959.md).
+
+Aşağıdaki özgün hedeflerin hepsi tamamlandı sayılmaz: geçmiş tarifeyi topluca
+düzeltip fark önizleme, tek bir işin her fişine otomatik OCR tutar eşleştirme,
+fatura satırı bazında tarife/tonaj farkı ve asistandan kaynak göstererek bütün
+mutabakatı sohbetle yürütme sonraki kapsamdır.
+
+## Özgün döküm yol haritası
 
 1. **Tarihli tarife ve korunmuş geçmiş maliyet:** ton/sefer birimi, KDV ve
    geçerlilik tarihi; eski işi yeni fiyatla sessizce değiştirmeme. Geçmişe
@@ -69,5 +82,5 @@ geçmişi ve doğru bakiye, ardından fiş eşleştirme ve mutabakat.
 
 İncelemede yapay veriyle doğrulandı: mevcut döküm hesabında 25 tonluk eski
 işin maliyeti, saha tarifesi 160'tan 200'e değiştirilince 4.000'den 5.000 TL'ye
-çıkabiliyor. Gerçek kayıtlar üzerinde değişiklik yapılmadı. Bu bulgu, döküm
-iyileştirmesinin tamamlandığı anlamına gelmez.
+çıkabiliyor. Gerçek kayıtlar üzerinde değişiklik yapılmadı. Bu geçmiş maliyet kayması v3.9.59 tarife kopyasıyla giderildi. Bilinmeyen eski
+tarifelerin doğru tarihçesinin geri getirilmiş olduğu iddia edilmez.

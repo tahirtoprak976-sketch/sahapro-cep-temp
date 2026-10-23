@@ -11,6 +11,7 @@ const d = {
     { id: "X", date: "2026-10-02", category: "Yemek", amount: 500, created_at: n },
     { id: "L", date: "2026-09-01", category: "Döküm", company: "Cebeci döküm", amount: 10000, created_at: n },
   ],
+  dump_entries:[{id:"OPEN",kind:"OPENING",date:"2026-10-01",dump_site_id:"B",amount:0}],
   work_records: [
     ...Array.from({ length: 6 }, (_, i) => ({ id: "W" + i, date: "2026-10-1" + i, customer_id: "K", vehicle_id: "V", quantity: 1, unit: "Sefer", dump_site_id: "B", tonnage: i < 5 ? 25 : 0, created_at: n })),
     { id: "OLD", date: "2026-09-20", customer_id: "K", vehicle_id: "V", quantity: 1, unit: "Sefer", dump_site_id: "B", tonnage: 25, created_at: n }, // ilk yüklemeden önce
@@ -19,15 +20,15 @@ const d = {
 };
 const [a] = dumpAccounts(d, { today });
 assert.equal(a.site.id, "B"); assert.equal(a.dep, 30000);
-assert.equal(a.trips, 6); assert.equal(a.used, 5 * 25 * 160 + 27 * 160, "5 fişli + 1 tahmini (tır 27 t)");
-assert.equal(a.balance, 30000 - 24320); assert.equal(a.missingTon, 1);
-assert.ok(a.daysLeft != null);
-assert.ok(dumpAccountAlerts(d, { today }).some((x) => /Bolluca döküm hesabında/.test(x.text)), "günde ~1737 ₺, 5680 ₺ kaldı → 3 gün? ");
+assert.equal(a.trips, 0); assert.equal(a.used, 0,"iş kaydı tek başına kesin hesap kesintisi değildir");assert.equal(a.usedEst,5 * 25 * 160 + 27 * 160);assert.equal(a.pending_count,6);
+assert.equal(a.balance, 30000);assert.equal(a.projected_balance,30000-24320); assert.equal(a.missingTon, 1);
+assert.equal(a.daysLeft,null,"gerçek kesinti yokken kullanım hızı uydurulmaz");
+assert.ok(dumpAccountAlerts(d, { today }).some((x) => /Bolluca: 6 işte döküm/.test(x.text)), "günde ~1737 ₺, 5680 ₺ kaldı → 3 gün? ");
 // Yükleme gider sayılmaz; döküm ücreti sayılır
 const t = costTotals(costRows(d, { from: "2026-10-01", to: "2026-10-31" }));
 assert.equal(t.gider, 500); assert.equal(t.dokum, 24320);
 assert.equal(monthlySeries(d, { today: "2026-10-31", months: 1 })[0].expense, 500);
 // Eski gider: firmasında saha adı geçiyor → Cebeci
-assert.equal(depositSiteOf(d, d.expense_records[2]).id, "C");
+assert.equal(depositSiteOf(d, d.expense_records[2]),null,"yalnız saha adı yükleme kanıtı değildir");assert.equal(depositSiteOf(d,{...d.expense_records[2],description:"Cebeci hesabına para yatırdım"}).id,"C");
 assert.equal(depositSiteOf(d, d.expense_records[1]), null);
 console.log("dump-account ok");

@@ -817,7 +817,7 @@ async function more(ctx) {
     ["#/raporlar", "📊", "Raporlar"],
     ["#/detayli-rapor", "📑", "Detaylı Raporlar"],
     ["#/nakit", "📈", "Nakit Tahmini"],
-    ["#/dokum-hesap", "💳", "Döküm Hesapları"],
+    ["#/dokum-hesap", "💳", "Ortak Döküm Hesapları"],
     ["#/fiyat-saglik", "🩺", "Fiyat Sağlığı"],
     ["#/fatura", "🧾", "Faturalanacaklar"],
     ["#/yonetici", "📈", "Yönetici"],
@@ -840,7 +840,7 @@ async function more(ctx) {
       ${items.map(([h, ic, t]) => `<button data-go="${h}" style="aspect-ratio:1.05"><span class="ic">${ic}</span>${t}</button>`).join("")}
     </div>
     <div class="card" style="margin-top:14px">
-      ${kv("Sürüm", "SAHAPRO SOLO v3.9.58")}
+      ${kv("Sürüm", "SAHAPRO SOLO v3.9.59")}
       ${kv("Veri", "Yalnızca bu cihazda (IndexedDB)")}
       ${kv("Bulut", "Bağlı değil — hiçbir veri gönderilmez")}
     </div>`;
