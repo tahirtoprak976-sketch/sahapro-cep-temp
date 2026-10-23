@@ -19,6 +19,8 @@ import {
   prepareHistory,
 } from "./history-core.js";
 import { loadHistoryData, commitHistory } from "./history-db.js";
+import { mountSecureTransfer } from "./secure-transfer-ui.js";
+import { startActivity } from "./update-safety.js";
 const canonical = (s) => normKey(s || "").replace(/[^a-z0-9çğıöşü]/g, "");
 export async function screen(ctx) {
   const { root, db } = ctx;
@@ -26,10 +28,12 @@ export async function screen(ctx) {
     pkg = null,
     choices = [],
     plan = null,
-    busy = false;
+    busy = false,
+    receiving = false;
   root.innerHTML =
-    appbar("Geçmiş İş Aktarımı", "Dosya → kontrol → onay → kayıt") +
+    appbar("Geçmiş İş Aktarımı", "Bağlantı veya dosya → kontrol → onay → kayıt") +
     `
+    <section class="slip-panel" data-secure-transfer></section>
     <section class="slip-panel"><h2>01 · Aktarım Dosyası</h2><p class="slip-hint">Sohbetten hazırlanmış SAHAPRO JSON dosyasını seçin. WhatsApp metni bu ekrana doğrudan yüklenmez; önce kontrol edilmiş aktarım dosyasına dönüştürülür.</p>
     <label class="field">Dosya seç<input type="file" accept=".json,application/json" data-history-file></label>
     <button class="btn" data-history-sample>Boş Aktarım Şablonu İndir</button><div data-history-file-name class="slip-hint"></div></section>
@@ -116,7 +120,7 @@ export async function screen(ctx) {
     qs("[data-history-summary]", root).innerHTML =
       `<div class="slip-overview"><div><span>Seçili</span><strong>${plan.selected}</strong></div><div><span>Beklemede</span><strong>${held}</strong></div><div><span>Kontrol hatası</span><strong>${plan.errors.length}</strong></div></div>${plan.newCards.length ? `<p class="slip-hint">Yeni kartlar: ${plan.newCards.map((c) => esc(c.name)).join(" · ")}</p>` : ""}<p class="history-state ${ready ? "" : "bad"}">${ready ? "Seçili kayıtlar aktarılabilir." : esc(plan.errors[0] || "Aktarılacak satır seçin.")}</p>`;
     qs("[data-history-commit]", root).disabled =
-      busy || !ready || !qs("[data-history-confirm]", root).checked;
+      busy || receiving || !ready || !qs("[data-history-confirm]", root).checked;
     for (const e of root.querySelectorAll("[data-h-state]")) {
       const f = plan.findings[Number(e.dataset.hState)];
       e.textContent = f.errors.length
@@ -145,9 +149,11 @@ export async function screen(ctx) {
       qs("[data-history-new]", root).checked = false;
       qs("[data-history-result]", root).textContent = "";
       qs("[data-history-preview]", root).hidden = false;
+      qs("[data-history-preview]", root).dataset.historyPending = "1";
       qs("[data-history-file-name]", root).textContent =
         title + " · " + pkg.rows.length + " satır";
       validate(true);
+      return true;
     } catch (e) {
       pkg = null;
       choices = [];
@@ -156,9 +162,11 @@ export async function screen(ctx) {
       qs("[data-history-file-name]", root).textContent =
         "Geçersiz dosya: " + e.message;
       toast("Dosya açılamadı: " + e.message, "err");
+      return false;
     }
   }
   qs("[data-history-file]", root).addEventListener("change", async (e) => {
+    if (busy || receiving) return;
     const f = e.target.files?.[0];
     if (!f) return;
     if (f.size > 2 * 1024 * 1024) {
@@ -344,10 +352,11 @@ export async function screen(ctx) {
     }
   });
   qs("[data-history-commit]", root).addEventListener("click", async () => {
-    if (busy) return;
+    if (busy || receiving || !pkg) return;
     busy = true;
-    validate();
+    const release = startActivity("history-import");
     try {
+      validate();
       if (!plan.ready || !qs("[data-history-confirm]", root).checked)
         throw Error("Kontrolleri ve son onayı tamamlayın.");
       const selectedChoices = structuredClone(choices),
@@ -361,6 +370,7 @@ export async function screen(ctx) {
       )
         return;
       const result = await commitHistory(pkg, selectedChoices, selectedOptions);
+      qs("[data-history-preview]", root).dataset.historyPending = "0";
       data = await loadHistoryData();
       validate(true);
       qs("[data-history-result]", root).innerHTML =
@@ -377,6 +387,7 @@ export async function screen(ctx) {
         "Aktarım yapılmadı: " + e.message;
     } finally {
       busy = false;
+      release();
       validate();
     }
   });
@@ -408,5 +419,28 @@ export async function screen(ctx) {
       }
       validate(true);
     }
+  }
+  try { await mountSecureTransfer(ctx, {
+    openPackage: openFile,
+    hasPreview: () => !!pkg,
+    isBusy: () => busy,
+    setReceiving: (value) => {
+      receiving = value;
+      for (const el of root.querySelectorAll("[data-history-file], [data-history-preview] input, [data-history-preview] select, [data-history-preview] textarea, [data-history-preview] button"))
+        el.disabled = value;
+      if (pkg) validate();
+      else qs("[data-history-commit]", root).disabled = true;
+    },
+    clearPreview: () => {
+      pkg = null; choices = []; plan = null;
+      qs("[data-history-preview]", root).hidden = true;
+      qs("[data-history-preview]", root).dataset.historyPending = "0";
+      qs("[data-history-file-name]", root).textContent = "";
+      qs("[data-history-confirm]", root).checked = false;
+    },
+  }); } catch (e) {
+    receiving = false;
+    qs("[data-secure-transfer]", root).innerHTML =
+      `<h2>Bağlantıyla Güvenli Aktarım</h2><p class="notice">Bu tarayıcıda eşleştirme açılamadı: ${esc(e.message || "Telefon belleği kullanılamıyor")}. Aşağıdan dosyayla aktarımı kullanabilirsiniz.</p>`;
   }
 }
