@@ -5,7 +5,7 @@ export function updateRisk(root) {
   if (activities.size || root?.querySelector('[data-ask]:disabled, [data-out] [data-save]:disabled, [data-pdf-read]:disabled, [data-pdf-save]:disabled') || (root?.querySelector('form[data-form]') && root?.querySelector('[data-save]:disabled'))) return { busy: true, unsaved: false };
   const fields = [...(root?.querySelectorAll('input,textarea,select') || [])];
   const openForm = !!root?.querySelector('form') && /\/(new|edit)(?:$|[?/#])/.test(globalThis.location?.hash || '');
-  const unsaved = openForm || fields.some(el => edited.has(el) || (el.type === 'file' && el.files?.length) || (el.matches('[data-msg]') && el.value.trim())) || !!root?.querySelector('[data-out] .card[data-kind]:not([data-saved="1"])');
+  const unsaved = openForm || fields.some(el => edited.has(el) || (el.type === 'file' && el.files?.length) || (el.matches('[data-msg]') && el.value.trim())) || !!root?.querySelector('[data-out] .card[data-kind]:not([data-saved="1"]), [data-history-preview]:not([hidden])[data-history-pending="1"]');
   return { busy: false, unsaved };
 }
 export function trackUpdateEdits(root) {
