@@ -1,3 +1,4 @@
+import {recordsCommitted} from "./record-refresh.js";
 import * as db from "./db.js";
 import {
   newRecord,
@@ -101,7 +102,7 @@ export async function transaction(stores, fn) {
         }
       };
     }
-    t.oncomplete = () => resolve(result);
+    t.oncomplete = () => {recordsCommitted(connection.name,stores);resolve(result);};
     t.onerror = t.onabort = () =>
       reject(error || t.error || Error("İşlem tamamlanamadı"));
   });

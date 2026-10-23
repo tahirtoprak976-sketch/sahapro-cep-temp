@@ -1,3 +1,4 @@
+import {bindWorkFuelPreview, workFuelState} from "./work-fuel-preview.js";
 import {workReviewContext} from './collect-core.js';
 import {entryContext,entryContextHTML,entrySaveHash,entryRepeatHash} from './entry-context.js';
 import { latestWork, repeatWork } from "./work-repeat.js";
@@ -273,6 +274,7 @@ async function workForm(ctx, editId) {
         ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
       </div>
       <section data-work-time hidden><h3>Saat Puantajı (opsiyonel)</h3><div class="formgrid2">${fText("Başlangıç", "time_start", v.time_start || "", { type: "time" })}${fText("Bitiş", "time_end", v.time_end || "", { type: "time" })}</div>${fNum("Mola (dk)", "break_minutes", v.break_minutes ?? 0)}<button type="button" class="btn" data-time-calculate>Saat Miktarını Hesapla</button></section>
+      <section data-work-fuel-preview aria-live="polite" hidden></section>
       ${fText("Malzeme", "material", v.material || "", { ph: "mıcır, kum…" })}
       <div class="formgrid2">
         ${fSelect("Döküm Sahası", "dump_site_id", [...dumpSites.map((r) => ({ v: r.id, t: r.name })), { v: "__new__", t: "+ Yeni Döküm Sahası" }], v.dump_site_id || "")}
@@ -325,6 +327,7 @@ async function workForm(ctx, editId) {
   };
   for (const n of ["customer_id", "site_id", "date", "unit", "quantity"]) qs(`[name=${n}]`, form)?.addEventListener("change", jobDraw);
   jobDraw();
+  const fuelPreview=bindWorkFuelPreview({form,db,data:{customers,sites,quarries,dump_sites:dumpSites},previous:rec});
   let draftTimer,
     saving = false, copying = false;
   let formDirty = false;
@@ -517,6 +520,7 @@ async function workForm(ctx, editId) {
           customer_id: cid,
           active: true,
         });
+        sites.push(created);
         sel.insertAdjacentHTML(
           "beforeend",
           `<option value="${created.id}">${esc(name2)}</option>`,
@@ -549,6 +553,7 @@ async function workForm(ctx, editId) {
         );
         sel.value = created.id;
       }
+      sel.dispatchEvent(new Event("change",{bubbles:true}));
       toast("Eklendi: " + name2, "ok");
     });
   };
@@ -669,10 +674,13 @@ async function workForm(ctx, editId) {
         dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
         tonnage_scope: val.tonnage_scope || "unknown",
       };
+      const selectedCustomer=await db.get("customers",fields.customer_id);
+      if(!selectedCustomer || !isActive(selectedCustomer))throw Error("Seçili müşteri artık kullanılamıyor; müşteriyi kontrol edin");
+      const fuelState=fuelPreview.check({customers:selectedCustomer?[selectedCustomer]:[],sites,quarries,dump_sites:dumpSites},fields);
       if (!editId) {
         // Eşit öncelikli farklı fiyat kuralı varsa sessizce seçilmez: kullanıcıya sorulur
         const jobWill = (w) => { const j = J.jobFor(dJob, w); return j && !j.ambiguous && (val.job_scope || "dahil") !== "ekstra"; }; // sözleşme fiyatlayacaksa sorma
-        if (!(val.manual_price !== "" && val.manual_price != null) && !jobWill(fields)) {
+        if (!(val.manual_price !== "" && val.manual_price != null) && !jobWill(fields) && !fuelState.only_pay) {
           const { askPriceSnapshot } = await import("./price-pick.js");
           const r = await askPriceSnapshot(await db.listActive("price_book"), { ...fields, vehicle_type: vehicles.find((v) => v.id === fields.vehicle_id)?.type },
             { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${fields.date} · ${fields.quantity} ${fields.unit}`, memo: priceMemo });
@@ -704,6 +712,7 @@ async function workForm(ctx, editId) {
       // Mazot karşılığı (müşteri kartındaki sefer başı mazot kuralı)
       const { applyFuelPay } = await import("./assistant-rules.js");
       const dAll = await db.dumpAll();
+      fuelPreview.check(dAll,fields);
       const fuelText = (r) => [r.description, r.material, r.quarry, r.dump_area, r.internal_note].filter(Boolean).join(" ");
       // Düzenlemede kayıtlı litre hakkı bugünkü kuralla SESSİZCE yeniden hesaplanmaz: müşteri / birim / miktar değişmediyse eski hak ve
       // mazot karşılığı fiyatı korunur; miktar değiştiyse kayıtlı litre/birim oranıyla hesaplanır.
@@ -716,7 +725,11 @@ async function workForm(ctx, editId) {
       } else Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
       const { applyYard } = await import("./yard-core.js");
       Object.assign(fields, applyYard(dAll, fields));
-      if (!fields.customer_fuel_allowance_l) fields.customer_fuel_allowance_l = null;
+      if (!fields.customer_fuel_allowance_l) {
+        fields.customer_fuel_allowance_l = null;
+        fields.fuel_rule_id = null;
+        if(oldL > 0 && rec.price_snapshot?.price_source === "Mazot karşılığı" && fields.price_snapshot?.price_source !== "Manuel")fields.price_snapshot=null;
+      }
       const jobScope = val.job_scope || "";
       if (!editId) Object.assign(fields, J.applyJob(dAll, fields, { extra: jobScope === "ekstra" }));
       else if (jobScope && jobScope !== jobInit) {
@@ -763,7 +776,7 @@ async function workForm(ctx, editId) {
           const manual =
             row.x_manual_price !== "" ? row.x_manual_price : val.manual_price;
           const rate = kdvRateOf(row.x_manual_kdv !== "" ? row.x_manual_kdv : val.manual_kdv) ?? NaN; // boş → geçersiz (sessizce %0 olmaz)
-          if ((manual === "" || manual == null) && !(J.jobFor(dJob, r) && !J.jobFor(dJob, r).ambiguous && (val.job_scope || "dahil") !== "ekstra")) {
+          if ((manual === "" || manual == null) && !(J.jobFor(dJob, r) && !J.jobFor(dJob, r).ambiguous && (val.job_scope || "dahil") !== "ekstra") && !workFuelState(dAll,r).only_pay) {
             const { askPriceSnapshot } = await import("./price-pick.js");
             const pr = await askPriceSnapshot(prices, r, crane, { label: `${r.date} · ${r.quantity} ${r.unit}`, memo: priceMemo });
             if (pr.cancel) return;

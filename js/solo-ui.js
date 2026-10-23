@@ -1421,11 +1421,6 @@ export async function augment(ctx) {
   }
   // One read-only snapshot for all customer sections. Sharing still reads fresh data on click.
   const customerData=route === "musteriler" && id ? await db.dumpAll() : null;
-  // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
-  if (route === "musteriler" && id) {
-    try { await customerDashboard(ctx, id, customerData); } catch (e) { console.error(e); }
-    try { await customerWorks(ctx, id, customerData); } catch (e) {}
-  }
   // Müşteri kartı: mazotla ödeme kuralları ve mazot hesabı (ör. Kılıç Hafriyat: 75 L/sefer, ücret yalnız mazot)
   if (route === "musteriler" && id) {
     try {
@@ -1436,7 +1431,7 @@ export async function augment(ctx) {
       const L = R.customerFuelLedger(d0, id);
       if (me && (rules.length || L.works)) {
         const unitTxt = Object.entries(L.units || {}).map(([u, q]) => `${q} ${String(u).toLocaleLowerCase("tr-TR")}`).join(", ") || "0 iş";
-        const html = `<section class="card"><h2>⛽ Mazot hesabı</h2>
+        const html = `<section class="card" data-customer-fuel-account><h2>⛽ Mazot hesabı</h2>
           ${rules.map((r) => `<p class="small">• ${esc(String(r.per))} L / ${esc(String(r.unit || "Sefer").toLocaleLowerCase("tr-TR"))}${r.match ? " · " + esc(r.match) : " · tüm işleri"} · ${r.only_pay !== false ? "ücret yalnız mazot" : "para + mazot"}${r.from || r.to ? " · " + esc(r.from || "…") + " → " + esc(r.to || "…") : ""}</p>`).join("") || '<p class="small muted">Kural yok (Kartı Düzenle → Mazotla ödeme kuralları)</p>'}
           <p><b>${esc(unitTxt)}</b> → <b>${L.earned} L</b> hak edildi · <b>${L.received} L</b> alındı</p>
           <p style="font-size:17px">${L.balance > 0 ? `Kalan mazot alacağı: <b>${L.balance} L</b>` : L.balance < 0 ? `Fazla alınan: <b>${-L.balance} L</b>` : "Hesap kapalı ✓"}</p>
@@ -1454,6 +1449,11 @@ export async function augment(ctx) {
         // Toplu kural uygulama kaldırıldı: TL işi anlaşma doğrulanmadan "yalnız mazot"a çevrilmez, eski litre hakkı bugünkü kuralla yeniden hesaplanmaz (bkz. #/mazot-hesaplari/<müşteri>)
       }
     } catch (e) {}
+  }
+  // Müşteri kartı: yapılan işler listesi (dönem, toplamlar, bakiye, paylaş)
+  if (route === "musteriler" && id) {
+    try { await customerDashboard(ctx, id, customerData); } catch (e) { console.error(e); }
+    try { await customerWorks(ctx, id, customerData); } catch (e) {}
   }
   // Müşteri kartı: ana firma / taşeronları (Ağırtaş Mimarlık → Hisar Polat)
   if (route === "musteriler" && id) {

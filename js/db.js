@@ -1,3 +1,4 @@
+import {recordsCommitted} from "./record-refresh.js";
 import {freezeDumpTariff, liveDumpEntries} from "./dump-ledger-core.js";
 import { validDate } from "./driver-delivery.js";
 import {customerFuelFields, validateCustomerFuelLinks} from './customer-fuel.js';
@@ -100,7 +101,11 @@ function wrap(req) {
 
 export async function put(store, rec) {
   const db = await openDB();
-  return wrap(tx(db, store, "readwrite").put(rec));
+  return new Promise((resolve,reject)=>{
+    const t=db.transaction(store,"readwrite"),request=t.objectStore(store).put(rec);
+    t.oncomplete=()=>{recordsCommitted(db.name,[store]);resolve(request.result);};
+    t.onerror=t.onabort=()=>reject(t.error||Error("Kayıt işlemi iptal edildi"));
+  });
 }
 export async function get(store, id) {
   const db = await openDB();
@@ -226,6 +231,7 @@ export async function softDelete(store, id, reason) {
     };
     t.oncomplete = resolve; t.onabort = t.onerror = () => reject(error || t.error);
   });
+  recordsCommitted(connection.name,[store]);
   return upd;
 }
 // Mükerrer depo GİRİŞİ silme (birleştirme sonrası). Sayım/çıkış hareketi ve borca bağlı giriş silinmez.
@@ -679,7 +685,7 @@ async function putPlainOp(store, fields, auditReason, op) {
         t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
       }
     };
-    t.oncomplete = () => resolve(existing ? { ...existing, _existing: true } : rec);
+    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,[store]);resolve(existing ? { ...existing, _existing: true } : rec);};
     t.onabort = t.onerror = () => reject(error || t.error);
   });
 }
@@ -757,7 +763,7 @@ async function putUniqueDriver(store, fields, auditReason) {
       t.objectStore(store).put(rec);
       t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
     };
-    t.oncomplete = () => resolve(rec);
+    t.oncomplete = () => {recordsCommitted(d.name,[store]);resolve(rec);};
     t.onabort = t.onerror = () => reject(error || t.error);
   });
 }
@@ -826,7 +832,7 @@ export async function saveWorkBatch(rows) {
         }),
       );
     }
-    t.oncomplete = () => resolve(validated);
+    t.oncomplete = () => {recordsCommitted(d.name,["work_records"]);resolve(validated);};
     t.onabort = t.onerror = () =>
       reject(t.error || Error("Satırlar kaydedilemedi"));
   });
@@ -1094,6 +1100,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
     t.onabort = t.onerror = () => reject(error || t.error);
   }).catch((e) => { if (e?.code === "REBASE") return e; throw e; });
   if (wrote?.code === "REBASE") return saveExisting(store, wrote.current, delta, auditReason, _retry + 1);
+  recordsCommitted(d.name,[store]);
   return upd;
 }
 
@@ -1472,7 +1479,7 @@ export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {
         at: nowISO(),
       });
     };
-    t.oncomplete = () => resolve(existing ? { ...existing, _existing: true } : result);
+    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,["fuel_records","fuel_tank_movements"]);resolve(existing ? { ...existing, _existing: true } : result);};
     t.onabort = t.onerror = () =>
       reject(error || t.error || Error("Yakıt işlemi iptal edildi"));
   });
@@ -1961,7 +1968,7 @@ export async function updateIf(store, id, pred, fields, auditReason) {
         out = rec;
       };
     };
-    t.oncomplete = () => resolve(out);
+    t.oncomplete = () => {if(!out.skipped)recordsCommitted(d.name,[store]);resolve(out);};
     t.onerror = t.onabort = () => reject(error || t.error);
   });
 }
