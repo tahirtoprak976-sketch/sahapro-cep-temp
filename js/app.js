@@ -1,3 +1,4 @@
+import {installRecordRefresh} from "./record-refresh.js";
 import * as partsScreen from "./parts-ui.js";
 import { allowUpdate, trackUpdateEdits } from "./update-safety.js";
 import * as solo from "./solo-ui.js";
@@ -210,6 +211,7 @@ export async function renderCurrent() {
   if (!driverMode && parts[0] !== "sofor" && (await firstRunChoice())) return;
   const previousRoot = qs("#screen");
   const root = previousRoot.cloneNode(false);
+  delete root.dataset.viewReady;
   previousRoot.replaceWith(root);
   const mod = MODULES[parts[0] || ""] || dashScreen;
   const names = await buildNames();
@@ -251,6 +253,7 @@ export async function renderCurrent() {
   const drv = (() => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } })();
   document.body.classList.toggle("driver-mode", drv);
   if (drv) { qs("#bottomnav").hidden = true; if (qs("#ai-fab")) qs("#ai-fab").hidden = true; const sh = document.getElementById("brand-shell"); if (sh) sh.hidden = true; }
+  root.dataset.viewReady="1";
   window.scrollTo(0, 0);
 }
 
@@ -446,6 +449,7 @@ document.addEventListener("click", (ev) => {
     }
     try { await (await import("./dump-fees.js")).seedOfficialDumps(db); } catch (e) { console.warn(e); }
     try { await (await import("./yard-core.js")).seedVehicleTypes(db); } catch (e) { console.warn(e); }
+    await installRecordRefresh({db,context:()=>({root:qs("#screen"),parts:parseHash().parts}),reload:renderCurrent});
     window.addEventListener("hashchange", renderCurrent);
     await renderCurrent();
   } catch (e) {
