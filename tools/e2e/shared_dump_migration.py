@@ -10,7 +10,9 @@ with sync_playwright() as p:
     page = c.new_page()
     errors = []
     page.on('pageerror', lambda e: errors.append(str(e)))
-    page.goto(U + 'robots.txt')
+    # A real same-origin asset avoids GitHub Pages' restrictive CSP on a 404.
+    # The app has not run yet, so this profile can still start as a v5 device.
+    page.goto(U + 'manifest.webmanifest')
     seed = page.evaluate("""async()=>{
       const C=await import('./js/core.js'), date=C.todayStr();
       const rows={
