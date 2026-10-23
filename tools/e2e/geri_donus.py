@@ -2,8 +2,10 @@
 # tarayıcı güncellemesi → eski kodun yeni veriyle davranışı; sonra yeniden v3.9.05'e ileri dönüş. (Test verisi, yerel sunucu.)
 import re, os, sys, shutil, subprocess, socket, time, tempfile, json, io, tarfile
 from playwright.sync_api import sync_playwright
+from support.history_fixture import require_git_ref
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OLD_REF = os.environ.get("OLD_REF", "1eaebf1")
+require_git_ref(ROOT, OLD_REF)
 W = tempfile.mkdtemp(prefix="sahapro_geri_"); APP = W + "/app"
 def put_new():
     if os.path.exists(APP): shutil.rmtree(APP)
@@ -11,7 +13,7 @@ def put_new():
 def put_old():
     if os.path.exists(APP): shutil.rmtree(APP)
     os.makedirs(APP)
-    tar = subprocess.run(["git", "archive", OLD_REF], cwd=ROOT, capture_output=True).stdout
+    tar = subprocess.run(["git", "archive", OLD_REF], cwd=ROOT, capture_output=True, check=True).stdout
     with tarfile.open(fileobj=io.BytesIO(tar)) as t: t.extractall(APP, filter='data')
     now = time.time()
     for dp, _, fs in os.walk(APP):

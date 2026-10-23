@@ -1,8 +1,8 @@
 # Tek işlemde yazılmayan (kısmi kalabilen) yollar + geri alma (TEST VERİSİ, taklit Gemini).
-# Her senaryoda son kart (arıza kaydı) kayıttan hemen önce silinen araca bağlanarak hata verdirilir; öncesinde yazılanlar
+# Ön denetim reddi ayrıca ölçülür. Kısmi yazım için son bakım kaydının transaction'ına hata enjekte edilir; öncesinde yazılanlar
 # görülür, "Yarım kalan kaydı geri al" denenir. Ayrıca: bağlanmış kayıtta geri alma, iki kez geri alma, kapat-aç sonrası
 # geri alma, iki sekmede aynı anda geri alma, yarım izin onayı.
-import json
+import json, os
 from playwright.sync_api import sync_playwright
 U = "http://localhost:8841/"; PIN = "482917"
 FAIL = []
@@ -10,7 +10,7 @@ def check(c, m):
     print(("  ✓ " if c else "  ✗ ") + m)
     if not c: FAIL.append(m)
 with sync_playwright() as p:
-    b = p.chromium.launch(); errs = []
+    b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH"), args=["--no-sandbox"]); errs = []
     ctx = b.new_context(viewport={'width': 412, 'height': 900}); ctx.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
     PLANS = []
     def gem(route):
@@ -33,13 +33,16 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_timeout(3000); unlock()
     def fresh_vehicle():
         return ev("""async()=>{const db=await import('./js/db.js');return (await db.saveNew('vehicles',{name:'Geçici '+Math.random().toString(36).slice(2,6),type:'Kamyon'},'t')).id}""")
-    def run(msg, plan, fail_vid):
+    def run(msg, plan, fail_vid, preflight=False):
         PLANS.append(plan)
         pg.goto(U + "index.html#/akilli-asistan"); pg.reload(); pg.wait_for_timeout(2500); unlock()
         ev("(()=>{const r=document.querySelector('[data-refine]');if(r)r.checked=false})()")
         pg.fill("[data-msg]", msg); pg.click("[data-ask]"); pg.wait_for_timeout(3000)
         ev("document.querySelectorAll('[data-out] .card[data-kind] [data-pick]').forEach(x=>{if(!x.disabled)x.checked=true})")
-        ev(f"""async()=>{{const db=await import('./js/db.js');await db.softDelete('vehicles','{fail_vid}','test: hata üret')}}""")
+        if preflight:
+            ev("async id=>await(await import('./js/db.js')).softDelete('vehicles',id,'TEST preflight')", fail_vid)
+        else:
+            ev("""id=>{window.__maintFaultHit=false;const proto=IDBObjectStore.prototype,old=proto.put;proto.put=function(row,...args){if(this.name==='maintenance_records'&&row.vehicle_id===id){window.__maintFaultHit=true;proto.put=old;const request=old.call(this,row,...args);this.add(row);return request}return old.call(this,row,...args)}}""", fail_vid)
         pg.click("[data-save]"); pg.wait_for_timeout(1500)
         while pg.query_selector(".sheet"):
             for x in pg.query_selector_all(".sheet button"):
@@ -47,6 +50,8 @@ with sync_playwright() as p:
             else: break
             pg.wait_for_timeout(1200)
         pg.wait_for_timeout(1500)
+        if not preflight:
+            check(ev("window.__maintFaultHit===true"), "hata ön denetimden sonra gerçek bakım transaction'ında üretildi")
         return pg.inner_text("[data-out]")
     def undo_click(confirm="Geri al"):
         btn = pg.query_selector("[data-undo]")
@@ -59,6 +64,12 @@ with sync_playwright() as p:
         return " | ".join(ev("[...document.querySelectorAll('.toast')].map(t=>t.textContent)")[-2:])
     cnt = lambda store, cond="true": ev(f"async()=>{{const db=await import('./js/db.js');return (await db.listActive('{store}')).filter(r=>{cond}).length}}")
     def maint(fv): return [{"date": T, "vehicle_id": fv, "maint_type": "Arıza", "description": "fren sesi", "status": "Açık"}]
+
+    # A0) Güncelliğini kaybeden referans, hiçbir yazma yapılmadan topluca reddedilir.
+    fv = fresh_vehicle()
+    run("Kaya İnşaat 30.000 TL havale yaptı. Fren sesi var", {"collections": [{"date": T, "customer_id": ids["k"], "amount": 30000, "method": "Havale", "bank_account_id": ids["bank"]}], "maintenance": maint(fv)}, fv, preflight=True)
+    check([cnt(s) for s in ['cash_records','bank_movements','cari_movements','maintenance_records']] == [0,0,0,0], "silinen araç: toplu ön denetim hiçbir finansal/bakım kaydı yazmadı")
+    check(pg.locator('[data-out] .card[data-kind]').count() == 2 and not pg.locator('[data-out] [data-undo]').count(), "ön denetim reddinde kontrol kartları korunur, kısmi kayıt/geri alma sonucu üretilmez")
 
     # A) Havale tahsilatı yazıldı, sonraki kart hata verdi → yarım; geri al → banka hareketi ve cari dahil hepsi geri
     print("A) Havale tahsilatı")
@@ -124,3 +135,5 @@ with sync_playwright() as p:
     check(not errs, f"sayfa hatası yok {errs[:2]}")
     b.close()
 print("\nSONUÇ:", "BAŞARILI" if not FAIL else f"{len(FAIL)} SORUN")
+
+raise SystemExit(bool(FAIL))

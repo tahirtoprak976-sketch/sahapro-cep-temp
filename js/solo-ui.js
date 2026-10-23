@@ -1420,7 +1420,7 @@ export async function augment(ctx) {
     if (sources.length) root.insertAdjacentHTML("beforeend", `<section class="card" data-pdf-provenance><h3>Kaynak PDF</h3>${sources.map(s=>`<p>Sayfa ${esc(String(s.page || "?"))}</p><p class="small">${esc(s.quote || "")}</p><button class="btn block" data-go="#/belgeler/${esc(s.document_id)}">Orijinal PDF arşivini aç</button>`).join('')}</section>`);
   }
   // One read-only snapshot for all customer sections. Sharing still reads fresh data on click.
-  const customerData=route === "musteriler" && id ? await db.dumpAll() : null;
+  const customerData=route === "musteriler" && id ? (ctx.customerData ?? await db.dumpAll()) : null;
   // Müşteri kartı: mazotla ödeme kuralları ve mazot hesabı (ör. Kılıç Hafriyat: 75 L/sefer, ücret yalnız mazot)
   if (route === "musteriler" && id) {
     try {

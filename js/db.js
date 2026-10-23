@@ -99,6 +99,10 @@ function wrap(req) {
   });
 }
 
+// Request error events bubble before IDBTransaction.error is necessarily populated.
+// Always reject with an Error so callers can report failure and offer recovery.
+const transactionError = (t, event) => t.error || event?.target?.error || Error("Veritabanı işlemi iptal edildi");
+
 export async function put(store, rec) {
   const db = await openDB();
   return new Promise((resolve,reject)=>{
@@ -229,7 +233,7 @@ export async function softDelete(store, id, reason) {
         t.objectStore("audit_log").put({id:uuid(),entity:store,entity_id:id,action:"soft_delete",old:{deleted_at:rec.deleted_at},new:{deleted_at:upd.deleted_at},reason:reason||"",at:nowISO()});
       };
     };
-    t.oncomplete = resolve; t.onabort = t.onerror = () => reject(error || t.error);
+    t.oncomplete = resolve; t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
   recordsCommitted(connection.name,[store]);
   return upd;
@@ -265,7 +269,7 @@ export async function removeOrphanAttachment(id) {
   let parent = null; try { parent = await get(owner, a.record_id); } catch (e) {}
   if (parent) throw Error("Bu dosyanın sahibi var; silinmez");
   const d = await openDB();
-  await new Promise((res, rej) => { const t = d.transaction(["attachments"], "readwrite"); t.objectStore("attachments").delete(id); t.oncomplete = res; t.onerror = t.onabort = () => rej(t.error); });
+  await new Promise((res, rej) => { const t = d.transaction(["attachments"], "readwrite"); t.objectStore("attachments").delete(id); t.oncomplete = res; t.onerror = t.onabort = (event) => rej(transactionError(t, event)); });
   await audit("attachments", id, "delete", { name: a.name, record_type: a.record_type, record_id: a.record_id }, null, "Veri sağlığı: sahipsiz dosya");
   return true;
 }
@@ -306,7 +310,7 @@ export async function metaUpdate(key, fn) {
     const g = st.get(key);
     g.onsuccess = () => { nx = fn(g.result ? g.result.value : null); st.put({ key, value: nx }); };
     t.oncomplete = () => resolve(nx);
-    t.onerror = t.onabort = () => reject(t.error);
+    t.onerror = t.onabort = (event) => reject(transactionError(t, event));
   });
 }
 // Birden çok meta anahtarını tek transaction'da oku → fn(değerler) → { set: {anahtar: değer}, result } (fn hata atarsa hiçbir şey yazılmaz)
@@ -325,7 +329,7 @@ export async function metaTxn(keys, fn) {
       } catch (e) { error = e; t.abort(); }
     };
     t.oncomplete = () => resolve(out);
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 // Sayaç (fiş/teklif/hakediş seri no) — tek transaction'da atomik artış
@@ -342,7 +346,7 @@ export async function nextSeq(name) {
       t.oncomplete = () => resolve(nx);
     };
     g.onerror = () => reject(g.error);
-    t.onerror = () => reject(t.error);
+    t.onerror = (event) => reject(transactionError(t, event));
   });
 }
 
@@ -395,7 +399,7 @@ export async function ensureCustomerCard(name, parent = null, options = {}) {
       } catch(e) { error=e; try{t.abort();}catch{} }
     };
     t.oncomplete = () => resolve(result);
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -447,7 +451,7 @@ export async function addAttachment(recordType, recordId, file, extra = {}) {
       else t.objectStore("attachments").put(rec);
     };
     t.oncomplete = () => resolve(out);
-    t.onabort = t.onerror = () => reject(t.error);
+    t.onabort = t.onerror = (event) => reject(transactionError(t, event));
   });
 }
 export async function attachmentsFor(recordType, recordId) {
@@ -686,7 +690,7 @@ async function putPlainOp(store, fields, auditReason, op) {
       }
     };
     t.oncomplete = () => {if(!existing)recordsCommitted(d.name,[store]);resolve(existing ? { ...existing, _existing: true } : rec);};
-    t.onabort = t.onerror = () => reject(error || t.error);
+    t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
 }
 export async function saveNew(store, fields, auditReason, { op = null } = {}) {
@@ -726,7 +730,7 @@ export async function markDriverVerified(entries) {
     const t = d.transaction("meta", "readwrite");
     for (const e of entries) t.objectStore("meta").put({ key: DRV_OK + e.id, value: { pid: e.pid || null, lid: e.lid || null, at: nowISO() } });
     t.oncomplete = resolve;
-    t.onabort = t.onerror = () => reject(t.error);
+    t.onabort = t.onerror = (event) => reject(transactionError(t, event));
   });
 }
 // Bağlantı değişiklikleri iki sekmede birbirinin iptalini/yenisini ezemez.
@@ -734,7 +738,7 @@ export async function updateDriverLinks(change) {
   const db=await openDB();return new Promise((resolve,reject)=>{
     const t=db.transaction('meta','readwrite'),s=t.objectStore('meta'),q=s.get('driver_links');let out,error;
     q.onsuccess=()=>{try{out=change(q.result?.value||[]);if(!Array.isArray(out))throw Error('Bağlantı listesi geçersiz');s.put({key:'driver_links',value:out});}catch(e){error=e;t.abort();}};
-    t.oncomplete=()=>resolve(out);t.onabort=t.onerror=()=>reject(error||t.error);
+    t.oncomplete=()=>resolve(out);t.onabort=t.onerror=(event) => reject(error || transactionError(t, event));
   });
 }
 // İmza doğrulama ile Kaydet arasındaki iptal/pasifleştirme de son transaction'da görülür.
@@ -764,7 +768,7 @@ async function putUniqueDriver(store, fields, auditReason) {
       t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
     };
     t.oncomplete = () => {recordsCommitted(d.name,[store]);resolve(rec);};
-    t.onabort = t.onerror = () => reject(error || t.error);
+    t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -907,7 +911,7 @@ export async function saveWorkSlip(fields, workIds) {
       };
     }
     t.oncomplete = () => resolve(rec);
-    t.onabort = t.onerror = () => reject(error || t.error);
+    t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -1097,7 +1101,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
       t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "update", old: rec ?? null, new: fields ?? null, reason: auditReason || "", at: nowISO() });
     };
     t.oncomplete = resolve;
-    t.onabort = t.onerror = () => reject(error || t.error);
+    t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   }).catch((e) => { if (e?.code === "REBASE") return e; throw e; });
   if (wrote?.code === "REBASE") return saveExisting(store, wrote.current, delta, auditReason, _retry + 1);
   recordsCommitted(d.name,[store]);
@@ -1133,7 +1137,7 @@ function backupBeforeUpgrade() {
         r.onsuccess = () => (snapshot.stores[name] = r.result);
       }
       t.oncomplete = res;
-      t.onerror = () => rej(t.error);
+      t.onerror = (event) => rej(transactionError(t, event));
     });
     old.close();
     const recovery = await new Promise((res, rej) => {
@@ -1147,7 +1151,7 @@ function backupBeforeUpgrade() {
       const t = recovery.transaction("snapshots", "readwrite");
       t.objectStore("snapshots").put(snapshot);
       t.oncomplete = res;
-      t.onerror = () => rej(t.error);
+      t.onerror = (event) => rej(transactionError(t, event));
     });
     recovery.close();
   })();
@@ -1552,7 +1556,7 @@ export async function fillTankFuelCosts() {
     a.onsuccess = () => { fuels = a.result; run(); };
     b.onsuccess = () => { moves = b.result; run(); };
     t.oncomplete = () => resolve(n);
-    t.onabort = t.onerror = () => reject(t.error);
+    t.onabort = t.onerror = (event) => reject(transactionError(t, event));
   });
 }
 // Depo girişlerinde litre fiyatı toplamla tutmuyorsa (ör. faturadaki KDV hariç birim fiyat yazılmış) toplam ÷ litre yapılır;
@@ -1592,7 +1596,7 @@ export async function repairTankPrices() {
     a.onsuccess = () => { fuels = a.result; run(); };
     b.onsuccess = () => { moves = b.result; run(); };
     t.oncomplete = () => resolve(out);
-    t.onabort = t.onerror = () => reject(t.error);
+    t.onabort = t.onerror = (event) => reject(transactionError(t, event));
   });
 }
 export async function createHakedis(fields) {
@@ -1697,7 +1701,7 @@ export async function finalizeHakedis(id) {
       }
     };
     t.oncomplete = () => resolve(result);
-    t.onabort = t.onerror = () => reject(error || t.error);
+    t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
 }
 export async function byRelation(store, key, value) {
@@ -1788,7 +1792,7 @@ export async function saveDocument(fields, file) {
     t.objectStore("documents").put(rec);
     t.objectStore("attachments").put(attachment);
     t.oncomplete = resolve;
-    t.onerror = t.onabort = () => reject(t.error);
+    t.onerror = t.onabort = (event) => reject(transactionError(t, event));
   });
   return rec;
 }
@@ -1835,7 +1839,7 @@ export async function signContract(id, blobs) {
       });
     };
     t.oncomplete = resolve;
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -1894,7 +1898,7 @@ export async function saveCashEvent(fields, { op = null } = {}) {
       };
     } else if (verified) { const ready = t.objectStore("meta").get(DRV_OK + fields.driver_entry_id); ready.onsuccess = viaOp; } else viaOp();
     t.oncomplete = () => res(existing ? { ...existing, _existing: true } : rec);
-    t.onerror = t.onabort = () => rej(error || t.error);
+    t.onerror = t.onabort = (event) => rej(error || transactionError(t, event));
   });
 }
 
@@ -1939,7 +1943,7 @@ export async function signSlip(id, file) {
       }
     };
     t.oncomplete = () => resolve(result);
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -1969,7 +1973,7 @@ export async function updateIf(store, id, pred, fields, auditReason) {
       };
     };
     t.oncomplete = () => {if(!out.skipped)recordsCommitted(d.name,[store]);resolve(out);};
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -1994,7 +1998,7 @@ export async function saveJobMeasurement(siteId, measurement, cariFields, reason
       out = { site: rec, cari };
     };
     t.oncomplete = () => resolve(out);
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -2018,7 +2022,7 @@ export async function saveJobCharge(siteId, charge, cariFields, reason) {
       out = { site: rec, cari };
     };
     t.oncomplete = () => resolve(out);
-    t.onerror = t.onabort = () => reject(error || t.error);
+    t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -2051,7 +2055,7 @@ export async function linkPdfWorkSource({recordId,expected,source,op}) {
         t.objectStore('meta').put({key:OP+op.id,value:{hash:op.hash,store:'work_records',record_id:recordId,action:'link',at}});
       }catch(e){error=e;t.abort();}
     };
-    t.oncomplete=()=>resolve(out);t.onabort=t.onerror=()=>reject(error||t.error);
+    t.oncomplete=()=>resolve(out);t.onabort=t.onerror=(event) => reject(error || transactionError(t, event));
   });
 }
 
@@ -2067,6 +2071,6 @@ export async function storePdfHistoryFile(hash,file) {
       if(size+file.size>60*1024*1024){error=Error('Dosya taslak alanına sığmadı. Satırlar korunur; devam ederken PDF’yi yeniden seçin.');t.abort();return;}
       s.put({form:id,blob:file,name:file.name||'kaynak.pdf',hash,updated_at:nowISO()});
     }catch(e){error=e;t.abort();}};
-    t.oncomplete=()=>resolve(true);t.onabort=t.onerror=()=>reject(error||t.error);
+    t.oncomplete=()=>resolve(true);t.onabort=t.onerror=(event) => reject(error || transactionError(t, event));
   });
 }
