@@ -14,6 +14,9 @@ with sync_playwright() as p:
   r.fulfill(status=200,content_type='application/json',body=json.dumps({'candidates':[{'content':{'role':'model','parts':parts},'finishReason':'STOP'}]}))
  c.route('https://generativelanguage.googleapis.com/**',mock)
  pg.goto(U+'index.html#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]')
+ # A fresh browser must finish installing the offline assets before disconnecting.
+ pg.evaluate("async()=>await Promise.race([navigator.serviceWorker.ready,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Offline cache installation timed out')),60000))])")
+ pg.wait_for_function('!!navigator.serviceWorker.controller',timeout=15000)
  ids=pg.evaluate("""async()=>{
  const db=await import('./js/db.js'),C=await import('./js/core.js');
  const a=await db.saveNew('customers',{name:'TEST Alfa'},'TEST'),z=await db.saveNew('customers',{name:'TEST Beta',fuel_rules:[{id:'TEST fuel rule',per:75,unit:'Saat',only_pay:true}]},'TEST');
