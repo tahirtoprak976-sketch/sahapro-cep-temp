@@ -1751,7 +1751,7 @@ async function customerWorks(ctx, id, d) {
   let per = "all", subs = false, limit = 40;
   const draw = () => {
     const res = customerWorkRows(d, id, { from: PER[per][1], subs });
-    sec.innerHTML = `<div class="row between"><h2 style="margin:0">⚒ Yapılan işler</h2><span class="${bal > 0 || fuelBal > 0 ? "badge warn" : "badge ok"}">TL bakiye ${fmt(bal)} ₺${fuelBal > 0 ? ` · ⛽ ${fmt(fuelBal)} L mazot alacağı` : ""}</span></div>
+    sec.innerHTML = `<div class="row between" style="flex-wrap:wrap"><h2 style="margin:0">⚒ Yapılan işler</h2><span style="white-space:normal;overflow-wrap:anywhere" class="${bal > 0 || fuelBal > 0 ? "badge warn" : "badge ok"}">TL bakiye ${fmt(bal)} ₺${fuelBal > 0 ? ` · ⛽ ${fmt(fuelBal)} L mazot alacağı` : ""}</span></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${Object.entries(PER).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-per="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-subs>Taşeronlar dahil</button>` : ""}</div>
       <p class="small"><b>${res.rows.length} iş</b> · ${Object.entries(res.units).map(([u, q]) => `${fmt(q)} ${esc(u.toLocaleLowerCase("tr-TR"))}`).join(" · ") || "—"}${res.amount ? ` · <b>${fmt(res.amount)} ₺</b>` : ""}${res.fuelL ? ` · ⛽ ${fmt(res.fuelL)} L mazot karşılığı` : ""}${res.unpriced ? ` · <span class="badge warn">${res.unpriced} fiyatsız</span>` : ""}</p>
       ${res.rows.length ? res.rows.slice(0, limit).map((r) => `<div class="li" data-go="#/isler/${esc(r.id)}"><div class="ic">${r.unit === "Sefer" ? "🚚" : "⚙"}</div><div class="grow"><div class="t1 ellipsis">${esc(core.trDate(r.date))} · ${fmt(r.qty)} ${esc(r.unit.toLocaleLowerCase("tr-TR"))} ${esc(r.type)}${r.sub ? ` <span class="muted tiny">(${esc(r.sub)})</span>` : ""}</div><div class="t2 ellipsis">${esc([r.vehicle, r.where, r.material, r.tonnage ? fmt(r.tonnage) + " ton" : "", r.slip ? "fiş " + r.slip : ""].filter(Boolean).join(" · "))}</div></div><div class="end"><span class="amt">${r.amount ? fmt(r.amount) + " ₺" : r.fuelL ? "⛽ " + fmt(r.fuelL) + " L" : r.included ? "Sözleşmeye dahil" : r.priced ? "0 ₺" : '<span class="muted tiny">fiyatsız</span>'}</span></div></div>`).join("") : '<p class="muted small">Bu dönemde iş yok.</p>'}
@@ -1798,12 +1798,13 @@ async function customerDashboard(ctx, id, d) {
           <b style="font-size:24px;overflow-wrap:anywhere">${fmt1(Math.abs(PM.fuel.balance))} L</b></div>
         ${PM.fuel.onlyPay ? `<div class="small" style="margin-top:6px">ℹ️ <b>Bu işler mazotla ödenir. TL bakiye, mazot alacağını içermez.</b>${R.balanceNow <= 0 && PM.fuel.balance > 0 ? " TL bakiyenin 0 olması hesabın kapandığı anlamına gelmez: kalan mazot alacağı yukarıda." : ""}</div>`
           : PM.fuel.mixedPay ? `<div class="small" style="margin-top:6px">ℹ️ Bu müşteride işin bir kısmı TL, bir kısmı mazotla ödenir: <b>TL bakiye mazot alacağını içermez</b>, iki hesap ayrı izlenir.</div>` : ""}
-        ${per !== "all" ? `<div class="muted tiny" style="margin-top:4px">Seçili dönemde (${esc(rg.label)}) hak edilen: ${fmt1(PM.fuel.periodEarned)} L — yukarıdaki hesap dönemden bağımsızdır.</div>` : ""}
+        ${per !== "all" ? `<div class="muted tiny" style="margin-top:4px">Seçili dönemde (${esc(rg.label)}) hak edilen: ${fmt1(PM.fuel.periodEarned)} L · alınan: ${fmt1(PM.fuel.periodReceived)} L — yukarıdaki hesap dönemden bağımsızdır.</div>` : ""}
       </div>` : ""}
       <div class="small strong">Seçili dönem: ${esc(rg.label)} <span class="muted tiny">(${esc(rg.from ? core.trDate(rg.from) : "başlangıç")} – ${esc(core.trDate(rg.to))})</span></div>
       <div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">
+        ${PM.fuel ? tile(fmt1(R.totals.fuelL) + " L", "Hak edilen mazot · " + rg.label, "accent") + tile(fmt1(R.totals.fuelReceivedL) + " L", "Mazot tahsilatı · " + rg.label, "ok") : ""}
         ${tile(fmt(R.totals.workTotal) + " ₺", "İş tutarı" + (PM.basis === "net" ? " (KDV hariç)" : PM.basis === "brut" ? " (KDV dahil)" : PM.basis === "mixed" ? " (karışık KDV)" : "") + " · " + rg.label, "accent")}${tile(fmt(R.totals.collected) + " ₺", "Tahsilat · " + rg.label, "ok")}
-        ${tile(String(R.totals.works), "İş sayısı · " + (Object.entries(R.units).map(([u, q]) => fmt(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "—"))}${R.totals.tonnage ? tile(fmt(R.totals.tonnage) + " ton", "Fişlerdeki ton · " + rg.label) : PM.fuel ? tile(fmt1(R.totals.fuelL) + " L", "Hak edilen mazot · " + rg.label) : ""}
+        ${tile(String(R.totals.works), "İş sayısı · " + (Object.entries(R.units).map(([u, q]) => fmt(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "—"))}${R.totals.tonnage ? tile(fmt(R.totals.tonnage) + " ton", "Fişlerdeki ton · " + rg.label) : ""}
       </div>
       ${PM.basisText ? `<div class="muted tiny">İş tutarı temeli: ${esc(PM.basisText)}. Bu tutar "KDV dahil alacak" değildir; KDV hakedişte eklenir.</div>` : ""}
       <div class="small strong" style="margin-top:10px">Güncel durum <span class="muted tiny">(tüm zamanlar · bugün itibarıyla, dönem seçiminden bağımsız)</span></div>
@@ -1812,7 +1813,7 @@ async function customerDashboard(ctx, id, d) {
       </div>
       <div class="muted tiny">TL bakiye: hakedişe girmemiş fiyatlı işler girildiği tutarla (KDV hariç girildiyse net), kesinleşmiş hakedişler KDV dahil, eksi tahsilatlar.</div>
       ${R.totals.unpriced ? `<div class="small" style="margin:6px 0"><span class="badge warn">${R.totals.unpriced} işin fiyatı yok</span> tutarlara katılmadı</div>` : ""}
-      <div class="small strong" style="margin-top:10px">Son 12 ay</div>${CR.monthsSvg(R.months)}
+      ${CR.customerChartsHtml(R)}
       <div class="small strong" style="margin-top:10px">İş türüne göre</div>${CR.barsHtml(R.byType)}
       <div class="small strong" style="margin-top:10px">Araca göre</div>${CR.barsHtml(R.byVehicle)}
       ${R.open.length ? `<div class="small strong" style="margin-top:10px">Açık alacak yaşı</div><div style="display:flex;height:12px;border-radius:6px;overflow:hidden;margin:4px 0">${[["b0", "#2e9e6b"], ["b30", "#f5a623"], ["b60", "#e67e22"], ["b90", "#d9534f"]].map(([k, c]) => a[k] ? `<div title="${k}" style="width:${(a[k] / aSum) * 100}%;background:${c}"></div>` : "").join("")}</div><div class="tiny muted">0–30: ${fmt(a.b0)} · 31–60: ${fmt(a.b30)} · 61–90: ${fmt(a.b60)} · 90+: ${fmt(a.b90)} ₺</div>` : ""}
@@ -1835,8 +1836,9 @@ async function customerDashboard(ctx, id, d) {
                 if (photos.length < 30) photos.push({ title: `Fiş · ${core.trDate(w.date)} · ${w.vehicle || ""} · ${w.qty} ${w.unit} ${w.type}${w.slip ? " · No " + w.slip : ""}`, blob: a.blob });
             }
           }
-          const chart = await CR.monthsChartBlob(R.months);
-          const spec = CR.customerReportSpec(R, { audience: b.dataset.dpdf, chart, photos, company: core.COMPANY_NAME });
+          const chart = CR.hasMoneyChart(R) ? await CR.monthsChartBlob(R.months) : null;
+          const fuelChart = R.fuel ? await CR.monthsChartBlob(R.fuelMonths, CR.FUEL_CHART) : null;
+          const spec = CR.customerReportSpec(R, { audience: b.dataset.dpdf, chart, fuelChart, photos, company: core.COMPANY_NAME });
           const { exportDocument } = await import("./document-engine.js");
           await exportDocument(spec, "share");
         } catch (e) {
