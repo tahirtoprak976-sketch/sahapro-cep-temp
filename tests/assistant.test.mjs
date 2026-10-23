@@ -29,9 +29,9 @@ assert.equal(v.expenses[0].ok, true); assert.equal(v.expenses[0].amount, 500); a
 assert.equal(v.expenses[1].ok, false);
 v = validatePlan({ expenses: [{ amount: 500, credit: true }] }, { message: 'Mesut 500 veresiye', d, today });
 assert.equal(v.expenses[0].ok, false);
-// tarih: gelecek/uzak tarih bugüne çekilir ve söylenir
+// Tarih doğrulanamadığında bugün uydurulmaz; alan boş ve kart işaretsiz kalır.
 v = validatePlan({ works: [{ date: '2030-01-01', customer_id: 'CA', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Ahmet Bey 34 ABC 123 3 sefer', d, today });
-assert.equal(v.works[0].date, today); assert.ok(v.works[0].issues.some((x) => /Tarih/.test(x)));
+assert.equal(v.works[0].date, ''); assert.equal(v.works[0].ok,false); assert.equal(v.works[0].dateUnsure,true); assert.ok(v.works[0].issues.some((x) => /Tarih/.test(x)));
 // yakıt
 v = validatePlan({ fuel: [{ vehicle_id: 'V1', liters: 70 }] }, { message: '34 ABC 123 70 lt mazot', d, today });
 assert.equal(v.fuel[0].source, 'Depo Tankı'); assert.equal(v.fuel[0].ok, false, 'depoda stok yok');

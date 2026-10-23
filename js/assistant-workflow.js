@@ -4,6 +4,7 @@ import {foldTr} from './parser.js';
 import {parseTrNumber} from './money-roles.js';
 import {validDate} from './driver-delivery.js';
 import {dateWords} from './command-router.js';
+import {bulkWorkReady} from './assistant-batch.js';
 
 export const DRAFT_KINDS={
  work:{group:'works',label:'İş',required:['date','customer','vehicle','work_type','quantity','unit']},
@@ -115,7 +116,7 @@ export function readDraftRows(out,v,d){
    fields[el.name]=el.value;
    if(el.tagName==='SELECT')options[el.name]=[...el.options].filter(o=>o.value).map(o=>({value:o.value,label:o.textContent,aliases:el.name==='vehicle'?[(d.vehicles||[]).find(x=>x.id===o.value)?.plate||'']:[]}));
   }
-  return [{key:kind+':'+index,kind,index,label:def.label+' '+(index+1),fields,options,selected:!!qs('[data-pick]',card)?.checked}];
+  return [{key:kind+':'+index,kind,index,label:def.label+' '+(index+1),fields,options,selected:!!qs('[data-pick]',card)?.checked,saved:card.dataset.saved==='1',disabled:!!qs('[data-pick]',card)?.disabled}];
  });
 }
 export function applyDraftPlan(plan,row,updates){
@@ -131,17 +132,37 @@ export function bindDraftWorkflow(out,v,d){
  for(const el of out.querySelectorAll('.card[data-kind] [name]'))if(DRAFT_FIELDS[el.name])el.dataset.draftEditable=el.disabled?'0':'1';
  if(!readDraftRows(out,v,d).length)return null;
  const panel=document.createElement('section');panel.className='card';panel.dataset.draftWorkflow='';out.prepend(panel);
+ const controls=document.createElement('div'),body=document.createElement('div');
+ controls.className='row';controls.style.cssText='gap:6px;flex-wrap:wrap;margin:8px 0';
+ controls.innerHTML='<button class="btn small" data-batch-ready>Hazır iş kartlarını seç</button><button class="btn small" data-batch-prices>İşlerin fiyatını sonra belirle</button>';
+ panel.innerHTML='<b>İşlem taslakları</b>';panel.append(controls,body);
  const read=()=>readDraftRows(out,v,d);
  const refresh=()=>{
   const rows=read(),missing=rows.filter(r=>draftMissing(r).length),quantities={};
   for(const r of rows.filter(r=>r.kind==='work'&&Number(r.fields.quantity)>0&&r.fields.unit))quantities[r.fields.unit]=(quantities[r.fields.unit]||0)+Number(r.fields.quantity);
-  panel.innerHTML=`<b>İşlem taslakları</b><div class="small" data-draft-status>${rows.length} taslak · ${missing.length} eksik · ${rows.filter(r=>r.selected).length} seçili</div>${Object.entries(quantities).length?`<p class="small">İş miktarı: ${Object.entries(quantities).map(([u,n])=>esc(fmtNum(n)+' '+u)).join(' · ')}</p>`:''}${rows.map(r=>`<button class="btn block small" style="display:block;margin-top:6px;text-align:left;white-space:normal" data-draft-focus="${esc(r.key)}"><b>${esc(r.label)}</b>${r.fields.customer?` · ${esc(r.options.customer?.find(o=>o.value===r.fields.customer)?.label||'')}`:''}<br>${draftMissing(r).length?'Eksik: '+esc(draftMissing(r).map(f=>DRAFT_FIELDS[f]).join(', ')):'Alanlar tamam; kontrol edip kartı işaretleyin.'}</button>`).join('')}<p class="tiny muted">Sohbetle tamamlayabilirsiniz: “ikinci iş 3 sefer”, “araç 34ABC123”, “tahsilat tutarı 20.000 TL”. Kartlar Kaydet düğmesine basana kadar taslaktır.</p><div data-draft-reply role="status"></div>`;
+  body.innerHTML=`<div class="small" data-draft-status>${rows.length} taslak · ${missing.length} eksik · ${rows.filter(r=>r.selected).length} seçili</div>${Object.entries(quantities).length?`<p class="small">İş miktarı: ${Object.entries(quantities).map(([u,n])=>esc(fmtNum(n)+' '+u)).join(' · ')}</p>`:''}${rows.map(r=>`<button class="btn block small" style="display:block;margin-top:6px;text-align:left;white-space:normal" data-draft-focus="${esc(r.key)}"><b>${esc(r.label)}</b>${r.fields.customer?` · ${esc(r.options.customer?.find(o=>o.value===r.fields.customer)?.label||'')}`:''}<br>${draftMissing(r).length?'Eksik: '+esc(draftMissing(r).map(f=>DRAFT_FIELDS[f]).join(', ')):'Alanlar tamam; kontrol edip kartı işaretleyin.'}</button>`).join('')}<p class="tiny muted">Sohbetle tamamlayabilirsiniz: “ikinci iş 3 sefer”, “araç 34ABC123”, “tahsilat tutarı 20.000 TL”. Kartlar Kaydet düğmesine basana kadar taslaktır.</p><div data-draft-reply role="status"></div>`;
+  const workRows=rows.filter(r=>r.kind==='work'&&!r.saved);
+  controls.hidden=!workRows.length;
+  if(workRows.length){
+   qs('[data-batch-prices]',controls).onclick=()=>{applyBatch({hasPriceDirective:true,deferPrices:true});qs('[data-draft-reply]',panel).textContent='İş fiyatları bekliyor olarak ayarlandı. Kontrol edip hazır iş kartlarını seçebilirsiniz.';};
+   qs('[data-batch-ready]',controls).onclick=()=>{
+    let count=0;
+    for(const row of read()){
+     const data=v[DRAFT_KINDS[row.kind].group]?.[row.index];
+     if(!draftMissing(row).length&&!draftPreflight([row],d)&&bulkWorkReady(row,data)){
+      const card=out.querySelector(`[data-kind="work"][data-i="${row.index}"]`);qs('[data-pick]',card).checked=true;count++;
+     }
+    }
+    refresh();qs('[data-draft-reply]',panel).textContent=`${count} hazır iş kartı seçildi. Eksik, tahminli, mükerrer ve şoför kartlarını ayrı kontrol edin. Kaydet düğmesiyle uygulanacak.`;
+   };
+  }
   for(const btn of panel.querySelectorAll('[data-draft-focus]'))btn.onclick=()=>{const row=read().find(r=>r.key===btn.dataset.draftFocus),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);card.scrollIntoView({block:'center',behavior:'smooth'});const field=qs(`[name="${draftMissing(row)[0]||'date'}"]`,card);field?.focus({preventScroll:true});};
  };
  out.addEventListener('input',refresh);out.addEventListener('change',refresh);refresh();
  const apply=(change,reply)=>{
   const row=read().find(r=>r.key===change.key);if(!row)throw Error('Taslak artık açık değil.');
   const card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`),data=v[DRAFT_KINDS[row.kind].group][row.index];
+  data._workflowWasReady ||= data.ok===true;
   for(const [f,value] of Object.entries(change.updates)){
    const el=qs(`[name="${f}"]`,card);if(!el||el.dataset.draftEditable==='0')throw Error('Alan artık değiştirilemiyor.');
    if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===String(value)))throw Error('Seçenek değişmiş; karttan tekrar seçin.');
@@ -152,12 +173,28 @@ export function bindDraftWorkflow(out,v,d){
    if(f==='vehicle')data.vehicleGuess=false;
    if(f==='date')data.dateUnsure=false;
   }
-  const settled={date:/İş tarihi mesajda yazmıyor|^Tarih (?:yok|seçilmeli)/,customer:/^Müşteri (?:seçilmeli|belirtilmemiş|mesajda yazmıyor)/,vehicle:/^Araç (?:seçilmeli|")/,work_type:/^İş türü seçilmeli/,quantity:/^Miktar (?:yok|[\d.,]+ mesajda)/,unit:/^Birim seçilmeli/,amount:/^Tutar (?:yok|[\d.,]+ mesajda)/};
+  const settled={date:/İş tarihi mesajda yazmıyor|^Toplu iş tarihini|^Tarih .*doğrulanamadı|^Tarih (?:yok|seçilmeli)/,customer:/^Müşteri (?:seçilmeli|belirtilmemiş|mesajda yazmıyor)/,vehicle:/^Araç (?:seçilmeli|")/,work_type:/^İş türü seçilmeli/,quantity:/^Miktar (?:yok|[\d.,]+ mesajda)/,unit:/^Birim seçilmeli/,amount:/^Tutar (?:yok|[\d.,]+ mesajda)/};
   data.issues=(data.issues||[]).filter(issue=>!Object.keys(change.updates).some(field=>settled[field]?.test(issue)));
   const warnings=card.querySelector('[data-row-issues]');if(warnings)warnings.textContent=data.issues.length?'⚠ '+data.issues.join(' · '):'';
+  data._workflowCompleted=true;
   qs('[data-pick]',card).checked=false;data.ok=false;
   v._workflowReplies=[...(v._workflowReplies||[]),reply].slice(-20);
   refresh();return {row,missing:draftMissing(read().find(r=>r.key===row.key))};
  };
- return {read,refresh,resolve:message=>resolveDraftReply(message,read()),apply,panel};
+ const applyBatch=policy=>{
+  const changed=[];
+  for(const row of read().filter(r=>r.kind==='work'&&!r.saved)){
+   const data=v.works[row.index];
+   if(data.fromDriver||data.driver_entry_id||data.unverified||data.driverDup)continue;
+   if(policy.date)apply({key:row.key,updates:{date:policy.date}},'Toplu iş tarihi: '+policy.date);
+   if(policy.hasPriceDirective){
+    const card=out.querySelector(`[data-kind="work"][data-i="${row.index}"]`),box=qs('[name=price_pending]',card);
+    if(box){box.checked=policy.deferPrices;box.dispatchEvent(new Event('change',{bubbles:true}));qs('[data-pick]',card).checked=false;data.price_pending=policy.deferPrices;}
+   }
+   changed.push(row);
+  }
+  if(changed.length&&policy.hasPriceDirective)v._workflowReplies=[...(v._workflowReplies||[]),policy.deferPrices?'İşlerin fiyatları kullanıcı isteğiyle bekliyor.':'Kullanıcı fiyat önizlemesini yeniden açtı.'].slice(-20);
+  refresh();return changed;
+ };
+ return {read,refresh,resolve:message=>resolveDraftReply(message,read()),apply,applyBatch,panel};
 }

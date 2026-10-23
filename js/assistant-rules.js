@@ -170,7 +170,7 @@ export function markPasteDuplicates(works) {
   const seen = new Map();
   for (const r of works) {
     if (!r.vehicle_id || !r.quantity || r.fromDriver) continue; // şoför kayıtları ayrı kimlikli; mükerrer kontrolü kimlikle yapılır
-    const key = [r.date, r.vehicle_id, r.unit, r.quantity, norm(r.material), norm(r.from_place), norm(r.to_place)].join("|");
+    const key = [r.date, r.customer_id || norm(r.new_customer), r.site_id || norm(r.new_site), r.vehicle_id, r.work_type, r.unit, r.quantity, norm(r.material), norm(r.from_place), norm(r.to_place)].join("|");
     if (seen.has(key)) {
       r.pasteDup = true;
       r.ok = false;

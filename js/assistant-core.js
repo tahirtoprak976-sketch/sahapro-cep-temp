@@ -2,6 +2,7 @@
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
 import {customerNameKey} from "./driver-customer.js";
+import {readBatchPolicy} from './assistant-batch.js';
 import {customerFuelRows} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
@@ -289,6 +290,7 @@ export function assistantSystem(rules = "") {
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Bağlamdaki expense_categories listesi özel kategoriler dahil önceliklidir. Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
     "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter). FATURA / FİŞ ise TÜM kalem satırlarını (stok kodu, açıklama, miktar, birim fiyat, KDV, tutar) ve toplamları eksiksiz yaz (en çok 3500 karakter).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
+    "Kullanıcı tüm işler için açık iş tarihi verdiyse WhatsApp gönderim tarihi yerine onu kullan. Toplu iş tarihinde yıl eksikse yılı sor. 'Fiyatlar beklesin / fiyatları sonra belirle' talimatında güncel fiyat veya anlaşma tahmin etme. Eksikleri iş numarasıyla tek bir kısa soru grubunda topla; kayıt oluşturduğunu söyleme.",
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'Bolluca döküm 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\",\"invoice\":(fotoğraf fatura/fiş ise) {\"no\":fatura/fiş no,\"ettn\",\"seller_tax_no\":SATICININ VKN/TCKN,\"net\":KDV hariç toplam,\"kdv\":KDV tutarı,\"kdv_rate\",\"items\":[{\"code\":stok kodu,\"desc\":açıklama (yazdığı gibi),\"qty\",\"unit\",\"unit_price\":KDV hariç birim fiyat,\"kdv_rate\",\"amount\":KDV hariç satır tutarı}] (HER satırı ayrı yaz)}; company: satıcının tam ünvanı,\"place\":faturadaki yer/saha adı (fatura notu ya da sevk adresinde, ör. ARNAVUTKÖY/BOĞAZKÖY)}]. DÖKÜM FATURASI (İSTAÇ vb. döküm sahasının KG/ton toprak-hafriyat faturası) da expenses'e category Döküm ile, invoice ayrıntısı ve place ile yazılır (uygulama döküm hesabına bağlar, gider saymaz).",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
@@ -390,7 +392,10 @@ export function quoteFound(quote, src) {
 }
 export function validatePlan(plan, { message = "", d, today = todayStr(), photoCount = 0, negatives = [] } = {}) {
   const out = { works: [], expenses: [], fuel: [], fuelOut: [], questions: [], newCustomers: [] };
+  const batchPolicy=readBatchPolicy(message,today);
+  out.batchPolicy=batchPolicy;
   plan = plan && typeof plan === "object" ? plan : {};
+  if(Array.isArray(plan.works)&&plan.works.length>20)throw Error('Bir seferde en fazla 20 iş kontrol edilebilir. Hiçbir satır kaydedilmedi; mesajı daha küçük gruplara bölün.');
   const customers = live(d, "customers"), sites = live(d, "sites"), vehicles = live(d, "vehicles"),
     personnel = live(d, "personnel"), suppliers = live(d, "suppliers");
   const byId = (arr, id) => (id ? arr.find((x) => x.id === id) || null : null);
@@ -403,19 +408,23 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const newNames = new Map(); // aynı yeni müşteri tek kart
   const hints = customerHints(d);
 
-  for (const w of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
+  for (const original of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
     const issues = [];
+    const w=!original.from_driver&&batchPolicy.date?{...original,date:batchPolicy.date,date_source:'mesaj'}:original;
     // Şoför ekranından (SP1 kodu): müşteri/araç listeden kesin seçildi; metin tahmini kontrolleri uygulanmaz
     const fromDriver = w.from_driver === true;
     const r = { fromDriver, date: validDate(w.date, today) || today, customer_id: null, new_customer: null, site_id: null, new_site: null,
       vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200),
       description: String(w.description || w.note || "").slice(0, 300), material: String(w.material || "").slice(0, 60),
       dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, quarry_id: byId(live(d, "quarries"), w.quarry_id)?.id || null, new_quarry: null, new_dump_site: null, unit_price: null, dump_cost: null };
+    r.price_pending=!fromDriver&&batchPolicy.deferPrices;
+    if(!fromDriver&&batchPolicy.date)r.date=batchPolicy.date;
+    if(!fromDriver&&batchPolicy.dateIssue){r.date='';r.dateUnsure=true;issues.push(batchPolicy.dateIssue);}
     if (w.dump_cost != null && w.dump_cost !== "") {
       const dc = amountOk(w.dump_cost, [moneyInText(message)]);
       if (dc) r.dump_cost = dc; else issues.push(`Döküm maliyeti ${w.dump_cost} mesajda yazmıyor; uygulanmadı`);
     }
-    if (w.unit_price != null && w.unit_price !== "") {
+    if (!r.price_pending && w.unit_price != null && w.unit_price !== "") {
       const up = amountOk(w.unit_price, [moneyInText(message)]);
       // Birim fiyat yalnız mesajdaki AÇIK birim fiyat ifadesine dayanır ("sefer fiyatı 3.000", "3.000 TL/sefer").
       // Ödeme, ödeme sözü, toplam bedel ya da belirsiz tutar fiyat alanına yazılmaz ve miktara bölünmez (model öyle döndürse bile).
@@ -427,7 +436,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       }
       else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
     }
-    if (w.date && !validDate(w.date, today)) issues.push(`Tarih ${w.date} geçersiz; bugün alındı`);
+    if (w.date && !validDate(w.date, today) && !(batchPolicy.date&&!fromDriver)) {r.date='';r.dateUnsure=true;issues.push(`Tarih ${w.date} doğrulanamadı; doğru tarihi seçin.`);}
     const c = byId(customers, w.customer_id);
     if (c) r.customer_id = c.id;
     else if (w.new_customer) {
@@ -632,7 +641,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     // Mesajda birim fiyat yoksa iş FİYATSIZ değildir: fiyat listesi uygulanır. Kaydetmeden önce kural, iş tarihi, birim fiyat,
     // KDV esası/oranı ve tutar kartta gösterilir. Eşit öncelikli birden çok kural ya da tarihe göre değişen fiyat + kesin olmayan
     // tarih: kural SESSİZCE seçilmez, kaydederken sorulur.
-    if (!r.unit_price && r.unit && (r.customer_id || r.new_customer)) {
+    if (!r.price_pending && !r.unit_price && r.unit && (r.customer_id || r.new_customer)) {
       const v0 = byId(vehicles, r.vehicle_id);
       const dec = priceDecision(live(d, "price_book"), { unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, vehicle_type: v0?.type || null, work_type: r.work_type, date: r.date, material: r.material || null }, { dateSure: !r.dateUnsure });
       const rule = dec.rule;
@@ -643,7 +652,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
     r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt);
-    r.fuelAllowance = fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
+    r.fuelAllowance = r.price_pending?null:fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     // Alan kaynakları (kartta görünür): mesajdan / kayıtlı takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından
     {
       const cName = r.customer_id ? byId(customers, r.customer_id)?.name : r.new_customer;
@@ -652,7 +661,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       r.src = {
         customer: !cName ? null : fromDriver ? "şoför ekranından" : r.hinted ? "geçmiş işlerden tahmin — doğrulayın" : inMessage(cName, message) || (r.customer_id && customerSpans(message, [byId(customers, r.customer_id)], []).length) ? "mesajdan" : r.customer_id && viaAlias("customer", r.customer_id) ? "kayıtlı takma addan" : "mesajda açık yazmıyor — doğrulayın",
         vehicle: !vName ? null : fromDriver ? "şoför ekranından" : vehicleNamed(d, vName, message) || inMessage(vName.name, message) ? "mesajdan" : viaAlias("vehicle", vName.id) ? "kayıtlı takma addan" : "mesajda açık yazmıyor (zimmet / bağlam) — doğrulayın",
-        price: r.unit_price ? "mesajdan" : r.priceInfo?.summary ? "fiyat listesinden" : null,
+        price: r.price_pending ? "fiyat bekliyor — kullanıcı talimatı" : r.unit_price ? "mesajdan" : r.priceInfo?.summary ? "fiyat listesinden" : null,
       };
     }
     out.works.push(r);
@@ -784,7 +793,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (!r.liters) issues.push("Litre mesajda/fişte yok");
     r.stockShort = false;
     if (r.source === "Depo Tankı" && r.liters) {
-      if (r.liters > stock) { r.stockShort = true; issues.push(`Depoda kayıtlı ${Math.max(0, Math.round(stock))} L var; önce depoya yakıt girişi yapın (Yakıt → Depo) ya da kaynağı İstasyon seçin`); }
+      if (r.liters > stock) { r.stockShort = true; issues.push(`Depoda kayıtlı ${Math.max(0, Math.round(stock))} L var; gerçek depo girişini veya başlangıç stokunu kontrol edin. İşleri yakıttan ayrı kaydedebilirsiniz.`); }
       else stock -= r.liters;
     }
     r.issues = issues;
