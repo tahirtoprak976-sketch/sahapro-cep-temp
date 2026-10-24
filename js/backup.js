@@ -49,7 +49,7 @@ async function backupFromSnapshot(snapshot, encrypted, mode) {
     data: snapshot.data, attachments,
     meta: snapshot.meta.filter(m => !SECRET_META.includes(m.key) && !m.key.startsWith(RESTORE_SET) && (encrypted || !LINK_META.includes(m.key))),
     coverage: { consistent_snapshot: snapshot.consistent, attachments_included: mode !== "none", draft_files_included: false, driver_phone_queue_included: false,
-      parts_draft_files_not_included: snapshot.drafts.filter(d => String(d.form).startsWith("spare-part-new:")).reduce((n,d)=>n+(d.values?.files?.length||0),0),
+      parts_draft_files_not_included: snapshot.drafts.filter(d => ["spare-part-new:","spare-part-edit:","part-document:"].some(prefix=>String(d.form).startsWith(prefix))).reduce((n,d)=>n+(d.values?.files?.length||0),0),
       pdf_draft_files_not_included: snapshot.drafts.filter(d => String(d.form).startsWith("pdf_history_file:") && d.blob).length },
     ...(encrypted ? {} : { driver_links_omitted: true }),
   };

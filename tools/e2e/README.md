@@ -2,6 +2,9 @@
 
 Depo kökünde `python3 -m http.server 8841`, sonra:
 
+- `python3 tools/e2e/part_documents.py http://localhost:8841/` — Asistanla garanti fotoğrafı, eski model yanıtını kurtarma, parça kartından yeniden okuma, PDF, belirsiz alanlar, elle yazılmış değerleri koruma, tekrar yükleme ve ayrı profilde fotoğraf/PDF yedek geri yüklemesi. Model yanıtları taklit; orijinal dosyalar, Chromium, DOM, IDB ve SW gerçek. Pillow + ReportLab + DejaVu Sans gerekir.
+- `python3 tools/e2e/part_document_guards.py http://localhost:8841/` — dosya içeriğinden tür denetimi, kayıt/güncelleme sırasında gerçek transaction hatası, aynı belgenin eşzamanlı kaydı, eskiyen garanti düzenlemesi, okuma iptali/zaman aşımı/yanıt sınırı/izin reddi, taslak yedek kapsamı ve temiz profilde geri yükleme. Gerçek Gemini çağrısı yok.
+
 - `python3 tools/e2e/bulk_entry.py http://localhost:8841/` — 20 geçmiş iş/3 ortak kart sorusu/tek atomik onay, fiyat bekletme, geçmiş stok, çevrimdışı taslak sürdürme, hata/yeniden deneme/eşzamanlı onay ve yalnız kendi kayıtlarını geri alma. Model taklit; DOM, IDB, SW ve request hataları gerçek.
 - `python3 tools/e2e/bulk_entry_race.py http://localhost:8841/` — iki gerçek sekmede aynı onay, önizleme sonrası depo tüketimi ve yeni sohbet, alias tekilliği, geri alma sırasında gelen düzenleme/bağlantı. Model çağrısı yok.
 

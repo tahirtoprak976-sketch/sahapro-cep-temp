@@ -23,14 +23,19 @@ export async function preparePartFiles(files = []) {
       bytes[2] === 68 &&
       bytes[3] === 70 &&
       bytes[4] === 45;
+    const imageType=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':
+      [137,80,78,71,13,10,26,10].every((b,i)=>bytes[i]===b)?'image/png':
+      String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP'?'image/webp':null;
     if (!pdf) {
-      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
+      if (!imageType)
         throw Error("JPEG, PNG, WebP veya PDF seçin");
       try {
-        const bitmap = await createImageBitmap(file);
+        const bitmap = await createImageBitmap(new Blob([file],{type:imageType}));
+        const tooLarge=bitmap.width*bitmap.height>40000000;
         bitmap.close();
+        if(tooLarge)throw Error('Fotoğraf 40 megapikselden büyük');
       } catch {
-        throw Error("Fotoğraf açılamadı; geçerli bir fotoğraf seçin");
+        throw Error("Fotoğraf açılamadı veya 40 megapikselden büyük; geçerli bir fotoğraf seçin");
       }
     }
     const hash = [
@@ -39,11 +44,12 @@ export async function preparePartFiles(files = []) {
       .map((x) => x.toString(16).padStart(2, "0"))
       .join("");
     // Garanti/fatura kanıtı özgün çözünürlükte korunur; boyut sınırı girişte uygulanır.
-    const blob = file;
+    const type=pdf?'application/pdf':imageType;
+    const blob = file.type===type?file:new Blob([file],{type});
     result.push({
       id: uuid(),
       name: file.name || "belge",
-      type: pdf ? "application/pdf" : blob.type,
+      type,
       size: blob.size,
       blob,
       src_sha256: hash,
@@ -55,8 +61,9 @@ export async function preparePartFiles(files = []) {
 }
 export async function saveSparePart(f, files = [], key = uuid()) {
   const prepared = await preparePartFiles(files);
+  const {allow_shared_document,...contentFields}=f;
   const signature = stableStringify({
-    fields: f,
+    fields: contentFields,
     files: prepared.map((a) => a.src_sha256),
   });
   return transaction([...stores, "attachments"], (d, t) => {
@@ -69,6 +76,8 @@ export async function saveSparePart(f, files = [], key = uuid()) {
       return old;
     }
     const fields = sparePartFields(d, f);
+    const shared=prepared.some(a=>d.attachments.some(old=>old.src_sha256===a.src_sha256&&old.record_type==='maintenance_parts'&&d.maintenance_parts.some(p=>isActive(p)&&p.id===old.record_id)));
+    if(shared&&f.allow_shared_document!==true)throw Error('Bu belge başka bir parça kartında zaten var. Mevcut kartı inceleyin veya farklı parçaya da ait olduğunu açıkça işaretleyin.');
     const r = newRecord({
       ...fields,
       request_id: key,
@@ -129,8 +138,9 @@ export async function addPartFiles(id, files) {
     }
   });
 }
-export async function updatePartWarranty(id, f, expectedVersion) {
-  return transaction(stores, (d, t) => {
+export async function updatePartWarranty(id, f, expectedVersion, files=[]) {
+  const prepared=await preparePartFiles(files);
+  return transaction([...stores,'attachments'], (d, t) => {
     const old = d.maintenance_parts.find(
       (r) => r.id === id && isActive(r) && r.tracking,
     );
@@ -155,6 +165,8 @@ export async function updatePartWarranty(id, f, expectedVersion) {
       ).toISOString(),
     };
     t.put("maintenance_parts", r);
+    const seen=new Set(d.attachments.filter(a=>a.record_type==='maintenance_parts'&&a.record_id===id).map(a=>a.src_sha256));
+    for(const a of prepared)if(!seen.has(a.src_sha256)){seen.add(a.src_sha256);t.add('attachments',{...a,record_type:'maintenance_parts',record_id:id});}
     return r;
   });
 }

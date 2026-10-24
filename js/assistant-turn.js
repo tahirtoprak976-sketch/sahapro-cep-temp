@@ -1,5 +1,5 @@
 // Decide whether text starts a new request or corrects a pending result.
-const groups=['works','expenses','fuel','fuelOut','collections','maintenance','personnel','edits','cards','memory','tickets','docs','tankIn','prices','actions','settings'];
+const groups=['works','expenses','fuel','fuelOut','collections','maintenance','personnel','edits','cards','memory','tickets','docs','tankIn','prices','actions','settings','partDocuments'];
 export function pendingAssistantCards(result){if(!result||result._done)return 0;return groups.reduce((n,k)=>n+(Array.isArray(result[k])?result[k].length:0),0);}
 const fold=s=>String(s||'').trim().toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i').replace(/\s+/g,' ');
 export function assistantTurn({text='',previous=null,manual=null,transfer=false}={}){
