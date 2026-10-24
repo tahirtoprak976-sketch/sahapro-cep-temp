@@ -396,6 +396,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   out.batchPolicy=batchPolicy;
   plan = plan && typeof plan === "object" ? plan : {};
   if(Array.isArray(plan.works)&&plan.works.length>20)throw Error('Bir seferde en fazla 20 iş kontrol edilebilir. Hiçbir satır kaydedilmedi; mesajı daha küçük gruplara bölün.');
+  if(Array.isArray(plan.fuel)&&plan.fuel.length>10)throw Error('Bir seferde en fazla 10 yakıt kontrol edilebilir. Hiçbir satır kaydedilmedi; mesajı daha küçük gruplara bölün.');
   const customers = live(d, "customers"), sites = live(d, "sites"), vehicles = live(d, "vehicles"),
     personnel = live(d, "personnel"), suppliers = live(d, "suppliers");
   const byId = (arr, id) => (id ? arr.find((x) => x.id === id) || null : null);

@@ -168,6 +168,7 @@ export function bindDraftWorkflow(out,v,d){
    if(el.tagName==='SELECT'&&![...el.options].some(o=>o.value===String(value)))throw Error('Seçenek değişmiş; karttan tekrar seçin.');
    el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
    const raw=rawField[f]||f;data[raw]=value;
+   data._bulkReviewed=[...new Set([...(data._bulkReviewed||[]),raw])];
    if(f==='customer'){data.customer_id=String(value).startsWith('new:')?null:value;data.new_customer=String(value).startsWith('new:')?value.slice(4):null;if(data.customer_id)data.new_customer_parent_id=null;data.customerGuess=false;}
    if(f==='quantity')data.guessed=false;
    if(f==='vehicle')data.vehicleGuess=false;

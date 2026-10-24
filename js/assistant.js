@@ -1,5 +1,6 @@
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {readBatchPolicy,selectedFuelBudget,untrustedWorkPlan} from './assistant-batch.js';
+import {bindBulkEntry,mountBulkResume} from './bulk-entry-ui.js';
 import {assistantTurn} from './assistant-turn.js';
 import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
 import {startDraftPlan,bindDraftWorkflow,draftPreflight,applyDraftPlan,DRAFT_FIELDS} from './assistant-workflow.js';
@@ -131,6 +132,7 @@ export async function screen(ctx) {
   };
   paintTask();
   ctx.assistantTaskChanged=task=>{activeTask=task;paintTask();};
+  await mountBulkResume(ctx);
   let files = [], attachmentError = "";
   const attachmentLimit = 20;
   const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f)||isDriverPDF(f);
@@ -542,6 +544,7 @@ export async function screen(ctx) {
         if(activeTask.native)v._draftOperation=v._draftOperation||'agent:'+activeTask.id;
         paintTask();
       }
+      v._bulkRaw=plan;
       prev = { message: vmsg, plan, v, d };
       const rw = qs("[data-refine-wrap]", root);
       rw.hidden = false;
@@ -989,6 +992,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   for (const sel of qsa('[data-kind=doc] select[name="owner"]', out))
     sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
   v._workflow=bindDraftWorkflow(out,v,d);
+  bindBulkEntry(ctx,out,v,d,{message,files});
 }
 
 async function save(ctx, out, v, d, { message, files }) {
