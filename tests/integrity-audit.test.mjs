@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {money,invoiceLines,invoiceTotals,taxValues} from '../js/enterprise-core.js';
+import {number,partFields} from '../js/solo-core.js';
+import {tankTimeline,assertTankChange} from '../js/tank-timeline.js';
+import {selectedFuelBudget} from '../js/assistant-batch.js';
+for(const bad of [true,false,[],[25],{},' ',null,undefined,NaN,Infinity,'Infinity']){
+ assert.throws(()=>money(bad));assert.throws(()=>number(bad,'TEST',true));
+ assert.throws(()=>invoiceLines([{description:'TEST',quantity:bad,unit_price:100}]));
+}
+for(const bad of [true,false,[],{},' ',NaN])assert.throws(()=>taxValues(100,bad));
+assert.throws(()=>taxValues(100,20,'false'));
+assert.throws(()=>money(0.001));assert.equal(money('0',undefined,true),0);assert.equal(money('25.50'),25.5);
+assert.deepEqual(taxValues(100,0,false),{net:100,tax:0,gross:100});
+assert.equal(invoiceTotals(invoiceLines([{description:'TEST free',quantity:'2',unit_price:0,kdv_rate:0}])).gross_total,0);
+assert.throws(()=>invoiceLines([{description:'TEST overflow',quantity:1e308,unit_price:1}]));
+assert.throws(()=>invoiceTotals([{net:8e13,tax:0,gross:8e13},{net:8e13,tax:0,gross:8e13}]));
+assert.throws(()=>partFields({maintenance_records:[{id:'M',vehicle_id:'V'}]},{maintenance_id:'M',kind:'Parça',description:'TEST overflow',quantity:1e12,unit_price:1e12}));
+const m=(id,date,move_type,liters)=>({id,date,move_type,liters});
+const intake=m('in','2026-10-23','GİRİŞ',100),past=m('past','2026-09-07','ÇIKIŞ',20);
+assert.throws(()=>assertTankChange([intake],[intake,past]),{code:'TANK_HISTORY'});
+assert.equal(selectedFuelBudget([intake],[{kind:'fuel',source:'Depo Tankı',date:past.date,liters:20}]).ok,false);
+const stock=m('opening','2026-09-01','GİRİŞ',100),out=m('used','2026-09-20','ÇIKIŞ',80);
+assert.throws(()=>assertTankChange([stock,out,intake],[stock,out,intake,m('more','2026-09-07','ÇIKIŞ',40)]));
+assertTankChange([stock,out],[stock,out,m('ok','2026-09-07','ÇIKIŞ',20)]);
+assertTankChange([past,intake],[past,intake,m('today','2026-10-24','ÇIKIŞ',10)]);
+assert.throws(()=>assertTankChange([stock,out],[{...stock,liters:50},out]));
+assertTankChange([past,intake],[past,intake,m('real opening','2026-09-01','GİRİŞ',20)]);
+assert.equal(tankTimeline([past,intake]).firstDeficit.date,'2026-09-07');
+assert.equal(tankTimeline([{...intake,deleted_at:'x'}]).remaining,0);
+assert.equal(tankTimeline([m('bad','2026-02-30','GİRİŞ',10)]).invalid.length,1);
+assert.equal(tankTimeline([m('bad','2026-10-01','WRONG',10)]).invalid.length,1);
+assert.equal(tankTimeline([m('bad','2026-10-01','GİRİŞ',true)]).invalid.length,1);
+assertTankChange([],[m('out','2026-10-01','ÇIKIŞ',10),m('in','2026-10-01','GİRİŞ',10)]);
+console.log('integrity-audit PASS: strict financial types, zero VAT, rounding/overflow, historical stock, later consumption, unchanged old gaps and daily ordering');

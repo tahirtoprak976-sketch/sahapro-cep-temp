@@ -1,12 +1,12 @@
 # Genel tarama: zengin TEST VERİSİ kurulur, her ekran (liste, kart, yeni form) 360 px'te açılır.
 # Sayfa hatası, konsol hatası, "Ekran yüklenirken hata", yatay taşma ve boş ekran raporlanır. Gemini ağı kapalı (abort).
-import sys, json
+import sys, json, os
 from playwright.sync_api import sync_playwright
 U = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8846/"; PIN = "482917"
 ROUTES = "ara arsiv asistan ayarlar bakim bakim-takvimi bakimplani banka-aktarim banka-tahsilat banka-transfer belgeler cari ceksenet cop daha dagitim depo detayli-rapor dokum dokum-hesap duruslar esnaf fatura filo finans fisler fiyat fiyat-saglik gecmis gider gun-kapanis gunsonu guvenlik hakedis is-sozlesmeleri is-sozlesmeleri/oku isler izinler kart-birlestir kasa kendi-depo kime-kontrol maliyet malzeme-katsayilari mazot-hesaplari mesaj-hafizasi mesajlar musteri-paketi musteriler nakit ocak odemeler parcalar personel puantaj qr raporlar santiyeler saticicari satinalma sayac sayim sofor-kur sozlesmeler tahsilat takipler tara taseron teklif teklif-hesap teklif-karsilastir ucretler vadeler vardiya veri-sagligi whatsapp whatsapp-toplu yakit yapay-zeka yaslandirma yonetici zimmet akilli-asistan alislar".split()
 NEW = "isler fisler yakit gider kasa tahsilat bakim belgeler teklif hakedis fiyat musteriler santiyeler dokum ocak filo personel taseron sozlesmeler".split()
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM_PATH", "/usr/bin/chromium"), args=["--no-sandbox"])
     ctx = b.new_context(viewport={'width': 360, 'height': 780}, timezone_id='Europe/Istanbul', locale='tr-TR'); ctx.add_init_script("try{localStorage.setItem('sp_role','boss');localStorage.setItem('spx_role','boss')}catch(e){}")
     ctx.route("https://generativelanguage.googleapis.com/**", lambda r: r.abort())
     pg = ctx.new_page()
@@ -58,3 +58,5 @@ with sync_playwright() as p:
     print(f"\n{len(ROUTES) + len(NEW) + 28} ekran tarandı, {len(rows)} sorunlu")
     for r, bad in rows: print(" ✗", r, "→", " | ".join(bad)[:400])
     b.close()
+
+raise SystemExit(bool(rows))

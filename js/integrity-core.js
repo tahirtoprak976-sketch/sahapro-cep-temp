@@ -1,7 +1,8 @@
+import {tankTimeline} from './tank-timeline.js';
 // Veri Sağlığı — SAF denetim. Bütün kayıtları, ekleri (fotoğraf/dosya) ve bağlantıları birbirine karşı denetler;
 // çelişkiyi bulur, nedenini ve nereye gidileceğini söyler. Hiçbir şeyi değiştirmez (düzeltmeler ekranda, onayla).
 // sev: "error" (yanlış sonuç üretir: mükerrer, kopuk bağ, eksi stok…) · "warn" (kontrol edilmeli) · "info"
-import { duplicateDocuments, calcHakedisTotals, toKurus } from "./core.js";
+import { duplicateDocuments, calcHakedisTotals, toKurus, tankUnitCost } from "./core.js";
 import { customerBalances, customerOpenItems, customerLedgerMovements } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
 import {validateCustomerFuelLinks} from './customer-fuel.js';
@@ -52,6 +53,7 @@ export function integrityCheck(d, { today, attachments = [], restoreSets = [] } 
   }
   for (const f of live(d, "fuel_records")) {
     ref("fuel_records", f, "vehicle_id", "vehicles", true);
+    if(f.cost_source==='Depo ortalaması'&&isDate(f.date)&&Number(f.total)>0&&!tankUnitCost(d.fuel_tank_movements||[],f.date))add('warn','fuel-cost-future','Yakıt '+f.date+': maliyet için o tarihten önce fiyatlı depo girişi yok','Mevcut bedel değiştirilmedi; gerçek geçmiş fiyatı kontrol edin.','#/yakit/'+f.id);
     if (f.fuel_source === "Depo Tankı") {
       const m = f.tank_movement_id && byId("fuel_tank_movements").get(f.tank_movement_id);
       if (!m || m.deleted_at) add("error", "fuel-no-move", `${lbl("fuel_records", f)}: depodan verilmiş ama depo çıkışı yok`, "Depo stoku bu kadar fazla görünür", "#/yakit/" + f.id);
@@ -129,10 +131,9 @@ export function integrityCheck(d, { today, attachments = [], restoreSets = [] } 
   }
   for (const w of live(d, "work_records")) if (!(Number(w.quantity) > 0)) add("error", "zero-qty", `${lbl("work_records", w)}: miktar 0`, "", "#/isler/" + w.id);
   // Depo: tarih sırasıyla stok hiç eksiye düşmemeli
-  { let bal = 0, low = null;
-    const mv = live(d, "fuel_tank_movements").filter((m) => isDate(m.date)).sort((a, b) => a.date.localeCompare(b.date) || (a.move_type === "GİRİŞ" ? -1 : 1));
-    for (const m of mv) { bal += (m.move_type === "GİRİŞ" ? 1 : -1) * (Number(m.liters) || 0); if (bal < -0.5 && !low) low = { date: m.date, bal }; }
-    if (low) add("warn", "tank-negative", `Depo ${low.date.split("-").reverse().join(".")} tarihinde eksiye düşüyor (${Math.round(low.bal)} L)`, "O tarihten önceki bir depo girişi eksik", "#/depo"); }
+  { const timeline=tankTimeline(d.fuel_tank_movements||[]),low=timeline.firstDeficit;
+    if(timeline.invalid.length)add('error','tank-history-invalid','Depo geçmişinde geçersiz tarih / litre / hareket var',timeline.invalid.length+' hareket kontrol edilmeli','#/depo');
+    if(low)add('warn','tank-negative',`Depo ${low.date.split('-').reverse().join('.')} tarihinde eksiye düşüyor (${Math.round(low.balance)} L)`,'O tarihten önceki gerçek giriş / açılışı kontrol edin; sonraki giriş geçmiş çıkışı karşılamaz','#/depo'); }
   for (const m of live(d, "fuel_tank_movements").filter((m) => m.move_type === "GİRİŞ" && !m.count_id && Number(m.total) > 0 && Number(m.liters) > 0)) {
     const up = Math.round((m.total / m.liters) * 100) / 100;
     if (Math.abs((Number(m.unit_price) || 0) - up) > Math.max(0.05, up * 0.005)) add("warn", "tank-price", `Depo girişi ${m.date}: litre fiyatı ${m.unit_price} ama toplam ÷ litre = ${up}`, "", "#/depo", { kind: "tank-price" });

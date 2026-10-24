@@ -51,24 +51,27 @@ export function validDate(v, label = "Tarih") {
     throw Error(label + " geçersiz");
   return v;
 }
+export function numericInput(v, label = "Sayı") {
+  if(!['number','string'].includes(typeof v)||typeof v==='string'&&!v.trim()||!Number.isFinite(Number(v)))throw Error(label+' geçerli bir sayı olmalı');
+  return Number(v);
+}
 export function money(v, label = "Tutar", zero = false) {
-  if (
-    v === "" ||
-    v == null ||
-    !Number.isFinite(Number(v)) ||
-    (zero ? Number(v) < 0 : Number(v) <= 0)
-  )
+  const value=numericInput(v,label);
+  if (zero ? value < 0 : value <= 0)
     throw Error(label + " " + (zero ? "negatif olamaz" : "pozitif olmalı"));
-  const n = toKurus(v);
+  const n = toKurus(value);
   if (!Number.isSafeInteger(n)) throw Error(label + " çok büyük");
+  if(!zero&&n===0)throw Error(label+' en az 0,01 TL olmalı');
   return fromKurus(n);
 }
 export function taxValues(amount, rate, included = false) {
-  const a = toKurus(amount);
-  if (!Number.isFinite(Number(rate)) || Number(rate) < 0 || Number(rate) > 100)
+  const a = toKurus(money(amount,'Vergi matrahı',true)),r=numericInput(rate,'KDV oranı');
+  if (r < 0 || r > 100)
     throw Error("KDV oranı 0–100 olmalı");
-  const net = included ? Math.round(a / (1 + Number(rate) / 100)) : a;
-  const tax = included ? a - net : Math.round((net * Number(rate)) / 100);
+  if(typeof included!=='boolean')throw Error('KDV dahil/hariç seçimi geçersiz');
+  const net = included ? Math.round(a / (1 + r / 100)) : a;
+  const tax = included ? a - net : Math.round((net * r) / 100);
+  if(![net,tax,net+tax].every(Number.isSafeInteger))throw Error('Vergili tutar çok büyük');
   return {
     net: fromKurus(net),
     tax: fromKurus(tax),
@@ -80,11 +83,13 @@ export function invoiceLines(items) {
     throw Error("En az bir kalem girin");
   return items.map((i) => {
     if (!i.description?.trim()) throw Error("Kalem açıklaması zorunlu");
-    const quantity = Number(i.quantity);
+    const quantity = numericInput(i.quantity,'Kalem miktarı');
     if (!Number.isFinite(quantity) || quantity <= 0)
       throw Error("Kalem miktarı pozitif olmalı");
     const price = money(i.unit_price, "Birim fiyat", true);
-    const amount = fromKurus(Math.round(quantity * toKurus(price)));
+    const cents=Math.round(quantity * toKurus(price));
+    if(!Number.isSafeInteger(cents))throw Error('Kalem toplamı çok büyük');
+    const amount = fromKurus(cents);
     return {
       id: i.id || uuid(),
       description: i.description.trim(),
@@ -98,7 +103,7 @@ export function invoiceLines(items) {
   });
 }
 export function invoiceTotals(items) {
-  const sum = (k) => fromKurus(items.reduce((n, i) => n + toKurus(i[k]), 0));
+  const sum = (k) => {const cents=items.reduce((n,i)=>n+toKurus(money(i[k],'Kalem toplamı',true)),0);if(!Number.isSafeInteger(cents))throw Error('Belge toplamı çok büyük');return fromKurus(cents);};
   return {
     net_total: sum("net"),
     tax_total: sum("tax"),

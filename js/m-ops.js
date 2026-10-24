@@ -1,3 +1,4 @@
+import {tankTimeline} from './tank-timeline.js';
 import {recordNoteHTML} from './record-notes-ui.js';
 import { vehicleDocumentStatus } from "./business.js";
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
@@ -227,6 +228,7 @@ async function tank(ctx) {
   const rows = all.filter(isActive).sort((a, b) => (b.date < a.date ? -1 : 1));
   const bal = calcTankBalance(rows);
   const st = tankStatus(rows, todayStr());
+  const chronology=tankTimeline(rows),firstGap=chronology.firstDeficit;
   const [vehicles, personnel, suppliers, fuels, custs] = await Promise.all([
     db.listActive("vehicles"),
     db.listActive("personnel"),
@@ -251,8 +253,8 @@ async function tank(ctx) {
       ${stat(st.daysLeft != null ? fmtNum(st.daysLeft) : "—", "Kaç gün yeter")}
     </div>
     ${dupPairs.map((p, i) => `<div class="card" style="border-left:4px solid #e0a030"><div class="small"><b>⚠ Aynı yakıt iki kez girilmiş olabilir</b><br>${trDate(p.keep.date)} elle girilen ${fmtNum(p.keep.liters)} L ve ${trDate(p.drop.date)} faturadan gelen ${fmtNum(p.drop.liters)} L (fatura ${esc(p.drop.invoice_no)}). Aynı teslimatsa birleştirin: fatura bilgisi ve fotoğrafı elle girdiğiniz kayda geçer, fazla giriş silinir, borç bir kez kalır.</div><button class="btn block" style="margin-top:8px" data-merge="${i}">🔗 Birleştir</button></div>`).join("")}
-    ${bal.remaining < 0 ? notice("warn", "Depo eksiye düşmüş: depoya giriş kaydı eksik. Gelen yakıtı GİRİŞ olarak ekleyin.") : ""}
-    ${uncosted && st.unitCost ? `<div class="card"><div class="small">${uncosted} depo yakıtı kaydının tutarı yok. Ortalama ${fmtTL(st.unitCost)} ₺/L ile maliyet yazılsın mı? (araç maliyeti ve kâr hesabı düzelir)</div><button class="btn block" style="margin-top:8px" data-fillcost>₺ Maliyetleri Yaz</button></div>` : ""}
+    ${chronology.invalid.length?notice('warn','Depo geçmişinde geçersiz hareket var; Veri Sağlığı bölümünden kontrol edin.'):firstGap?`<section class="card" data-tank-chronology><b>Tarih sırası kontrolü</b>${notice('warn',trDate(firstGap.date)+' tarihinde depo '+fmtNum(Math.abs(firstGap.balance))+' L eksiye düşüyor. O tarihten önceki gerçek giriş / açılışı kontrol edin. Bugünkü pozitif bakiye geçmiş açığı kapatmaz.')}<button type="button" class="btn block" data-go="#/veri-sagligi">Veri Sağlığında İncele</button></section>`:''}
+    ${uncosted && st.unitCost ? `<div class="card"><div class="small">${uncosted} depo yakıtı kaydının tutarı yok. Yakıtın kendi tarihine kadar fiyatlı giriş bulunan ve maliyeti başka kayda bağlı olmayanlar hesaplanabilir. Bugünkü ortalama ${fmtTL(st.unitCost)} ₺/L geçmiş fiyat yerine kullanılmaz.</div><button class="btn block" style="margin-top:8px" data-fillcost>₺ Maliyetleri Yaz</button></div>` : ""}
     <div class="card">
       <div class="section-title" style="margin:0 0 8px">Yeni Hareket</div>
       <form data-form novalidate>
