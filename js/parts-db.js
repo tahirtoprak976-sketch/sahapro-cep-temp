@@ -8,6 +8,11 @@ const stores = [
   "maintenance_records",
   "payables",
 ];
+function createPartExpense(r, t) {
+  const expense = newRecord({date:r.date,vehicle_id:r.vehicle_id,category:"Yedek Parça",amount:r.total,company:r.seller,description:`${r.quantity} × ${r.description}`,payment_method:null,kdv_rate:null,part_id:r.id});
+  t.add("expense_records",expense);
+  return {...r,cost_mode:"existing",cost_source_store:"expense_records",cost_source_id:expense.id};
+}
 export async function preparePartFiles(files = []) {
   if (files.length > 8) throw Error("Bir seferde en fazla 8 belge ekleyin");
   if (files.reduce((s, f) => s + f.size, 0) > 30 * 1024 * 1024)
@@ -78,27 +83,13 @@ export async function saveSparePart(f, files = [], key = uuid()) {
     const fields = sparePartFields(d, f);
     const shared=prepared.some(a=>d.attachments.some(old=>old.src_sha256===a.src_sha256&&old.record_type==='maintenance_parts'&&d.maintenance_parts.some(p=>isActive(p)&&p.id===old.record_id)));
     if(shared&&f.allow_shared_document!==true)throw Error('Bu belge başka bir parça kartında zaten var. Mevcut kartı inceleyin veya farklı parçaya da ait olduğunu açıkça işaretleyin.');
-    const r = newRecord({
+    let r = newRecord({
       ...fields,
       request_id: key,
       request_signature: signature,
     });
     if (fields.cost_mode === "new_expense") {
-      const expense = newRecord({
-        date: r.date,
-        vehicle_id: r.vehicle_id,
-        category: "Yedek Parça",
-        amount: r.total,
-        company: r.seller,
-        description: `${r.quantity} × ${r.description}`,
-        payment_method: null,
-        kdv_rate: null,
-        part_id: r.id,
-      });
-      t.add("expense_records", expense);
-      r.cost_mode = "existing";
-      r.cost_source_store = "expense_records";
-      r.cost_source_id = expense.id;
+      r = createPartExpense(r,t);
     }
     t.add("maintenance_parts", r);
     const seen = new Set();
@@ -112,6 +103,29 @@ export async function saveSparePart(f, files = [], key = uuid()) {
       });
     }
     return r;
+  });
+}
+// A saved tracking card can acquire one cost without recreating the part or its documents.
+export async function attachPartCost(id, f, expectedVersion, key=uuid()) {
+  if(!["existing","new_expense"].includes(f.cost_mode))throw Error("Yeni gider veya mevcut maliyet seçin");
+  const intent={cost_mode:f.cost_mode,unit_price:f.cost_mode==='new_expense'?f.unit_price:null,cost_source_store:f.cost_mode==='existing'?f.cost_source_store:null,cost_source_id:f.cost_mode==='existing'?f.cost_source_id:null};
+  const signature=stableStringify(intent);
+  return transaction(stores,(d,t)=>{
+    const old=d.maintenance_parts.find(r=>r.id===id&&r.tracking&&isActive(r));
+    if(!old)throw Error("Parça bulunamadı");
+    if(old.cost_request?.id===key){
+      if(old.cost_request.signature!==signature)throw Error("Bu maliyet işlemi farklı içerikle tekrar gönderildi");
+      if(!old.cost_source_id)throw Error("Bu maliyet bağlantısı kaldırılmış; güncel kartı açın");
+      sparePartFields(d,old);return old;
+    }
+    if(!expectedVersion||old.updated_at!==expectedVersion)throw Error("Parça başka ekranda değişti; yeniden açın");
+    if(old.cost_source_id||old.maintenance_id)throw Error("Parçanın maliyeti zaten bağlı; ikinci gider oluşturulamaz");
+    const unlinked=old.cost_unlinked;
+    if(f.cost_mode==='new_expense'&&unlinked&&(d[unlinked.store]||[]).some(r=>r.id===unlinked.id&&isActive(r)&&r.status!=="İptal"))throw Error("Önceki maliyet kaydı hâlâ duruyor. Mevcut kayda bağlayın veya önce o kaydı düzeltin; ikinci gider oluşturulmadı.");
+    const fields=sparePartFields(d,{...old,...intent,unit_price:f.cost_mode==='new_expense'?f.unit_price:old.unit_price});
+    let saved={...old,...fields,cost_request:{id:key,signature},updated_at:new Date(Math.max(Date.now(),(Date.parse(old.updated_at)||0)+1)).toISOString()};
+    if(f.cost_mode==='new_expense')saved=createPartExpense(saved,t);
+    t.put('maintenance_parts',saved);return saved;
   });
 }
 export async function addPartFiles(id, files) {

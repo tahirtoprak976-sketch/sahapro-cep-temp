@@ -2,6 +2,8 @@
 
 Depo kökünde `python3 -m http.server 8841`, sonra:
 
+- `python3 tools/e2e/part_cost.py http://localhost:8841/` — parçada zorunlu açık maliyet seçimi, eski varsayılan taslağın sessiz onaylanmaması, kayıtlı aküyü yeniden oluşturmadan giderlere işleme, mevcut maliyete bağlama, tekrar/eşzamanlı onay, eskiyen kayıt, gerçek transaction hatasında geri sarma, belgeleri koruma ve temiz profile yedek geri yükleme. Chromium/IDB gerçek; AI/ağ hesabı yok.
+
 - `python3 tools/e2e/part_documents.py http://localhost:8841/` — Asistanla garanti fotoğrafı, eski model yanıtını kurtarma, parça kartından yeniden okuma, PDF, belirsiz alanlar, elle yazılmış değerleri koruma, tekrar yükleme ve ayrı profilde fotoğraf/PDF yedek geri yüklemesi. Model yanıtları taklit; orijinal dosyalar, Chromium, DOM, IDB ve SW gerçek. Pillow + ReportLab + DejaVu Sans gerekir.
 - `python3 tools/e2e/part_document_guards.py http://localhost:8841/` — dosya içeriğinden tür denetimi, kayıt/güncelleme sırasında gerçek transaction hatası, aynı belgenin eşzamanlı kaydı, eskiyen garanti düzenlemesi, okuma iptali/zaman aşımı/yanıt sınırı/izin reddi, taslak yedek kapsamı ve temiz profilde geri yükleme. Gerçek Gemini çağrısı yok.
 
