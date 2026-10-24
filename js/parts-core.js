@@ -20,10 +20,12 @@ export function sparePartFields(d, f) {
   const description = clean(f.description, 150),
     quantity = Number(f.quantity);
   if (!description) throw Error("Parça adı zorunlu");
+  if(!['string','number'].includes(typeof f.quantity))throw Error('Miktar sayısal olmalı');
   if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000)
     throw Error("Miktar pozitif olmalı");
   const price =
     f.unit_price === "" || f.unit_price == null ? null : Number(f.unit_price);
+  if(f.unit_price!=null&&f.unit_price!==''&&!['string','number'].includes(typeof f.unit_price))throw Error('Birim fiyat sayısal olmalı');
   if (
     price != null &&
     (!Number.isFinite(price) ||
@@ -77,7 +79,7 @@ export function sparePartFields(d, f) {
     quantity,
     unit_price: price,
     total,
-    brand: clean(f.brand, 100),
+    brand: clean(f.brand, 200),
     serial_numbers: clean(f.serial_numbers, 1000),
     seller: clean(f.seller, 150),
     invoice_no: clean(f.invoice_no, 100),

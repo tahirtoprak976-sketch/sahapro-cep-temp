@@ -12,7 +12,7 @@ with sync_playwright() as p:
  # Valid image; attached through real browser File API. Draft survives reload including binary.
  image=base64.b64decode(pg.evaluate("()=>{const c=document.createElement('canvas');c.width=40;c.height=40;const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,40,40);x.fillStyle='black';x.fillText('TEST',2,20);return c.toDataURL('image/png').split(',')[1]}"))
  pg.set_input_files('[name=documents]',{'name':'TEST-garanti.png','mimeType':'image/png','buffer':image})
- pg.wait_for_function("async()=>{const db=await import('./js/db.js');return (await db.getAll('drafts')).some(d=>d.form.startsWith('spare-part-new:')&&d.values.files?.length===1)}")
+ pg.wait_for_function("()=>document.querySelector('[data-part-form]')?.dataset.partFilesReady==='1'")
  pg.reload();pg.wait_for_selector('[name=description]');assert pg.input_value('[name=description]')=='TEST Akü';assert 'TEST-garanti.png' in pg.locator('[data-file-preview]').inner_text()
  pg.locator('[data-part-form] [type=submit]').click();pg.wait_for_function("()=>document.querySelector('[data-add-files]')||document.querySelector('[data-part-error]')?.textContent");assert pg.locator('[data-add-files]').count(),pg.locator('#screen').inner_text()
  assert '6.000' in pg.locator('#screen').inner_text();assert pg.locator('[data-attachments] img').count()==1;pg.screenshot(path='/tmp/solo-v3958-parts.png',full_page=True)

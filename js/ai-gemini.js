@@ -167,6 +167,22 @@ export async function usageFailedToday(db) {
   const u = (await db.metaGet("gemini_usage")) || {};
   return u.date === localDay() ? u.failed || 0 : 0;
 }
+// Document requests share the same consent/budget gate as all other Gemini calls.
+// Bound both headers and response body; callers never create a second transport.
+export async function geminiDocument(parts,{db,signal,system,schema,fetchImpl=fetch}={}){
+ const bounded=async(url,init)=>{
+  const controller=new AbortController(),cancel=()=>controller.abort(),timeout=setTimeout(cancel,45000);
+  signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)cancel();
+  try{
+   const response=await fetchImpl(url,{...init,signal:controller.signal});if(!response.body)return response;
+   const reader=response.body.getReader(),chunks=[];let size=0;
+   while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>2*1024*1024){controller.abort();throw Object.assign(Error('Belge yanıtı çok büyük; dosyayı daha küçük bölümlerle okuyun.'),{code:'RESPONSE_LIMIT'});}chunks.push(value);}
+   return new Response(new Blob(chunks),{status:response.status,statusText:response.statusText,headers:response.headers});
+  }catch(e){if(e.code==='RESPONSE_LIMIT')throw e;if(controller.signal.aborted)throw Object.assign(Error(signal?.aborted?'Belge okuma iptal edildi. Dosyalar korunuyor.':'Belge okuma 45 saniyede tamamlanamadı. Dosya korunuyor; yeniden deneyebilir veya elle doldurabilirsiniz.'),{name:'AbortError'});throw e;}
+  finally{clearTimeout(timeout);signal?.removeEventListener('abort',cancel);}
+ };
+ return withModelFallback(db,async o=>{if(signal?.aborted)throw new DOMException('Okuma iptal edildi','AbortError');return geminiJson(parts,{...o,maxTokens:8192,system,schema});},{fetchFn:bounded});
+}
 // Anahtarla gerçekten çalışan ilk modeli bulur (her deneme tek, çok kısa istek)
 export async function findWorkingModel(key, models, fetchFn) {
   const tried = [];

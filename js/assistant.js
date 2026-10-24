@@ -1,6 +1,8 @@
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {readBatchPolicy,selectedFuelBudget,untrustedWorkPlan} from './assistant-batch.js';
 import {bindBulkEntry,mountBulkResume} from './bulk-entry-ui.js';
+import {partDocumentIntent,assistantPartDocuments,separatePartDocumentPlan} from './part-document-core.js';
+import {stagePartDocuments} from './part-document-ui.js';
 import {assistantTurn} from './assistant-turn.js';
 import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
 import {startDraftPlan,bindDraftWorkflow,draftPreflight,applyDraftPlan,DRAFT_FIELDS} from './assistant-workflow.js';
@@ -63,6 +65,7 @@ export async function screen(ctx) {
       <div data-turn-intent class="small" role="status" aria-live="polite" style="margin-top:8px">Yeni istek veya belge gönderebilirsiniz.</div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine><span><b>↻ Önceki sonucu düzelt</b><span style="display:block;margin-top:4px">“Müşteri Kaya olacak”, “2 sefer” gibi kısa düzeltmeler tanınır. Bu kutuyla seçimi değiştirebilirsiniz.</span><span class="muted tiny" style="display:block;margin-top:4px" data-refine-prev></span></span></label>
       <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
+      <button class="btn block" style="margin-top:8px" data-part-document>Yedek parça / garanti belgesi oku</button>
     </div>
     <div data-lastundo></div>
     <div data-out></div>
@@ -157,6 +160,11 @@ export async function screen(ctx) {
     files = next; attachmentError = "";
     showThumbs();
   });
+  qs('[data-part-document]',root).onclick=async()=>{
+    if(asking)return;asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
+    try{if(files.some(isTransfer))throw Error('Şoför aktarımı kendi akışından okunmalı. Parça belgesini ayrı seçin.');await stagePartDocuments(ctx,files,{message:msgEl.value});}
+    catch(e){toast(e.message,'err');}finally{asking=false;if(b.isConnected)b.disabled=false;}
+  };
   // Sesli not: telefonun mikrofonu ile kayıt (en çok 3 dakika)
   let rec = null, recT = null, autoSend = false;
   qs("[data-rec]", root).addEventListener("click", async (ev) => {
@@ -230,6 +238,7 @@ export async function screen(ctx) {
     const finishChat=async result=>{if(!chatTurn)return true;const ok=await conversation.finish(chatTurn,result);chatFinished=true;return ok;};
     try {
     if (attachmentError) return toast(attachmentError, "err");
+    if(files.length&&!files.some(isTransfer)&&partDocumentIntent(qs('[data-msg]',root).value)){await stagePartDocuments(ctx,files,{message:qs('[data-msg]',root).value});return;}
     if(files.some(f=>!isTransfer(f)&&(/\.pdf$/i.test(f.name||'')||f.type==='application/pdf')))return toast("Bu normal PDF. Geçmiş işleri PDF’den aktar ekranını kullanın; şoför aktarımı için .sahapro.pdf iş özeti seçin", "err");
     if(files.some(f=>!isTransfer(f)&&(/\.(txt|zip)$/i.test(f.name||'')||f.type==='text/plain'||/zip/.test(f.type||''))))return toast("Bu dosya SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
     const transferFiles=files.filter(isTransfer);
@@ -446,6 +455,7 @@ export async function screen(ctx) {
       if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
       const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length, allowPhotos: photoPolicy.allowed }) : null;
       if (drvPlan) plan = { ...plan, works: [...drvPlan.plan.works, ...(plan.works || [])], fuel: [...drvPlan.plan.fuel, ...(plan.fuel || [])], expenses: [...drvPlan.plan.expenses, ...(plan.expenses || [])], maintenance: [...drvPlan.plan.maintenance, ...(plan.maintenance || [])] };
+      if(!drvPayloads.length){plan=separatePartDocumentPlan(plan,images.length).plan;if(agentResult)agentResult={...agentResult,plan};}
       const asked = await askP;
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
@@ -507,6 +517,10 @@ export async function screen(ctx) {
       v.open = validateOpen(plan, { d });
       v.tickets = validateTickets(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length });
       v.docs = validateDocuments(plan, { d, today, photoTexts: v.photoTexts, photoCount: images.length, company: await db.metaGet("company_profile") });
+      const partDocs=drvPayloads.length?{rows:[],claimed:new Set()}:assistantPartDocuments(plan,images.length);
+      v.partDocuments=partDocs.rows;
+      v.partDocumentUnmatched=partDocs.unmatched;
+      v.docs=v.docs.filter(r=>!partDocs.claimed.has(r.photo));v.tickets=v.tickets.filter(r=>!partDocs.claimed.has(r.photo));v.expenses=v.expenses.filter(r=>!partDocs.claimed.has(r.photo));
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
@@ -641,7 +655,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const checks=(v.agentTrace||[]).filter(t=>checkedTools[t.name]);
   out.innerHTML =
     (v.agentGoal?`<div class="card" data-agent-goal><b>Anladığım istek</b><p class="small">${esc(v.agentGoal)}</p>${checks.length?`<details data-agent-checks><summary>Kontrol edilenler (${checks.length})</summary>${checks.map(t=>`<p class="small">${esc(checkedTools[t.name])}: ${esc(t.result?.error?'Tamamlanamadı — '+t.result.error:t.result?.records?`${t.result.records.length} kayıt gösterildi${t.result.truncated?' (sonuç sınırlı)':''}`:'Hesaplandı')}</p>`).join('')}</details>`:''}</div>`:'') +
-    `<div class="section-title">Asistanın bulduğu (${total}) · ${(ms / 1000).toFixed(1)} sn</div>` +
+    `<div class="section-title">Asistanın bulduğu (${total+(v.partDocuments?.length||0)}) · ${(ms / 1000).toFixed(1)} sn</div>` +
+    (v.partDocumentUnmatched?notice('warn','Parça belgesinin fotoğraf sırası eşleşmedi. Orijinalleri koruyup Yedek parça / garanti belgesi oku düğmesini kullanın.'):'')+
+    (v.partDocuments||[]).map((r,i)=>`<div class="card" data-part-document-card><b>Parça / garanti belgesi</b><p>${esc(r.part_name||'Yedek parça')} · ${esc(r.brand||'')}</p><p class="small">Seri no: ${esc(Array.isArray(r.serial_numbers)?r.serial_numbers.join(' · '):r.serial_numbers||'Kontrol edilecek')}. Belge parça kartında kontrol edilecek; gider veya ödeme oluşturulmadı.</p><button class="btn primary block" data-part-document-open="${i}">Parça bilgilerini kontrol et</button></div>`).join('')+
     summaryHtml(v, d) +
     (v.asked ? v.askedHtml : v.answer ? `<div class="card"><div class="row between"><div class="strong small">🤖 Cevap</div>${"speechSynthesis" in window ? '<button class="btn sm ghost" data-speak>🔊 Sesli oku</button>' : ""}</div><div style="white-space:pre-wrap;margin-top:6px" data-speaktext>${esc(v.answer)}</div>${v.answerBad.length ? notice("warn", "Bu sayılar kayıtlarınızda bulunamadı, güvenmeyin: " + v.answerBad.join(", ")) : v.answerMetric?.length ? notice("warn", v.answerMetric.map((x) => `${fmtTL(x.n)} cevapta "${x.said}" diye yazılmış ama kayıtlarda ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin, Raporlar'dan bakın.") : '<div class="muted tiny" style="margin-top:6px">Cevaptaki rakamlar telefonda hesaplanan rakamlar arasında var. Hangi rakamın neye ait olduğunu Gemini yazdı; önemli kararda Raporlar\'dan kontrol edin.</div>'}</div>` : "") +
     (v.driverNote ? notice("ok", "📋 " + v.driverNote) : "") +
@@ -889,7 +905,14 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
       .join("") +
-    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked ? "" : fallbackHtml(v, d, message));
+    (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked || v.partDocuments?.length ? "" : fallbackHtml(v, d, message));
+  for(const b of qsa('[data-part-document-open]',out))b.onclick=async()=>{
+    if(b.disabled)return;b.disabled=true;
+    try{const row=v.partDocuments[Number(b.dataset.partDocumentOpen)],file=files[row.photo];if(!file)throw Error('Orijinal belgeyi yeniden seçin; yalnız model yanıtıyla kayıt yapılmaz.');
+      if(v._agentTask&&taskOpen(v._agentTask)){v._agentTask=await transitionTask(ctx.db,v._agentTask,'applying','Belge parça taslağına aktarılıyor; iş/gider kaydı yapılmadı.');v._agentTask=await transitionTask(ctx.db,v._agentTask,'review','Parça kontrol ekranından devam edin; henüz parça/gider kaydı yapılmadı.');ctx.assistantTaskChanged?.(v._agentTask);}
+      await stagePartDocuments(ctx,[file],{message,results:[{...row,photo:0}]});
+    }catch(e){toast(e.message,'err');if(b.isConnected)b.disabled=false;}
+  };
   // Belirsiz müşteri: aday düğmesi seçer ve kartı işaretler
   for (const b of qsa("[data-pickcust]", out))
     b.addEventListener("click", () => {
