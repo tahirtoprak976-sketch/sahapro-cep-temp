@@ -141,30 +141,32 @@ export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true
   const has = (s, id) => !!id && live(d, s).some((x) => x.id === id);
   // Fotoğraflar şoförün gönderdiği sırayla (kayıt sırası) dağıtılır
   const takePhotos = (n) => { if (!allowPhotos || !photoPolicy.allowed) return []; const out = []; for (let i = 0; i < (Number(n) || 0) && photo < photoCount; i++) out.push(photo++); return out; };
+  const noteCfg={V:live(d,'vehicles').map(r=>[r.id,r.name]),C:live(d,'customers').map(r=>[r.id,customerLabel(r,live(d,'customers'))]),S:live(d,'sites').map(r=>[r.id,r.name]),D:live(d,'dump_sites').map(r=>[r.id,r.name]),E:live(d,'suppliers').map(r=>[r.id,r.name])};
   for (const p of payloads) for (const e of p.e) {
+    const driver_source_note=entryLine(e,{...noteCfg,p:[p.p,p.n]});
     const supId = has("suppliers", e.sup) ? e.sup : null;
     const supName = supId ? live(d, "suppliers").find((x) => x.id === supId).name : e.sn || "";
     if (e.k === "g") {
       const ph = takePhotos(e.ph);
       expenses.push({ date: e.date, amount: Number(e.tl) || null, category: e.cat, company: supName, vehicle_id: has("vehicles", e.vid) ? e.vid : null, supplier_id: e.pay === "veresiye" ? supId : null, credit: e.pay === "veresiye", photo: ph[0] ?? null, note: [e.desc, e.pay === "cep" ? "şoför cebinden ödedi" : ""].filter(Boolean).join(" · ") });
-      expMeta.push({ driver_entry_id: e.id, photos: ph, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null });
+      expMeta.push({ driver_source_note,driver_entry_id: e.id, photos: ph, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null });
       continue;
     }
     if (e.k === "m") {
       const ph = takePhotos(e.ph);
       maintenance.push({ date: e.date, vehicle_id: has("vehicles", e.vid) ? e.vid : null, maint_type: e.mt, status: e.st === "Tamamlandı" ? "Tamamlandı" : "Açık", description: e.desc || e.mt, cost: Number(e.tl) || null, service_company: supName, supplier_id: e.pay === "veresiye" ? supId : null, credit: e.pay === "veresiye" && !!Number(e.tl) });
-      mainMeta.push({ driver_entry_id: e.id, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null, photos: ph, km: Number(e.km) || null, hours: Number(e.hr) || null });
+      mainMeta.push({ driver_source_note,driver_entry_id: e.id, pay: e.pay || null, personnel_id: has("personnel", p.p) ? p.p : null, photos: ph, km: Number(e.km) || null, hours: Number(e.hr) || null });
       continue;
     }
     if (e.k === "f") {
       const ph = takePhotos(e.ph);
       fuel.push({ date: e.date, vehicle_id: has("vehicles", e.vid) ? e.vid : null, liters: Number(e.L) || null, total: Number(e.tl) || null, km: Number(e.km) || null, machine_hours: Number(e.hr) || null, source: FUEL_SOURCES.includes(e.src) ? e.src : "Depo Tankı", customer_id: has("customers", e.cid) ? e.cid : null, photo: ph[0] ?? null });
-      fuelMeta.push({ driver_entry_id: e.id, photos: ph });
+      fuelMeta.push({ driver_source_note,driver_entry_id: e.id, photos: ph });
       continue;
     }
     const customer = resolveDriverCustomer(e, d);
     const received = driverCashAmount(e.cash);
-    if (received > 0) cash.push({ ...customer, date: e.cash_date || e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id,
+    if (received > 0) cash.push({ driver_source_note,...customer, date: e.cash_date || e.date, amount: received, method: "Nakit", personnel_id: has("personnel", p.p) ? p.p : null, driver_entry_id: e.id,
       driver_work: { date: e.date, customer: customer.customer_id ? customerLabel(live(d,"customers").find(c=>c.id===customer.customer_id),live(d,"customers")) : e.cn || "", vehicle: live(d,"vehicles").find(v=>v.id===e.vid)?.name || e.vid || "", work_type: e.wt || "", quantity: e.q, unit: e.u || "", note: e.note || "" },
       note: entryLine(e, {p:[p.p,p.n],V:[],C:[],S:[],D:[]}) });
     const photos = takePhotos(e.ph);
@@ -178,7 +180,7 @@ export function payloadsToPlan(payloads, d, { photoCount = 0, allowPhotos = true
       quarry_id: has("quarries", e.qy) ? e.qy : null, slip_no: e.slip || e.dfs || "", material: e.mat || "",
       description: [e.mat, e.note, e.dfs ? `Dijital fiş ${e.dfs}${e.rcv ? " · imzalayan " + e.rcv : ""}${e.sgt ? " · " + new Date(e.sgt).toLocaleTimeString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit" }) : ""}` : ""].filter(Boolean).join(" · "), note: e.note || "",
     });
-    meta.push({ driver_entry_id: e.id, customer_issue: customer.customer_issue, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
+    meta.push({ driver_source_note,driver_entry_id: e.id, customer_issue: customer.customer_issue, photos, tonnage: Number(e.ton) || null, reporter: p.n || null,
       ...(e.dfs ? { digital: { no: e.dfs, receiver: e.rcv || "", signed_at: e.sgt || null, sigPhoto, signed: signedContent(e), sigData: typeof e.sig === "string" && e.sig.length < 200000 ? e.sig : null, sigStrokes: Array.isArray(e.sv) && e.sv.length ? e.sv : null } } : {}) });
   }
   return { plan: { works, fuel, expenses, maintenance }, meta, fuelMeta, expMeta, mainMeta, cash };

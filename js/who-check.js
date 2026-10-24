@@ -1,3 +1,4 @@
+import {recordLocalText} from './record-notes.js';
 // "Kime çalışıldı?" kontrol ekranı (#/kime-kontrol). Benzer adlı müşteri kartlarındaki (Kuyucu / Kuyucu Kamil /
 // Kuyucular, Aydın Nalbur / Hurdacı Aydın / Aydın İnşaat) işleri tek listede gösterir; personelin yazdığı açıklama,
 // araç ve geçmiş işlerdeki yer ipucuyla doğru müşteri seçilir. Yalnız değiştirilen işler kaydedilir.
@@ -32,7 +33,7 @@ export async function screen(ctx) {
     ${notice("info", "★ işareti: açıklamadaki yer/araç bilgisi o müşterinin önceki işlerinde geçiyor. Değiştirdiklerinizi en alttan kaydedin.")}
     ${rows
       .map((w) => {
-        const text = [w.description, w.internal_note].filter(Boolean).join(" ");
+        const text = recordLocalText(w,d,'work');
         const others = works.filter((x) => x.id !== w.id);
         const sug = suggestFor({ ...d, work_records: others }, text, g.customers, w.vehicle_id, w.date);
         const best = sug[0]?.score > (sug[1]?.score || 0) ? sug[0] : null;

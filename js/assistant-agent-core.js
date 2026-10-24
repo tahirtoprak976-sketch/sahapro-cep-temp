@@ -1,3 +1,4 @@
+import {recordNoteText} from './record-notes.js';
 // Read-only business tools + explicit proposal terminals. No database writes and no arbitrary code execution.
 import {ASK_TOOLS,runAskTool} from './day-summary.js';
 import {assistantSchema} from './assistant-core.js';
@@ -68,7 +69,8 @@ export function reviseAgentPlan(task,changes){
  }
  return cleanAgentPlan(result);
 }
-function selectRecord(row,fields){
+function selectRecord(input,fields,context){
+ const row={...input,description:recordNoteText(input,'description',context)};
  return Object.fromEntries(fields.filter(k=>row[k]!=null).map(k=>[k,k==='price_snapshot'?Object.fromEntries(['amount','unit_price','kdv_rate','kdv_included','price_source'].filter(n=>row[k][n]!=null).map(n=>[n,row[k][n]])):typeof row[k]==='string'?row[k].slice(0,300):row[k]]));
 }
 export function searchAgentRecords(d,args={},get=false){
@@ -78,8 +80,8 @@ export function searchAgentRecords(d,args={},get=false){
  const ids=get?args.ids:null;if(get&&(!Array.isArray(ids)||!ids.length||ids.length>8||ids.some(x=>typeof x!=='string'||x.length>100)))throw Error('En fazla 8 kayıt kimliği seçin.');
  const query=norm(args.query||'').slice(0,120),limit=get?8:Math.max(1,Math.min(12,Number.isFinite(args.limit)?Math.floor(args.limit):8));
  const rows=(d[args.store]||[]).filter(r=>!r.deleted_at&&(!get||ids.includes(r.id))&&(!args.customer_id||r.customer_id===args.customer_id)&&(!args.vehicle_id||r.vehicle_id===args.vehicle_id)&&(!args.from||r.date>=args.from)&&(!args.to||r.date<=args.to));
- const scored=rows.map(r=>{const hay=norm([r.name,r.plate,r.description,r.company,r.material,r.work_type].filter(Boolean).join(' '));return {r,score:!query?1:norm(r.name)===query||norm(r.plate)===query?3:hay.includes(query)?2:query.split(' ').every(x=>hay.includes(x))?1:0};}).filter(x=>get||x.score>0).sort((a,b)=>b.score-a.score||String(b.r.date||'').localeCompare(String(a.r.date||''))||String(a.r.id).localeCompare(String(b.r.id)));
- return {store:args.store,total:scored.length,truncated:scored.length>limit,records:scored.slice(0,limit).map(({r})=>selectRecord(r,RECORD_FIELDS[args.store]))};
+ const scored=rows.map(r=>{const hay=norm([r.name,r.plate,recordNoteText(r,'description',d),r.company,r.material,r.work_type].filter(Boolean).join(' '));return {r,score:!query?1:norm(r.name)===query||norm(r.plate)===query?3:hay.includes(query)?2:query.split(' ').every(x=>hay.includes(x))?1:0};}).filter(x=>get||x.score>0).sort((a,b)=>b.score-a.score||String(b.r.date||'').localeCompare(String(a.r.date||''))||String(a.r.id).localeCompare(String(b.r.id)));
+ return {store:args.store,total:scored.length,truncated:scored.length>limit,records:scored.slice(0,limit).map(({r})=>selectRecord(r,RECORD_FIELDS[args.store],d))};
 }
 function boundedResult(result){
  const s=JSON.stringify(result);return s.length<=AGENT_LIMITS.resultBytes?result:{error:'Sonuç çok büyük. Daha dar tarih veya tek müşteri/araçla tekrar sorgulayın.',truncated:true};

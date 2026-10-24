@@ -1,3 +1,4 @@
+import {recordNoteHTML,recordSourceHTML} from './record-notes-ui.js';
 import {appbar,esc,notice,segBar,searchBar,fmtNum,fmtTL,badge,statusBadge,shareOrDownload,toast} from './ui.js';
 import {isActive,FUEL_SOURCES,todayStr,trDate} from './core.js';
 import {realDate} from './work-explorer.js';
@@ -42,10 +43,10 @@ export async function operationHistory({root,db,query={}},kind){
   return `<a class="li work-explorer-row" data-operation-record="${esc(r.id)}" href="#/${route}/${esc(encodeURIComponent(r.id))}"><div class="work-explorer-row-head"><strong>${esc(name('vehicles',r.vehicle_id))}</strong><strong class="work-explorer-quantity">${fuel?(r.liters!==''&&r.liters!=null&&Number.isFinite(Number(r.liters))&&Number(r.liters)>=0?fmtNum(r.liters)+' L':'Litre eksik'):esc(r.maint_type||'Bakım / Arıza')}</strong></div>
   <div class="small">${esc(name('personnel',r.personnel_id))}${fuel?' · '+esc(r.fuel_source||'Kaynak belirtilmedi'):r.service_company?' · '+esc(r.service_company):''}</div>
   ${fuel&&r.fuel_source==='Müşteri Verdi'?`<div class="small">Mazotu veren: ${esc(name('customers',r.customer_id))}</div>`:''}
-  ${r.description?`<div class="small muted">${esc(r.description)}</div>`:''}
+  ${recordNoteHTML(r,'description',names,kind,{source:false})}
   ${fuel&&r.fuel_source!=='Müşteri Verdi'?`<div class="small muted">${r.total!==''&&r.total!=null&&Number.isFinite(Number(r.total))&&Number(r.total)>=0?'Kayıtlı tutar: '+fmtTL(r.total)+' ₺':'Tutar belirtilmedi'}</div>`:''}
   ${!fuel&&r.part?`<div class="small muted">Parça: ${esc(r.part)}</div>`:''}
-  <div class="work-explorer-row-tags">${fuel?(r.fuel_source==='Depo Tankı'?badge('Depodan',''):r.fuel_source==='Müşteri Verdi'?badge('Müşteri verdi','info'):'')+(r.receipt==='Hayır'?badge('Fişsiz','warn'):''):statusBadge(r.status||'Açık')+(r.severity?badge(r.severity,r.severity==='Kritik'?'danger':''):'')+(cost?badge(fmtTL(r.cost)+' ₺ kayıtlı maliyet',''):badge('Maliyet belirtilmedi','warn'))}${fuel&&r.pump_no?`<span class="tiny">Pompa: ${esc(r.pump_no)}</span>`:''}${fuel&&r.km!=null?`<span class="tiny">${fmtNum(r.km)} km</span>`:''}${fuel&&r.machine_hours!=null?`<span class="tiny">${fmtNum(r.machine_hours)} sa</span>`:''}</div></a>`;
+  <div class="work-explorer-row-tags">${fuel?(r.fuel_source==='Depo Tankı'?badge('Depodan',''):r.fuel_source==='Müşteri Verdi'?badge('Müşteri verdi','info'):'')+(r.receipt==='Hayır'?badge('Fişsiz','warn'):''):statusBadge(r.status||'Açık')+(r.severity?badge(r.severity,r.severity==='Kritik'?'danger':''):'')+(cost?badge(fmtTL(r.cost)+' ₺ kayıtlı maliyet',''):badge('Maliyet belirtilmedi','warn'))}${fuel&&r.pump_no?`<span class="tiny">Pompa: ${esc(r.pump_no)}</span>`:''}${fuel&&r.km!=null?`<span class="tiny">${fmtNum(r.km)} km</span>`:''}${fuel&&r.machine_hours!=null?`<span class="tiny">${fmtNum(r.machine_hours)} sa</span>`:''}</div></a>${recordSourceHTML(r,'description',names,kind)}`;
  };
  const list=mount.querySelector('[data-operation-list]'),pages=pageGroups(groupByDate(m.rows,r=>realDate(r.date)?r.date:''),30);let shown=0;
  function more(){

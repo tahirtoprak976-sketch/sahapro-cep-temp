@@ -1,3 +1,4 @@
+import {recordNoteText} from './record-notes.js';
 // Read-only fuel/maintenance history. Summaries and exports use the same filtered rows.
 import {isActive,matchSearch,todayStr,addDays} from './core.js';
 import {realDate,csvCell} from './work-explorer.js';
@@ -33,7 +34,7 @@ export function exploreOperations(kind,all,names={},query={},today=todayStr()){
   for(const k of ['vehicle_id','personnel_id'])if(state[k]&&r[k]!==state[k])return false;
   if(kind==='maintenance'&&(state.f==='open'&&r.status==='Tamamlandı'||state.f==='done'&&r.status!=='Tamamlandı'))return false;
   if(state.source&&r.fuel_source!==state.source)return false;
-  return matchSearch([operationName(names,'vehicles',r.vehicle_id),operationName(names,'personnel',r.personnel_id),names.customers?.[r.customer_id],r.description,r.fuel_source,r.pump_no,r.receipt,r.maint_type,r.status,r.severity,r.part,r.service_company,r.km_hours].filter(Boolean).join(' '),state.q);
+  return matchSearch([operationName(names,'vehicles',r.vehicle_id),operationName(names,'personnel',r.personnel_id),names.customers?.[r.customer_id],recordNoteText(r,'description',names,kind),r.fuel_source,r.pump_no,r.receipt,r.maint_type,r.status,r.severity,r.part,r.service_company,r.km_hours].filter(Boolean).join(' '),state.q);
  }).sort((a,b)=>String(realDate(b.date)?b.date:'').localeCompare(String(realDate(a.date)?a.date:''))||String(b.created_at||'').localeCompare(String(a.created_at||''))||String(a.id).localeCompare(String(b.id)));
  const sources=new Map();let liters=0,invalidLiters=0,costCents=0,priced=0;
  for(const r of rows){
@@ -51,7 +52,7 @@ export function exploreOperations(kind,all,names={},query={},today=todayStr()){
 export function operationCSV(kind,rows,names={}){
  const lines=[kind==='fuel'?['Tarih','Araç','Personel','Litre','Kaynak','Mazotu veren müşteri','Fiş','Açıklama']:['Tarih','Araç','Personel','Kayıt tipi','Durum','Önem','Kayıtlı maliyet (TL)','Servis','Parça','Açıklama']];
  for(const r of rows){const common=[r.date||'',operationName(names,'vehicles',r.vehicle_id),operationName(names,'personnel',r.personnel_id)];
-  lines.push([...common,...(kind==='fuel'?[r.liters??'',r.fuel_source||'',r.fuel_source==='Müşteri Verdi'?names.customers?.[r.customer_id]||'Belirtilmedi':'',r.receipt||'',r.description||'']:[r.maint_type||'',r.status||'Açık',r.severity||'',r.cost??'',r.service_company||'',r.part||'',r.description||''])]);
+  lines.push([...common,...(kind==='fuel'?[r.liters??'',r.fuel_source||'',r.fuel_source==='Müşteri Verdi'?names.customers?.[r.customer_id]||'Belirtilmedi':'',r.receipt||'',recordNoteText(r,'description',names,kind)]:[r.maint_type||'',r.status||'Açık',r.severity||'',r.cost??'',r.service_company||'',r.part||'',recordNoteText(r,'description',names,kind)])]);
  }
  return '\uFEFF'+lines.map(row=>row.map(csvCell).join(';')).join('\r\n');
 }

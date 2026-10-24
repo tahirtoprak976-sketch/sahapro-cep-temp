@@ -1,3 +1,5 @@
+import {recordNoteText} from './record-notes.js';
+import {recordSourceHTML} from './record-notes-ui.js';
 import {driverCashContextHTML} from "./driver-cash-context.js";
 import {
   workFinancials,
@@ -241,6 +243,7 @@ export const FIELD_LABELS = {
 };
 const PRIVATE = new Set([
   "internal_note",
+  "assistant_origin",
   "cost",
   "margin",
   "profit",
@@ -316,7 +319,8 @@ export function recordSpec(store, r, names, audience = "internal") {
   for (const [k, label] of Object.entries(FIELD_LABELS)) {
     if (!(k in r) || r[k] == null || r[k] === "") continue;
     if (audience === "customer" && PRIVATE.has(k)) continue;
-    pairs.push([label, value(k, r[k], names)]);
+    const shown=['description','internal_note','note'].includes(k)?recordNoteText(r,k,names):r[k];
+    if(shown!==''&&shown!=null)pairs.push([label, value(k, shown, names)]);
   }
   for (const [k, s] of Object.entries(REL))
     if (r[k])
@@ -1430,7 +1434,7 @@ ${fSelect(
                   "Eski kayıt"
                 : k === "document_status"
                   ? expiryState(r)
-                  : value(k, r[k], names),
+                  : value(k, ['description','internal_note','note'].includes(k)?recordNoteText(r,k,names):r[k], names),
             ),
           ),
       };
@@ -1835,6 +1839,7 @@ async function simpleDetail(ctx) {
     '<div class="card">' +
     spec.sections[0].pairs.map((p) => kv(...p)).join("") +
     "</div>" +
+    recordSourceHTML(r,r.internal_note?'internal_note':r.note?'note':'description',names) +
     (store === "cash_records" ? driverCashContextHTML(r, await db.getAll("work_records")) : "") +
     (store === "price_book" && (r.price_history || []).length
       ? `<div class="card" data-pricehist><div class="section-title" style="margin:0 0 6px">Fiyat geçmişi</div>${[...r.price_history].reverse().map((h) => `<div class="small">• ${esc(h.until ? core.trDate(core.todayStr(new Date(h.until))) : "—")} tarihine kadar: <b>${esc(core.fmtTL(h.price))} ₺</b> · KDV ${h.kdv_included ? "dahil" : "hariç"} %${esc(h.kdv_rate ?? "")}${h.valid_from || h.valid_to ? ` · geçerlilik ${esc(h.valid_from || "…")} – ${esc(h.valid_to || "…")}` : ""}</div>`).join("")}<div class="muted tiny" style="margin-top:4px">Kayıtlı işlerin fiyatı değişmez; her iş kendi tarihindeki fiyatı saklar.</div></div>`

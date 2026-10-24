@@ -1349,7 +1349,7 @@ export async function saveCustomerFuelDelivery(fields, reason = 'Müşteriye maz
             note:`${f.machine} · ${f.liters} L mazot × ${f.unit_price.toLocaleString('tr-TR', {maximumFractionDigits:6})} ₺/L`});
           const move = newRecord({date:f.date, move_type:'ÇIKIŞ', delivery_kind:'customer_fuel', recipient_customer_id:f.customer_id,
             recipient_machine:f.machine, liters:f.liters, charge_unit_price:f.unit_price, charge_total:f.total,
-            cari_movement_id:cari.id, event_id, note:f.note});
+            cari_movement_id:cari.id, event_id, note:f.note,...(fields.assistant_origin?.version===1?{assistant_origin:fields.assistant_origin}:{})});
           cari.ref_id = move.id;
           validateCustomerFuelLinks({fuel_tank_movements:[move], cari_movements:[cari]});
           t.objectStore('fuel_tank_movements').put(move); t.objectStore('cari_movements').put(cari);

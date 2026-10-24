@@ -1,3 +1,4 @@
+import {recordLocalText} from './record-notes.js';
 // İşletmeye özel asistan kuralları — SAF katman.
 // 1) Kullanıcının yazdığı serbest kurallar (Ayarlar → Yapay Zeka) Gemini talimatına eklenir.
 // 2) Yapısal kurallar telefonda denetlenir: gönderenin zimmetli aracı, müşterinin sefer başı mazotu,
@@ -89,7 +90,7 @@ export const hasFuelRules = (c) => fuelRulesOf(c).length > 0;
 const nameOf = (d, s, id) => (id ? live(d, s).find((x) => x.id === id)?.name || "" : "");
 // İşin aranacak metni: mesaj + malzeme + açıklama + iş türü + şantiye / ocak / döküm yeri adları
 export function workHay(d, row, text = "") {
-  return ` ${norm([text, row.material, row.description, row.work_type, row.from_place, row.to_place, row.quarry, row.dump_area, row.internal_note,
+  return ` ${norm([text, row.material, recordLocalText(row,d,'work'), row.work_type, row.from_place, row.to_place, row.quarry, row.dump_area,
     nameOf(d, "sites", row.site_id), nameOf(d, "quarries", row.quarry_id), nameOf(d, "dump_sites", row.dump_site_id)].filter(Boolean).join(" "))} `;
 }
 export function matchFuelRule(d, row, text = "") {

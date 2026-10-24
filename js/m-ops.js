@@ -1,3 +1,4 @@
+import {recordNoteHTML} from './record-notes-ui.js';
 import { vehicleDocumentStatus } from "./business.js";
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
 import {bindSafeFormSave} from './safe-form-save.js';
@@ -698,7 +699,7 @@ async function maintDetail(ctx, id) {
     <div class="card">
       ${kv("Tür", m.maint_type || "—")}
       ${kv("Personel", names.personnel[m.personnel_id] || "—")}
-      ${m.description ? kv("Açıklama", m.description) : ""}
+      ${recordNoteHTML(m,'description',names,'maintenance',{label:'Açıklama'})}
       ${m.cost ? kv("Maliyet", fmtTL(m.cost) + " ₺") : ""}
       ${m.service_company ? kv("Servis", m.service_company) : ""}
       ${m.km_hours ? kv("KM/Saat", m.km_hours) : ""}
@@ -847,7 +848,7 @@ async function personnelDetail(ctx, id) {
             .reverse()
             .map(
               (e) =>
-                `<div class="ti"><div class="small strong">${trDate(e.date)} · ${esc(e.event_type)}${e.amount ? " · " + fmtTL(e.amount) + " ₺" : ""}${e.hours_days ? " · " + fmtNum(e.hours_days) + " sa/gün" : ""}</div><div class="tiny muted">${esc(e.description || "")}</div></div>`,
+                `<div class="ti"><div class="small strong">${trDate(e.date)} · ${esc(e.event_type)}${e.amount ? " · " + fmtTL(e.amount) + " ₺" : ""}${e.hours_days ? " · " + fmtNum(e.hours_days) + " sa/gün" : ""}</div><div class="tiny muted">${recordNoteHTML(e,'description',names,'personnel')}</div></div>`,
             )
             .join("")}</div>`
         : emptyState("📋", "Hareket yok")

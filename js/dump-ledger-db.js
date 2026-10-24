@@ -89,6 +89,7 @@ export async function saveDumpEntry(f, files = [], key = uuid()) {
     const fields = dumpEntryFields(d, input),
       entry = newRecord({
         ...fields,
+        ...(f.assistant_origin?{assistant_origin:f.assistant_origin}:{}),
         request_id: key,
         request_signature: signature,
       });
@@ -132,6 +133,7 @@ export async function saveDumpEntry(f, files = [], key = uuid()) {
             entry.payment_method === "Personel Ödedi" ? "Bekliyor" : null,
           receipt: prepared.length ? "Evet" : "Hayır",
           reference: entry.reference,
+          ...(f.assistant_origin?{assistant_origin:f.assistant_origin}:{}),
           description:
             "Ortak döküm hesabına yükleme" +
             (entry.note ? " · " + entry.note : ""),
