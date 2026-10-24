@@ -1,3 +1,4 @@
+import {recordLocalText} from './record-notes.js';
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
@@ -32,7 +33,7 @@ export function customerHints(d) {
   const per = new Map(), total = new Map();
   for (const w of live(d, "work_records")) {
     if (!w.customer_id) continue;
-    const words = norm([w.description, w.internal_note].filter(Boolean).join(" ")).split(" ");
+    const words = norm(recordLocalText(w,d,'work')).split(" ");
     const seen = new Set();
     for (let i = 0; i + 1 < words.length; i++) {
       const a = words[i], b = words[i + 1].replace(/(nin|nın|in|ın|e|a|ye|ya|ler|lar)$/u, "");
@@ -130,7 +131,7 @@ function rank(d, cands, text, vehicleId, date) {
   const works = live(d, "work_records");
   const out = cands.map((c) => {
     const mine = works.filter((w) => w.customer_id === c.id);
-    const hist = ` ${norm(mine.map((w) => [w.description, w.internal_note].filter(Boolean).join(" ")).join(" "))} `;
+    const hist = ` ${norm(mine.map((w) => recordLocalText(w,d,'work')).join(" "))} `;
     const sites = live(d, "sites").filter((s) => s.customer_id === c.id).map((s) => norm(s.name)).join(" ");
     const hitWords = [...new Set(words.filter((w) => hist.includes(" " + w) || (` ${sites} `).includes(" " + w)))];
     const sameVeh = vehicleId && mine.some((w) => w.vehicle_id === vehicleId && w.date >= since && w.date <= date);
@@ -621,6 +622,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       }
     }
     // Kaynak alıntı: varsa mesajda birebir geçmeli
+    r.source_quote = String(w.quote || "").slice(0, 8000);
     r.quote = String(w.quote || "").slice(0, 200);
     if (r.quote && !quoteFound(r.quote, message)) {
       issues.push(`Kaynak alıntı mesajda bulunamadı ("${r.quote}")`);
@@ -684,7 +686,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   for (const e of (Array.isArray(plan.expenses) ? plan.expenses : []).slice(0, 10)) {
     const issues = [];
     const photo = Number.isInteger(e.photo) && e.photo >= 0 && e.photo < photoCount ? e.photo : (photoCount === 1 && (plan.expenses || []).length === 1 && !(plan.tank_in || []).length && !(plan.fuel || []).length && !(plan.works || []).length ? 0 : null);
-    const r = { date: validDate(e.date, today) || today, amount: null, category: expenseCategoryNames(d).includes(e.category) ? e.category : "Diğer",
+    const r = { source_quote: String(e.quote || "").slice(0, 8000), date: validDate(e.date, today) || today, amount: null, category: expenseCategoryNames(d).includes(e.category) ? e.category : "Diğer",
       company: String(e.company || "").slice(0, 80), vehicle_id: byId(vehicles, e.vehicle_id)?.id || null,
       supplier_id: byId(suppliers, e.supplier_id)?.id || null, credit: !!e.credit, photo, note: String(e.note || "").slice(0, 200),
       payment_method: ["Nakit", "Kart", "Havale", "Personel Ödedi"].includes(e.payment_method) ? e.payment_method : null,
@@ -724,7 +726,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   out.tankIn = [];
   for (const t of (Array.isArray(plan.tank_in) ? plan.tank_in : []).slice(0, 5)) {
     const liters = numOk(Number(t.liters)) ? Number(t.liters) : null;
-    const r = { date: validDate(t.date, today) || today, liters, total: numOk(Number(t.total)) ? Number(t.total) : null, note: String(t.note || "").slice(0, 200),
+    const r = { source_quote: String(t.quote || "").slice(0, 8000), date: validDate(t.date, today) || today, liters, total: numOk(Number(t.total)) ? Number(t.total) : null, note: String(t.note || "").slice(0, 200),
       unit_price: numOk(Number(t.unit_price)) ? Number(t.unit_price) : null, supplier_id: byId(suppliers, t.supplier_id)?.id || null, credit: !!t.credit,
       customer_id: byId(customers, t.customer_id)?.id || null };
     if (r.customer_id) { r.credit = false; r.supplier_id = null; }
@@ -780,7 +782,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (out.fuelOut.some(r => r.quote === message || f.quote && f.quote === r.quote)) continue;
     const issues = [];
     const photo = Number.isInteger(f.photo) && f.photo >= 0 && f.photo < photoCount ? f.photo : null;
-    const r = { date: validDate(f.date, today) || today, vehicle_id: byId(vehicles, f.vehicle_id)?.id || null,
+    const r = { source_quote: String(f.quote || "").slice(0, 8000), date: validDate(f.date, today) || today, vehicle_id: byId(vehicles, f.vehicle_id)?.id || null,
       liters: numOk(Number(f.liters)) ? Number(f.liters) : null, total: numOk(Number(f.total)) ? Number(f.total) : null, photo };
     // Kilometre / makine saati (bakım takvimi için): yalnız mesajda yazıyorsa
     const msgNums = numbersInText(message);
@@ -926,7 +928,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
 
   for (const c of (Array.isArray(plan.collections) ? plan.collections : []).slice(0, 10)) {
     const issues = [];
-    const r = { date: validDate(c.date, today) || today, customer_id: byId("customers", c.customer_id)?.id || null, new_customer: null,
+    const r = { source_quote: String(c.quote || "").slice(0, 8000), date: validDate(c.date, today) || today, customer_id: byId("customers", c.customer_id)?.id || null, new_customer: null,
       amount: null, method: c.method === "Havale" ? "Havale" : "Nakit", bank_account_id: byId("bank_accounts", c.bank_account_id)?.id || null,
       personnel_id: byId("personnel", c.personnel_id)?.id || null, note: String(c.note || "").slice(0, 200) };
     if (!r.customer_id && c.new_customer) {
@@ -985,7 +987,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
 
   for (const m of (Array.isArray(plan.maintenance) ? plan.maintenance : []).slice(0, 10)) {
     const issues = [];
-    const r = { date: validDate(m.date, today) || today, vehicle_id: byId("vehicles", m.vehicle_id)?.id || null,
+    const r = { source_quote: String(m.quote || "").slice(0, 8000), date: validDate(m.date, today) || today, vehicle_id: byId("vehicles", m.vehicle_id)?.id || null,
       maint_type: MAINT_TYPES.includes(m.maint_type) ? m.maint_type : "Arıza", status: MAINT_STATUS.includes(m.status) ? m.status : "Açık",
       description: String(m.description || "").slice(0, 300), cost: null, service_company: String(m.service_company || "").slice(0, 80),
       supplier_id: byId("suppliers", m.supplier_id)?.id || null, credit: !!m.credit };
@@ -1004,7 +1006,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
 
   for (const e of (Array.isArray(plan.personnel) ? plan.personnel : []).slice(0, 10)) {
     const issues = [];
-    const r = { date: validDate(e.date, today) || today, personnel_id: byId("personnel", e.personnel_id)?.id || null,
+    const r = { source_quote: String(e.quote || "").slice(0, 8000), date: validDate(e.date, today) || today, personnel_id: byId("personnel", e.personnel_id)?.id || null,
       event_type: PERSONNEL_EVENT_TYPES.includes(e.event_type) ? e.event_type : "Diğer", amount: null, hours_days: null,
       note: String(e.note || "").slice(0, 200) };
     if (e.amount != null && e.amount !== "") {

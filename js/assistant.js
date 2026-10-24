@@ -1,3 +1,4 @@
+import {withRecordSource} from './record-notes.js';
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {readBatchPolicy,selectedFuelBudget,untrustedWorkPlan} from './assistant-batch.js';
 import {bindBulkEntry,mountBulkResume} from './bulk-entry-ui.js';
@@ -1098,7 +1099,8 @@ async function save(ctx, out, v, d, { message, files }) {
     return newIds.get(key);
   };
   const newIds = new Map();
-  const source = "Asistan: " + [message,...(v._workflowReplies||[])].join('\n').slice(0, 1200);
+  const sourceMessage=[message,...(v._workflowReplies||[])].join('\n');
+  const noteFor=(kind,row,fields,auto=['description'])=>withRecordSource(fields,sourceMessage,row,kind,d,auto);
   let current = null;
   try {
     if(v._agentTask){v._agentTask=await transitionTask(db,v._agentTask,'applying','Kullanıcı kontrol kartlarını onayladı; kayıt sonucu bekleniyor.');ctx.assistantTaskChanged?.(v._agentTask);}
@@ -1170,7 +1172,7 @@ async function save(ctx, out, v, d, { message, files }) {
           await db.metaSet("assistant_rules", (cur.trimEnd() + "\n- " + r.value).slice(-6000));
         } else if (r.key === "promise") {
           const all = (await db.metaGet("collect_notes")) || {};
-          all[r.customer.id] = { ...(all[r.customer.id] || {}), promise_date: r.date, ...(r.amount ? { promise_amount: r.amount } : {}), note: "Asistan: " + message.slice(0, 80) };
+          all[r.customer.id] = { ...(all[r.customer.id] || {}), promise_date: r.date, ...(r.amount ? { promise_amount: r.amount } : {}), ...noteFor('promise',{...r,customer_id:r.customer.id},{note:''},['note']) };
           await db.metaSet("collect_notes", all);
         } else if (r.key === "iban") await db.metaSet("collect_iban", r.value);
         else if (r.key === "fuel_ref_price") await db.metaSet("fuel_ref_price", r.value);
@@ -1198,7 +1200,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (old && old.kdv_rate != null && Number.isFinite(Number(old.kdv_rate))) rule.kdv_rate = Number(old.kdv_rate);
         const rec = old
           ? await db.saveExisting("price_book", old, { price: rule.price, kdv_included: false, kdv_rate: rule.kdv_rate }, "Asistan: fiyat kuralı güncellendi (KDV hariç)")
-          : await db.saveNew("price_book", { ...rule, active: true, note: "Asistan: " + message.slice(0, 120) }, "Asistan: fiyat kuralı");
+          : await db.saveNew("price_book", noteFor('price',r,{...rule,active:true,note:''},['note']), "Asistan: fiyat kuralı");
         done.price++;
         const ruleId = rec?.id || old?.id || null;
         const pw = pr.pastWorksFor(fresh, rule);
@@ -1279,11 +1281,11 @@ async function save(ctx, out, v, d, { message, files }) {
             continue;
           }
         }
-        const mv = await db.saveNew("fuel_tank_movements", {
+        const mv = await db.saveNew("fuel_tank_movements", noteFor('tank',rT,{
           date: val(c, "date") || todayStr(), move_type: "GİRİŞ", liters, vehicle_id: null, personnel_id: null,
-          pump_no: "", signature_name: "", unit_price, total, supplier_id: supId, customer_id: val(c, "tank_customer") || null, description: source,
+          pump_no: "", signature_name: "", unit_price, total, supplier_id: supId, customer_id: val(c, "tank_customer") || null, description: "",
           ...invF,
-        }, "Asistan: depo girişi");
+        }), "Asistan: depo girişi");
         if (rT.photo != null && files[rT.photo]) await db.addAttachment("tank", mv.id, files[rT.photo], { kind: "invoice" });
         if (supId && total && val(c, "tank_pay") !== "paid") {
           const { createCreditBill } = await import("./esnaf.js");
@@ -1316,13 +1318,13 @@ async function save(ctx, out, v, d, { message, files }) {
           try { await db.saveExisting("work_records", await db.get("work_records", w.id), patch, "Asistan: fiş işe eklendi"); } catch (e) { /* iş kilitliyse yalnız belge bağlanır */ }
         }
         if (workId === "new") {
-          const f = {
+          const f = noteFor('work',r,{
             date, customer_id: val(c, "customer"), site_id: null, vehicle_id: vid, personnel_id: null, vehicle_type: veh.type || null,
             contractor_id: veh.contractor_id || null, work_type: val(c, "work_type"), description: `Döküm fişi ${no}` + (val(c, "tonnage") ? ` · ${val(c, "tonnage")} ton` : ""),
-            internal_note: source, material: r.material || "", quantity: 1, unit: "Sefer",
+            internal_note: "", material: r.material || "", quantity: 1, unit: "Sefer",
             dump_site_id: val(c, "dump_site") || null, quarry_id: null, dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || r.dump_site_name || "",
             quarry: "", slip_status: null, slip_no: no, customer_note: "", distance_km: null, source: "asistan",
-          };
+          },['internal_note']);
           f.price_snapshot = priceSnapshot(f, prices, crane);
           Object.assign(f, JOB.applyJob(await db.dumpAll(), f));
           workId = (await db.saveNew("work_records", f, "Asistan: döküm fişi")).id;
@@ -1443,7 +1445,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const quarryId = await ensurePlace("quarries", val(c, "quarry"));
         const dumpId = await ensurePlace("dump_sites", val(c, "dump_site"));
         const placeName = async (store, id) => (id ? (await db.get(store, id))?.name || "" : "");
-        const fields = {
+        const fields = noteFor('work',v.works[Number(c.dataset.i)],{
           date: val(c, "date") || todayStr(),
           customer_id: customer,
           site_id: site,
@@ -1452,8 +1454,7 @@ async function save(ctx, out, v, d, { message, files }) {
           vehicle_type: veh.type || null,
           contractor_id: veh.contractor_id || null,
           work_type: val(c, "work_type"),
-          description: val(c, "description") || source,
-          internal_note_src: source,
+          description: val(c, "description") || "",
           material: val(c, "material") || "",
           quantity: Number(val(c, "quantity")),
           unit: val(c, "unit"),
@@ -1463,10 +1464,8 @@ async function save(ctx, out, v, d, { message, files }) {
           tonnage: Number(val(c, "tonnage")) > 0 ? Number(val(c, "tonnage")) : null,
           dump_cost: Number(val(c, "dump_cost")) > 0 ? Number(val(c, "dump_cost")) : null,
           source: "asistan",
-        };
-        delete fields.internal_note_src;
+        },['internal_note',...(val(c,'description')?[]:['description'])]);
         const wr0 = v.works[Number(c.dataset.i)];
-        fields.internal_note = (wr0.reporter ? "Bildiren: " + wr0.reporter + " · " : "") + source;
         if (wr0.driver_entry_id) {
           if (existingWorks.some((w) => w.driver_entry_id === wr0.driver_entry_id)) { toast("Şoför kaydı zaten alınmış, atlandı", "err"); continue; }
           fields.driver_entry_id = wr0.driver_entry_id; fields.source = "şoför";
@@ -1549,6 +1548,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (fields.personnel_id) await learn(wr.mentions?.personnel, "personnel", fields.personnel_id, nm("personnel", fields.personnel_id));
       } else if (k === "expense") {
         const r = v.expenses[Number(c.dataset.i)];
+        const expenseNote=noteFor('expense',r,{description:val(c,'description')||''},val(c,'description')?[]:['description']);
         const file = r.photo != null ? files[r.photo] : null;
         // Döküm faturası → döküm hesabına bağlı belge (gider değil); saha VKN/yer adı öğrenilir
         if (r.dumpInv) {
@@ -1590,8 +1590,8 @@ async function save(ctx, out, v, d, { message, files }) {
           const pay = val(c, "pay") || (r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : "Şirket Ödedi");
           const payer = pay.startsWith("p:") ? pay.slice(2) : null;
           // "Bolluca'ya 50.000 yatırdım" → döküm sahası ön ödemeli hesabına yükleme (gider sayılmaz, dökümde düşer)
-          const dsite = (await import("./dump-account.js")).depositSiteOf(fresh, { category: f.category, company: val(c, "company"), description: val(c, "description") || source });
-          if(!dsite && /döküm|dokum/i.test(f.category) && (await import("./dump-account.js")).dumpDepositIntent({description:val(c,"description")||source})) {
+          const dsite = (await import("./dump-account.js")).depositSiteOf(fresh, { category: f.category, company: val(c, "company"), description: expenseNote.description });
+          if(!dsite && /döküm|dokum/i.test(f.category) && (await import("./dump-account.js")).dumpDepositIntent({description:expenseNote.description})) {
             toast("Para yüklemesinin döküm sahası belli değil. Ortak Döküm Hesaplarından doğru sahayı seçerek kaydedin; gider yazılmadı.","err");continue;
           }
           if (dsite) done.dumpdep++;
@@ -1605,12 +1605,13 @@ async function save(ctx, out, v, d, { message, files }) {
             if (!eg) continue;
             if (eg.existing) { for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", eg.existing.id, image); continue; }
           }
-          const rec = dsite && !r.driver_entry_id ? await (async()=>{const {saveDumpEntry}=await import("./dump-ledger-db.js");const entry=await saveDumpEntry({kind:"TOPUP",date:f.date,dump_site_id:dsite.id,amount:f.amount,payment_method:payer?"Personel Ödedi":pay,personnel_id:payer||null,note:val(c,"description")||source},r.photos?.length?r.photos.map(pi=>files[pi]).filter(Boolean):file?[file]:[],eg?.op?.id||ctx.core.uuid());const expense=await db.get("expense_records",entry.expense_id);return {...expense,_existing:!!entry._existing};})() : await skipDup(db.saveNew("expense_records", {
+          const rec = dsite && !r.driver_entry_id ? await (async()=>{const {saveDumpEntry}=await import("./dump-ledger-db.js");const entry=await saveDumpEntry({kind:"TOPUP",date:f.date,dump_site_id:dsite.id,amount:f.amount,payment_method:payer?"Personel Ödedi":pay,personnel_id:payer||null,note:expenseNote.description,assistant_origin:expenseNote.assistant_origin},r.photos?.length?r.photos.map(pi=>files[pi]).filter(Boolean):file?[file]:[],eg?.op?.id||ctx.core.uuid());const expense=await db.get("expense_records",entry.expense_id);return {...expense,_existing:!!entry._existing};})() : await skipDup(db.saveNew("expense_records", {
+            ...expenseNote,
             ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
             ...(dsite ? { dump_site_id: dsite.id, dump_deposit: true } : {}),
             date: f.date, category: f.category, kdv_rate: null, amount: f.amount, personnel_id: payer, vehicle_id: f.vehicle_id,
             payment_method: payer ? "Personel Ödedi" : pay, receipt: file ? "Evet" : "Hayır", reimbursement_status: payer ? "Bekliyor" : null,
-            company: val(c, "company"), description: val(c, "description") || source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
+            company: val(c, "company"), description: expenseNote.description, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id, source: "şoför" } : {}),
           }, "Asistan", { op: eg?.op || null }));
           if (!rec) continue;
           if (rec._existing) { done.already++; if(!dsite||r.driver_entry_id)for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", rec.id, image); continue; }
@@ -1661,17 +1662,18 @@ async function save(ctx, out, v, d, { message, files }) {
             rel = { similar_to: sim.map((x) => x.id), ...(ans.reason ? { new_payment_reason: ans.reason } : {}) };
           }
         }
-        const srcInfo = { source_ref: /^(wa:|driver:)/.test(src.source) ? src.source : "elle yapıştırılan mesaj", source_quote: src.quote || "", ...rel };
+        const paymentNote=noteFor('collection',cr,{...fieldsC,description:''});
+        const srcInfo = { assistant_origin:paymentNote.assistant_origin,source_ref: /^(wa:|driver:)/.test(src.source) ? src.source : "elle yapıştırılan mesaj", source_quote: src.quote || "", ...rel };
         try {
           if (method === "Havale") {
             const { customerBankReceipt } = await import("./enterprise-db.js");
-            const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: source, extra: srcInfo }, reqId);
+            const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: paymentNote.description, extra: srcInfo }, reqId);
             if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
           } else {
             const pid = val(c, "personnel") || null;
             const r0 = await db.saveNew("cash_records", {
               request_id: reqId, date, cash_type: "Müşteriden Para Alındı", amount, personnel_id: pid, customer_id: customer,
-              payment_method: "Nakit", description: source, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo, ...(cr.driver_entry_id ? { driver_entry_id: cr.driver_entry_id, ...(cr.driver_work ? { driver_work: structuredClone(cr.driver_work) } : {}) } : {}),
+              payment_method: "Nakit", description: paymentNote.description, cash_status: pid ? "PERSONELDE" : "KASAYA_TESLIM_EDILDI", ...srcInfo, ...(cr.driver_entry_id ? { driver_entry_id: cr.driver_entry_id, ...(cr.driver_work ? { driver_work: structuredClone(cr.driver_work) } : {}) } : {}),
             }, "Asistan tahsilat", { op: { id: reqId, hash: await db.opHash(fieldsC) } }); // PR #121 işlem kaydı: kimlik = kaynak anahtarı (deterministik)
             if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
           }
@@ -1692,14 +1694,14 @@ async function save(ctx, out, v, d, { message, files }) {
           if (!mg) continue;
           if (mg.existing) { if (files0) await db.addAttachment("maintenance", mg.existing.id, files0); continue; }
         }
-        const rec = await skipDup(db.saveNew("maintenance_records", {
+        const rec = await skipDup(db.saveNew("maintenance_records", noteFor('maintenance',mr,{
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: mr.driver_pid || null, severity: "Normal", part: "",
           maint_type: val(c, "maint_type") || "Arıza", status: val(c, "status") || "Açık", description: val(c, "description"),
           cost, kdv_rate: null, service_company: val(c, "service_company"), km_hours: [mr.km ? mr.km + " km" : "", mr.machine_hours ? mr.machine_hours + " saat" : ""].filter(Boolean).join(" · "),
           ...(mr.km ? { km: mr.km } : {}), ...(mr.machine_hours ? { machine_hours: mr.machine_hours } : {}),
           ...(cepM ? { paid_by_personnel_id: mr.driver_pid, reimbursement_status: "Bekliyor" } : {}),
           ...(mr.driver_entry_id ? { driver_entry_id: mr.driver_entry_id, source: "şoför" } : {}),
-        }, "Asistan arıza/bakım", { op: mg?.op || null }));
+        },[]), "Asistan arıza/bakım", { op: mg?.op || null }));
         if (!rec) continue;
         if (rec._existing) { done.already++; continue; }
         if (files0) await db.addAttachment("maintenance", rec.id, files0);
@@ -1713,11 +1715,14 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         done.maintenance++;
       } else if (k === "personnel") {
+        const pn=noteFor('personnel',v.personnel[Number(c.dataset.i)],{personnel_id:val(c,'personnel'),amount:Number(val(c,'amount'))||null,description:''});
+        const personnelSource=pn.description;
         await db.saveNew("personnel_events", {
+          ...pn,
           date: val(c, "date") || todayStr(), personnel_id: val(c, "personnel"), event_type: val(c, "event_type") || "Diğer",
-          amount: Number(val(c, "amount")) || null, hours_days: Number(val(c, "hours_days")) || null, description: source,
+          amount: Number(val(c, "amount")) || null, hours_days: Number(val(c, "hours_days")) || null, description: personnelSource,
           // İzin türü mesajdan: "yıllık izin", "ücretsiz izin", "mazeret"; rapor ayrı tür
-          ...(val(c, "event_type") === "Rapor" ? { leave_kind: "Rapor" } : val(c, "event_type") === "İzin" ? { leave_kind: /ücretsiz/i.test(source) ? "Ücretsiz izin" : /mazeret|cenaze|düğün|evlen|doğum/i.test(source) ? "Mazeret izni" : /yıllık|senelik/i.test(source) ? "Yıllık izin" : null } : {}),
+          ...(val(c, "event_type") === "Rapor" ? { leave_kind: "Rapor" } : val(c, "event_type") === "İzin" ? { leave_kind: /ücretsiz/i.test(personnelSource) ? "Ücretsiz izin" : /mazeret|cenaze|düğün|evlen|doğum/i.test(personnelSource) ? "Mazeret izni" : /yıllık|senelik/i.test(personnelSource) ? "Yıllık izin" : null } : {}),
         }, "Asistan personel hareketi");
         done.personnel++;
       } else if (k === "edit") {
@@ -1729,9 +1734,10 @@ async function save(ctx, out, v, d, { message, files }) {
         done.edit++;
       } else if (k === 'fuelout') {
         const fields = customerFuelFields({date:val(c,'date'),customer_id:val(c,'customer'),machine:val(c,'machine'),liters:val(c,'liters'),unit_price:val(c,'unit_price'),note:message});
+        const localFields=noteFor('fuelout',v.fuelOut[Number(c.dataset.i)],fields,['note']);
         const gate = await opGate('fuelout',c.dataset.i,fields,`Müşteriye mazot ${fields.date} · ${fields.liters} L`);
         if (!gate || gate.existing) continue;
-        const rec = await db.saveCustomerFuelDelivery(fields,'Asistan: müşteriye mazot teslimi',{op:gate.op});
+        const rec = await db.saveCustomerFuelDelivery(localFields,'Asistan: müşteriye mazot teslimi',{op:gate.op});
         if (rec._existing) {done.already++;continue;}
         done.fuelOut++;
       } else {
@@ -1745,13 +1751,13 @@ async function save(ctx, out, v, d, { message, files }) {
           if (!fg) continue;
           if (fg.existing) { for (const pi of (r.photos?.length ? r.photos : r.photo != null ? [r.photo] : [])) if (files[pi]) await db.addAttachment("fuel", fg.existing.id, files[pi]); continue; }
         }
-        const rec = await skipDup(db.saveNew("fuel_records", {
+        const rec = await skipDup(db.saveNew("fuel_records", noteFor('fuel',r,{
           date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: null, liters,
           unit_price: !byCustomer && total ? Math.round((total / liters) * 100) / 100 : null, total: byCustomer ? null : total,
           ...(byCustomer ? { customer_id: val(c, "fuel_customer") || null } : {}),
           fuel_source: src, receipt: src === "Depo Tankı" ? "Depo" : byCustomer ? "Müşteri" : r.photo != null ? "Evet" : "Hayır", pump_no: "", km: r.km || null,
-          machine_hours: r.machine_hours || null, description: source, ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id } : {}), customer_billable: false,
-        }, "Asistan", { op: fg?.op || null }));
+          machine_hours: r.machine_hours || null, description: "", ...(r.driver_entry_id ? { driver_entry_id: r.driver_entry_id } : {}), customer_billable: false,
+        }), "Asistan", { op: fg?.op || null }));
         if (!rec) continue;
         if (rec._existing) { done.already++; continue; }
         for (const pi of (r.photos?.length ? r.photos : r.photo != null ? [r.photo] : [])) if (files[pi]) await db.addAttachment("fuel", rec.id, files[pi]);

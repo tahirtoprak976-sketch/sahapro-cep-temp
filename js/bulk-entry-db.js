@@ -1,3 +1,4 @@
+import {withRecordSource} from './record-notes.js';
 import * as db from './db.js';
 import {uuid,newRecord,nowISO} from './core.js';
 import {backupBeforeSoloOperation} from './backup.js';
@@ -65,7 +66,7 @@ export async function commitBulk(draft,previewToken){
    }
    for(const r of plan.writes){
     const op=sourceIds[r.source_key];if(!op||ops[r.source_key])throw stale();
-    const f=mapFields(r.fields),bulk_source={key:r.source_key,op_id:op,batch_id:draft.id,raw_message:r.raw_message};
+    const f=withRecordSource(mapFields(r.fields),r.raw_message,{...r.fields,source_quote:r.quote},r.kind,data,r.kind==='work'?['internal_note']:['description']),bulk_source={key:r.source_key,op_id:op,batch_id:draft.id,raw_message:r.raw_message};
     let record,store;
     if(r.kind==='work'){store='work_records';record=add(store,{...f,bulk_source});}
     else{

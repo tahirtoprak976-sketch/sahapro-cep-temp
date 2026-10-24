@@ -1,3 +1,4 @@
+import {recordLocalText,recordNoteText} from './record-notes.js';
 // Mazot (litre hakkı) hesabı DENETİMİ — SAF katman, kayıt yazmaz.
 // Sonuçlar KESİN HATA DEĞİL, "inceleme adayı"dır: kayıtların arkasındaki gerçek anlaşma (litre hakkı mı, TL borcuna karşılık mazot mu,
 // iş gerçekten mazot karşılığı mıydı) uygulamada doğrulanamaz; kullanıcı doğrular.
@@ -56,10 +57,10 @@ export function fuelAudit(d, customerId) {
       mixed.push({ id: w.id, date: w.date, quantity: w.quantity, unit: w.unit, amount: amt, liters: L });
   }
   const key = nameKey(c);
-  const mentions = (x) => key && fold([x.description, x.note, x.company].filter(Boolean).join(" ")).includes(key);
+  const mentions = (x) => key && fold([recordLocalText(x,d,'fuel'),x.company].filter(Boolean).join(' ')).includes(key);
   const unlinkedFuel = [
     ...live(d, "fuel_records").filter((f) => !f.customer_id && (f.fuel_source === "Müşteri Verdi" || mentions(f))).map((f) => ({ id: f.id, store: "fuel_records", date: f.date, liters: Number(f.liters) || 0, vehicle_id: f.vehicle_id || null,
-      where: f.fuel_source === "Müşteri Verdi" ? "araca (müşteri verdi, müşterisi boş)" : `araca (${f.fuel_source || "kaynak yok"})`, note: f.description || "", linkable: f.fuel_source === "Müşteri Verdi" })),
+      where: f.fuel_source === "Müşteri Verdi" ? "araca (müşteri verdi, müşterisi boş)" : `araca (${f.fuel_source || "kaynak yok"})`, note: recordNoteText(f,'description',d,'fuel'), linkable: f.fuel_source === "Müşteri Verdi" })),
     ...live(d, "fuel_tank_movements").filter((m) => m.move_type === "GİRİŞ" && !m.customer_id && mentions(m)).map((m) => ({ id: m.id, store: "fuel_tank_movements", date: m.date, liters: Number(m.liters) || 0,
       where: m.supplier_id ? "depoya (petrolcüden kayıtlı)" : Number(m.total) > 0 ? "depoya (tutarlı alış)" : "depoya", note: m.note || "", linkable: !m.supplier_id && !(Number(m.total) > 0) })),
   ];

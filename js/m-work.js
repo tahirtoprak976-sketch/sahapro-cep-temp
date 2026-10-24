@@ -1,3 +1,5 @@
+import {recordNoteHTML,recordSourceHTML} from './record-notes-ui.js';
+import {recordNoteText,recordLocalText,noteEditPatch} from './record-notes.js';
 import {bindWorkFuelPreview, workFuelState} from "./work-fuel-preview.js";
 import {workReviewContext} from './collect-core.js';
 import {entryContext,entryContextHTML,entrySaveHash,entryRepeatHash} from './entry-context.js';
@@ -298,9 +300,9 @@ async function workForm(ctx, editId) {
       <div class="formgrid2">${fNum("Manuel birim fiyat (opsiyonel)", "manual_price", (!editId ? v.manual_price : undefined) ?? (v.price_snapshot?.price_source === "Manuel" ? v.price_snapshot.unit_price : ""), { step: "any" })}${fNum("KDV %", "manual_kdv", (!editId ? v.manual_kdv : undefined) ?? v.price_snapshot?.kdv_rate ?? 20, { step: "any" })}</div>
       ${fNum("Mesafe (km, opsiyonel)", "distance_km", v.distance_km ?? "", { step: "any" })}
       ${editId ? "" : '<section data-transport-batch hidden><div data-transport-rows></div><button type="button" class="btn" data-add-transport>+ Satır ekle</button><div class="notice" data-transport-total aria-live="polite"></div><p class="tiny">Ek satırda boş bırakılan araç, personel ve fiyat üstteki seçimden alınır. Her satır ayrı iş kaydı olarak saklanır.</p></section>'}
-      ${fArea("İş Açıklaması", "description", v.description || "")}
+      ${fArea("İş Açıklaması", "description", recordNoteText(v,'description',names,'work'))}
       ${fArea("Müşteri Notu (PDF'te görünür)", "customer_note", v.customer_note || "")}
-      ${fArea("İç Not (müşteriye GÖSTERİLMEZ)", "internal_note", v.internal_note || "")}
+      ${fArea("İç Not (müşteriye GÖSTERİLMEZ)", "internal_note", recordNoteText(v,'internal_note',names,'work'))}${recordSourceHTML(v,v.internal_note?'internal_note':'description',names,'work')}
       ${editId ? "" : '<label class="history-check"><input type="checkbox" data-save-next> Bu kayıttan sonra benzer iş aç · miktarı yeniden gir</label>'}
     </form>
     <div class="actionbar">
@@ -674,6 +676,7 @@ async function workForm(ctx, editId) {
         dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
         tonnage_scope: val.tonnage_scope || "unknown",
       };
+      Object.assign(fields,noteEditPatch(v,{description:fields.description,internal_note:fields.internal_note},names,'work'));
       const selectedCustomer=await db.get("customers",fields.customer_id);
       if(!selectedCustomer || !isActive(selectedCustomer))throw Error("Seçili müşteri artık kullanılamıyor; müşteriyi kontrol edin");
       const fuelState=fuelPreview.check({customers:selectedCustomer?[selectedCustomer]:[],sites,quarries,dump_sites:dumpSites},fields);
@@ -713,7 +716,7 @@ async function workForm(ctx, editId) {
       const { applyFuelPay } = await import("./assistant-rules.js");
       const dAll = await db.dumpAll();
       fuelPreview.check(dAll,fields);
-      const fuelText = (r) => [r.description, r.material, r.quarry, r.dump_area, r.internal_note].filter(Boolean).join(" ");
+      const fuelText = (r) => [recordLocalText(r,dAll,'work'),r.material,r.quarry,r.dump_area].filter(Boolean).join(' ');
       // Düzenlemede kayıtlı litre hakkı bugünkü kuralla SESSİZCE yeniden hesaplanmaz: müşteri / birim / miktar değişmediyse eski hak ve
       // mazot karşılığı fiyatı korunur; miktar değiştiyse kayıtlı litre/birim oranıyla hesaplanır.
       const oldL = editId && rec ? Number(rec.customer_fuel_allowance_l) || 0 : 0;
@@ -932,9 +935,9 @@ async function workDetail(ctx, id) {
       ${w.tonnage ? kv("Tonaj", fmtNum(w.tonnage) + " ton") : ""}
       ${w.dump_cost ? kv("Döküm maliyeti", fmtNum(w.dump_cost) + " ₺ (elle)") : ""}
       ${w.customer_fuel_allowance_l ? kv("Mazot karşılığı", fmtNum(w.customer_fuel_allowance_l) + " L" + (w.price_snapshot?.price_source === "Mazot karşılığı" ? " (ücret yalnız mazot)" : "")) : ""}
-      ${w.description ? kv("Açıklama", w.description) : ""}
+      ${recordNoteHTML(w,'description',names,'work',{source:false,label:'Açıklama'})}
       ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}
-      ${w.internal_note ? kv("İç Not", w.internal_note) : ""}
+      ${recordNoteHTML(w,'internal_note',names,'work',{source:true,label:'İç Not'})}${!w.internal_note&&!w.assistant_origin?recordSourceHTML(w,'description',names,'work'):''}
       ${w.invoice_no ? kv("Fatura", w.invoice_no + (w.invoice_date ? " · " + trDate(w.invoice_date) : "")) : ""}
       ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
       ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
