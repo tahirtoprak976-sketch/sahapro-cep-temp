@@ -1,6 +1,7 @@
 // Explicit user instructions only. Quoted chat messages and model flags cannot set batch policy.
 import { foldTr } from './parser.js';
 import { calcTankBalance, isActive, todayStr } from './core.js';
+import {assertTankChange} from './tank-timeline.js';
 const fold=s=>foldTr(String(s||'')).trim().replace(/\s+/g,' ');
 const CHAT=/^\s*\[?\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?[\s,\]]+\d{1,2}:\d{2}/;
 const months=['ocak','subat','mart','nisan','mayis','haziran','temmuz','agustos','eylul','ekim','kasim','aralik'];
@@ -72,5 +73,18 @@ export function selectedFuelBudget(movements,rows){
  }
  const current=calcTankBalance(live).remaining,have=current+incoming;
  const ok=need===0&&incoming>=0||need<=have+0.001;
- return {ok,current,incoming,have,need,error:!ok?`Depoda kayıtlı ${Math.max(0,Math.round(have))} L var; seçili çıkışlar ${need} L. Gerçek depo girişini veya başlangıç stokunu kontrol edin. İşleri ayrı kaydetmek için yakıt kartlarının seçimini kaldırabilirsiniz.`:null};
+ const result={ok,current,incoming,have,need,error:!ok?`Depoda kayıtlı ${Math.max(0,Math.round(have))} L var; seçili çıkışlar ${need} L. Gerçek depo girişini veya başlangıç stokunu kontrol edin. İşleri ayrı kaydetmek için yakıt kartlarının seçimini kaldırabilirsiniz.`:null};
+ const stockRows=rows.filter(r=>r.kind==='tank'||r.kind==='fuelout'||r.kind==='fuel'&&r.source==='Depo Tankı');
+ if(ok&&stockRows.some(r=>r.date)){
+  try{let projected=[...live];
+   for(const [i,r]of stockRows.entries()){
+    const old=r.kind==='tank'&&r.linkId?live.find(m=>m.id===r.linkId):null,date=old?.date||r.date;
+    if(date>todayStr())throw Error('Gerçek yakıt / depo tarihi gelecekte olamaz');
+    const move={...(old||{}),id:old?.id||'preview:'+i,date,move_type:r.kind==='tank'?'GİRİŞ':'ÇIKIŞ',liters:Number(r.liters)};
+    projected=old?projected.map(m=>m.id===old.id?move:m):[...projected,move];
+   }
+   assertTankChange(live,projected);
+  }catch(e){result.ok=false;result.error=e.message;}
+ }
+ return result;
 }

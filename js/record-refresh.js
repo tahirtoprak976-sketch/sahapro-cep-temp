@@ -4,6 +4,10 @@ import { updateRisk } from "./update-safety.js";
 const eventName = "sp-records-committed";
 const relevant = new Set([
   "customers",
+  "cash_records",
+  "cari_movements",
+  "hakedis",
+  "bank_movements",
   "work_records",
   "fuel_records",
   "fuel_tank_movements",
@@ -46,7 +50,8 @@ export function watchRecords(fn) {
 }
 export function fuelReadView(parts) {
   return (
-    (parts[0] === "isler" && !parts[1]) ||
+    (!parts[0]) ||
+    (['isler','yakit','bakim'].includes(parts[0]) && !parts[1]) ||
     (parts[0] === "musteriler" &&
       !parts.includes("new") &&
       !parts.includes("edit")) ||

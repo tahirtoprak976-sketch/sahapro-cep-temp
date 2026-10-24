@@ -4,6 +4,7 @@ import { applyAllocations } from "./ledger-policy.js";
 import { isActive, toKurus, fromKurus, todayStr, normKey } from "./core.js";
 import {
   validDate,
+  numericInput,
   workHours,
   costLedger,
   operatingResult,
@@ -37,14 +38,10 @@ export function required(v, title) {
   return v.trim();
 }
 export function number(v, title, zero = false) {
-  if (
-    v == null ||
-    v === "" ||
-    !Number.isFinite(Number(v)) ||
-    (zero ? Number(v) < 0 : Number(v) <= 0)
-  )
+  const n=numericInput(v,title);
+  if ((zero ? n < 0 : n <= 0)||Math.abs(n)>Number.MAX_SAFE_INTEGER)
     throw Error(title + " " + (zero ? "negatif olamaz" : "pozitif olmalı"));
-  return Number(v);
+  return n;
 }
 export function reference(d, s, id) {
   const r = live(d, s).find((r) => r.id === id);
@@ -207,6 +204,8 @@ export function partFields(d, f) {
   required(f.description, "Parça/işçilik");
   const quantity = number(f.quantity, "Miktar"),
     unit_price = number(f.unit_price, "Birim fiyat", true);
+  const cents=Math.round(quantity*toKurus(unit_price));
+  if(!Number.isSafeInteger(cents))throw Error('Parça toplamı çok büyük');
   if (!["Parça", "İşçilik"].includes(f.kind))
     throw Error("Kalem türü geçersiz");
   return {
@@ -214,7 +213,7 @@ export function partFields(d, f) {
     vehicle_id: m.vehicle_id,
     quantity,
     unit_price,
-    total: fromKurus(Math.round(quantity * toKurus(unit_price))),
+    total: fromKurus(cents),
     informational: true,
   };
 }

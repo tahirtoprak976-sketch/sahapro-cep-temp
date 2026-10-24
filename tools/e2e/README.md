@@ -2,6 +2,8 @@
 
 Depo kökünde `python3 -m http.server 8841`, sonra:
 
+- `python3 tools/e2e/integrity_audit.py http://localhost:8841/` — işletme defterinde bozuk sayı/tutar/taşma, sıfır kuruş ödeme, gerçek ikinci-request hatasında atomik geri sarma, geçmiş depo ve sonraki tüketim, giriş düzenleme, iki gerçek sekmede stok yarışı, bağlı maliyeti koruma, yakıt/depo birlikte çöp kutusu dönüşü ve başka sekmeden tahsilat sonrası açık müşteri kartının yenilenmesi. Asistan planı taklit; dış AI çağrısı yok; gerçek Chromium/IDB, sentetik veriler.
+
 - `python3 tools/e2e/record_notes.py http://localhost:8841/` — U55/43 L biçimindeki çok mesajlı eski notun salt okunur görünümü, kaynağın kapalı kalması/HTML kaçışları, ilgisiz müşteriyle arama eşleşmemesi, iş düzenlemesinde orijinali koruma, yeni iş/yakıt notlarının ayrılması, tam kaynağın yedek/geri yüklemesi ve müşteri PDF'sine girmemesi. Kaynaklar anonim test mesajları; model taklit, Chromium/IDB/transaction gerçek.
 
 - `python3 tools/e2e/part_cost.py http://localhost:8841/` — parçada zorunlu açık maliyet seçimi, eski varsayılan taslağın sessiz onaylanmaması, kayıtlı aküyü yeniden oluşturmadan giderlere işleme, mevcut maliyete bağlama, tekrar/eşzamanlı onay, eskiyen kayıt, gerçek transaction hatasında geri sarma, belgeleri koruma ve temiz profile yedek geri yükleme. Chromium/IDB gerçek; AI/ağ hesabı yok.
