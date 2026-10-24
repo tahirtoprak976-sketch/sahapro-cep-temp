@@ -35,9 +35,9 @@ export function sparePartFields(d, f) {
     throw Error("Birim fiyat geçersiz");
   const total =
     price == null ? null : fromKurus(Math.round(quantity * toKurus(price)));
-  const mode = f.cost_mode || "tracking";
+  const mode = f.cost_mode;
   if (!["tracking", "existing", "new_expense"].includes(mode))
-    throw Error("Maliyet seçimi geçersiz");
+    throw Error("Maliyet seçin: yeni gider, mevcut maliyete bağlantı veya yalnız garanti takibi.");
   if (mode === "new_expense" && !(total > 0))
     throw Error("Gider için fiyat girin");
   let source_store = null,
@@ -91,6 +91,18 @@ export function sparePartFields(d, f) {
     cost_source_id: source_id,
     informational: true,
   };
+}
+export function partCostState(d, r) {
+  const store=r.cost_source_store, id=r.cost_source_id;
+  if(store&&id){
+    const source=(d[store]||[]).find(s=>s.id===id&&isActive(s)&&s.status!=="İptal");
+    if(!source)return {label:"Maliyet bağlantısı kontrol edilmeli",kind:"warn",detail:"Bağlı kayıt bulunamadı veya iptal edildi. Yeni gider eklemeden önce bağlantıyı kontrol edin."};
+    return {label:(PART_SOURCES[store]||"Maliyet")+" kaydına bağlı",kind:"ok",detail:"Maliyet bağlı kayıtta bir kez sayılır. Parça kartı ikinci gider veya kasa/banka ödemesi oluşturmaz."};
+  }
+  if(r.maintenance_id)return {label:"Bakım maliyetine dahil",kind:"ok",detail:"Bu kalem bakım bedelinin ayrıntısıdır; ayrıca gider sayılmaz."};
+  const previous=r.cost_unlinked;
+  if(previous&&(d[previous.store]||[]).some(s=>s.id===previous.id&&isActive(s)&&s.status!=="İptal"))return {label:"Önceki maliyet kaydı duruyor; bağlantı yok",kind:"warn",detail:"Bağlantı kaldırılırken gider / alış kaydı silinmedi. İkinci gider eklemeyin; mevcut maliyet kaydını kontrol edip yeniden bağlayın."};
+  return {label:"Gider kaydı yok",kind:"warn",detail:"Bu kart yalnız parça ve garanti takibidir. Bedeli giderlere işlemek için yeni gider oluşturun veya mevcut maliyet kaydına bağlayın."};
 }
 export function warrantyState(r, today = todayStr()) {
   if (!r.warranty_until)

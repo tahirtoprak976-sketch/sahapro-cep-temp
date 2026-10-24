@@ -3,6 +3,7 @@ import {
   sparePartFields,
   validateStoredPart,
   warrantyState,
+  partCostState,
 } from "../js/parts-core.js";
 import {
   costLedger,
@@ -54,6 +55,8 @@ for (const bad of [
   { date: "2026-02-30" },
   { warranty_start: "2028-01-01", warranty_until: "2025-01-01" },
   { cost_mode: "x" },
+  { cost_mode: "" },
+  { cost_mode: undefined },
   { cost_mode: "new_expense", unit_price: "" },
   {
     cost_mode: "existing",
@@ -331,3 +334,10 @@ await assert.rejects(
   ]),
   /JPEG/,
 );
+
+assert.equal(partCostState(d,r).label,'Gider kaydı yok');
+assert.equal(partCostState(d,{...r,cost_source_store:'expense_records',cost_source_id:'E'}).kind,'ok');
+assert.equal(partCostState(d,{...r,cost_source_store:'expense_records',cost_source_id:'missing'}).kind,'warn');
+assert.equal(partCostState(d,{...r,maintenance_id:'M'}).label,'Bakım maliyetine dahil');
+assert.match(partCostState(d,{...r,cost_unlinked:{store:'expense_records',id:'E'}}).label,/Önceki maliyet kaydı duruyor/);
+console.log('parts cost choice: explicit mode required; tracking, linked and missing source states PASS');

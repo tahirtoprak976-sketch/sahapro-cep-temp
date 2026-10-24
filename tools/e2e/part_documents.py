@@ -48,7 +48,7 @@ with sync_playwright() as p:
  pg.click('[data-part-apply]');assert pg.input_value('[name=brand]')=='Elle marka'
  assert pg.input_value('[name=serial_numbers]')=='TEST-A1\nTEST-A2' and pg.input_value('[name=date]')=='2026-09-07'
  assert pg.input_value('[name=quantity]')=='2' and pg.input_value('[name=vehicle_id]')==vid
- assert pg.input_value('[name=cost_mode]')=='tracking' and state()==before
+ assert pg.input_value('[name=cost_mode]')=='' and state()==before
  # Re-read uses original >1600px image, preserves both the original file and user's field edits.
  pg.click('[data-part-read]');pg.wait_for_function('()=>!document.querySelector("[data-part-read]").disabled')
  assert len(calls)==2
@@ -104,6 +104,7 @@ with sync_playwright() as p:
  assert pg.input_value('[name=date]')=='' and pg.input_value('[name=quantity]')==''
  assert pg.locator('[data-shared-parts]').get_by_text('Bu belge mevcut',exact=False).count()
  mode='normal';pg.click('[data-part-read]');pg.wait_for_function('()=>!document.querySelector("[data-part-read]").disabled');pg.click('[data-part-apply]')
+ pg.select_option('[name=cost_mode]','tracking')
  pg.locator('[data-part-form] [type=submit]').click();pg.wait_for_function('()=>document.querySelector("[data-part-error]").textContent.includes("zaten var")')
  assert state()==updated
  # Invalid appended file leaves the two good source files/draft intact.
