@@ -81,13 +81,13 @@ export async function applyUndo(db) {
   const links = undoLinks(plan, cur, await db.getAll("attachments"));
   if (links.length) throw Error("Geri alınamaz: eklenen kayıtlara sonradan başka kayıt bağlandı (" + links.slice(0, 3).join(", ") + "). Bağlı kaydı silmeden tek tek düzeltin.");
   const idb = await db.openDB();
-  const stores = [...Object.keys(plan.stores), "attachments", "meta", "audit_log"];
+  const stores = [...new Set([...Object.keys(plan.stores), ...(plan.bulk_batch_id?ENTITY_STORES:[]), "attachments", "meta", "audit_log"])];
   await new Promise((resolve, reject) => {
     const t = idb.transaction(stores, "readwrite");
+    let error;
     // İki sekme aynı anda geri alırsa: plan işlem içinde yeniden okunur, yalnız biri uygular
     const pr = t.objectStore("meta").get("assistant_undo");
-    pr.onsuccess = () => {
-      if (!pr.result || pr.result.value?.at !== plan.at) { t.abort(); return; }
+    const apply=()=>{
     for (const [s, x] of Object.entries(plan.stores)) {
       const os = t.objectStore(s);
       for (const r of x.added) os.delete(r.id);
@@ -96,10 +96,26 @@ export async function applyUndo(db) {
     for (const id of plan.attAdded) t.objectStore("attachments").delete(id);
     for (const [k, m] of Object.entries(plan.meta)) t.objectStore("meta").put({ key: k, value: m.before });
     t.objectStore("meta").delete("assistant_undo");
+    // A bulk undo never makes the original source eligible for silent re-import.
+    for(const id of plan.bulk_sources||[]){
+      const source=t.objectStore('meta').get('op:'+id);
+      source.onsuccess=()=>{if(source.result)t.objectStore('meta').put({...source.result,value:{...source.result.value,state:'undone'}});};
+    }
+    if(plan.bulk_batch_id){const draft=t.objectStore('meta').get('assistant_bulk_v1');draft.onsuccess=()=>{if(draft.result?.value?.id===plan.bulk_batch_id)t.objectStore('meta').put({...draft.result,value:{...draft.result.value,status:'closed',rev:draft.result.value.rev+1}});};}
     t.objectStore("audit_log").put({ id: uuid(), entity: "assistant", entity_id: plan.at, action: "undo", old: null, new: null, reason: "Asistan kaydı geri alındı: " + (plan.label || ""), at: nowISO() });
     };
+    pr.onsuccess = () => {
+      if (!pr.result || pr.result.value?.at !== plan.at) { t.abort(); return; }
+      if(!plan.bulk_batch_id){apply();return;}
+      // A new relation or edit between the preview and Undo must not be erased.
+      // Bulk undo holds the same store locks while checking and removing records.
+      const current={stores:{},meta:{}},all=ENTITY_STORES.filter(s=>s!=='audit_log');let pending=all.length+1,attachments=[];
+      const checked=()=>{if(--pending)return;const changed=undoConflicts(plan,current),linked=undoLinks(plan,current,attachments);if(changed.length||linked.length){error=Error('Toplu kayıt sonradan değişmiş veya başka kayda bağlanmış; geri alınamaz.');t.abort();return;}apply();};
+      for(const s of all){const q=t.objectStore(s).getAll();q.onsuccess=()=>{current.stores[s]=new Map(q.result.map(r=>[r.id,r]));checked();};}
+      const a=t.objectStore('attachments').getAll();a.onsuccess=()=>{attachments=a.result;checked();};
+    };
     t.oncomplete = resolve;
-    t.onerror = t.onabort = () => reject(t.error || Error("Geri alınamadı (başka ekranda zaten geri alınmış olabilir)"));
+    t.onerror = t.onabort = () => reject(error || t.error || Error("Geri alınamadı (başka ekranda zaten geri alınmış olabilir)"));
   });
   return plan;
 }
