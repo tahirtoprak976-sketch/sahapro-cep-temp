@@ -22,7 +22,8 @@ parser.add_argument('url',nargs='?',default='http://localhost:8841/')
 parser.add_argument('--baseline-proof',action='store_true',help='Reproduce truncation on unchanged v3.9.71, never a candidate pass')
 args=parser.parse_args()
 URL=args.url.rstrip('/')+'/'
-OUT=Path('/tmp/solo-contract-extra-rates'); OUT.mkdir(parents=True,exist_ok=True)
+OUT=Path('/tmp/solo-contract-extra-rates') / ('baseline' if args.baseline_proof else 'candidate')
+OUT.mkdir(parents=True,exist_ok=True)
 pdfmetrics.registerFont(TTFont('DejaVu','/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
 UNITS=['Saat','Yevmiye','Sefer','m³','Ton','Adet']
 DATE='2026-10-25'
