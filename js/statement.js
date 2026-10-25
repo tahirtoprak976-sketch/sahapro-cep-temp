@@ -8,6 +8,9 @@ const tl = (n) =>
   Number(n).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const trDate = (d) => (d ? d.split("-").reverse().join(".") : "");
 
+// Ortak müşteri görünürlüğü: iç düzeltme açıklaması ve işlem nedeni dış nüshaya çıkmaz.
+export const customerMovementText = (m) => m.type === "Duzeltme" ? "" : m.note || "";
+
 export function customerStatement(movements, customerId, { from = "", to = "" } = {}) {
   const mine = (movements || [])
     .filter((m) => isActive(m) && m.customer_id === customerId)
@@ -28,7 +31,7 @@ export function customerStatement(movements, customerId, { from = "", to = "" } 
     rows.push({
       date: m.date,
       type: LABEL[m.type] || m.type || "Hareket",
-      text: m.type === "Duzeltme" ? "" : m.note || "",
+      text: customerMovementText(m),
       debit: k > 0 ? fromKurus(k) : 0,
       credit: k < 0 ? fromKurus(-k) : 0,
       balance: fromKurus(bal),

@@ -4,6 +4,8 @@ import {bindWorkFuelPreview, workFuelState} from "./work-fuel-preview.js";
 import {workReviewContext} from './collect-core.js';
 import {entryContext,entryContextHTML,entrySaveHash,entryRepeatHash} from './entry-context.js';
 import { latestWork, repeatWork } from "./work-repeat.js";
+import { hasWorkDraft, workEntryPlan, workSiteChoices } from "./work-entry.js";
+import { customerLabel } from "./driver-customer.js";
 import { exploreWorks, workURL, workFlags, workCSV } from "./work-explorer.js";
 import { workHours } from "./enterprise-core.js";
 import { kdvRateOf } from "./core.js";
@@ -194,7 +196,7 @@ async function workList(ctx) {
 
 async function workForm(ctx, editId) {
   const { root, db, names, query } = ctx;
-  const formHash = location.hash;
+  let formHash = location.hash;
   const [customers, sites, vehicles, personnel, dumpSites, quarries] =
     await Promise.all([
       db.listActive("customers"),
@@ -209,44 +211,91 @@ async function workForm(ctx, editId) {
   const entry=!editId?entryContext(query,vehicles):null;
   if(entry?.error){root.innerHTML=appbar('+ İş Kaydı')+entryContextHTML(entry);return;}
 
-  // Explicit repeat takes precedence over transient WhatsApp prefill.
-  let prefill = null, repeatSource = null, repeatMissing = [];
+  const current = () => root.isConnected && location.hash === formHash;
+  // A dialog belongs to this form route, not whichever screen opens next.
+  const routeDialog = async open => {
+    if (!current()) return null;
+    let close;
+    const abandoned = new Promise(resolve => { close = () => resolve(null); });
+    const oldModal = document.querySelector('#sheet-root .sheet');
+    const result = open();
+    const nextModal = document.querySelector('#sheet-root .sheet');
+    const modal = nextModal !== oldModal ? nextModal : null;
+    const overlay = modal?.previousElementSibling;
+    const check = () => {
+      if (current()) return;
+      modal?.remove(); overlay?.remove(); close();
+    };
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('hashchange', check);
+    try { return await Promise.race([result, abandoned]); }
+    finally { observer.disconnect(); window.removeEventListener('hashchange', check); }
+  };
+  const chooseStart = () => routeDialog(() => new Promise(resolve => {
+    root.innerHTML = appbar("+ İş Kaydı") + `<section class="card" data-work-entry-conflict><h2>Yarım kalan iş taslağı var</h2><p>Yeni başlangıç önceki iş taslağının tamamının yerini alacak. Alanlar birleştirilmez; seçim yapmadan hiçbir taslak değişmez.</p><div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" data-work-entry-choice="keep">Taslağa dön</button><button class="btn primary" data-work-entry-choice="replace">Yeni başlangıcı aç</button></div></section>`;
+    qs('[data-work-entry-choice="keep"]', root).onclick = () => resolve(false);
+    qs('[data-work-entry-choice="replace"]', root).onclick = () => resolve(true);
+  }));
+  const capturedPrefill = window.__prefill;
+  if (!current()) return;
+  // Explicit repeat keeps its existing precedence and its whole-draft protection.
+  let prefill = null, repeatSource = null, repeatMissing = [], startKind = 'empty';
   if (!editId && (query.repeat || query.copylast === "1")) {
     repeatSource = query.repeat ? await db.get("work_records", query.repeat) : latestWork(await db.getAll("work_records"));
-    if (location.hash !== formHash) return;
+    if (!current()) return;
     if (!repeatSource || !isActive(repeatSource)) {
       root.innerHTML = appbar("Benzer İş") + notice("warn", "Kaynak iş bulunamadı veya silinmiş. Yeni bir iş seçin.") + '<a class="btn" href="#/isler">İş kayıtlarına dön</a>'; return;
     }
     const draft = await db.draftGet("work");
+    if (!current()) return;
     if (draft?._repeat_source === repeatSource.id) prefill = draft;
     else {
-      const replaceDraft = !(draft && Object.values(draft).some(Boolean)) || await confirmDialog("Yarım kalan iş taslağı var", "Benzer iş açılırsa önceki iş taslağının yerini alacak. Taslağa dönmek için vazgeçin.", "Benzer işi aç");
-      if (location.hash !== formHash) return;
-      if (!replaceDraft) { go("#/isler/new"); return; }
+      const replaceDraft = !hasWorkDraft(draft) || await routeDialog(() => confirmDialog("Yarım kalan iş taslağı var", "Benzer iş açılırsa önceki iş taslağının yerini alacak. Taslağa dönmek için vazgeçin.", "Benzer işi aç"));
+      if (!current()) return;
+      if (!replaceDraft) { if (window.__prefill === capturedPrefill) window.__prefill = null; go("#/isler/new"); return; }
       const prepared = repeatWork(repeatSource, { customers, sites, vehicles, personnel, dumpSites, quarries },entry?.values.date||todayStr());
       prefill = { ...prepared.values, _repeat_source: repeatSource.id }; repeatMissing = prepared.missing;
-      if (location.hash !== formHash) return;
       await db.draftSave("work", prefill);
     }
-    window.__prefill = null;
+    startKind = 'repeat';
+    if (window.__prefill === capturedPrefill) window.__prefill = null;
   }
-  if (!editId && !entry && !prefill && window.__prefill) { prefill = window.__prefill; window.__prefill = null; }
-  // Müşteri kartından "+ Bu müşteriye iş"
-  if (!editId && !prefill && query.customer_id) prefill = { customer_id: query.customer_id };
-  // Taslak autosave
   if (!editId && !prefill) {
+    const incoming = !entry ? window.__prefill : null;
     const draft = await db.draftGet("work");
-    if (draft && Object.values(draft).some((v) => v)) prefill = draft;
+    if (!current()) return;
+    let plan = workEntryPlan({ draft, incoming, customerId: query.customer_id || '', entry });
+    if (plan.collision) {
+      const replace = await chooseStart();
+      if (!current()) return;
+      if (!replace) plan = workEntryPlan({ draft });
+      // Do not clear first: a failed replacement must leave the old draft intact.
+      else await db.draftSave("work", plan.values);
+    }
+    if (!plan.collision && ['customer', 'message'].includes(plan.kind)) await db.draftSave("work", plan.values);
+    if (!current()) return;
+    if (window.__prefill === incoming) window.__prefill = null;
+    // The one-shot customer handoff is consumed. Reload continues this draft,
+    // even when the user subsequently changes customer; a later card click is new.
+    if (query.customer_id) {
+      const params = new URLSearchParams(formHash.split('?')[1] || '');
+      params.delete('customer_id');
+      formHash = '#/isler/new' + (params.size ? '?' + params : '');
+      history.replaceState(history.state, '', formHash);
+    }
+    prefill = plan.values;
+    startKind = plan.kind;
   }
-  if (location.hash !== formHash) return;
-  const entryPreserved=!!prefill;
-  if(entry&&!prefill)prefill={...entry.values};
+  if (!current()) return;
+  const entryPreserved = startKind === 'draft' || startKind === 'repeat';
   const v = rec || prefill || {};
 
   // Kendi depo iç müşterisi listede müşteri gibi görünmez; ayrı ve açık bir seçenek olarak en altta durur
-  const custOpts = [...customers.filter((c) => !c.internal).map((c) => ({ v: c.id, t: c.name })),
+  const custOpts = [...customers.filter((c) => !c.internal).map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
     ...customers.filter((c) => c.internal).map((c) => ({ v: c.id, t: "📦 Kendi depodan çıkış (iç iş — para istenmez)" }))];
-  const siteOpts = sites.map((s) => ({ v: s.id, t: s.name }));
+  const siteModel = workSiteChoices(sites, v.customer_id, v.site_id, !!rec || startKind === "draft", names.sites);
+  const siteOpts = siteModel.options;
   const vehOpts = vehicles.map((x) => ({ v: x.id, t: x.name }));
   const perOpts = personnel.map((x) => ({ v: x.id, t: x.name }));
 
@@ -258,13 +307,14 @@ async function workForm(ctx, editId) {
     `
     ${entryContextHTML(entry,entryPreserved)}
     ${editId ? "" : notice("info", "Nakliyede döküm yerlerini + Satır ekle ile girin. Aynı fiyatlı seferler müşteriye tek satır görünür; döküm ayrıntıları içeride korunur.")}
-    ${repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : !editId && prefill && !rec && (!entry||entryPreserved) ? '<div class="notice info"><span>ℹ</span><span>Yarım kalan iş taslağı yüklendi.</span></div>' : ""}
+    ${repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : startKind === "draft" ? '<div class="notice info" data-work-start="draft">Yarım kalan iş taslağı yüklendi; önceki alanlar korundu.</div>' : startKind === "customer" ? '<div class="notice info" data-work-start="customer">Seçili müşteri için yeni iş. Miktarı ve diğer seçimleri girin.</div>' : startKind === "message" ? '<div class="notice info" data-work-start="message">Mesajdan yeni iş başlangıcı; kayıt henüz yapılmadı. Alanları kontrol edin.</div>' : ""}
     <form data-form novalidate>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
         ${fSelect("Müşteri", "customer_id", [...custOpts, { v: "__new__", t: "➕ Yeni müşteri…" }], v.customer_id)}
-        ${fSelect("Şantiye", "site_id", [...siteOpts, { v: "__new__", t: "➕ Yeni şantiye…" }], v.site_id)}
+        ${fSelect("Şantiye", "site_id", [...siteOpts, ...(v.customer_id ? [{ v: "__new__", t: "➕ Yeni şantiye…" }] : [])], siteModel.selected)}
       </div>
+      <p class="tiny muted" data-site-context>${siteModel.legacy ? "Eski şantiye seçimi bu müşteriyle eşleşmiyor veya artık listede değil. Kayıt değiştirilmedi; kaydetmeden önce şantiyeyi kontrol edin." : !v.customer_id ? "Şantiye için önce müşteri seçin." : "Yalnız seçili müşterinin şantiyeleri gösterilir."}</p>
       <div class="formgrid2">
         ${fSelect("Araç / Makine", "vehicle_id", [...vehOpts, { v: "__new__", t: "➕ Yeni…" }], v.vehicle_id)}
         ${fSelect("Şoför / Operatör", "personnel_id", [...perOpts, { v: "__new__", t: "➕ Yeni…" }], v.personnel_id)}
@@ -314,7 +364,9 @@ async function workForm(ctx, editId) {
   // İş sözleşmesi: müşterinin açık sefer / m³ anlaşması varsa bu iş dahil mi ekstra mı (kayıttan önce açıkça gösterilir)
   const J = await import("./job-core.js");
   const dJob = await db.dumpAll();
-  const jobInit = rec ? (rec.job_extra ? "ekstra" : J.isJobPriced(rec) ? "dahil" : "") : "";
+  if (!current() || !form.isConnected) return;
+  const jobInit = rec ? (rec.job_extra ? "ekstra" : J.isJobPriced(rec) ? "dahil" : "") :
+    ((startKind === "draft" || (repeatSource && v._repeat_source === repeatSource.id)) && ["dahil", "ekstra"].includes(v.job_scope) ? v.job_scope : "");
   const jobDraw = () => {
     const box = qs("[data-jobbox]", form);
     const g = (n) => qs(`[name=${n}]`, form)?.value || "";
@@ -331,7 +383,7 @@ async function workForm(ctx, editId) {
   jobDraw();
   const fuelPreview=bindWorkFuelPreview({form,db,data:{customers,sites,quarries,dump_sites:dumpSites},previous:rec});
   let draftTimer,
-    saving = false, copying = false;
+    saving = false, copying = false, pendingCards = 0;
   let formDirty = false;
   form.addEventListener("input", () => { formDirty = true; });
   form.addEventListener("change", () => { formDirty = true; });
@@ -507,56 +559,48 @@ async function workForm(ctx, editId) {
   };
   qs("[name=work_type]", form).addEventListener("change", dynamicWork);
   dynamicWork();
-  // Yeni ekleme akışları
-  const bindNew = (name, store, label, extra = {}) => {
+  const customerSelect = qs('select[name=customer_id]', form);
+  const siteSelect = qs('select[name=site_id]', form);
+  siteSelect.dataset.workSiteOwner = ''; // Do not let generic form augmentation replace this owned control.
+  const syncSites = () => {
+    const cid = customerSelect.value;
+    const keepOld = (!!rec || startKind === "draft") && cid === v.customer_id && siteSelect.value === v.site_id;
+    const model = workSiteChoices(sites, cid, siteSelect.value, keepOld, names.sites);
+    siteSelect.innerHTML = '<option value="">— seç —</option>' + model.options.map(s => `<option value="${esc(s.v)}">${esc(s.t)}</option>`).join('') +
+      (cid && cid !== '__new__' ? '<option value="__new__">➕ Yeni şantiye…</option>' : '');
+    siteSelect.value = model.selected;
+    qs('[data-site-context]', form).textContent = model.legacy ? 'Eski şantiye seçimi bu müşteriyle eşleşmiyor veya artık listede değil. Kayıt değiştirilmedi; kaydetmeden önce şantiyeyi kontrol edin.' : cid ? 'Yalnız seçili müşterinin şantiyeleri gösterilir.' : 'Şantiye için önce müşteri seçin.';
+  };
+  // Preserve the previous selection on cancel, and never finish a stale prompt.
+  const bindNew = (name, store, label) => {
     const sel = qs(`select[name=${name}]`, form);
+    let previous = sel.value, pending = false;
     sel.addEventListener("change", async () => {
-      if (sel.value !== "__new__") return;
-      sel.value = rec ? rec[name] || "" : "";
-      const name2 = await promptDialog("Yeni " + label, "Ad");
-      if (!name2) return;
-      if (store === "sites") {
-        const cid = qs("select[name=customer_id]", form).value || null;
-        const created = await db.saveNew("sites", {
-          name: name2,
-          customer_id: cid,
-          active: true,
-        });
-        sites.push(created);
-        sel.insertAdjacentHTML(
-          "beforeend",
-          `<option value="${created.id}">${esc(name2)}</option>`,
-        );
-        sel.value = created.id;
-      } else {
-        const fields =
-          store === "vehicles"
-            ? {
-                name: name2,
-                type: "Araç/Makine",
-                ownership: "Özmal",
-                active: true,
-              }
-            : store === "personnel"
-              ? { name: name2, active: true }
-              : { name: name2, active: true };
+      if (sel.value !== "__new__") { previous = sel.value; return; }
+      sel.value = previous;
+      jobDraw();
+      if (pending || !current() || !form.isConnected) return;
+      const selectedBefore = previous;
+      const customerBefore = customerSelect.value;
+      if (store === 'sites' && !customerBefore) return;
+      pending = true;
+      pendingCards++;
+      try {
+        const name2 = await routeDialog(() => promptDialog("Yeni " + label, "Ad"));
+        if (!name2 || !current() || !form.isConnected || sel.value !== selectedBefore || (store === 'sites' && customerSelect.value !== customerBefore)) return;
+        const fields = store === 'sites' ? { name: name2, customer_id: customerBefore, active: true } :
+          store === 'vehicles' ? { name: name2, type: 'Araç/Makine', ownership: 'Özmal', active: true } : { name: name2, active: true };
         const created = await db.saveNew(store, fields);
-        const localList = {
-          vehicles,
-          personnel,
-          customers,
-          dump_sites: dumpSites,
-          quarries,
-        }[store];
-        if (localList) localList.push(created);
-        sel.insertAdjacentHTML(
-          "beforeend",
-          `<option value="${created.id}">${esc(name2)}</option>`,
-        );
+        const localList = { sites, vehicles, personnel, customers, dump_sites: dumpSites, quarries }[store];
+        localList?.push(created);
+        if (!current() || !form.isConnected || sel.value !== selectedBefore || (store === 'sites' && customerSelect.value !== customerBefore)) return;
+        sel.insertAdjacentHTML('beforeend', `<option value="${esc(created.id)}">${esc(store === 'customers' ? customerLabel(created, customers) : name2)}</option>`);
         sel.value = created.id;
-      }
-      sel.dispatchEvent(new Event("change",{bubbles:true}));
-      toast("Eklendi: " + name2, "ok");
+        pending = false; pendingCards--;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        toast('Eklendi: ' + name2, 'ok');
+      } catch (e) { if (current()) toast('Kart eklenemedi: ' + (e.message || e), 'err'); }
+      finally { if (pending) { pending = false; pendingCards--; } }
     });
   };
   bindNew("customer_id", "customers", "Müşteri");
@@ -565,35 +609,28 @@ async function workForm(ctx, editId) {
   bindNew("personnel_id", "personnel", "Personel");
   bindNew("dump_site_id", "dump_sites", "Döküm Sahası");
   bindNew("quarry_id", "quarries", "Malzeme Ocağı");
-
-  // Müşteri seçilince şantiyeleri filtrele
-  qs("select[name=customer_id]", form).addEventListener("change", (e) => {
-    const cid = e.target.value;
-    const sel = qs("select[name=site_id]", form);
-    const opts = sites.filter(
-      (s) => !cid || s.customer_id === cid || !s.customer_id,
-    );
-    sel.innerHTML =
-      '<option value="">— seç —</option>' +
-      opts
-        .map((s) => `<option value="${s.id}">${esc(s.name)}</option>`)
-        .join("") +
-      '<option value="__new__">➕ Yeni şantiye…</option>';
+  customerSelect.addEventListener('change', () => {
+    syncSites();
+    siteSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    jobDraw();
   });
 
-  // Autosave (yeni kayıtta)
+  // Both typing and committed selections (including newly created cards) persist.
   if (!editId) {
-    form.addEventListener("input", () => {
+    const scheduleDraft = event => {
+      if (pendingCards || event.target?.value === "__new__") return;
       clearTimeout(draftTimer);
       draftTimer = setTimeout(() => {
-        if (!saving && form.isConnected)
+        if (!saving && current() && form.isConnected)
           db.draftSave("work", {
             ...collectForm(form),
             _transport_rows: extraRows(),
             ...(repeatSource ? { _repeat_source: repeatSource.id } : {}),
-          }).catch(e => toast("Taslak saklanamadı: " + (e.message || e) + ". Form açıkken kaydedin veya metni koruyun.", "err"));
+          }).catch(e => { if (current()) toast("Taslak saklanamadı: " + (e.message || e) + ". Form açıkken kaydedin veya metni koruyun.", "err"); });
       }, 600);
-    });
+    };
+    form.addEventListener('input', scheduleDraft);
+    form.addEventListener('change', scheduleDraft);
   }
   const copyBtn = qs("[data-copylast]", root);
   if (copyBtn && !(dJob.work_records || []).some(isActive)) { copyBtn.disabled = true; copyBtn.title = "Henüz kopyalanacak iş yok"; }
