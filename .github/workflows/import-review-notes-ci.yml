@@ -1,0 +1,106 @@
+name: Import review notes validation
+
+# This isolated validation job cannot deploy or change repository content.
+on:
+  push:
+    branches:
+      - dot/import-review-notes
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-review-notes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-regression:
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: 'true'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out the exact branch commit without saved credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install the normal Linux browser test runtime
+        id: runtime
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends chromium python3-venv fonts-liberation
+          python3 -m venv /tmp/solo-e2e-venv
+          /tmp/solo-e2e-venv/bin/python -m pip install --disable-pip-version-check playwright==1.62.0
+          node --version
+          /usr/bin/chromium --version
+          /tmp/solo-e2e-venv/bin/python -m pip show playwright
+          git rev-parse HEAD
+          sha256sum tests/*.test.mjs tools/e2e/*.py > /tmp/solo-tests.sha256
+
+      - name: Run every Node test file without changing its assertions
+        run: |
+          set -euo pipefail
+          files=0
+          failed=0
+          for test in tests/*.test.mjs; do
+            files=$((files + 1))
+            echo "::group::$test"
+            if node "$test"; then
+              echo "PASS $test"
+            else
+              failed=$((failed + 1))
+              echo "FAIL $test"
+            fi
+            echo '::endgroup::'
+          done
+          echo "RESULT files=$files passed=$((files - failed)) failed=$failed"
+          test "$files" -gt 0
+          test "$failed" -eq 0
+
+      - name: Run unchanged browser suites with only isolated synthetic data
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8841 --bind 127.0.0.1 > /tmp/solo-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8841/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PY
+          failed=0
+          for suite in secure_transfer record_notes customer_snapshot operation_history; do
+            echo "::group::$suite browser suite"
+            if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
+              echo "PASS $suite"
+            else
+              failed=$((failed + 1))
+              echo "FAIL $suite"
+            fi
+            echo '::endgroup::'
+          done
+          echo "BROWSER RESULT suites=4 passed=$((4 - failed)) failed=$failed"
+          test "$failed" -eq 0
+
+      - name: Verify the test files stayed unchanged
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          sha256sum --check /tmp/solo-tests.sha256
+          git diff --exit-code -- tests tools/e2e
