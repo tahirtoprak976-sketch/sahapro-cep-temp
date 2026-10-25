@@ -10,6 +10,7 @@ import {
   todayStr,
 } from "./core.js";
 export const HISTORY_FORMAT = "SAHAPRO_HISTORY_V1";
+export const HISTORY_REVIEW_NOTES_MAX = 2000;
 export const HISTORY_STORES = [
   "customers",
   "sites",
@@ -69,6 +70,12 @@ export function readHistoryPackage(value) {
     for (const k of ["description", "raw_message"])
       if (r[k] != null && (typeof r[k] !== "string" || r[k].length > 20000))
         throw Error(`Satır ${i + 1}: açıklama veya mesaj geçersiz/çok uzun.`);
+    if (
+      Object.hasOwn(r, "review_notes") &&
+      (typeof r.review_notes !== "string" ||
+        r.review_notes.length > HISTORY_REVIEW_NOTES_MAX)
+    )
+      throw Error(`Satır ${i + 1}: aktarım kontrol notu metin olmalı ve ${HISTORY_REVIEW_NOTES_MAX} karakteri aşmamalı.`);
     if (r.settlement_status !== "unbilled_unpaid")
       throw Error(
         `Satır ${i + 1}: yalnız hakedişe alınmamış ve ödenmemiş kayıtlar desteklenir.`,
@@ -90,6 +97,7 @@ export function readHistoryPackage(value) {
       "dump_site",
       "quarry",
       "description",
+      "review_notes",
       "unit_price",
       "kdv_rate",
       "kdv_included",
@@ -244,6 +252,7 @@ export function prepareHistory(
         raw_message: text(original.raw_message),
         history_source: {
           row_id: original.row_id,
+          // Review notes are source evidence only, never operational/customer text.
           original_row: original,
           imported_at: new Date().toISOString(),
           settlement_status: "unbilled_unpaid",
