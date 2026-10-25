@@ -20,6 +20,7 @@ import tarfile
 import tempfile
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.request import Request, urlopen
 
 from playwright.sync_api import sync_playwright
 
@@ -91,6 +92,7 @@ def main():
         assert old_cache != new_cache, 'Atomic service-worker CACHE must change'
         assert constant(old, 'js/core.js', 'APP_ID') == constant(new, 'js/core.js', 'APP_ID')
         state = {'root': old}
+        server_requests = []
 
         class Handler(SimpleHTTPRequestHandler):
             def __init__(self, *handler_args, **handler_kwargs):
@@ -106,6 +108,14 @@ def main():
                 if 'If-Modified-Since' in self.headers:
                     del self.headers['If-Modified-Since']
                 super().do_GET()
+
+            def log_request(self, code='-', size='-'):
+                if self.path.split('?')[0] == '/sw.js' or str(code) != '200':
+                    entry = {'path':self.path,'root':Path(self.directory).name,'status':code,
+                             'diagnostic':self.headers.get('User-Agent')=='SOLO-upgrade-diagnostic'}
+                    if self.path.split('?')[0] == '/sw.js':
+                        entry['sha256'] = hashlib.sha256((Path(self.directory)/'sw.js').read_bytes()).hexdigest()
+                    server_requests.append(entry)
 
             def log_message(self, *_args):
                 pass
@@ -124,7 +134,7 @@ def main():
                 errors = []
                 console_warnings = []
                 page.on('pageerror', lambda error: errors.append(str(error)))
-                page.on('console', lambda message: console_warnings.append(message.text)
+                context.on('console', lambda message: console_warnings.append(message.text)
                         if message.type in ('warning', 'error') else None)
 
                 def update_state():
@@ -137,7 +147,8 @@ def main():
                         installing:worker(r?.installing),
                         bar:document.querySelector('#update-bar')?.outerHTML||null,
                         ready:document.querySelector('#screen')?.dataset.viewReady,
-                        quantity:document.querySelector('[name=quantity]')?.value};
+                        quantity:document.querySelector('[name=quantity]')?.value,
+                        caches:await caches.keys(),events:window.__upgradeEvents||[]};
                     }""")
 
                 page.goto(base + 'index.html#/daha')
@@ -187,16 +198,37 @@ def main():
                 try:
                     print('Before upgrade readiness: '+json.dumps(update_state()), flush=True)
                     page.wait_for_function("()=>typeof window.__swCheck==='function'")
+                    registration = page.evaluate_handle('async()=>await navigator.serviceWorker.getRegistration()')
+                    page.evaluate("""r=>{
+                      window.__upgradeEvents=[];
+                      r.addEventListener('updatefound',()=>{
+                        const w=r.installing;
+                        window.__upgradeEvents.push({event:'updatefound',state:w?.state});
+                        w?.addEventListener('statechange',()=>window.__upgradeEvents.push({event:'statechange',state:w.state}));
+                      });
+                    }""", registration)
+                    def served_sw_hash():
+                        with urlopen(Request(base+'sw.js',headers={'User-Agent':'SOLO-upgrade-diagnostic'})) as response:
+                            return {'status':response.status,'sha256':hashlib.sha256(response.read()).hexdigest()}
+                    old_served = served_sw_hash()
                     state['root'] = new
-                    page.evaluate('async()=>await window.__swCheck()')
-                    page.wait_for_function('async()=>!!(await navigator.serviceWorker.getRegistration()).waiting')
+                    new_served = served_sw_hash()
+                    print('Server deployment hashes: '+json.dumps({'old':old_served,'new':new_served}), flush=True)
+                    check_result = page.evaluate('async()=>await window.__swCheck()')
+                    print('Real update check result: '+json.dumps(check_result), flush=True)
+                    # An async wait_for_function predicate returns a truthy
+                    # Promise before its false result can be polled. Use the
+                    # real registration handle with a synchronous predicate.
+                    page.wait_for_function('r=>!!r.waiting', arg=registration)
                     page.wait_for_selector('#update-bar [data-upd]')
                 except Exception:
                     # Observe real state only; preserve the original failure.
                     try:
                         print('Upgrade readiness diagnostic: '+json.dumps({
                             'state':update_state(),'page_errors':errors,
-                            'console_warnings':console_warnings}), flush=True)
+                            'console_warnings':console_warnings,'server_requests':server_requests,
+                            'expected_old_sw':hashlib.sha256((old/'sw.js').read_bytes()).hexdigest(),
+                            'expected_new_sw':hashlib.sha256((new/'sw.js').read_bytes()).hexdigest()}), flush=True)
                     except Exception as diagnostic_error:
                         print('Diagnostic unavailable: '+str(diagnostic_error), flush=True)
                     raise
