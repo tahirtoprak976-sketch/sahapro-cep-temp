@@ -46,7 +46,7 @@ export async function screen(ctx) {
     </div>
     <div class="section-title">Fatura kalemleri (${F.lines.length})</div>
     ${F.lines.map((l, i) => `<div class="card" style="padding:10px 12px"><div class="small"><b>${i + 1}) ${esc(l.desc)}</b></div>
-      <div class="row between small" style="margin-top:3px"><span>${l.qty.toLocaleString("tr-TR")} ${esc(u(l.unit))} × ${tl(l.unitPrice)}</span><b>${tl(l.net)}</b></div><div class="tiny muted">KDV %${l.rate} · ${l.works.length} iş</div></div>`).join("") || notice("info", "Seçili iş yok.")}
+      <div class="row between small" style="margin-top:3px"><span>${l.qty.toLocaleString("tr-TR")} ${esc(u(l.unit))} × ${tl(l.unitPrice)}</span><b>${tl(l.net)}</b></div><div class="tiny muted">KDV %${l.rate} · ${l.works.length} iş</div></div>`).join("") || notice("info", F.review.length ? "Seçili işler kaynak kontrolü bekliyor; fatura kalemleri henüz hesaplanmadı." : "Seçili iş yok.")}
     <div class="card">
       <div class="row between small"><span>Mal / hizmet toplamı (KDV hariç)</span><b>${tl(F.net)}</b></div>
       <div class="row between small"><span>KDV</span><b>${tl(F.kdv)}</b></div>

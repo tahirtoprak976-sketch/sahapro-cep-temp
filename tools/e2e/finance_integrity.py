@@ -486,7 +486,12 @@ with sync_playwright() as playwright:
                 page.wait_for_selector("[data-invoice-review]")
                 assert page.is_disabled("[data-done]") and page.is_disabled("[data-copy]")
                 assert "Kayıtlar değiştirilmedi" in page.locator("[data-invoice-review]").inner_text()
+                assert "Seçili işler kaynak kontrolü bekliyor; fatura kalemleri henüz hesaplanmadı." in page.locator("#screen").inner_text()
+                assert "Seçili iş yok." not in page.locator("#screen").inner_text(), "Selected unresolved work must not be described as no selection"
                 page.screenshot(path=str(ARTIFACT / "invoice-review.png"), full_page=True)
+                visit(page, database, "#/fatura/" + ids["customer"] + "?w=-")
+                assert "Seçili iş yok." in page.locator("#screen").inner_text(), "Ordinary empty selection wording stays unchanged"
+                assert page.locator("[data-invoice-review]").count() == 0
                 visit(page, database, "#/fatura/" + ids["customer"] + "?w=" + fixture["legacy"])
                 assert page.locator("[data-invoice-review]").count() == 0
                 assert not page.is_disabled("[data-done]") and not page.is_disabled("[data-copy]")
