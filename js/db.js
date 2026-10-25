@@ -1,4 +1,5 @@
 import {recordsCommitted} from "./record-refresh.js";
+import {assertHakedisItems} from './hakedis-validation.js';
 import {assertTankChange} from './tank-timeline.js';
 import {freezeDumpTariff, liveDumpEntries} from "./dump-ledger-core.js";
 import { validDate } from "./driver-delivery.js";
@@ -1655,6 +1656,10 @@ export async function createHakedis(fields) {
     let hs, ws;
     function run() {
       if (!hs || !ws) return;
+      // Validate the complete selection inside the write transaction, before any put.
+      // Explicit 0 (including fuel-only/included work) is valid; missing is not 0.
+      try { assertHakedisItems(fields.items); }
+      catch (e) { error = e; t.abort(); return; }
       const ids = new Set();
       for (const item of fields.items || []) {
         const work = ws.find((x) => x.id === item.work_record_id);
@@ -1718,6 +1723,11 @@ export async function finalizeHakedis(id) {
         t.abort();
         return;
       }
+      // Old pending drafts may predate creation validation. Reject incomplete ones
+      // atomically before writing the hakediş, ledger or any locked work snapshot.
+      // Historical numeric 0 remains valid: its original intent cannot be inferred.
+      try { assertHakedisItems(h.items); }
+      catch (e) { error = e; t.abort(); return; }
       result = { ...h, status: "Kesinleşti", finalized_at: nowISO() };
       t.objectStore("hakedis").put(result);
       t.objectStore("cari_movements").put(

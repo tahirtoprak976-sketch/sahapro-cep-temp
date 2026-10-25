@@ -1,4 +1,5 @@
 import { customerBankReceipt } from "./enterprise-db.js";
+import {hakedisNumber, hakedisItemIssues, assertHakedisItems} from './hakedis-validation.js';
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
 import {bindSafeFormSave} from './safe-form-save.js';
 import { kdvRateOf } from "./core.js";
@@ -754,7 +755,7 @@ async function hakedisNew(ctx) {
     first: await db.metaGet("crane_first_hour"),
     next: await db.metaGet("crane_next_hour"),
   };
-  let selected = new Map(); // work_id → {unit_price, kdv_rate}
+  let selected = new Map(), creating = false; // work_id → {unit_price, kdv_rate}
 
   root.innerHTML =
     appbar("+ Hakediş", "İşleri seç · fiyatlar snapshot olarak kopyalanır") +
@@ -781,6 +782,7 @@ async function hakedisNew(ctx) {
     </div>
     <div data-rows></div>
     <div data-total></div>
+    <p data-hakedis-error role="alert" hidden></p>
     <div class="actionbar"><button class="btn primary" data-create disabled>Hakediş Oluştur</button></div>`;
 
   const rowsEl = qs("[data-rows]", root);
@@ -789,6 +791,7 @@ async function hakedisNew(ctx) {
       selected.clear();
       rowsEl.innerHTML = "";
       qs("[data-total]", root).innerHTML = "";
+      qs("[data-hakedis-error]", root).hidden = true;
       qs("[data-create]", root).disabled = true;
     });
   }
@@ -856,12 +859,17 @@ async function hakedisNew(ctx) {
         </div>
         ${price ? "" : (() => { const dec = priceDecision(pricebook, { customer_id: w.customer_id, site_id: w.site_id, vehicle_id: w.vehicle_id, work_type: w.work_type, unit: w.unit, date: w.date, material: w.material, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type || w.vehicle_type, distance_km: w.distance_km });
           return dec.ambiguous ? `<div class="tiny" style="color:var(--warn);margin-top:5px" data-amb="${w.id}">⚠ Birden çok fiyat kuralı uyuyor — seçin ya da el ile girin:</div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${dec.candidates.map((c) => `<button type="button" class="chip" data-pickprice="${w.id}" data-v="${c.price}" data-kdv="${c.kdv_rate}" data-inc="${c.kdv_included ? 1 : 0}">${esc(candidateLabel(c))}</button>`).join("")}</div>` : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'; })()}
+        <p class="small" data-hakedis-row-error="${esc(w.id)}" role="alert" hidden></p>
       </div>`;
         })
         .join("");
     const upd = () => {
       selected = new Map();
+      let incomplete = 0;
       for (const chk of qsa("[data-chk]", rowsEl)) {
+        const errorBox = qs(`[data-hakedis-row-error="${chk.dataset.chk}"]`, rowsEl);
+        errorBox.hidden = true;
+        qs(`[data-price="${chk.dataset.chk}"]`, rowsEl)?.removeAttribute('aria-invalid');
         if (!chk.checked) continue;
         const w = list.find((x) => x.id === chk.dataset.chk);
         const price = w.price_snapshot
@@ -893,9 +901,9 @@ async function hakedisNew(ctx) {
           site_name: names.sites[w.site_id] || "",
           vehicle_name: names.vehicles[w.vehicle_id] || "",
           work_type: w.work_type,
-          quantity: Number(w.quantity) || 0,
+          quantity: hakedisNumber(w.quantity),
           unit: w.unit,
-          unit_price: manual ? Number(manual.value) || 0 : 0,
+          unit_price: manual ? hakedisNumber(manual.value) : null,
           kdv_rate: price ? (price.kdv_rate ?? 20) : manual?.dataset.kdv ? Number(manual.dataset.kdv) : 20,
           formula:
             price && price.formula === "CRANE_FIRST_HOUR"
@@ -911,12 +919,21 @@ async function hakedisNew(ctx) {
               ? "Manuel"
               : price?.price_source || "Manuel",
         });
+        const issues = hakedisItemIssues(selected.get(w.id));
+        if (issues.length) {
+          incomplete++;
+          errorBox.textContent = issues.join(' ');
+          errorBox.hidden = false;
+          manual?.setAttribute('aria-invalid', 'true');
+        }
       }
-      const tot = calcHakedisTotals([...selected.values()], crane);
-      qs("[data-total]", root).innerHTML = selected.size
+      const tot = !incomplete && selected.size ? calcHakedisTotals([...selected.values()], crane) : null;
+      qs("[data-total]", root).innerHTML = incomplete
+        ? notice('warn', `${selected.size} iş seçili; ${incomplete} işin fiyat / miktar / KDV bilgisi tamamlanmalı. Eksik işler 0 TL sayılmaz; toplam henüz hesaplanmadı.`)
+        : tot
         ? `<div class="card">${kv("Kalem", String(selected.size))}${kv("Ara Toplam", fmtTL(tot.subtotal) + " ₺")}${kv("KDV", fmtTL(tot.kdv) + " ₺")}${kv("GENEL TOPLAM", fmtTL(tot.grand) + " ₺")}</div>`
         : "";
-      qs("[data-create]", root).disabled = !selected.size;
+      qs("[data-create]", root).disabled = creating || !selected.size || !!incomplete;
     };
     rowsEl.onchange = upd;
     rowsEl.oninput = upd;
@@ -933,14 +950,22 @@ async function hakedisNew(ctx) {
   });
 
   qs("[data-create]", root).addEventListener("click", async () => {
+    if (creating) return;
+    const errorBox = qs('[data-hakedis-error]', root);
+    errorBox.hidden = true;
+    const items = [...selected.values()].map(item => ({...item}));
+    try { assertHakedisItems(items); }
+    catch (e) { errorBox.textContent = e.message; errorBox.hidden = false; return; }
+    creating = true;
+    qs('[data-create]', root).disabled = true;
+    try {
     const val = collectForm(root);
     const ok = await confirmDialog(
       "Hakediş oluşturulsun mu?",
       `${selected.size} kalem · toplam snapshot alınır. Kesinleştirme sonraki adımdır.`,
       "Oluştur",
     );
-    if (!ok) return;
-    const items = [...selected.values()];
+    if (!ok || !root.isConnected) return;
     const tot = calcHakedisTotals(items, crane);
     const no = await db.nextSeq("hakedis");
     const created = await db.saveNew(
@@ -962,6 +987,12 @@ async function hakedisNew(ctx) {
     );
     toast("Hakediş #" + String(no).padStart(6, "0"), "ok");
     go("#/hakedis/" + created.id);
+    } catch (e) {
+      if (root.isConnected) { errorBox.textContent = e.message || 'Hakediş oluşturulamadı'; errorBox.hidden = false; }
+    } finally {
+      creating = false;
+      if (root.isConnected) qs('[data-create]', root).disabled = !selected.size || [...selected.values()].some(item => hakedisItemIssues(item).length);
+    }
   });
 }
 
@@ -1008,6 +1039,7 @@ async function hakedisDetail(ctx, id) {
       ${kv("KDV", fmtTL(h.kdv_total) + " ₺")}
       ${kv("GENEL TOPLAM", fmtTL(h.grand_total) + " ₺")}
     </div>
+    <p data-hakedis-final-error role="alert" hidden></p>
     <div class="actionbar">
       <button class="btn" data-pdf>PDF</button>
       ${!finalized && h.status !== "İptal" ? '<button class="btn ok" data-final>Kesinleştir</button><button class="btn danger" data-iptal>İptal</button>' : ""}
@@ -1017,16 +1049,22 @@ async function hakedisDetail(ctx, id) {
     await pdf.hakedisPdf(h, names);
   });
   const fin = qs("[data-final]", root);
+  let finalizing = false;
   if (fin)
     fin.addEventListener("click", async () => {
+      if (finalizing) return;
+      finalizing = true;
+      fin.disabled = true;
+      try {
       const ok = await confirmDialog(
         "Hakediş kesinleşsin mi?",
         "Kesinleşen hakediş değiştirilemez; müşteri carisine borç yazılır.",
         "Kesinleştir",
       );
-      if (!ok) return;
+      if (!ok || !root.isConnected) return;
       // Aynı iş iki aktif hakedişte olmasın (son kontrol)
       const allHak = await db.getAll("hakedis");
+      if (!root.isConnected) return;
       for (const o of allHak) {
         if (o.id === id || !isActive(o) || o.status === "İptal") continue;
         const clash = (o.items || []).filter((it) =>
@@ -1045,8 +1083,19 @@ async function hakedisDetail(ctx, id) {
         }
       }
       await db.finalizeHakedis(id);
-      toast("Kesinleşti — cariye işlendi", "ok");
-      ctx.reload();
+      if (root.isConnected) {
+        toast("Kesinleşti — cariye işlendi", "ok");
+        ctx.reload();
+      }
+      } catch (e) {
+        if (!root.isConnected) return;
+        const box = qs('[data-hakedis-final-error]', root);
+        box.textContent = (e.message || 'Hakediş kesinleştirilemedi') + (e.code === 'HAKEDIS_INCOMPLETE' ? ' Bu taslağı iptal edip eksik bilgileri tamamlayarak yeniden oluşturun. Hiçbir kayıt kesinleştirilmedi.' : '');
+        box.hidden = false;
+      } finally {
+        finalizing = false;
+        if (fin.isConnected) fin.disabled = false;
+      }
     });
   const ipt = qs("[data-iptal]", root);
   if (ipt)
