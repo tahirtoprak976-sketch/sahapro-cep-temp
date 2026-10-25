@@ -8,6 +8,7 @@ import { customerStatement } from "./statement.js";
 import {validateCustomerFuelLinks} from './customer-fuel.js';
 import { signedSlipChanges } from "./driver-core.js";
 import { vatContractReport } from "./vat-contract.js";
+import { claimWorkResolution } from './hakedis-finance.js';
 import { leaveDays as leaveDaysOf } from "./leave-core.js";
 
 const live = (d, s) => (d[s] || []).filter((r) => r && !r.deleted_at);
@@ -108,6 +109,10 @@ export function integrityCheck(d, { today, attachments = [], restoreSets = [] } 
   for (const r of vatContractReport(d)) {
     if (r.mixedBasis) add("warn", "vat-mixed", `${r.customer}: cari toplamında KDV dahil (${r.dahil}) ve hariç (${r.haric}) fiyatlı işler karışık`, `Bugünkü toplam ${r.booked} · net ${r.net} · brüt ${r.gross} ₺ (karar notu: KDV/cari)`);
     else if (r.ambiguous) add("warn", "vat-ambiguous", `${r.customer}: ${r.ambiguous} işte KDV oranı / temeli kayıtlı değil`, `Bugünkü toplam ${r.booked} ₺; varsayımla net ${r.net} · brüt ${r.gross} ₺`);
+  }
+  for (const w of live(d, 'work_records')) {
+    const source = claimWorkResolution(d, w);
+    if (source.issue) add('warn', 'hakedis-work-source', source.issue, 'Kaynak doğrulanmadan fatura toplamı hesaplanmaz.', '#/isler/' + w.id);
   }
   // İmzalı dijital fiş: kayıt, müşterinin imzaladığı içerikten sonra değişmiş mi
   for (const w of live(d, "work_records")) {

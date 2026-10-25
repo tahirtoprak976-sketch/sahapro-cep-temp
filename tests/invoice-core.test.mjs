@@ -13,11 +13,13 @@ const d = {
   ],
 };
 assert.equal(workNet(d.work_records[2]).net, 12000, "KDV dahil 14.400 → 12.000");
-assert.deepEqual(uninvoicedWorks(d, { customerId: "C" }).map((w) => w.id), ["1", "2", "3"]);
+// Corrected diagnosed expectation: W6 has 4000 TL + 75 L, not fuel-only.
+// Its positive TL component belongs in the invoice; litres are never priced here.
+assert.deepEqual(uninvoicedWorks(d, { customerId: "C" }).map((w) => w.id), ["1", "2", "3", "6"]);
 const F = invoiceDraft(d, "C");
-assert.equal(F.lines.length, 2); assert.equal(F.lines[0].qty, 3); assert.equal(F.lines[0].net, 12000); assert.match(F.lines[0].desc, /Kütükevler \(01\.10\.2026–03\.10\.2026\)/);
-assert.equal(F.net, 24000); assert.equal(F.kdv, 4800); assert.equal(F.withheld, 960); assert.equal(F.payable, 27840);
-assert.match(draftText(F), /VKN\/TCKN: 1234567890/); assert.match(draftText(F), /tevkifatı \(2\/10\): −960,00/);
+assert.equal(F.lines.length, 2); assert.equal(F.lines[0].qty, 4); assert.equal(F.lines[0].net, 16000); assert.match(F.lines[0].desc, /Kütükevler \(01\.10\.2026–08\.10\.2026\)/);
+assert.equal(F.net, 28000); assert.equal(F.kdv, 5600); assert.equal(F.withheld, 1120); assert.equal(F.payable, 32480);
+assert.match(draftText(F), /VKN\/TCKN: 1234567890/); assert.match(draftText(F), /tevkifatı \(2\/10\): −1.120,00/);
 const Q = invoiceQueue(d, { today: "2026-10-16" });
 assert.deepEqual(Q.map((q) => q.customer.id), ["C", "E"]); assert.equal(Q[0].oldestDays, 15);
 assert.deepEqual(Q[1].missing, ["vergi / TC no", "vergi dairesi", "adres"]);

@@ -2,7 +2,7 @@
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, sheet, sheetClose } from "./ui.js";
 import { invoiceQueue, invoiceDraft, draftText, uninvoicedWorks, WITHHOLDING } from "./invoice-core.js";
 
-const tl = (n) => Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
+const tl = (n) => n == null ? 'Hesaplanmadı — kaynak kontrolü gerekli' : Number(n || 0).toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " ₺";
 
 export async function screen(ctx) {
   if (ctx.parts[0] !== "fatura") return false;
@@ -20,7 +20,7 @@ export async function screen(ctx) {
       <button class="btn primary block" data-import style="margin-bottom:8px">📥 eLogo'da kestiğim faturayı yükle (XML / PDF)</button>
       ${Q.length ? Q.map((q) => `<div class="card tap" data-go="#/fatura/${esc(q.customer.id)}" style="border-left:4px solid ${q.oldestDays > 7 ? "#e0a030" : "#2e9e6b"}">
         <div class="row between"><b>${esc(q.customer.name)}</b><b>${tl(q.net)}</b></div>
-        <div class="tiny muted">${q.n} iş · en eski ${trDate(q.oldest)} (${q.oldestDays} gün) · KDV hariç${q.missing.length ? ` · <span style="color:#d9534f">eksik: ${esc(q.missing.join(", "))}</span>` : ""}</div></div>`).join("") : notice("ok", "Faturası kesilmemiş fiyatlı iş yok.")}
+        <div class="tiny muted">${q.n} iş · en eski ${trDate(q.oldest)} (${q.oldestDays} gün) · KDV hariç${q.review.length ? ' · Hakediş kaynağını kontrol edin' : ''}${q.missing.length ? ` · <span style="color:#d9534f">eksik: ${esc(q.missing.join(", "))}</span>` : ""}</div></div>`).join("") : notice("ok", "Faturası kesilmemiş fiyatlı iş yok.")}
       ${done.length ? `<div class="section-title">Son kesilen faturalar</div>` + done.map((x) => `<div class="card" style="padding:8px 12px"><div class="row between small"><span>${trDate(x.date)} · ${esc(cn(x.customer_id || x.owner_id))}</span><b>${tl(x.amount)}</b></div><div class="tiny muted">${esc(x.doc_no || "")}</div></div>`).join("") : ""}
       <div class="tiny muted" style="margin:8px 4px 0">eLogo'da faturayı kestikten sonra XML ya da PDF'ini buraya yükleyin: numara, tarih, tutar okunur, müşteri ve işler bulunur, "faturalandı" işaretlenir.</div>
       <div class="tiny muted" style="margin:8px 4px 80px">Mal satışında (malzeme) fatura teslimden itibaren en geç 7 gün içinde kesilmelidir. Hizmet faturalarının zamanlamasını ve tevkifat oranlarını mali müşavirinize teyit ettirin. Uygulama faturayı kesmez; bilgileri eLogo'ya girmeniz için hazırlar.</div>`;
@@ -37,6 +37,8 @@ export async function screen(ctx) {
   const u = (x) => String(x || "").toLocaleLowerCase("tr-TR");
   root.innerHTML = appbar(c.name, "Fatura hazırlık") + `
     <div style="height:10px"></div>
+    ${F.review.length ? `<div data-invoice-review>${notice('warn', 'Seçili işlerin hakediş kaynağı doğrulanamadı; toplam hesaplanmadı. Hakedişi ve kaynak işi kontrol edin veya bu işi seçimden çıkarın. Kayıtlar değiştirilmedi.')}<div class="small">${F.review.map(r=>`<a href="#/isler/${esc(r.id)}">Kaynak işi incele</a>`).join(' · ')}</div></div>` : ''}
+    ${F.claimed ? notice('info', 'Kesinleşmiş işlerde hakedişin kayıtlı net ve KDV tutarları aynen kullanılır; KDV ikinci kez hesaplanmaz. Birim fiyat gösterimi yuvarlanabilir; kayıtlı satır toplamı esastır. Diğer işlerde kayıtlı fiyat temeli kullanılır. Mazot litreleri TL tutarına eklenmez.') : ''}
     <div class="card">
       <div class="row between"><b>Alıcı bilgileri</b><button class="btn sm" data-info>Düzenle</button></div>
       <div class="small" style="margin-top:4px">${esc(c.tax_title || c.name)}<br><span class="muted">VKN/TCKN:</span> ${esc(c.tax_no || "—")} ${c.tax_office ? "· V.D. " + esc(c.tax_office) : ""}<br><span class="muted">Adres:</span> ${esc(c.address || "—")}<br><span class="muted">KDV tevkifatı:</span> ${esc(c.kdv_withholding || "Yok")}</div>
@@ -44,7 +46,7 @@ export async function screen(ctx) {
     </div>
     <div class="section-title">Fatura kalemleri (${F.lines.length})</div>
     ${F.lines.map((l, i) => `<div class="card" style="padding:10px 12px"><div class="small"><b>${i + 1}) ${esc(l.desc)}</b></div>
-      <div class="row between small" style="margin-top:3px"><span>${l.qty.toLocaleString("tr-TR")} ${esc(u(l.unit))} × ${tl(l.unitPrice)}</span><b>${tl(l.net)}</b></div><div class="tiny muted">KDV %${l.rate} · ${l.works.length} iş</div></div>`).join("") || notice("info", "Seçili iş yok.")}
+      <div class="row between small" style="margin-top:3px"><span>${l.qty.toLocaleString("tr-TR")} ${esc(u(l.unit))} × ${tl(l.unitPrice)}</span><b>${tl(l.net)}</b></div><div class="tiny muted">KDV %${l.rate} · ${l.works.length} iş</div></div>`).join("") || notice("info", F.review.length ? "Seçili işler kaynak kontrolü bekliyor; fatura kalemleri henüz hesaplanmadı." : "Seçili iş yok.")}
     <div class="card">
       <div class="row between small"><span>Mal / hizmet toplamı (KDV hariç)</span><b>${tl(F.net)}</b></div>
       <div class="row between small"><span>KDV</span><b>${tl(F.kdv)}</b></div>
@@ -56,13 +58,14 @@ export async function screen(ctx) {
     </details>
     <div style="height:70px"></div>
     <div class="actionbar">
-      <button class="btn" data-copy>📋 Kopyala</button>
-      <button class="btn primary" data-done ${F.lines.length ? "" : "disabled"}>✓ Faturayı kestim</button>
+      <button class="btn" data-copy ${F.review.length ? 'disabled' : ''}>📋 Kopyala</button>
+      <button class="btn primary" data-done ${F.lines.length && !F.review.length ? "" : "disabled"}>✓ Faturayı kestim</button>
     </div>`;
 
   for (const cb of qsa("[data-w]", root))
     cb.addEventListener("change", () => ctx.go(`#/fatura/${cid}?w=${qsa("[data-w]", root).filter((x) => x.checked).map((x) => x.dataset.w).join(",") || "-"}`));
   qs("[data-copy]", root).addEventListener("click", async () => {
+    if (F.review.length) return;
     try { await navigator.clipboard.writeText(draftText(F)); toast("Kopyalandı — eLogo'da yapıştırarak bakabilirsiniz", "ok"); }
     catch { const { shareText } = await import("./ui.js"); await shareText(draftText(F)); }
   });
@@ -83,6 +86,7 @@ export async function screen(ctx) {
     };
   });
   qs("[data-done]", root).addEventListener("click", () => {
+    if (F.review.length) return;
     const sh = sheet(`<h3>Faturayı kestim</h3>
       <div class="formgrid2"><div class="field"><label>Fatura no</label><input data-no placeholder="ör. GIB2026000000123"></div>
       <div class="field"><label>Fatura tarihi</label><input type="date" data-dt value="${today}"></div></div>

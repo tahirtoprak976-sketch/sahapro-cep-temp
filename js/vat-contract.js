@@ -2,11 +2,14 @@
 // Bir iş tutarını açık temeliyle ayrıştırır ve müşteri cari toplamında net / brüt karışımını raporlar.
 // Karar notu: docs/KDV_CARI_KARAR_NOTU.md
 import { isActive } from "./core.js";
+import { workForFinancialRead, claimWorkResolution } from './hakedis-finance.js';
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round(n * 100) / 100;
 
 // İşin tutarı: net (KDV hariç), KDV, brüt (KDV dahil), oran, fiyat temeli, para birimi, belge durumu ve belirsizlik
-export function workMoney(w) {
+export function workMoney(w, data = null) {
+  const financialReview = data ? claimWorkResolution(data, w).issue : null;
+  w = workForFinancialRead(data, w);
   const p = w?.price_snapshot;
   const amount = Number(p?.amount ?? (Number(p?.unit_price) * Number(w?.quantity)));
   if (!p || !Number.isFinite(amount) || !(amount > 0)) return null;
@@ -16,6 +19,7 @@ export function workMoney(w) {
   const net = p.kdv_included ? amount / (1 + rate / 100) : amount;
   const gross = p.kdv_included ? amount : amount * (1 + rate / 100);
   const issues = [];
+  if (financialReview) issues.push(financialReview);
   if (!rateKnown) issues.push("KDV oranı kayıtlı değil (%20 varsayıldı)");
   if (p.kdv_included === undefined) issues.push("fiyatın KDV dahil/hariç olduğu kayıtlı değil (hariç varsayıldı)");
   return {

@@ -1,5 +1,7 @@
 import { customerBankReceipt } from "./enterprise-db.js";
-import {hakedisNumber, hakedisItemIssues, assertHakedisItems} from './hakedis-validation.js';
+import {hakedisNumber, hakedisItemIssues, assertHakedisItems, hakedisSourcePriceReview} from './hakedis-validation.js';
+import {customerLabel} from './driver-customer.js';
+import {priceCompletionDefaults, preparePriceCompletion, completeCustomerPrices} from './price-completion-db.js';
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
 import {bindSafeFormSave} from './safe-form-save.js';
 import { kdvRateOf } from "./core.js";
@@ -108,6 +110,7 @@ async function hub(ctx) {
       ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
+    ${cur.financialReview ? notice("warn", `${cur.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) + '<a class="btn sm" href="#/veri-sagligi" data-go="#/veri-sagligi">Veri Sağlığı ›</a>' : ""}
     <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
@@ -191,7 +194,7 @@ async function quoteForm(ctx, editId) {
         ${fSelect(
           "Müşteri",
           "customer_id",
-          customers.map((c) => ({ v: c.id, t: c.name })),
+          customers.map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
           v.customer_id,
           { req: true },
         )}
@@ -574,7 +577,7 @@ async function priceForm(ctx, editId) {
         ${fSelect(
           "Müşteri (özel)",
           "customer_id",
-          customers.map((c) => ({ v: c.id, t: c.name })),
+          customers.map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
           v.customer_id,
         )}
         ${fSelect(
@@ -764,7 +767,7 @@ async function hakedisNew(ctx) {
       ${fSelect(
         "Müşteri *",
         "customer_id",
-        customers.map((c) => ({ v: c.id, t: c.name })),
+        customers.map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
         "",
         { req: true },
       )}
@@ -894,6 +897,7 @@ async function hakedisNew(ctx) {
         const manual = qs(`[data-price="${w.id}"]`, rowsEl);
         selected.set(w.id, {
           work_record_id: w.id,
+          source_price_snapshot: structuredClone(w.price_snapshot ?? null),
           date: w.date,
           customer_id: w.customer_id,
           site_id: w.site_id,
@@ -1007,6 +1011,7 @@ async function hakedisDetail(ctx, id) {
     return;
   }
   const finalized = h.status === "Kesinleşti";
+  const sourceReview = !finalized && h.status !== "İptal" ? hakedisSourcePriceReview(h, await db.getAll("work_records")) : null;
   root.innerHTML =
     appbar(
       "Hakediş #" + String(h.hakedis_no).padStart(6, "0"),
@@ -1015,6 +1020,9 @@ async function hakedisDetail(ctx, id) {
     ) +
     `
     <div style="height:10px"></div>
+    ${sourceReview?.legacyCount ? notice("warn", `${sourceReview.legacyCount} kalemin eski taslağında kaynak fiyat geçmişi doğrulanamıyor. Kesinleştirmede bu taslağın kaydedilmiş fiyatları ve ${fmtTL(h.grand_total)} ₺ toplamı kullanılacak; güncel fiyatlar otomatik uygulanmaz.`) : ""}
+    ${sourceReview?.priceDifferenceCount ? notice("info", `${sourceReview.priceDifferenceCount} kalemin kaydedilmiş hakediş fiyatı güncel iş fiyatından farklı veya karşılaştırılamıyor. Bu bilinçli manuel fiyat olabilir; kesinleştirmeden önce kaydedilmiş kalemleri kontrol edin.`) : ""}
+    ${sourceReview?.sourceChangedCount ? notice("warn", "Bu yeni taslağın kaynak fiyatı sonradan değişmiş. Kesinleştirme durdurulur; taslağı iptal edip güncel işleri yeniden seçin. Kaydedilmiş fiyatlar otomatik değiştirilmez.") : ""}
     <div class="card">
       ${kv("Müşteri", names.customers[h.customer_id] || "—")}
       ${h.site_id ? kv("Şantiye", names.sites[h.site_id]) : ""}
@@ -1061,7 +1069,7 @@ async function hakedisDetail(ctx, id) {
       try {
       const ok = await confirmDialog(
         "Hakediş kesinleşsin mi?",
-        "Kesinleşen hakediş değiştirilemez; müşteri carisine borç yazılır.",
+        `Kaydedilmiş kalem fiyatlarıyla ${fmtTL(h.grand_total)} ₺ toplam müşteri carisine borç yazılacak. Güncel fiyatlar otomatik uygulanmaz. Kesinleşen hakediş değiştirilemez.${sourceReview?.legacyCount ? " Bu eski taslağın kaynak fiyat geçmişi doğrulanamıyor; kaydedilmiş tutarı onaylıyorsunuz." : ""}`,
         "Kesinleştir",
       );
       if (!ok || !root.isConnected) return;
@@ -1141,7 +1149,7 @@ async function cari(ctx) {
           li({
             ic: "🏢",
             href: "#/cari/" + c.id,
-            t1: esc(c.name),
+            t1: esc(customerLabel(c, customers)),
             t2: esc([u > 0 ? `${fmtTL(u)} ₺ hakedişe girmemiş iş` : "", fuel && fuel.balance ? `⛽ ${fuel.balance > 0 ? fuel.balance + " L mazot alacağı" : -fuel.balance + " L fazla mazot alındı"}` : "", np ? `⚠ ${np} iş fiyatsız (bakiyeye girmedi)` : ""].filter(Boolean).join(" · ")),
             end: `<span class="amt ${b > 0 ? "" : "muted"}">${b > 0 ? "+" : ""}${fmtTL(b)} ₺</span>`,
           }),
@@ -1156,6 +1164,7 @@ async function cariDetail(ctx, cid) {
   const { customerLedgerMovements, unpricedGroups } = await import("./collect-core.js");
   const dAll = await db.dumpAll();
   const groups = unpricedGroups(dAll, cid);
+  const completionDefaults = groups.map(group => priceCompletionDefaults(dAll, cid, group));
   const { customerFuelLedger, fuelRulesOf } = await import("./assistant-rules.js");
   const fuel = c && fuelRulesOf(c).length ? customerFuelLedger(dAll, cid) : null;
   const { fuelPrice } = await import("./finance-chart.js");
@@ -1170,7 +1179,7 @@ async function cariDetail(ctx, cid) {
     .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const balance = Math.round(movements.reduce((s, m) => s + (Number(m.amount) || 0), 0) * 100) / 100;
   root.innerHTML =
-    appbar(c ? c.name : "Cari", "Müşteri cari kartı") +
+    appbar(c ? customerLabel(c, dAll.customers || []) : "Cari", "Müşteri cari kartı") +
     `
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${stat(fmtTL(hak), "İş + Hakediş ₺", "accent")}
@@ -1179,10 +1188,14 @@ async function cariDetail(ctx, cid) {
     </div>
     ${fuel ? `<div class="card tap" data-go="#/musteriler/${esc(cid)}"><div class="row between"><span>⛽ <b>Mazot hesabı</b> (ücreti mazotla ödüyor)</span><span class="strong">${fuel.balance > 0 ? fuel.balance + " L alacak" : fuel.balance < 0 ? -fuel.balance + " L fazla" : "kapalı"}</span></div><div class="tiny muted">${fuel.earned} L hak edildi · ${fuel.received} L alındı${lp && fuel.balance > 0 ? ` · ≈ ${fmtTL(fuel.balance * lp)} ₺ değerinde` : ""}. Mazotla ödenen işler TL bakiyeye 0 yazar; alacak litre olarak izlenir.</div></div>` : ""}
     ${groups.length ? `<div class="section-title">⚠ Fiyatı girilmemiş işler (${groups.reduce((n, g) => n + g.works.length, 0)}) — bakiyeye girmedi</div>
-    <div class="card"><div class="tiny muted" style="margin-bottom:6px">Birim fiyatı yazıp "Uygula"ya basın: bu gruptaki tüm işlere fiyat yazılır, bakiye güncellenir. "Fiyat listesine de kaydet" işaretliyse bu müşterinin sonraki işleri de bu fiyatla gelir.</div>
-      ${groups.map((g, i) => `<div class="row between" style="gap:6px;margin:6px 0;flex-wrap:wrap"><span class="small grow"><b>${esc(g.work_type)}</b> · ${g.works.length} iş · ${g.qty} ${esc(String(g.unit).toLocaleLowerCase("tr-TR"))}</span>
-        <input type="number" step="any" data-gp="${i}" placeholder="₺ / ${esc(String(g.unit).toLocaleLowerCase("tr-TR") || "birim")}" style="width:110px">
-        <button class="btn sm primary" data-gapply="${i}">Uygula</button></div>`).join("")}
+    <div class="card"><div class="tiny muted" style="margin-bottom:6px">Birim fiyatı, KDV oranını ve dahil / hariç temelini kontrol edin. Onayladığınız aynı fiyat bu ekrandaki gruba ve seçerseniz gelecekteki fiyat kuralına birlikte yazılır. Eksik bilgi 0 sayılmaz; bedelsiz iş için açıkça 0 girin. Bir kayıt değişmişse hiçbirine fiyat yazılmaz.</div>
+      ${groups.map((g, i) => { const defaults = completionDefaults[i]; return `<div style="margin:10px 0" data-price-completion="${i}"><div class="small"><b>${esc(g.work_type)}</b> · ${g.works.length} iş · ${g.qty} ${esc(String(g.unit).toLocaleLowerCase("tr-TR"))}</div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px"><label class="small">Birim fiyat (₺)<input type="number" step="any" min="0" data-gp="${i}" aria-label="${esc(g.work_type)} birim fiyat" placeholder="₺ / ${esc(String(g.unit).toLocaleLowerCase("tr-TR") || "birim")}" style="width:110px"></label>
+        <label class="small">KDV %<input type="number" step="any" min="0" max="100" data-gvat="${i}" aria-label="${esc(g.work_type)} KDV oranı" value="${defaults.kdv_rate ?? ""}" style="width:80px"></label>
+        <label class="small">Fiyat temeli<select data-ginc="${i}" aria-label="${esc(g.work_type)} KDV temeli"><option value="" ${defaults.kdv_included == null ? "selected" : ""}>Seçin</option><option value="0" ${defaults.kdv_included === false ? "selected" : ""}>KDV hariç</option><option value="1" ${defaults.kdv_included === true ? "selected" : ""}>KDV dahil</option></select></label>
+        <button class="btn sm primary" data-gapply="${i}">Kontrol et / Uygula</button></div>
+        ${defaults.ambiguous ? '<p class="tiny muted">Aynı kapsamda birden çok fiyat kuralı var. KDV bilgisini seçin; fiyat listesini düzeltin veya aşağıdaki listeye kayıt seçimini kapatın.</p>' : `<p class="tiny muted">${defaults.expected_rule ? "KDV önerisi mevcut fiyat kuralından alındı; onaylamadan kontrol edin." : "KDV %20 hariç yalnız başlangıç önerisidir; anlaşmanıza göre değiştirin."}${defaults.bounded ? ` Mevcut kuralın geçerliliği: ${esc(defaults.expected_rule.valid_from ? trDate(defaults.expected_rule.valid_from) : "başlangıç")} – ${esc(defaults.expected_rule.valid_to ? trDate(defaults.expected_rule.valid_to) : "bitiş yok")}. Tarih sınırlı kural bu ekranda değiştirilmez. Yalnız bu işleri tamamlamak için aşağıdaki listeye kayıt seçimini kapatın.` : ""}</p>`}
+        <p data-gerror="${i}" role="alert" hidden></p></div>`; }).join("")}
       <label class="history-check small"><input type="checkbox" data-gsave checked> Fiyat listesine de kaydet (bu müşteri + iş türü)</label></div>` : ""}
     <div class="section-title">Hareketler</div>
     ${movements.length ? `<div class="timeline">${movements.map((m) => `<div class="ti ${m.type === "Is" ? "tap" : ""}" ${m.type === "Is" ? `data-go="#/isler/${esc(m.ref_id)}"` : ""}><div class="small strong">${trDate(m.date)} · ${esc({ Is: "İş", Hakedis: "Hakediş", Duzeltme: "Düzeltme" }[m.type] || m.type)} · ${m.amount > 0 ? "+" : ""}${fmtTL(m.amount)} ₺</div><div class="tiny muted">${esc(m.note || m.reason || "")}${m.type === "Is" ? " · hakedişe girmedi" : m.ref_id ? " · kaynak: " + esc(String(m.ref_id).slice(0, 8)) : ""}</div></div>`).join("")}</div>` : emptyState("🏦", "Hareket yok")}
@@ -1193,28 +1206,34 @@ async function cariDetail(ctx, cid) {
       <div class="muted tiny" style="margin-top:6px">Müşteriye giden metinde iç notlar ve düzeltme nedenleri yer almaz.</div>
     </div>
     <div class="actionbar"><button class="btn" data-go="#/tahsilat/${esc(cid)}">💰 Tahsilat / hatırlat</button><button class="btn primary" data-duzelt>± Manuel Düzeltme</button></div>`;
+  let priceCompleting = false;
   for (const b of root.querySelectorAll("[data-gapply]"))
     b.addEventListener("click", async () => {
-      const g = groups[Number(b.dataset.gapply)];
-      const price = Number(qs(`[data-gp="${b.dataset.gapply}"]`, root).value);
-      if (!(price > 0)) return toast("Birim fiyat yazın", "err");
-      const pr = await import("./price-rule-core.js");
-      const rule = { customer_id: cid, site_id: null, work_type: g.work_type === "Diğer" ? null : g.work_type, vehicle_id: null, unit: g.unit, price, kdv_rate: 20, kdv_included: false, valid_from: null };
-      let ruleId = null;
-      if (qs("[data-gsave]", root)?.checked && rule.unit) {
-        const old = pr.sameRule(await db.dumpAll(), rule);
-        const rec = old ? await db.saveExisting("price_book", old, { price }, "Cari: fiyat güncellendi") : await db.saveNew("price_book", { ...rule, active: true, note: "Cari ekranından" }, "Cari: fiyat kuralı");
-        ruleId = rec?.id || old?.id || null;
+      if (priceCompleting) return;
+      const index = Number(b.dataset.gapply), g = groups[index];
+      const errorBox = qs(`[data-gerror="${index}"]`, root);
+      const basis = qs(`[data-ginc="${index}"]`, root).value;
+      const command = { customer_id: cid, group_key: g.key,
+        price: qs(`[data-gp="${index}"]`, root).value, kdv_rate: qs(`[data-gvat="${index}"]`, root).value,
+        kdv_included: basis === "1" ? true : basis === "0" ? false : null,
+        save_rule: !!qs("[data-gsave]", root)?.checked,
+        expected_works: structuredClone(g.works), expected_rule: structuredClone(completionDefaults[index].expected_rule) };
+      errorBox.hidden = true;
+      priceCompleting = true;
+      const controls = [...root.querySelectorAll("[data-gp], [data-gvat], [data-ginc], [data-gapply], [data-gsave]")].filter(control => !control.disabled);
+      controls.forEach(control => { control.disabled = true; });
+      try {
+        const plan = preparePriceCompletion(dAll, command);
+        const ok = await confirmDialog("Eksik fiyatlar tamamlansın mı?", `${plan.count} iş · ${fmtTL(plan.rule.price)} ₺ / ${g.unit} · KDV %${plan.rule.kdv_rate} ${plan.rule.kdv_included ? "dahil" : "hariç"} · girilen temelde toplam ${fmtTL(plan.amount)} ₺. ${command.save_rule ? "Aynı birim fiyat ve KDV temeli gelecekteki fiyat kuralına da yazılacak." : "Fiyat listesi değişmeyecek."}${plan.rule.price === 0 ? " Bu işler açıkça bedelsiz (0 TL) kaydedilecek." : ""}`, "Uygula");
+        if (!ok || !root.isConnected || !b.isConnected) return;
+        const result = await completeCustomerPrices(command);
+        if (root.isConnected && b.isConnected) { toast(`${result.count} işe aynı onaylı fiyat yazıldı`, "ok"); ctx.reload(); }
+      } catch (error) {
+        if (root.isConnected && b.isConnected) { errorBox.textContent = error.message || "Fiyatlar yazılamadı; hiçbir değişiklik yapılmadı."; errorBox.hidden = false; }
+      } finally {
+        priceCompleting = false;
+        if (root.isConnected && b.isConnected) controls.forEach(control => { control.disabled = false; });
       }
-      let n = 0;
-      const current = unpricedGroups(await db.dumpAll(), cid).find(x => x.key === g.key);
-      const originalIds = new Set(g.works.map(w => w.id));
-      for (const w of current?.works || []) {
-        if (!originalIds.has(w.id)) continue;
-        try { await db.saveExisting("work_records", w, { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Cari: fiyatsız işe fiyat yazıldı"); n++; } catch (e) { /* kilitli veya başka ekranda değişmiş */ }
-      }
-      toast(`${n} işe fiyat yazıldı`, "ok");
-      ctx.reload();
     });
   const stPeriod = () => {
     const t = todayStr(), v = qs("[data-stper]", root).value;
@@ -1333,7 +1352,7 @@ async function cashForm(ctx) {
         ${fSelect(
           "Müşteri",
           "customer_id",
-          customers.map((c) => ({ v: c.id, t: c.name })),
+          customers.map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
           query.customer_id || "",
         )}
       </div>

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
-import {hakedisNumber, hakedisItemIssues, assertHakedisItems} from '../js/hakedis-validation.js';
+import {hakedisNumber, hakedisItemIssues, assertHakedisItems, hakedisSourcePriceReview} from '../js/hakedis-validation.js';
 import {calcHakedisTotals} from '../js/core.js';
+import {customerLabel} from '../js/driver-customer.js';
 
 const line = extra => ({work_record_id:'TEST',quantity:3,unit:'Saat',unit_price:500,kdv_rate:20,kdv_included:false,...extra});
 const accepts = item => assert.doesNotThrow(() => assertHakedisItems([item]));
@@ -77,10 +78,10 @@ async function detailFixture(read) {
   const counts={confirm:0,finalize:0,reload:0};let handler;
   const button={disabled:false,get isConnected(){return root.isConnected;},addEventListener(_event,fn){handler=fn;}};
   const h={id:'H',status:'Taslak',customer_id:'C',hakedis_no:1,items:[line({work_record_id:'W'})]};
-  const db={get:async()=>h,getAll:()=>read?read(h):Promise.resolve([h]),finalizeHakedis:async()=>{counts.finalize++;}};
+  const db={get:async()=>h,getAll:store=>store==='work_records'?Promise.resolve([]):read?read(h):Promise.resolve([h]),finalizeHakedis:async()=>{counts.finalize++;}};
   const noop=()=>'';
   const fn=runInNewContext(detail+'; hakedisDetail;',{
-    appbar:noop,statusBadge:noop,trDate:noop,kv:noop,li:noop,esc:noop,fmtNum:noop,fmtTL:noop,customerWorkLines:()=>[],toast:noop,
+    hakedisSourcePriceReview,notice:noop,appbar:noop,statusBadge:noop,trDate:noop,kv:noop,li:noop,esc:noop,fmtNum:noop,fmtTL:noop,customerWorkLines:()=>[],toast:noop,
     isActive:()=>true,confirmDialog:()=>{counts.confirm++;return confirm.promise;},
     qs:selector=>selector==='[data-final]'?button:selector==='[data-pdf]'?{addEventListener(){}}:selector==='[data-hakedis-final-error]'?box:null,
   });
@@ -127,7 +128,7 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
   };
   const noop=()=>'';
   const fn=runInNewContext(newScreen+'; hakedisNew;',{
-    hakedisNumber,hakedisItemIssues,assertHakedisItems,calcHakedisTotals:(items,crane)=>{calls.totals=calcHakedisTotals(items,crane);return calls.totals;},
+    structuredClone,customerLabel,hakedisNumber,hakedisItemIssues,assertHakedisItems,calcHakedisTotals:(items,crane)=>{calls.totals=calcHakedisTotals(items,crane);return calls.totals;},
     todayStr:()=> '2026-10-25',isActive:()=>true,appbar:noop,fSelect:noop,fDate:noop,emptyState:noop,trDate:noop,esc:x=>x,fmtNum:x=>x,fmtTL:x=>x,kv:noop,notice:(_kind,msg)=>msg,toast:noop,
     go:()=>{calls.navigated++;},confirmDialog:()=>confirm.promise,
     collectForm:()=>({customer_id:'C',site_id:'',date_from:'2026-10-01',date_to:'2026-10-25'}),
@@ -146,6 +147,8 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
   assert.equal(fresh.calls.totals.grand,720);assert.equal(fresh.calls.totals.lines[0].first_hour_price,500);assert.equal(fresh.calls.totals.lines[0].next_hour_price,100);
   const save=fresh.create();fresh.confirm.resolve(true);await save;
   assert.equal(fresh.calls.saved,1);assert.equal(fresh.calls.fields.items[0].first_hour_price,500);assert.equal(fresh.calls.fields.items[0].next_hour_price,100);assert.equal(fresh.calls.fields.grand_total,720);
+  assert.equal(fresh.calls.fields.items[0].source_price_snapshot.first_hour_price,null,'source proof keeps original raw tariff, not the resolved/manual claim price');
+  assert.equal(fresh.calls.fields.items[0].source_price_snapshot.next_hour_price,null);
 }
 for(const [snapshot,grand] of [[{first_hour_price:0,next_hour_price:0},0],[{first_hour_price:200,next_hour_price:50},300]]) {
   const f=await newFixture({snapshot});f.select();assert.equal(f.button.disabled,false);assert.equal(f.calls.totals.grand,grand,'explicit snapshot overrides globals, including zero');
@@ -161,3 +164,30 @@ for(const [snapshot,grand] of [[{first_hour_price:0,next_hour_price:0},0],[{firs
   assert.equal(f.calls.saved,1);assert.equal(f.calls.navigated,0,'completed save must not navigate a departed view');
 }
 console.log('hakedis new-screen source PASS: effective crane fallback, captured/fresh settings, explicit-zero override, frozen snapshot and stale sequence/save guards (mocked UI/DB)');
+
+// Actual detail rendering/confirmation: legacy provenance is a warning, not a
+// guessed corruption or silent repricing. Every confirmation shows frozen total.
+for (const kind of ['legacy-same','legacy-manual','proven-manual','proven-changed']) {
+  const sourcePrice={unit_price:100,kdv_rate:20,kdv_included:false};
+  const item={work_record_id:'W',quantity:1,unit:'Saat',unit_price:kind.includes('manual')?200:100,kdv_rate:20,kdv_included:false};
+  if(kind.startsWith('proven'))item.source_price_snapshot=structuredClone(sourcePrice);
+  const workPrice=kind==='proven-changed'?{...sourcePrice,unit_price:300}:sourcePrice;
+  const h={id:'H',status:'Taslak',customer_id:'C',hakedis_no:1,items:[item],grand_total:item.unit_price*1.2};
+  const root={innerHTML:'',isConnected:true};let click,confirmBody='',finalized=0;
+  const button={disabled:false,isConnected:true,addEventListener(_event,fn){click=fn;}};
+  const noop=()=>'';
+  const fn=runInNewContext(detail+'; hakedisDetail;',{
+    hakedisSourcePriceReview,notice:(_kind,message)=>message,appbar:noop,statusBadge:noop,trDate:noop,kv:noop,li:noop,esc:noop,fmtNum:noop,fmtTL:value=>String(value),customerWorkLines:()=>[],toast:noop,
+    isActive:()=>true,confirmDialog:async(_title,body)=>{confirmBody=body;return false;},
+    qs:selector=>selector==='[data-final]'?button:selector==='[data-pdf]'?{addEventListener(){}}:selector==='[data-hakedis-final-error]'?{hidden:true}:null,
+  });
+  await fn({root,db:{get:async()=>h,getAll:async store=>store==='work_records'?[{id:'W',price_snapshot:workPrice}]:[h],finalizeHakedis:async()=>{finalized++;}},names:{customers:{C:'TEST'},sites:{}},reload(){}},'H');
+  if(kind.startsWith('legacy'))assert.match(root.innerHTML,/kaynak fiyat geçmişi doğrulanamıyor/);
+  else assert.doesNotMatch(root.innerHTML,/eski taslağında kaynak fiyat geçmişi/);
+  if(kind.includes('manual'))assert.match(root.innerHTML,/bilinçli manuel fiyat olabilir/);
+  if(kind==='proven-changed')assert.match(root.innerHTML,/kaynak fiyatı sonradan değişmiş/);
+  await click();assert.ok(confirmBody.includes(String(h.grand_total)+' ₺ toplam'));assert.match(confirmBody,/Güncel fiyatlar otomatik uygulanmaz/);
+  if(kind.startsWith('legacy'))assert.match(confirmBody,/kaydedilmiş tutarı onaylıyorsunuz/);
+  assert.equal(finalized,0);assert.equal(button.disabled,false);
+}
+console.log('hakedis source-price UI PASS: legacy warning, manual-override review, proven drift notice and frozen-total confirmation');

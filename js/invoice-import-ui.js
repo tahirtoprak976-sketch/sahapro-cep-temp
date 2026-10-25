@@ -71,11 +71,11 @@ export function openImport(ctx) {
       ${m.issues.map((x) => notice(m.exact ? "info" : "warn", x)).join("")}
       ${m.exact ? notice("ok", `Faturasız ${m.works.length} işin toplamı faturayla tutuyor.`) : ""}
       <div class="field"><label>Müşteri</label><select data-cust><option value="">— seçin —</option>${custs.map((c) => `<option value="${esc(c.id)}" ${c.id === m.customer?.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
-      ${cand.length ? `<div class="small" style="margin:4px 0"><b>Faturalanacak işler</b></div>${cand.map((w) => `<label class="history-check small" style="padding:3px 0"><input type="checkbox" data-iw="${esc(w.id)}" ${m.works.includes(w.id) ? "checked" : ""}> ${trDate(w.date)} · ${esc(vn(w.vehicle_id))} · ${esc(w.work_type || "")} ${Number(w.quantity).toLocaleString("tr-TR")} ${esc(String(w.unit || "").toLocaleLowerCase("tr-TR"))} · ${tl(workNet(w).net)}</label>`).join("")}
+      ${cand.length ? `<div class="small" style="margin:4px 0"><b>Faturalanacak işler</b></div>${cand.map((w) => `<label class="history-check small" style="padding:3px 0"><input type="checkbox" data-iw="${esc(w.id)}" ${m.works.includes(w.id) ? "checked" : ""} ${workNet(w, d).issue ? "disabled" : ""}> ${trDate(w.date)} · ${esc(vn(w.vehicle_id))} · ${esc(w.work_type || "")} ${Number(w.quantity).toLocaleString("tr-TR")} ${esc(String(w.unit || "").toLocaleLowerCase("tr-TR"))} · ${workNet(w, d).issue ? "Hakediş kaynağı kontrol edilmeli" : tl(workNet(w, d).net)}</label>`).join("")}
         <div class="tiny muted" data-isum></div>` : ""}
       <button class="btn primary block" data-isave style="margin-top:8px" ${inv.invoice_no && m.customer && !dup ? "" : "disabled"}>✓ Faturalandı olarak kaydet</button>`;
     const sumEl = qs("[data-isum]", out);
-    const upd = () => { if (!sumEl) return; const s = qsa("[data-iw]", out).filter((x) => x.checked).reduce((n, x) => n + workNet(cand.find((w) => w.id === x.dataset.iw)).net, 0); sumEl.textContent = `Seçilen: ${tl(s)}${inv.net != null ? ` · fatura: ${tl(inv.net)}${Math.abs(s - inv.net) < 1 ? " ✓" : " — fark " + tl(inv.net - s)}` : ""}`; };
+    const upd = () => { if (!sumEl) return; const s = qsa("[data-iw]", out).filter((x) => x.checked).reduce((n, x) => n + workNet(cand.find((w) => w.id === x.dataset.iw), d).net, 0); sumEl.textContent = `Seçilen: ${tl(s)}${inv.net != null ? ` · fatura: ${tl(inv.net)}${Math.abs(s - inv.net) < 1 ? " ✓" : " — fark " + tl(inv.net - s)}` : ""}`; };
     for (const x of qsa("[data-iw]", out)) x.addEventListener("change", upd);
     upd();
     qs("[data-cust]", out).addEventListener("change", (e) => render(out, d, inv, file, e.target.value || null));
@@ -83,6 +83,7 @@ export function openImport(ctx) {
       const b = e.currentTarget; b.disabled = true;
       const c = m.customer;
       const ids = qsa("[data-iw]", out).filter((x) => x.checked).map((x) => x.dataset.iw);
+      if (ids.some(id => workNet(cand.find(w => w.id === id), d).issue)) { b.disabled = false; return toast("Hakediş kaynağını kontrol edin; bu iş faturalandı olarak işaretlenmedi.", "err"); }
       try {
         const doc = { category: "Fatura", owner_type: "customer", owner_id: c.id, customer_id: c.id, date: inv.date || todayStr(), doc_no: inv.invoice_no, title: "Fatura", amount: inv.payable ?? inv.total ?? null, ettn: inv.ettn || null,
           note: `eLogo · KDV hariç ${tl(inv.net)} · KDV ${tl(inv.kdv)}${inv.withheld ? " · tevkifat " + tl(inv.withheld) : ""} · ${ids.length} iş` };

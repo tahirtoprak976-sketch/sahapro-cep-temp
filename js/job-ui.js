@@ -275,7 +275,7 @@ async function chargeLump(db, site, D, custName) {
   } catch (e) { toast(e.message || String(e), "err"); return false; }
 }
 
-const RATE_ROWS = 4;
+const RATE_ROWS = 4; // Minimum blank rows, not a limit on imported/saved extras.
 async function dealForm(ctx, site, D, custName) {
   const { root, db } = ctx;
   const kd = kdvRateOf(await db.metaGet("kdv_default"));
@@ -318,7 +318,11 @@ async function dealForm(ctx, site, D, custName) {
     const f = collectForm(form);
     const num = (x) => (x === "" || x == null ? "" : Number(String(x).replace(",", ".")));
     const extra_rates = [];
-    for (let i = 0; i < RATE_ROWS; i++) { const l = (f["r_label_" + i] || "").trim(), p = num(f["r_price_" + i]); if (l || p !== "") extra_rates.push({ label: l, unit: f["r_unit_" + i], price: p }); }
+    for (let i = 0; i < rates.length; i++) {
+      const l = (f["r_label_" + i] || "").trim(), p = num(f["r_price_" + i]);
+      if (p !== "" && !Number.isFinite(p)) return toast("Ekstra fiyat satırında geçerli bir sayı gerekli", "err");
+      if (l || p !== "") extra_rates.push({ label: l, unit: f["r_unit_" + i], price: p });
+    }
     const x = locked ? { basis: D.basis, price: D.price, kdv_rate: D.kdv_rate, kdv_included: D.kdv_included } : { basis: f.basis, price: num(f.price), kdv_rate: num(f.kdv_rate), kdv_included: f.kdv_included === "1" };
     Object.assign(x, { start_date: f.start_date, material: f.material, note: (f.note || "").trim(), scope_in: (f.scope_in || "").trim(), scope_out: (f.scope_out || "").trim(), extra_rates, scrap: f.scrap || "", payment_plan: (f.payment_plan || "").trim(), deadline: (f.deadline || "").trim() });
     const err = J.checkDeal(x);

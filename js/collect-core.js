@@ -2,6 +2,8 @@
 // SAF katman — kayıt yazmaz. Borç = kesinleşen hakediş (+ düzeltme) + hakedişe girmemiş fiyatlı işler;
 // tahsilat ve eksi düzeltmeler en eski borçtan başlayarak düşülür (FIFO). Kalan her kalemin yaşı tarihinden hesaplanır.
 import { isActive, toKurus, fromKurus, todayStr, COMPANY_NAME } from "./core.js";
+import { customerMovementText } from "./statement.js";
+import { workForFinancialRead } from './hakedis-finance.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const DAY = 86400000;
@@ -18,7 +20,8 @@ export const BUCKETS = [
 ];
 export const bucketOf = (days) => BUCKETS.find((b) => days <= b.max).key;
 
-export function workAmount(w) {
+export function workAmount(w, data = null) {
+  w = workForFinancialRead(data, w);
   const p = w.price_snapshot;
   if (!p) return 0;
   const a = Number(p.amount ?? Number(p.unit_price) * Number(w.quantity));
@@ -61,12 +64,12 @@ export function customerOpenItems(d, customerId, today = todayStr()) {
   let credit = 0;
   for (const m of live(d, "cari_movements").filter((m) => m.customer_id === customerId)) {
     const k = toKurus(m.amount);
-    if (k > 0) debits.push({ date: m.date, k, kind: m.type === "Hakedis" ? "hakedis" : "duzeltme", label: m.note || (m.type === "Hakedis" ? "Hakediş" : "Düzeltme"), ref: m.ref_id || m.id });
+    if (k > 0) debits.push({ date: m.date, k, kind: m.type === "Hakedis" ? "hakedis" : "duzeltme", source_type: m.type, label: m.note || (m.type === "Hakedis" ? "Hakediş" : "Düzeltme"), ref: m.ref_id || m.id });
     else credit += -k;
   }
   for (const w of live(d, "work_records").filter((w) => w.customer_id === customerId && !billed.has(w.id))) {
     const a = workAmount(w);
-    if (a > 0 && w.date) debits.push({ date: w.date, k: toKurus(a), kind: "is", label: workLabel(d, w), ref: w.id });
+    if (a > 0 && w.date) debits.push({ date: w.date, k: toKurus(a), kind: "is", source_type: "Is", label: workLabel(d, w), ref: w.id });
   }
   debits.sort((a, b) => a.date.localeCompare(b.date) || a.k - b.k);
   const paid = credit;
@@ -75,7 +78,7 @@ export function customerOpenItems(d, customerId, today = todayStr()) {
     const use = Math.min(credit, x.k);
     credit -= use;
     const left = x.k - use;
-    if (left > 0) open.push({ date: x.date, kind: x.kind, label: x.label, ref: x.ref, amount: fromKurus(x.k), left: fromKurus(left), days: Math.max(0, daysBetween(x.date, today)) });
+    if (left > 0) open.push({ date: x.date, kind: x.kind, source_type: x.source_type, label: x.label, ref: x.ref, amount: fromKurus(x.k), left: fromKurus(left), days: Math.max(0, daysBetween(x.date, today)) });
   }
   return { open, advance: fromKurus(credit), paid: fromKurus(paid), debit: fromKurus(debits.reduce((n, x) => n + x.k, 0)) };
 }
@@ -161,6 +164,12 @@ export function waLink(phone, text) {
 
 export const TONES = { nazik: "Nazik", net: "Net (gecikmiş)", son: "Son hatırlatma" };
 
+// Açık kalemler iç ekranda özgün açıklamayı korur; dış nüsha ekstreyle aynı gizlilik kuralını kullanır.
+export function customerOpenItemLabel(item) {
+  const type = item.source_type || (item.kind === "duzeltme" ? "Duzeltme" : item.kind === "hakedis" ? "Hakedis" : "Is");
+  return customerMovementText({ type, note: item.label }) || { Duzeltme: "Düzeltme", Hakedis: "Hakediş", Is: "İş" }[type] || "Hareket";
+}
+
 export function reminderText(row, { tone = "nazik", company = COMPANY_NAME, max = 8, iban = "" } = {}) {
   const items = row.open.slice(0, max);
   const more = row.open.length - items.length;
@@ -173,7 +182,7 @@ export function reminderText(row, { tone = "nazik", company = COMPANY_NAME, max 
     lines.push(`${company} olarak ${per} tarihli işlerden *${tl(row.total)} ₺* ödemeniz ${row.oldest_days} gündür bekliyor. Ödemenin önümüzdeki günlerde yapılmasını rica ederiz.`);
   else lines.push(`${company} olarak ${per} tarihli işlerden *${tl(row.total)} ₺* bakiyeniz görünüyor. Müsait olduğunuzda ödemeyi planlayabilirseniz seviniriz.`);
   lines.push("", "Açık kalemler:");
-  for (const x of items) lines.push(`• ${trDate(x.date)} — ${x.label}: ${tl(x.left)} ₺${x.left < x.amount ? " (kalan)" : ""}`);
+  for (const x of items) lines.push(`• ${trDate(x.date)} — ${customerOpenItemLabel(x)}: ${tl(x.left)} ₺${x.left < x.amount ? " (kalan)" : ""}`);
   if (more > 0) lines.push(`• … ve ${more} kalem daha`);
   if (iban) lines.push("", `IBAN: ${iban}`);
   lines.push("", "Bir yanlışlık görürseniz haber verin, birlikte kontrol edelim.", `Teşekkürler — ${company}`);

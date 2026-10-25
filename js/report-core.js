@@ -6,6 +6,7 @@ import { isActive, todayStr, trDate } from "./core.js";
 import { workAmount, hasWorkPrice, missingCustomerWorkPrice, workReviewContext } from "./collect-core.js";
 import { dumpFee } from "./dump-fees.js";
 import { customerMovementText } from "./statement.js";
+import { claimWorkResolution } from './hakedis-finance.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -72,7 +73,7 @@ function workInfo(d, w, nm, billed = false) {
     type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
     from: nm("quarries", w.quarry_id) || w.quarry || "", to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
     ton: Number(w.tonnage) || 0, slip: [w.slip_no, w.digital_slip_no && w.digital_slip_no !== w.slip_no ? "dijital " + w.digital_slip_no : ""].filter(Boolean).join(" · "),
-    unitPrice, amount: workAmount(w), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
+    unitPrice, amount: workAmount(w, d), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
     priced: hasWorkPrice(w), unpriced: missingCustomerWorkPrice(w, billed), billed,
     dump: fee?.amount || 0, dumpEst: !!fee?.estimated, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
   };
@@ -153,7 +154,11 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
   const { nm, inR } = ctx(d, from, to);
   const works = live(d, "work_records").filter((w) => inR(w.date)).sort(byDate);
   const { billed } = workReviewContext(d);
-  const winfo = (ws) => ws.map((w) => workInfo(d, w, nm, billed.has(w.id)));
+  const financialReview = new Set();
+  const winfo = (ws) => ws.map((w) => {
+    if (claimWorkResolution(d, w).issue) financialReview.add(w.id);
+    return workInfo(d, w, nm, billed.has(w.id));
+  });
   const card = K.store && id ? live(d, K.store).find((r) => r.id === id) : null;
   if (K.store && id && !card) throw Error("Kayıt bulunamadı");
   const name = card ? card.name || card.plate : id || K.all;
@@ -378,6 +383,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
   }
   if (R.kpis.some(([label]) => label === "Fiyatı eksik iş")) R.notes.push("Fiyat eksik, bedelsiz demek değildir. Fiyatı girilmemiş işler TL toplamına katılmaz; açıkça kaydedilmiş sıfır fiyat 0,00 ₺ olarak gösterilir.");
   R.tables = R.tables.filter((t) => t.rows.length);
+  if (financialReview.size) R.notes.push(`${financialReview.size} işte hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; fatura öncesi Veri Sağlığı ve kaynak işi kontrol edin.`);
   return R;
 }
 

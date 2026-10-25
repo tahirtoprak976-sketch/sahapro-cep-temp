@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { integrityCheck } from "../js/integrity-core.js";
+import { calcHakedisTotals } from "../js/core.js";
 const T = "2026-10-17";
 const base = () => ({
   customers: [{ id: "c1", name: "Kaya" }], sites: [{ id: "s1", name: "Göktürk", customer_id: "c1" }],
@@ -50,8 +51,11 @@ d = money(); d.cari_movements = []; assert.ok(codes(d).includes("cash-cari"));
 d = money(); d.cari_movements.push({ ...d.cari_movements[0], id: "cm2" }); assert.ok(codes(d).includes("cash-cari"));
 d = money(); d.cash_records[0].amount = 6000; assert.ok(codes(d).includes("cash-cari-amount"));
 d = money(); d.cash_records[0].deleted_at = "x"; assert.ok(codes(d).includes("cari-orphan-cash"));
-const hk = (st, gt) => { const x = money(); x.hakedis = [{ id: "h1", hakedis_no: 1, status: st, customer_id: "c1", grand_total: gt, items: [{ work_record_id: "w1", quantity: 3, unit_price: 3000, kdv_rate: 20 }] }];
-  if (st === "Kesinleşti") x.cari_movements.push({ id: "cm3", date: "2026-10-13", customer_id: "c1", type: "Hakedis", amount: gt, ref_id: "h1" }); return x; };
+// Complete the synthetic valid claim/source fixture; all original assertions below remain unchanged.
+const hk = (st, gt) => { const x = money(), w = x.work_records[0];
+  const t = calcHakedisTotals([{work_record_id:w.id,date:w.date,customer_id:w.customer_id,site_id:w.site_id,vehicle_id:w.vehicle_id,quantity:w.quantity,unit:w.unit,unit_price:3000,kdv_rate:20,kdv_included:false}]);
+  x.hakedis = [{id:"h1",hakedis_no:1,status:st,customer_id:"c1",created_date:"2026-10-13",date_from:w.date,date_to:w.date,subtotal:t.subtotal,kdv_total:t.kdv,grand_total:gt,items:t.lines}];
+  if (st === "Kesinleşti") { w.price_snapshot = {...t.lines[0],locked:true}; x.cari_movements.push({id:"cm3",date:"2026-10-13",customer_id:"c1",type:"Hakedis",amount:gt,ref_id:"h1"}); } return x; };
 assert.deepEqual(codes(hk("Kesinleşti", 10800)), []);
 assert.ok(codes(hk("Kesinleşti", 10000)).includes("hakedis-total"));
 d = hk("Kesinleşti", 10800); d.cari_movements.pop(); assert.ok(codes(d).includes("hakedis-cari"));

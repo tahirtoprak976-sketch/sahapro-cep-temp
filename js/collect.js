@@ -1,7 +1,14 @@
 // Tahsilat Takibi (#/tahsilat, #/tahsilat/{müşteri}): kim ne kadar borçlu, kaç gündür; ödeme sözü; WhatsApp hatırlatma.
 import { qs, esc, appbar, notice, toast, stat, li, emptyState, shareText, fmtTL, trDate, todayStr } from "./ui.js";
+import { isActive } from "./core.js";
 
 const NOTES = "collect_notes";
+
+function emptyScopeText(core, d, customerId = null) {
+  const ids = customerId ? [customerId] : (d.customers || []).filter(c => isActive(c) && !c.internal).map(c => c.id);
+  const missing = ids.reduce((n, id) => n + core.unpricedGroups(d, id).reduce((sum, group) => sum + group.works.length, 0), 0);
+  return `${missing ? `${missing} işin fiyatı girilmemiş; TL alacağına katılmadı. ` : "Fiyatı girilmemiş işler TL alacağına katılmaz. "}Mazot (L) hesabı ayrı izlenir. Bu görünüm tüm hesapların kapandığı anlamına gelmez.`;
+}
 
 export async function screen(ctx) {
   if (ctx.parts[0] !== "tahsilat") return false;
@@ -35,7 +42,7 @@ export async function screen(ctx) {
         r.cheque_count ? `${r.cheque_count} çek/senet ${fmtTL(r.cheque_total)} ₺` : "",
       ].filter(Boolean).join(" · ")),
       end: `<span class="amt">${fmtTL(r.total)} ₺</span>`,
-    })).join("") : emptyState("💰", "Açık alacak yok — herkes ödemiş görünüyor")}
+    })).join("") : emptyState("💰", "Kayıtlı açık TL alacağı yok", `<p class="small muted">${esc(emptyScopeText(core, d))}</p>`)}
     <div class="section-title">Çek / Senet vadeleri <span class="muted small">30 gün içinde</span></div>
     ${soon.length ? soon.map((q) => li({
       ic: q.status === "Karşılıksız" ? "⛔" : q.direction === "Alınan" ? "📥" : "📤",
@@ -75,7 +82,7 @@ async function detail(ctx, core, d, res, notes, iban, cid) {
     await db.metaSet(NOTES, all);
   };
   if (!r) {
-    root.innerHTML = appbar(c.name, "Tahsilat", { back: "#/tahsilat" }) + `<div style="height:10px"></div>` + emptyState("✅", "Bu müşteride açık alacak yok", `<button class="btn" data-go="#/cari/${esc(cid)}">Cari ekstreye bak</button>`);
+    root.innerHTML = appbar(c.name, "Tahsilat", { back: "#/tahsilat" }) + `<div style="height:10px"></div>` + emptyState("✅", "Bu müşteride kayıtlı açık TL alacağı yok", `<p class="small muted">${esc(emptyScopeText(core, d, cid))}</p><button class="btn" data-go="#/cari/${esc(cid)}">Cari ekstreye bak</button>`);
     if (n.promise_date) await saveNote({ promise_date: "", promise_amount: "", note: "" });
     return true;
   }

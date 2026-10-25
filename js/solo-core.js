@@ -951,7 +951,7 @@ export function operationalAlerts(d, asOf = todayStr()) {
   }
   return rows;
 }
-export function quoteActualRows(quote, works) {
+export function quoteActualRows(quote, works, data = null) {
   return (quote.items || []).map((item) => {
     const name = normKey(item.work_type || item.label || "");
     const candidates = works.filter(
@@ -962,8 +962,9 @@ export function quoteActualRows(quote, works) {
       0,
     );
     const priced = candidates.filter((w) => w.price_snapshot);
+    const financialReview = priced.filter(w => workFinancials(w, data).financial_review).length;
     const actualNet = fromKurus(
-      priced.reduce((n, w) => n + toKurus(workFinancials(w).net_total || 0), 0),
+      priced.reduce((n, w) => n + toKurus(workFinancials(w, data).net_total || 0), 0),
     );
     const amount =
       quote.type === "UNIT_PRICE" || quote.type === "QUANTITY_BASED"
@@ -975,7 +976,8 @@ export function quoteActualRows(quote, works) {
       quantity,
       quoted_price: item.unit_price,
       reference_amount: amount,
-      actual_net: priced.length === candidates.length ? actualNet : null,
+      actual_net: priced.length === candidates.length && !financialReview ? actualNet : null,
+      ...(financialReview ? {financial_review: financialReview} : {}),
       matched: candidates.length,
       unpriced: candidates.length - priced.length,
     };
