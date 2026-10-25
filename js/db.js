@@ -1,5 +1,5 @@
 import {recordsCommitted} from "./record-refresh.js";
-import {assertHakedisItems} from './hakedis-validation.js';
+import {assertHakedisItems, assertHakedisDocument, captureHakedisSources, assertHakedisSources, hakedisWorkSnapshot} from './hakedis-validation.js';
 import {assertTankChange} from './tank-timeline.js';
 import {freezeDumpTariff, liveDumpEntries} from "./dump-ledger-core.js";
 import { validDate } from "./driver-delivery.js";
@@ -104,6 +104,74 @@ function wrap(req) {
 // Request error events bubble before IDBTransaction.error is necessarily populated.
 // Always reject with an Error so callers can report failure and offer recovery.
 const transactionError = (t, event) => t.error || event?.target?.error || Error("Veritabanı işlemi iptal edildi");
+
+// These guards run inside the same write transaction as their protected row.
+// Dedicated audited merge/event paths remain separate; generic editing must not
+// silently detach a historical identity or one side of a financial event.
+const HISTORY_STORES = ENTITY_STORES.filter(store => store !== 'audit_log');
+const financeError = (message, code) => Object.assign(Error(message), {code});
+const changedField = (before, after, key) => JSON.stringify(before?.[key] ?? null) !== JSON.stringify(after?.[key] ?? null);
+function readTransactionRows(transaction, stores, done) {
+  const data = {}; let pending = stores.length;
+  if (!pending) { done(data); return; }
+  for (const store of stores) {
+    const request = transaction.objectStore(store).getAll();
+    request.onsuccess = () => { data[store] = request.result; if (!--pending) done(data); };
+  }
+}
+function identityReference(value, type, id, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return false;
+  seen.add(value);
+  const keys = type === 'customer' ? ['customer_id', 'recipient_customer_id', 'parent_customer_id'] : ['site_id'];
+  if (keys.some(key => value[key] === id) ||
+      (value.owner_type === type && value.owner_id === id) ||
+      (value.party_type === type && value.party_id === id) ||
+      (value.target_type === type && value.target_id === id)) return true;
+  return Object.values(value).some(child => child && typeof child === 'object' && identityReference(child, type, id, seen));
+}
+function hasIdentityHistory(data, type, id) {
+  const own = type === 'customer' ? 'customers' : 'sites';
+  return Object.entries(data).some(([store, rows]) => rows.some(row => !(store === own && row.id === id) && identityReference(row, type, id)));
+}
+const CLAIM_WORK_FIELDS = ['date', 'customer_id', 'site_id', 'vehicle_id', 'personnel_id', 'work_type', 'material',
+  'quantity', 'unit', 'price_snapshot', 'time_start', 'time_end', 'break_minutes', 'customer_fuel_allowance_l', 'customer_fuel_rule', 'deleted_at'];
+const CASH_MONEY_FIELDS = ['amount', 'date', 'customer_id', 'cash_type', 'payment_method', 'bank_account_id', 'bank_movement_id',
+  'personnel_id', 'request_id', 'driver_entry_id', 'event_id', 'deleted_at'];
+function financeGuardStores(store, delta) {
+  if (store === 'sites' && 'customer_id' in delta) return HISTORY_STORES;
+  if (store === 'work_records') return ['hakedis'];
+  if (store === 'hakedis') return ['cari_movements'];
+  if (store === 'cash_records') return ['cari_movements', 'bank_movements', 'settlement_allocations'];
+  return [];
+}
+function assertFinancialEdit(store, current, next, delta, data) {
+  if (!current || current.deleted_at) throw financeError('Kayıt değişmiş veya silinmiş; yeniden açın.', 'STALE');
+  const changes = keys => keys.some(key => key in delta && changedField(current, next, key));
+  if (store === 'hakedis') {
+    if (current.status !== 'Taslak' ||
+        changes(['items', 'customer_id', 'site_id', 'date_from', 'date_to', 'created_date', 'subtotal', 'kdv_total', 'grand_total', 'deleted_at']) ||
+        ('status' in delta && next.status !== 'İptal' && next.status !== 'Taslak') ||
+        (data.cari_movements || []).some(row => isActive(row) && row.ref_id === current.id))
+      throw financeError('Kesinleşmiş / cariye bağlı hakediş değiştirilemez. Taslak düzeltmesi için iptal edip yeniden oluşturun.', 'HAKEDIS_LOCKED');
+  }
+  if (store === 'work_records' && changes(CLAIM_WORK_FIELDS) && (current.price_snapshot?.locked ||
+      (data.hakedis || []).some(claim => isActive(claim) && claim.status !== 'İptal' && (claim.items || []).some(item => item.work_record_id === current.id))))
+    throw financeError('Hakedişe bağlı iş değiştirilemez. Taslak hakedişi iptal edip güncel bilgilerle yeniden oluşturun; kesinleşmiş kaydı yeniden fiyatlandırmayın.', 'HAKEDIS_LOCKED');
+  if (store === 'cash_records' && changes(CASH_MONEY_FIELDS) && (current.cash_type === 'Müşteriden Para Alındı' || current.bank_movement_id ||
+      (data.cari_movements || []).some(row => isActive(row) && row.ref_id === current.id) ||
+      (data.bank_movements || []).some(row => isActive(row) && row.source_store === 'cash_records' && row.source_id === current.id) ||
+      (data.settlement_allocations || []).some(row => isActive(row) && row.receipt_id === current.id)))
+    throw financeError('Tahsilatın tutarı, tarihi ve tarafları cariye / bankaya bağlıdır; kasa kaydı tek başına değiştirilemez. Yanlış kaydı Veri Sağlığı / ilgili finans işleminden inceleyin; farkı yeni tahsilat gibi tekrar yazmayın.', 'FINANCE_LINKED');
+  if (store === 'cari_movements' && ['Tahsilat', 'Hakedis', 'MazotTeslimi'].includes(current.type) &&
+      changes(['date', 'amount', 'customer_id', 'type', 'ref_id', 'source', 'event_id', 'deleted_at']))
+    throw financeError('Bağlı cari hareket tek başına değiştirilemez; kaynak finans işlemini inceleyin.', 'FINANCE_LINKED');
+  if (store === 'sites' && changes(['customer_id']) && hasIdentityHistory(data, 'site', current.id))
+    throw financeError('Geçmiş kayıtlarda kullanılan şantiyenin müşterisi değiştirilemez. Yeni müşteri için ayrı şantiye açın; mükerrer kartları Kartları Birleştir ekranından inceleyin.', 'CARD_HISTORY');
+}
+function increasingStamp(record) {
+  const now = nowISO(), previous = Date.parse(record?.updated_at || '');
+  return Number.isFinite(previous) && now <= record.updated_at ? new Date(previous + 1).toISOString() : now;
+}
 
 export async function put(store, rec) {
   const db = await openDB();
@@ -221,7 +289,8 @@ export async function softDelete(store, id, reason) {
   const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
   const connection = await openDB();
   await new Promise((resolve, reject) => {
-    const t = connection.transaction([...new Set([store, "maintenance_parts", "dump_entries", "audit_log", ...(store==="dump_sites"?["expense_records","work_records"]:[])])], "readwrite"); let error;
+    const historyStores = store === 'customers' ? HISTORY_STORES : store === 'work_records' ? ['hakedis'] : [];
+    const t = connection.transaction([...new Set([store, "maintenance_parts", "dump_entries", "audit_log", ...historyStores, ...(store==="dump_sites"?["expense_records","work_records"]:[])])], "readwrite"); let error;
     if(store==="dump_sites")for(const s of ["expense_records","work_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===id)){error=Error("Eski döküm geçmişine bağlı saha silinemez");t.abort();}};}
     const dumpCheck=t.objectStore("dump_entries").getAll();
     dumpCheck.onsuccess=()=>{const key={expense_records:"expense_id",work_records:"work_record_id",dump_sites:"dump_site_id",vehicles:"vehicle_id",customers:"customer_id",sites:"site_id"}[store];if(key&&dumpCheck.result.some(e=>isActive(e)&&e[key]===id)){error=Error("Ortak döküm hesabına bağlı kayıt silinemez; döküm işlemini inceleyin");t.abort();}};
@@ -230,9 +299,20 @@ export async function softDelete(store, id, reason) {
       if (q.result.some(r => isActive(r) && ((r.tracking && r.cost_source_store === store && r.cost_source_id === id) || (store === "vehicles" && r.vehicle_id === id) || (store === "maintenance_records" && r.maintenance_id === id)))) { error = Error("Parça / garanti geçmişine bağlı kayıt silinemez"); t.abort(); return; }
       const get = t.objectStore(store).get(id);
       get.onsuccess = () => {
-        if (JSON.stringify(get.result) !== JSON.stringify(rec)) { error = Error("Kayıt değişti; yeniden açın"); t.abort(); return; }
-        t.objectStore(store).put(upd);
-        t.objectStore("audit_log").put({id:uuid(),entity:store,entity_id:id,action:"soft_delete",old:{deleted_at:rec.deleted_at},new:{deleted_at:upd.deleted_at},reason:reason||"",at:nowISO()});
+        readTransactionRows(t, historyStores, history => {
+          if (JSON.stringify(get.result) !== JSON.stringify(rec)) { error = financeError("Kayıt değişti; yeniden açın", 'STALE'); t.abort(); return; }
+          if (store === 'customers' && hasIdentityHistory(history, 'customer', id)) {
+            error = financeError('İş / finans geçmişine bağlı müşteri silinemez; müşteri kartında Durum → Pasif seçin. Mükerrer kartlar için Kartları Birleştir ekranını kullanın.', 'CARD_HISTORY'); t.abort(); return;
+          }
+          if (store === 'work_records' && (history.hakedis || []).some(claim => isActive(claim) && claim.status !== 'İptal' && (claim.items || []).some(item => item.work_record_id === id))) {
+            error = financeError('Hakedişe bağlı iş silinemez; önce ilgili taslağı inceleyin.', 'HAKEDIS_LOCKED'); t.abort(); return;
+          }
+          if (store === 'hakedis' && get.result?.status === 'Kesinleşti') {
+            error = financeError('Kesinleşmiş hakediş silinemez.', 'HAKEDIS_LOCKED'); t.abort(); return;
+          }
+          t.objectStore(store).put(upd);
+          t.objectStore("audit_log").put({id:uuid(),entity:store,entity_id:id,action:"soft_delete",old:{deleted_at:rec.deleted_at},new:{deleted_at:upd.deleted_at},reason:reason||"",at:nowISO()});
+        });
       };
     };
     t.oncomplete = resolve; t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
@@ -1066,7 +1146,8 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   // başka sekmede/ekranda yapılan değişikliği ezemez. Okuma-karşılaştırma-yazma TEK transaction'da.
   const d = await openDB();
   const wrote = await new Promise((resolve, reject) => {
-    const t = d.transaction([...new Set([store, "audit_log", "maintenance_parts", "dump_entries", ...(store==="dump_sites"&&delta.own_yard?["work_records","expense_records"]:[])])], "readwrite");
+    const guardStores = financeGuardStores(store, delta);
+    const t = d.transaction([...new Set([store, "audit_log", "maintenance_parts", "dump_entries", ...guardStores, ...(store==="dump_sites"&&delta.own_yard?["work_records","expense_records"]:[])])], "readwrite");
     let error = null;
     if(store==='fuel_tank_movements'){const all=t.objectStore(store).getAll();all.onsuccess=()=>{try{assertTankChange(all.result,all.result.map(m=>m.id===upd.id?upd:m));}catch(e){error=e;t.abort();}};}
     if(store==="dump_sites"&&delta.own_yard)for(const s of ["work_records","expense_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===rec.id)){error=Error("Geçmişi olan döküm sahası iç depoya çevrilemez");t.abort();}};}
@@ -1084,6 +1165,9 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
     const g = t.objectStore(store).get(rec.id);
     g.onsuccess = () => {
       const now = g.result;
+      readTransactionRows(t, guardStores, guardData => {
+      try { assertFinancialEdit(store, now, upd, delta, guardData); }
+      catch (e) { error = e; t.abort(); return; }
       if (options.strict && (!now || now.deleted_at || JSON.stringify(now) !== JSON.stringify(rec))) {
         error = Object.assign(Error("Kayıt önizlemeden sonra değişti; yeniden önizleyin."), { code:"STALE" });
         t.abort(); return;
@@ -1109,6 +1193,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
       if (now?.updated_at && upd.updated_at <= now.updated_at) upd.updated_at = new Date(Date.parse(now.updated_at) + 1).toISOString();
       t.objectStore(store).put(upd);
       t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "update", old: rec ?? null, new: fields ?? null, reason: auditReason || "", at: nowISO() });
+      });
     };
     t.oncomplete = resolve;
     t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
@@ -1649,115 +1734,53 @@ export async function repairTankPrices() {
 export async function createHakedis(fields) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction(["hakedis", "work_records"], "readwrite");
+    const stores = ['hakedis', 'work_records', 'customers', 'sites'];
+    const t = d.transaction(stores, 'readwrite');
     let rec, error;
-    const h = t.objectStore("hakedis").getAll(),
-      w = t.objectStore("work_records").getAll();
-    let hs, ws;
-    function run() {
-      if (!hs || !ws) return;
-      // Validate the complete selection inside the write transaction, before any put.
-      // Explicit 0 (including fuel-only/included work) is valid; missing is not 0.
-      try { assertHakedisItems(fields.items); }
-      catch (e) { error = e; t.abort(); return; }
-      const ids = new Set();
-      for (const item of fields.items || []) {
-        const work = ws.find((x) => x.id === item.work_record_id);
-        if (
-          ids.has(item.work_record_id) ||
-          !work ||
-          !isActive(work) ||
-          work.customer_id !== fields.customer_id ||
-          (fields.site_id && work.site_id !== fields.site_id) ||
-          work.date < fields.date_from ||
-          work.date > fields.date_to ||
-          hs.some(
-            (x) =>
-              isActive(x) &&
-              x.status !== "İptal" &&
-              (x.items || []).some((i) => i.work_record_id === work.id),
-          )
-        ) {
-          error = Error(
-            "Hakedişte mükerrer, yanlış müşteri veya uygun olmayan iş",
-          );
-          t.abort();
-          return;
-        }
-        ids.add(item.work_record_id);
-      }
-      if (!ids.size) {
-        error = Error("İş seçin");
-        t.abort();
-        return;
-      }
-      rec = newRecord(fields);
-      t.objectStore("hakedis").put(rec);
-    }
-    h.onsuccess = () => {
-      hs = h.result;
-      run();
-    };
-    w.onsuccess = () => {
-      ws = w.result;
-      run();
-    };
-    t.oncomplete = () => {recordsCommitted(d.name,["hakedis"]);resolve(rec);};
-    t.onabort = t.onerror = () =>
-      reject(error || t.error || Error("Hakediş iptal edildi"));
+    readTransactionRows(t, stores, data => {
+      try {
+        assertHakedisItems(fields.items);
+        if (fields.id && data.hakedis.some(claim => claim.id === fields.id))
+          throw financeError('Hakediş kimliği zaten kayıtlı; mevcut kayıt üzerine yazılmadı.', 'HAKEDIS_SOURCE');
+        const draft = {...fields, items:captureHakedisSources(fields.items, data.work_records)};
+        assertHakedisDocument(draft);
+        assertHakedisSources(draft, data);
+        rec = newRecord(draft);
+        t.objectStore('hakedis').put(rec);
+      } catch (e) { error = e; t.abort(); }
+    });
+    t.oncomplete = () => {recordsCommitted(d.name, ['hakedis']); resolve(rec);};
+    t.onabort = t.onerror = event => reject(error || transactionError(t, event));
   });
 }
 export async function finalizeHakedis(id) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction(
-      ["hakedis", "cari_movements", "work_records"],
-      "readwrite",
-    );
+    const stores = ['hakedis', 'cari_movements', 'work_records', 'customers', 'sites'];
+    const t = d.transaction(stores, 'readwrite');
     let result, error;
-    const r = t.objectStore("hakedis").get(id);
-    r.onsuccess = () => {
-      const h = r.result;
-      if (!h || h.status !== "Taslak") {
-        error = Error("Hakediş zaten kesinleşti veya iptal");
-        t.abort();
-        return;
-      }
-      // Old pending drafts may predate creation validation. Reject incomplete ones
-      // atomically before writing the hakediş, ledger or any locked work snapshot.
-      // Historical numeric 0 remains valid: its original intent cannot be inferred.
-      try { assertHakedisItems(h.items); }
-      catch (e) { error = e; t.abort(); return; }
-      result = { ...h, status: "Kesinleşti", finalized_at: nowISO() };
-      t.objectStore("hakedis").put(result);
-      t.objectStore("cari_movements").put(
-        newRecord({
-          date: h.created_date,
-          customer_id: h.customer_id,
-          type: "Hakedis",
-          amount: h.grand_total,
-          ref_id: id,
-          note: "Hakediş #" + h.hakedis_no,
-        }),
-      );
-      for (const item of h.items) {
-        const q = t.objectStore("work_records").get(item.work_record_id);
-        q.onsuccess = () => {
-          if (q.result)
-            t.objectStore("work_records").put({
-              ...q.result,
-              price_snapshot: {
-                ...item,
-                price_source: item.price_source || "Snapshot",
-                locked: true,
-              },
-              updated_at: nowISO(),
-            });
-        };
-      }
-    };
-    t.oncomplete = () => {recordsCommitted(d.name,["hakedis","cari_movements","work_records"]);resolve(result);};
-    t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
+    readTransactionRows(t, stores, data => {
+      try {
+        const h = data.hakedis.find(claim => claim.id === id);
+        // All validation precedes the first write. Old stale/incoherent drafts
+        // require review, never automatic repricing or partial ledger creation.
+        assertHakedisDocument(h);
+        assertHakedisSources(h, data);
+        if (data.cari_movements.some(row => isActive(row) && row.ref_id === id))
+          throw financeError('Hakedişe bağlı cari hareket zaten var; yeniden kesinleştirilmedi.', 'HAKEDIS_LOCKED');
+        const snapshots = h.items.map(item => ({item, snapshot:hakedisWorkSnapshot(item)}));
+        result = {...h, status:'Kesinleşti', finalized_at:nowISO(), updated_at:increasingStamp(h)};
+        t.objectStore('hakedis').put(result);
+        t.objectStore('cari_movements').put(newRecord({date:h.created_date, customer_id:h.customer_id,
+          type:'Hakedis', amount:h.grand_total, ref_id:id, note:'Hakediş #' + h.hakedis_no}));
+        for (const {item, snapshot} of snapshots) {
+          const work = data.work_records.find(row => row.id === item.work_record_id);
+          t.objectStore('work_records').put({...work, price_snapshot:snapshot, updated_at:increasingStamp(work)});
+        }
+      } catch (e) { error = e; t.abort(); }
+    });
+    t.oncomplete = () => {recordsCommitted(d.name, ['hakedis', 'cari_movements', 'work_records']); resolve(result);};
+    t.onabort = t.onerror = event => reject(error || transactionError(t, event));
   });
 }
 export async function byRelation(store, key, value) {
