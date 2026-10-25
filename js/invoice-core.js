@@ -103,6 +103,7 @@ export function draftText(F) {
     `ADRES: ${c.address || "—"}`,
     "",
     ...F.lines.map((l, i) => `${i + 1}) ${l.desc}\n   ${tl(l.qty)} ${l.unit} × ${tl(l.unitPrice)} ₺ = ${tl(l.net)} ₺ (KDV %${l.rate})`),
+    ...(F.claimed ? ["Not: Kesinleşmiş işlerde kayıtlı hakediş net/KDV tutarları esastır. Gösterilen birim fiyat yuvarlanabilir; miktar × gösterilen birim fiyat kayıtlı satır toplamından farklı olabilir."] : []),
     "",
     `Mal/hizmet toplamı: ${tl(F.net)} ₺`,
     `KDV: ${tl(F.kdv)} ₺`,

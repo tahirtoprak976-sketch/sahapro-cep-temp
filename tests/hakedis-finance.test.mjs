@@ -66,6 +66,7 @@ for (const quantity of [0.5, 1.5, 2.5]) for(const count of [1,10,100]) for(const
   assert.equal(invoiceDraft(d,'C').net,d.hakedis[0].subtotal);
   assert.equal(invoiceDraft(d,'C').kdv,d.hakedis[0].kdv_total);
   assert.equal(invoiceDraft(d,'C').total,d.hakedis[0].grand_total);
+  assert.match(draftText(invoiceDraft(d,'C')),/Gösterilen birim fiyat yuvarlanabilir/,'Copied draft explains frozen totals versus rounded unit-price display too');
   assert.equal(invoiceQueue(d,{today:date})[0].net,d.hakedis[0].subtotal);
   assert.equal(matchInvoice(d,{buyer_tax_no:'1234567890',date,net:d.hakedis[0].subtotal}).sum,d.hakedis[0].subtotal);
 }
