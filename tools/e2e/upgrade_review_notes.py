@@ -122,7 +122,24 @@ def main():
                 context.add_init_script("localStorage.setItem('sp_role','boss')")
                 page = context.new_page()
                 errors = []
+                console_warnings = []
                 page.on('pageerror', lambda error: errors.append(str(error)))
+                page.on('console', lambda message: console_warnings.append(message.text)
+                        if message.type in ('warning', 'error') else None)
+
+                def update_state():
+                    return page.evaluate("""async()=>{
+                      const r=await navigator.serviceWorker.getRegistration();
+                      const worker=w=>w?{state:w.state,url:w.scriptURL}:null;
+                      return {url:location.href,updateCheck:typeof window.__swCheck,
+                        controller:worker(navigator.serviceWorker.controller),
+                        active:worker(r?.active),waiting:worker(r?.waiting),
+                        installing:worker(r?.installing),
+                        bar:document.querySelector('#update-bar')?.outerHTML||null,
+                        ready:document.querySelector('#screen')?.dataset.viewReady,
+                        quantity:document.querySelector('[name=quantity]')?.value};
+                    }""")
+
                 page.goto(base + 'index.html#/daha')
                 page.wait_for_selector('#screen[data-view-ready="1"]')
                 page.evaluate('async()=>{await navigator.serviceWorker.ready}')
@@ -165,10 +182,24 @@ def main():
                 page.evaluate("window.__upgradeMarker='keep'")
                 assert page.evaluate(SNAPSHOT) == before, 'Editing a form must not save the legacy work'
 
-                state['root'] = new
-                page.evaluate('async()=>{const r=await navigator.serviceWorker.getRegistration();await r.update()}')
-                page.wait_for_function('async()=>!!(await navigator.serviceWorker.getRegistration()).waiting')
-                page.wait_for_selector('#update-bar [data-upd]')
+                # boot() does not await registerSW(). A ready view alone does
+                # not prove the real app has installed its update listeners.
+                try:
+                    print('Before upgrade readiness: '+json.dumps(update_state()), flush=True)
+                    page.wait_for_function("()=>typeof window.__swCheck==='function'")
+                    state['root'] = new
+                    page.evaluate('async()=>await window.__swCheck()')
+                    page.wait_for_function('async()=>!!(await navigator.serviceWorker.getRegistration()).waiting')
+                    page.wait_for_selector('#update-bar [data-upd]')
+                except Exception:
+                    # Observe real state only; preserve the original failure.
+                    try:
+                        print('Upgrade readiness diagnostic: '+json.dumps({
+                            'state':update_state(),'page_errors':errors,
+                            'console_warnings':console_warnings}), flush=True)
+                    except Exception as diagnostic_error:
+                        print('Diagnostic unavailable: '+str(diagnostic_error), flush=True)
+                    raise
                 assert page.evaluate("async()=>(await import('./js/core.js')).APP_VERSION") == old_version
                 assert page.evaluate("window.__upgradeMarker==='keep'")
                 assert page.input_value('[name=quantity]') == '7'
