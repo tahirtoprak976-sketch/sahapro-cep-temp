@@ -1,7 +1,7 @@
 // Müşteri panosu ve ayrıntılı müşteri raporu (PDF). Hesaplar saf (customerReportData), çizim ve PDF ayrı.
 // Rakamlar diğer ekranlarla aynı kaynaklardan: bakiye = collect-core, mazot = assistant-rules, ekstre = statement.
 import { isActive, toKurus, fromKurus, todayStr, addDays, trDate } from "./core.js";
-import { customerLedgerMovements, customerOpenItems, chequeRows, workAmount, hasWorkPrice, missingCustomerWorkPrice } from "./collect-core.js";
+import { customerLedgerMovements, customerOpenItems, customerOpenItemLabel, chequeRows, workAmount, hasWorkPrice, missingCustomerWorkPrice } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
 import { customerFuelLedger, fuelRulesOf } from "./assistant-rules.js";
 
@@ -97,8 +97,9 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const cheques = chequeRows(d, today).filter((q) => q.party_type === "customer" && ids.has(q.party_id));
   const workTotal = r2(works.reduce((n, w) => n + w.amount, 0));
   const collected = r2(collections.reduce((n, c) => n + c.amount, 0));
+  const scopeNote = subs && children.length ? "Ana firma ve taşeronlar bu raporda birlikte gösterilir. Her müşterinin TL hesabı ayrıdır; bir müşterinin avansı diğerinin borcundan otomatik düşülmez. Birleşik TL bakiye ile açık kalemlerin toplamı bu nedenle farklı olabilir." : "";
   return {
-    customer: me, parent, children, from, to, subs, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
+    customer: me, parent, children, from, to, subs, scopeNote, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
     totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), fuelReceivedL: r2(fuelCollections.reduce((n, f) => n + f.liters, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
@@ -139,6 +140,7 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
     ["Müşteri", R.customer.name], ["Dönem", per], ["Telefon", R.customer.phone || ""], ["Ana firma", R.parent?.name || ""],
     ["Taşeronlar", R.children.length ? R.children.map((c) => c.name).join(", ") + (R.subs ? " (rapora dahil)" : " (dahil değil)") : ""],
   ] });
+  if (R.scopeNote) S.push({ title: "Hesap kapsamı", layout: "notice", text: R.scopeNote });
   S.push({ title: "Özet", layout: "totals", pairs: [
     ["İş sayısı", String(R.totals.works)], ["Miktar", unitsText(R.units)],
     ...(R.totals.tonnage ? [["Toplam ton (fiş)", fmt(R.totals.tonnage) + " ton"]] : []),
@@ -165,7 +167,7 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
     rows: [["", "Devir", "", "", "", tl(R.statement.opening)], ...R.statement.rows.map((r) => [trDate(r.date), r.type, r.text, r.debit ? tl(r.debit) : "", r.credit ? tl(r.credit) : "", tl(r.balance)])] });
   if (R.open.length)
     S.push({ title: `Açık kalemler (bugün itibarıyla · toplam ${tl(R.open.reduce((n, o) => n + o.left, 0))})`, headers: ["Tarih", "Kalem", "Gün", "Tutar", "Kalan"], widths: [13, 47, 10, 15, 15],
-      rows: R.open.map((o) => [trDate(o.date), o.label, String(o.days), tl(o.amount), tl(o.left)]) });
+      rows: R.open.map((o) => [trDate(o.date), internal ? o.label : customerOpenItemLabel(o), String(o.days), tl(o.amount), tl(o.left)]) });
   if (internal && (R.aging.b30 || R.aging.b60 || R.aging.b90 || R.aging.b0))
     S.push({ title: "Yaşlandırma", pairs: [["0–30 gün", tl(R.aging.b0)], ["31–60 gün", tl(R.aging.b30)], ["61–90 gün", tl(R.aging.b60)], ["90+ gün", tl(R.aging.b90)]] });
   if (R.fuel)
