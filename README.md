@@ -4,7 +4,10 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.70** — 25.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.71** — 25.10.2026
+
+Taslak koruması, tutarlı şantiye seçimi ve rapor kapsamının açıklığı:
+[v3.9.71 karar ve doğrulama notları](docs/ENTRY_CLARITY_v3971.md).
 
 Geçmiş aktarımında iş açıklamasından ayrı, yalnız kontrol amaçlı not ve kurulu
 uygulamanın güvenli güncellenmesi: [v3.9.70 kullanım ve test notları](docs/HISTORY_REVIEW_NOTES.md).

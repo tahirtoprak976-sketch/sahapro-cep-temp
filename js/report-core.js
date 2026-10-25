@@ -3,8 +3,9 @@
 // Aynı sonuç ekranda tablo, PDF'te kurumsal rapor, CSV'de satır olarak kullanılır.
 // Rakamlar diğer ekranlarla aynı kaynaklardan: iş tutarı = workAmount, döküm ücreti = dumpFee, mazot alacağı = customerFuelLedger.
 import { isActive, todayStr, trDate } from "./core.js";
-import { workAmount } from "./collect-core.js";
+import { workAmount, hasWorkPrice, missingCustomerWorkPrice, workReviewContext } from "./collect-core.js";
 import { dumpFee } from "./dump-fees.js";
+import { customerMovementText } from "./statement.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -14,6 +15,17 @@ const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").replace(/\s+/g, "
 const byDate = (a, b) => String(a.date || "").localeCompare(String(b.date || "")) || String(a.created_at || "").localeCompare(String(b.created_at || ""));
 const monthName = (k) => { const [y, m] = k.split("-"); return ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"][Number(m) - 1] + " " + y; };
 const unitsText = (u) => Object.entries(u).filter(([, q]) => q).map(([k, q]) => `${num(q)} ${String(k || "").toLocaleLowerCase("tr-TR")}`).join(", ") || "—";
+// Sunum: TL ve litre asla toplanmaz; ikisi de varsa ayrı birimleriyle gösterilir.
+const amountText = (amount, fuelL) => [amount || !fuelL ? tl(amount) : "", fuelL ? `${num(fuelL)} L mazot` : ""].filter(Boolean).join(" · ");
+function workAmountText(x) {
+  if (x.amount || x.fuelL) return amountText(x.amount, x.fuelL);
+  if (x.included) return "Sözleşmeye dahil";
+  if (["Mazot karşılığı", "İç iş (kendi depo)"].includes(x.w.price_snapshot?.price_source)) return x.w.price_snapshot.price_source;
+  if (x.priced) return tl(0);
+  if (x.billed) return "Hakedişe dahil";
+  if (x.w.price_snapshot?.locked) return "Kilitli kayıt";
+  return "Fiyat eksik";
+}
 
 export const REPORT_KINDS = [
   { k: "dokum", t: "Döküm sahası", ic: "🏔", store: "dump_sites", all: "Tüm döküm sahaları" },
@@ -50,14 +62,18 @@ function ctx(d, from, to) {
 }
 
 // Bir iş satırının tüm ayrıntısı
-function workInfo(d, w, nm) {
+function workInfo(d, w, nm, billed = false) {
   const fee = dumpFee(d, w);
+  const rawPrice = w.price_snapshot?.unit_price;
+  // Aynı açık-sıfır doğrulaması; boş/geçersiz birim fiyatı 0 diye göstermeyiz.
+  const unitPrice = hasWorkPrice({ quantity: 1, price_snapshot: { unit_price: rawPrice } }) ? Number(rawPrice) : null;
   return {
     w, date: w.date, customer: nm("customers", w.customer_id), site: nm("sites", w.site_id), vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
     type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
     from: nm("quarries", w.quarry_id) || w.quarry || "", to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
     ton: Number(w.tonnage) || 0, slip: [w.slip_no, w.digital_slip_no && w.digital_slip_no !== w.slip_no ? "dijital " + w.digital_slip_no : ""].filter(Boolean).join(" · "),
-    unitPrice: Number(w.price_snapshot?.unit_price) || 0, amount: workAmount(w), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
+    unitPrice, amount: workAmount(w), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
+    priced: hasWorkPrice(w), unpriced: missingCustomerWorkPrice(w, billed), billed,
     dump: fee?.amount || 0, dumpEst: !!fee?.estimated, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
   };
 }
@@ -77,8 +93,8 @@ const WCOLS = {
   to: ["Döküm yeri", 9, (x) => x.to],
   ton: ["Ton", 5, (x) => (x.ton ? num(x.ton) : "")],
   slip: ["Fiş No", 8, (x) => x.slip],
-  price: ["Birim Fiyat", 8, (x) => (x.unitPrice ? tl(x.unitPrice) : "")],
-  amount: ["Tutar", 9, (x) => (x.amount ? tl(x.amount) : x.fuelL ? `${num(x.fuelL)} L mazot` : "fiyatsız")],
+  price: ["Birim Fiyat", 8, (x) => (x.priced && x.unitPrice != null ? tl(x.unitPrice) : "")],
+  amount: ["Tutar", 9, workAmountText],
   dump: ["Döküm Maliyeti", 9, (x) => (x.dump ? (x.dumpEst ? "~" : "") + tl(x.dump) : ""), true],
   note: ["Not", 12, (x) => x.note],
 };
@@ -95,7 +111,7 @@ function totalRow(cols, infos) {
   const units = {};
   for (const x of infos) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
   const s = (f) => r2(infos.reduce((n, x) => n + f(x), 0));
-  return cols.map((c, i) => (i === 0 ? "TOPLAM" : c === "qty" ? unitsText(units) : c === "ton" ? (s((x) => x.ton) ? num(s((x) => x.ton)) : "") : c === "amount" ? tl(s((x) => x.amount)) : c === "dump" ? tl(s((x) => x.dump)) : ""));
+  return cols.map((c, i) => (i === 0 ? "TOPLAM" : c === "qty" ? unitsText(units) : c === "ton" ? (s((x) => x.ton) ? num(s((x) => x.ton)) : "") : c === "amount" ? amountText(s((x) => x.amount), s((x) => x.fuelL)) : c === "dump" ? tl(s((x) => x.dump)) : ""));
 }
 // Gruplama: ad → iş sayısı, miktar, ton, tutar, döküm maliyeti
 function groupTable(title, infos, keyFn, label, { dump = false } = {}) {
@@ -109,7 +125,7 @@ function groupTable(title, infos, keyFn, label, { dump = false } = {}) {
   const rows = [...g.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].n - a[1].n);
   return {
     title, headers: [label, "İş", "Miktar", "Ton", "Tutar", ...(dump ? ["Döküm Maliyeti"] : [])], widths: [30, 8, 22, 10, 15, ...(dump ? [15] : [])], internalCols: [false, false, false, false, false, ...(dump ? [true] : [])],
-    rows: rows.map(([k, o]) => [k, String(o.n), unitsText(o.units), o.ton ? num(o.ton) : "", (o.amount ? tl(o.amount) : "") + (o.fuelL ? `${o.amount ? " + " : ""}${num(o.fuelL)} L mazot` : ""), ...(dump ? [o.dump ? tl(o.dump) : ""] : [])]),
+    rows: rows.map(([k, o]) => [k, String(o.n), unitsText(o.units), o.ton ? num(o.ton) : "", o.amount || o.fuelL ? amountText(o.amount, o.fuelL) : "", ...(dump ? [o.dump ? tl(o.dump) : ""] : [])]),
   };
 }
 const monthKey = (x) => monthName(String(x.date).slice(0, 7));
@@ -118,7 +134,7 @@ function workKpis(infos, { dump = true } = {}) {
   for (const x of infos) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
   const amount = r2(infos.reduce((n, x) => n + x.amount, 0)), ton = r2(infos.reduce((n, x) => n + x.ton, 0));
   const fuelL = r2(infos.reduce((n, x) => n + x.fuelL, 0)), dumpT = r2(infos.reduce((n, x) => n + x.dump, 0));
-  const unpriced = infos.filter((x) => !x.amount && !x.fuelL && !x.included).length, slips = infos.filter((x) => x.slip).length;
+  const unpriced = infos.filter((x) => x.unpriced).length, slips = infos.filter((x) => x.slip).length;
   return [
     ["İş sayısı", String(infos.length)], ["Miktar", unitsText(units)],
     ...(ton ? [["Toplam ton (fiş)", num(ton) + " ton"]] : []),
@@ -126,7 +142,7 @@ function workKpis(infos, { dump = true } = {}) {
     ...(fuelL ? [["Mazot karşılığı", num(fuelL) + " L"]] : []),
     ...(dump && dumpT ? [["Döküm maliyeti", tl(dumpT), true]] : []),
     ["Fişli iş", `${slips} / ${infos.length}`],
-    ...(unpriced ? [["Fiyatsız iş", String(unpriced)]] : []),
+    ...(unpriced ? [["Fiyatı eksik iş", String(unpriced)]] : []),
   ];
 }
 const infoPairs = (r, keys) => keys.map(([k, l, f]) => [l, f ? f(r) : r?.[k]]).filter(([, v]) => v !== undefined && v !== null && v !== "");
@@ -136,7 +152,8 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
   const K = kindOf(k);
   const { nm, inR } = ctx(d, from, to);
   const works = live(d, "work_records").filter((w) => inR(w.date)).sort(byDate);
-  const winfo = (ws) => ws.map((w) => workInfo(d, w, nm));
+  const { billed } = workReviewContext(d);
+  const winfo = (ws) => ws.map((w) => workInfo(d, w, nm, billed.has(w.id)));
   const card = K.store && id ? live(d, K.store).find((r) => r.id === id) : null;
   if (K.store && id && !card) throw Error("Kayıt bulunamadı");
   const name = card ? card.name || card.plate : id || K.all;
@@ -201,7 +218,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     if (k !== "malzeme") R.tables.push(groupTable("Döküm yerine göre", ws, (x) => x.to, "Döküm yeri", { dump: true }));
     R.tables.push(groupTable("Aylara göre", ws, monthKey, "Ay", { dump: true }));
     if (k === "musteri" && id) {
-      // Tahsilat ve cari (müşteri raporundaki ile aynı kaynak: cari hareketler)
+      // Kayıtlı cari hareketler: müşteri panosunun aksine hakedişsiz işleri eklemez.
       const ids = new Set([id, ...live(d, "customers").filter((c) => c.parent_customer_id === id).map((c) => c.id)]);
       const movs = live(d, "cari_movements").filter((m) => ids.has(m.customer_id)).sort(byDate);
       const before = r2(movs.filter((m) => from && m.date < from).reduce((n, m) => n + Number(m.amount || 0), 0));
@@ -209,9 +226,11 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
       const inP = movs.filter((m) => inR(m.date));
       const coll = r2(-inP.filter((m) => m.type === "Tahsilat").reduce((n, m) => n + Number(m.amount || 0), 0));
       R.kpis.push(["Tahsilat (dönem)", tl(coll)]);
-      R.tables.push({ title: "Cari hareketler", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Bakiye"], widths: [10, 12, 42, 12, 12, 12],
-        rows: [["", "Devir", "", "", "", tl(before)], ...inP.map((m) => { bal = r2(bal + Number(m.amount || 0)); const a = Number(m.amount) || 0; return [trDate(m.date), m.type || "", m.reason || m.note || "", a > 0 ? tl(a) : "", a < 0 ? tl(-a) : "", tl(bal)]; })] });
-      R.kpis.push(["Dönem sonu bakiye", tl(bal)]);
+      const rows = [["", "Devir", "", "", "", tl(before)], ...inP.map((m) => { bal = r2(bal + Number(m.amount || 0)); const a = Number(m.amount) || 0; return [trDate(m.date), m.type || "", m.reason || m.note || "", a > 0 ? tl(a) : "", a < 0 ? tl(-a) : "", tl(bal)]; })];
+      R.tables.push({ title: "Kayıtlı cari hareketler", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Kayıtlı bakiye"], widths: [10, 12, 42, 12, 12, 12], rows,
+        customerRows: rows.map((row, i) => i ? row.map((value, col) => col === 2 ? customerMovementText(inP[i - 1]) : value) : row) });
+      R.kpis.push(["Kayıtlı cari bakiye", tl(bal)]);
+      R.notes.push("Dönem sonundaki kayıtlı cari bakiye yalnız cari hareketleri kapsar; hakedişe girmemiş işler dahil değildir. Müşteri panosundaki TL bakiye bu işleri de içerir. Mazot litreleri TL bakiyeden ayrıdır.");
     }
   } else if (k === "arac") {
     const vsel = (r) => (id ? r.vehicle_id === id : !!r.vehicle_id);
@@ -357,6 +376,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.tables.push(grp((m) => m.maint_type, "Tür"));
     R.tables.push(grp((m) => m.service_company || nm("suppliers", m.supplier_id), "Servis / esnaf"));
   }
+  if (R.kpis.some(([label]) => label === "Fiyatı eksik iş")) R.notes.push("Fiyat eksik, bedelsiz demek değildir. Fiyatı girilmemiş işler TL toplamına katılmaz; açıkça kaydedilmiş sıfır fiyat 0,00 ₺ olarak gösterilir.");
   R.tables = R.tables.filter((t) => t.rows.length);
   return R;
 }
@@ -364,7 +384,9 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
 // Karşı tarafa verilecek nüshada maliyet sütunları / tabloları / rakamları çıkarılır
 export function forAudience(R, audience = "internal") {
   if (audience === "internal") return R;
-  const tables = R.tables.filter((t) => !t.internal).map((t) => {
+  const tables = R.tables.filter((t) => !t.internal).map((source) => {
+    const { customerRows, ...rest } = source;
+    const t = customerRows ? { ...rest, rows: customerRows } : rest;
     if (!t.internalCols?.some(Boolean)) return t;
     const keep = t.internalCols.map((x) => !x);
     const pick = (a) => a.filter((_, i) => keep[i]);
@@ -395,5 +417,6 @@ export function reportCsv(R, audience = "internal") {
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const out = [[`${A.kind} raporu`, A.name, A.period].map(q).join(";"), ""];
   for (const t of A.tables) out.push(q(t.title), t.headers.map(q).join(";"), ...t.rows.map((r) => r.map(q).join(";")), "");
+  if (A.notes.length) out.push(q("Açıklamalar"), ...A.notes.map(q));
   return "﻿" + out.join("\n");
 }

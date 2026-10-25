@@ -265,7 +265,7 @@ def main():
                 assert page.evaluate("localStorage.getItem('TEST-upgrade-preserved')") == 'same-value'
                 caches = page.evaluate('()=>caches.keys()')
                 assert new_cache in caches and old_cache not in caches, caches
-                for asset in ['js/core.js', 'js/history-core.js', 'js/history-ui.js']:
+                for asset in ['js/core.js', 'js/history-core.js', 'js/history-ui.js', 'js/work-entry.js', 'js/hakedis-validation.js', 'js/db.js', 'js/m-finance.js', 'js/m-work.js', 'js/report-core.js', 'js/statement.js', 'js/app.js']:
                     actual = page.evaluate("""async input=>{
                       const cache=await caches.open(input.cache);
                       const response=await cache.match(new URL(input.asset,location.href).href);
