@@ -1,0 +1,84 @@
+name: SOLO contract import diagnostic (synthetic only)
+on:
+  push:
+    branches: [dot/contract-import-probe]
+permissions:
+  contents: read
+concurrency:
+  group: solo-contract-probe-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: 'true'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout diagnostic commit without persistent credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require all application bytes and prior tests unchanged from deployed v3.9.71
+        run: |
+          set -euo pipefail
+          git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD
+          test "$(git -c safe.directory="$GITHUB_WORKSPACE" rev-parse 32e42155bc58c7a52daa152f66acb04e2ae7f110^{tree})" = 353652c8271466cb443f748e754c121b6d287131
+          git -c safe.directory="$GITHUB_WORKSPACE" diff --exit-code 32e42155bc58c7a52daa152f66acb04e2ae7f110 HEAD -- . ':(exclude)tools/diagnostics/contract_import' ':(exclude).github/workflows/contract-import-probe.yml'
+      - name: Install ordinary Linux test runtime (no keys or secrets)
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends chromium python3-venv fonts-dejavu-core poppler-utils
+          python3 -m venv /tmp/contract-probe-venv
+          /tmp/contract-probe-venv/bin/python -m pip install --disable-pip-version-check playwright==1.62.0 reportlab==4.4.9
+          /usr/bin/chromium --version
+      - name: Existing pure contract and agreement tests
+        run: |
+          set -euo pipefail
+          node tests/contract-read.test.mjs
+          node tests/job.test.mjs
+      - name: Generate and validate visibly synthetic real PDFs
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/contract-probe-evidence/fixtures
+          /tmp/contract-probe-venv/bin/python tools/diagnostics/contract_import/generate_fixtures.py /tmp/contract-probe-evidence/fixtures
+          for pdf in /tmp/contract-probe-evidence/fixtures/*.pdf; do
+            pdfinfo "$pdf"
+            pdftotext "$pdf" "${pdf%.pdf}.txt"
+            grep -q 'İMZALANMAZ' "${pdf%.pdf}.txt"
+            grep -q 'YAPILMAMIŞTIR' "${pdf%.pdf}.txt"
+            pdftoppm -scale-to 1200 -png -singlefile "$pdf" "${pdf%.pdf}"
+          done
+      - name: Real browser UI and IndexedDB; intercepted mocked Gemini; all other external requests blocked
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8845 --bind 127.0.0.1 >/tmp/contract-probe-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8845/index.html', timeout=1) as response:
+                      assert response.status==200
+                  break
+              except OSError:
+                  if attempt==59: raise
+                  time.sleep(0.5)
+          PY
+          /tmp/contract-probe-venv/bin/python tools/diagnostics/contract_import/probe.py http://localhost:8845/ /tmp/contract-probe-evidence/fixtures /tmp/contract-probe-evidence
+      - name: Preserve only synthetic diagnostic evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: solo-contract-probe-${{ github.sha }}
+          path: /tmp/contract-probe-evidence/
+          if-no-files-found: warn
+          retention-days: 3
