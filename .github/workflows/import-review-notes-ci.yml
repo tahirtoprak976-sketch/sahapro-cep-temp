@@ -1,0 +1,146 @@
+name: Import review notes validation
+
+# This isolated validation job cannot deploy or change repository content.
+on:
+  push:
+    branches:
+      - dot/import-review-notes
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-review-notes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  synthetic-regression:
+    runs-on: ubuntu-latest
+    container: node:24-bookworm
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: 'true'
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Check out the exact branch commit without saved credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install the normal Linux browser test runtime
+        id: runtime
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends chromium python3-venv fonts-liberation
+          python3 -m venv /tmp/solo-e2e-venv
+          /tmp/solo-e2e-venv/bin/python -m pip install --disable-pip-version-check playwright==1.62.0
+          node --version
+          /usr/bin/chromium --version
+          /tmp/solo-e2e-venv/bin/python -m pip show playwright
+          git -c safe.directory="$GITHUB_WORKSPACE" rev-parse HEAD
+          sha256sum tests/*.test.mjs tools/e2e/*.py > /tmp/solo-tests.sha256
+
+      - name: Run every Node test file without changing its assertions
+        run: |
+          set -euo pipefail
+          files=0
+          failed=0
+          for test in tests/*.test.mjs; do
+            files=$((files + 1))
+            echo "::group::$test"
+            if node "$test"; then
+              echo "PASS $test"
+            else
+              failed=$((failed + 1))
+              echo "FAIL $test"
+            fi
+            echo '::endgroup::'
+          done
+          echo "RESULT files=$files passed=$((files - failed)) failed=$failed"
+          test "$files" -gt 0
+          test "$failed" -eq 0
+
+      - name: Run browser suites with only isolated synthetic data
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8841 --bind 127.0.0.1 > /tmp/solo-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8841/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PY
+          failed=0
+          for suite in secure_transfer record_notes customer_snapshot operation_history; do
+            echo "::group::$suite browser suite"
+            if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
+              echo "PASS $suite"
+            else
+              failed=$((failed + 1))
+              echo "FAIL $suite"
+            fi
+            echo '::endgroup::'
+          done
+          echo "BROWSER RESULT suites=4 passed=$((4 - failed)) failed=$failed"
+          test "$failed" -eq 0
+
+      - name: Check synchronized history assertions against the unchanged baseline
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 89ed872f1543f4240db8ea4e8e2fd4806e0d6422 | tar -x -C "$baseline"
+          BASELINE_DIR="$baseline" python3 - <<'PYCODE'
+          import ast, os
+          from pathlib import Path
+          old=Path(os.environ['BASELINE_DIR'],'tools/e2e/operation_history.py').read_text()
+          new=Path('tools/e2e/operation_history.py').read_text()
+          assertions=lambda source:[ast.dump(node,include_attributes=False) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.Assert)]
+          assert assertions(old)==assertions(new), 'Original operation history assertions must not change'
+          print('All original operation-history assertions retained')
+          PYCODE
+          python3 -m http.server 8841 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-baseline-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8841/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/operation_history.py
+
+      - name: Verify real installed-baseline to release service-worker upgrade
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 89ed872f1543f4240db8ea4e8e2fd4806e0d6422
+
+      - name: Verify the test files stayed unchanged
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          sha256sum --check /tmp/solo-tests.sha256
+          git -c safe.directory="$GITHUB_WORKSPACE" diff --exit-code -- tests tools/e2e

@@ -22,6 +22,10 @@ import { loadHistoryData, commitHistory } from "./history-db.js";
 import { mountSecureTransfer } from "./secure-transfer-ui.js";
 import { startActivity } from "./update-safety.js";
 const canonical = (s) => normKey(s || "").replace(/[^a-z0-9çğıöşü]/g, "");
+export function historyReviewNotesHTML(notes) {
+  if (typeof notes !== "string" || !notes.trim()) return "";
+  return `<aside class="notice" data-h-review-notes><strong>Aktarım kontrol notu</strong><p class="slip-hint">Yalnız kontrol içindir; açıklamaya veya iç nota eklenmez. Onay yerine geçmez.</p><p class="history-source">${esc(notes)}</p></aside>`;
+}
 export async function screen(ctx) {
   const { root, db } = ctx;
   let data = await loadHistoryData(),
@@ -106,7 +110,8 @@ export async function screen(ctx) {
           : `${field("Litre", r.liters, "liters", "number")}<p>Kaynak: ${esc(r.fuel_source)}</p><label class="history-check"><input type="checkbox" data-h-tank ${c.tank_confirmed ? "checked" : ""}> Bu çıkış stokta henüz düşülmedi; geçmiş tank başlangıcını kontrol ettim.</label>`
       }
       ${field("Personel adı (biliniyorsa)", r.personnel, "personnel")}${ref("personnel", "Mevcut personel kartı", "personnel_id", c)}
-      <label class="field">Müşteriye açıklama<textarea data-h-field="description">${esc(r.description || "")}</textarea></label>
+      <label class="field">${r.kind === "work" ? "İş" : "Yakıt"} açıklaması (müşteriye görünür)<textarea data-h-field="description">${esc(r.description || "")}</textarea></label>
+      ${historyReviewNotesHTML(pkg.rows[index].review_notes)}
       <details><summary>Kaynak mesajı göster</summary><p class="history-source">${esc(r.raw_message || "Kaynak mesaj belirtilmedi.")}</p></details>
     </section>`;
   }

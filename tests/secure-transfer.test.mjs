@@ -20,6 +20,16 @@ await test("şifreli dosyada iş/müşteri adı yok; hedef telefon içeriği ayn
   const r = await openTransfer(sealed.bytes, recipient, { now, id: sealed.id, digest: sealed.digest });
   assert.deepEqual(r.pkg, readHistoryPackage(pkg)); assert.equal(r.id, sealed.id);
 });
+await test("kontrol notu şifreli gidiş-dönüşte ayrı kaynak alanı olarak korunur", async () => {
+  const review_notes = 'TEST kontrol: <img src=x onerror=alert(1)>\nFiyatı teyit edin.';
+  const source = { ...pkg, rows: [{ ...pkg.rows[0], review_notes }] };
+  const encrypted = await sealTransfer(source, code, { now });
+  assert.ok(!new TextDecoder().decode(encrypted.bytes).includes(review_notes));
+  const opened = await openTransfer(encrypted.bytes, recipient, { now });
+  assert.deepEqual(opened.pkg.rows[0], source.rows[0]);
+  for (const review_notes of [{ text: "not" }, "x".repeat(2001)])
+    await assert.rejects(() => sealTransfer({ ...pkg, rows: [{ ...pkg.rows[0], review_notes }] }, code, { now }), /kontrol notu/);
+});
 await test("yanlış veya eksik telefon anahtarı reddedilir", async () => {
   await assert.rejects(() => openTransfer(sealed.bytes, other, { now }), /başka bir telefon/);
   await assert.rejects(() => openTransfer(sealed.bytes, null, { now }), /başka bir telefon/);

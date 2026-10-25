@@ -15,8 +15,9 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parents[2]
 BASE = (sys.argv[1] if len(sys.argv) > 1 else 'http://localhost:8841/').rstrip('/') + '/'
 INIT = "localStorage.setItem('sp_role','boss');"
+REVIEW_NOTE = 'TEST REVIEWONLYTOKEN: fiyatı kontrol et; onay değildir.\n<img src=x onerror="window.reviewNoteExecuted=1"> & ' + 'uzunnot' * 30
 PACKAGE = {'format':'SAHAPRO_HISTORY_V1','title':'TEST güvenli geçmiş aktarımı','rows':[
-    {'row_id':'TEST-secure-work-1','kind':'work','date':'2026-09-01','customer':'TEST Aktarım Müşterisi','vehicle':'TEST Aktarım Aracı','work_type':'Moloz Nakliye','quantity':2,'unit':'Sefer','unit_price':1000,'kdv_rate':20,'kdv_included':False,'settlement_status':'unbilled_unpaid','raw_message':'TEST 2 sefer 1000 TL KDV hariç'},
+    {'row_id':'TEST-secure-work-1','kind':'work','date':'2026-09-01','customer':'TEST Aktarım Müşterisi','vehicle':'TEST Aktarım Aracı','work_type':'Moloz Nakliye','quantity':2,'unit':'Sefer','unit_price':1000,'kdv_rate':20,'kdv_included':False,'settlement_status':'unbilled_unpaid','description':'TEST iki sefer moloz taşındı.','review_notes':REVIEW_NOTE,'raw_message':'TEST 2 sefer 1000 TL KDV hariç'},
     {'row_id':'TEST-secure-work-2','kind':'work','date':'2026-09-02','customer':'TEST Aktarım Müşterisi','vehicle':'TEST Aktarım Aracı','work_type':'Moloz Nakliye','quantity':3,'unit':'Sefer','unit_price':None,'kdv_rate':None,'kdv_included':None,'settlement_status':'unbilled_unpaid'},
     {'row_id':'TEST-secure-fuel-1','kind':'fuel','date':'2026-09-02','vehicle':'TEST Aktarım Aracı','liters':20,'fuel_source':'Depo Tankı','settlement_status':'unbilled_unpaid'}]}
 
@@ -31,6 +32,16 @@ def business(page):
     snap.pop('captured_at', None)
     return snap
 
+def review_preview(page):
+    note = page.locator('[data-h-row="0"] [data-h-review-notes]')
+    assert note.is_visible()
+    assert note.locator('.history-source').text_content() == REVIEW_NOTE
+    assert note.locator('img, script, input, textarea').count() == 0
+    assert page.evaluate('window.reviewNoteExecuted || 0') == 0
+    assert page.locator('[data-h-row="0"] [data-h-field=description]').input_value() == PACKAGE['rows'][0]['description']
+    assert page.locator('[data-h-row="1"] [data-h-review-notes]').count() == 0, 'Old V1 rows need no review field'
+    assert page.locator('[data-h-row="0"] details').evaluate('(el)=>el.open') is False
+
 with tempfile.TemporaryDirectory(prefix='solo-secure-e2e-') as temp, sync_playwright() as p:
     temp = Path(temp)
     browser = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
@@ -41,6 +52,17 @@ with tempfile.TemporaryDirectory(prefix='solo-secure-e2e-') as temp, sync_playwr
     page.on('pageerror', lambda e: errors.append(str(e)))
     page.goto(BASE+'index.html#/gecmis'); ready(page)
     before = business(page)
+    # The plain-file path and encrypted path must show the same separate, escaped note.
+    page.set_input_files('[data-history-file]', {'name':'TEST-review.json','mimeType':'application/json','buffer':json.dumps(PACKAGE).encode()})
+    page.wait_for_selector('[data-h-review-notes]')
+    review_preview(page)
+    assert business(page) == before
+    invalid = {**PACKAGE, 'rows': [{**PACKAGE['rows'][0], 'review_notes': {'text':'not a string'}}]}
+    page.set_input_files('[data-history-file]', {'name':'TEST-invalid.json','mimeType':'application/json','buffer':json.dumps(invalid).encode()})
+    page.wait_for_function("()=>document.querySelector('[data-history-file-name]').textContent.includes('kontrol notu')")
+    assert page.locator('[data-history-preview]').is_hidden()
+    assert business(page) == before
+    page.reload(); ready(page)
     page.click('[data-transfer-pair]')
     page.wait_for_selector('[data-transfer-pair-tools]:not([hidden])')
     code = page.input_value('[data-transfer-code]')
@@ -79,11 +101,16 @@ with tempfile.TemporaryDirectory(prefix='solo-secure-e2e-') as temp, sync_playwr
     assert page.locator('[data-h-row="0"] [data-h-field=date]').input_value() == '2026-09-01'
     assert page.locator('[data-h-row="2"] [data-h-include]').is_checked() is False
     assert page.locator('[data-history-commit]').is_disabled()
+    review_preview(page)
     assert page.evaluate("async()=>{const u=await import('./js/update-safety.js');return u.updateRisk(document.querySelector('#screen')).unsaved}")
     assert page.evaluate("async()=>{const u=await import('./js/update-safety.js');return (await u.allowUpdate(document.querySelector('#screen'),async()=>false)).allowed}") is False
     assert seen == [endpoint]
     page.screenshot(path='/tmp/solo-v3963-secure-preview.png', full_page=True)
-    assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth'), '390px layout overflows'
+    for width in [320,390,768]:
+        page.set_viewport_size({'width':width,'height':844})
+        assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth'), f'{width}px layout overflows'
+    page.set_viewport_size({'width':390,'height':844})
+    page.locator('[data-h-row="0"] [data-h-review-notes]').screenshot(path='/tmp/solo-import-review-note.png')
     # An unconfirmed second work cannot inherit any of today's prices.
     page.check('[data-history-new]')
     assert page.locator('[data-history-commit]').is_disabled()
@@ -127,6 +154,28 @@ with tempfile.TemporaryDirectory(prefix='solo-secure-e2e-') as temp, sync_playwr
     assert len(works) == 2
     assert next(w for w in works if w['date']=='2026-09-01')['price_snapshot']['total'] == 2400
     assert next(w for w in works if w['date']=='2026-09-02')['price_snapshot'] is None
+    saved_work = next(w for w in works if w['date']=='2026-09-01')
+    assert saved_work['description'] == PACKAGE['rows'][0]['description']
+    assert saved_work['raw_message'] == PACKAGE['rows'][0]['raw_message']
+    assert saved_work['history_source']['original_row']['review_notes'] == REVIEW_NOTE
+    assert not any(k in saved_work for k in ['review_notes','internal_note','note','customer_note'])
+    audit = next(a for a in result['data']['audit_log'] if a['entity_id'] == saved_work['id'] and a['action'] == 'create')
+    assert audit['new']['history_source']['original_row']['review_notes'] == REVIEW_NOTE
+    source_checks = page.evaluate("""async id=>{
+      const db=await import('./js/db.js'),B=await import('./js/backup.js'),P=await import('./js/pro.js'),W=await import('./js/work-explorer.js');
+      const work=await db.get('work_records',id);
+      return {pdf:JSON.stringify(P.recordSpec('work_records',work,{},'customer')),csv:W.workCSV([work]),backup:await B.fullBackup(db,{attachments:'base64'})};
+    }""",saved_work['id'])
+    assert 'REVIEWONLYTOKEN' not in source_checks['pdf'] and 'REVIEWONLYTOKEN' not in source_checks['csv']
+    clean = browser.new_context(); clean.add_init_script(INIT)
+    restored_page = clean.new_page(); restored_page.goto(BASE+'index.html#/gecmis'); ready(restored_page)
+    restored_work = restored_page.evaluate("""async input=>{
+      const db=await import('./js/db.js'),B=await import('./js/backup.js');
+      await B.restoreBackup(db,input.backup);return await db.get('work_records',input.id);
+    }""",{'backup':source_checks['backup'],'id':saved_work['id']})
+    assert restored_work == saved_work, 'Full backup/restore preserves source-only metadata without operational pollution'
+    clean.close()
+    print('PASS escaped separate review note in plain/encrypted preview; old V1 unchanged; real work/audit/backup preserve source only; customer PDF/CSV exclude review notes',flush=True)
     assert not result['data']['fuel_records']
     assert not result['data']['cash_records'] and not result['data']['cari_movements'] and not result['data']['hakedis']
     recovery = page.evaluate("""async()=>{const db=await import('./js/db.js');const name=(await db.openDB()).name+'_recovery';return new Promise((res,rej)=>{const r=indexedDB.open(name);r.onsuccess=()=>{const c=r.result,t=c.transaction('snapshots'),q=t.objectStore('snapshots').getAll();q.onsuccess=()=>res(q.result.map(x=>({id:x.id,works:x.full.data.work_records.length})));t.oncomplete=()=>c.close();};r.onerror=()=>rej(r.error);});}""")
@@ -179,6 +228,7 @@ with tempfile.TemporaryDirectory(prefix='solo-secure-e2e-') as temp, sync_playwr
     ctx.set_offline(True)
     page.set_input_files('[data-transfer-file]', {'name':'TEST.sahapro-transfer.json','mimeType':'application/json','buffer':encrypted})
     page.wait_for_function("()=>document.querySelector('[data-transfer-status]').textContent.includes('Henüz kayıt yapılmadı')")
+    review_preview(page)
     ctx.set_offline(False)
     page.click('[data-transfer-forget]');page.click('.sheet [data-x="1"]')
     page.wait_for_function("()=>document.querySelector('[data-transfer-status]').textContent.includes('Eşleştirme kaldırıldı')")

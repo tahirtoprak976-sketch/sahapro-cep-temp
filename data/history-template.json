@@ -16,6 +16,8 @@
       "kdv_rate": null,
       "kdv_included": null,
       "settlement_status": "unbilled_unpaid",
+      "description": "",
+      "review_notes": "",
       "raw_message": ""
     }
   ]
