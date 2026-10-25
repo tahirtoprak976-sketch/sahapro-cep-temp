@@ -46,7 +46,7 @@ export function fuelAudit(d, customerId) {
   const works = live(d, "work_records").filter((w) => w.customer_id === customerId);
   const tlWorks = [], lockedTl = [], mixed = [];
   for (const w of works) {
-    const amt = workAmount(w), L = Number(w.customer_fuel_allowance_l) || 0;
+    const amt = workAmount(w, d), L = Number(w.customer_fuel_allowance_l) || 0;
     const now = applyFuelPay(d, w, "");
     const onlyPay = now.price_snapshot?.price_source === "Mazot karşılığı";
     if (amt > 0 && !L) {
@@ -87,12 +87,12 @@ export function fixPreview(d, customerId, workIds) {
   const money = { net: 0, kdv: 0, gross: 0, booked: 0 };
   const rows = ws.map((w) => {
     const f = applyFuelPay(d, w, "");
-    const oldAmt = workAmount(w), newAmt = Number(f.price_snapshot?.amount ?? oldAmt) || 0, newL = Number(f.customer_fuel_allowance_l) || 0, oldL = Number(w.customer_fuel_allowance_l) || 0;
+    const oldAmt = workAmount(w, d), newAmt = Number(f.price_snapshot?.amount ?? oldAmt) || 0, newL = Number(f.customer_fuel_allowance_l) || 0, oldL = Number(w.customer_fuel_allowance_l) || 0;
     dTL += newAmt - oldAmt; dL += newL - oldL;
     const at = rulesAt(c, w.date, w.unit), today = fuelRulesOf(c).find((r) => r.id === f.fuel_rule_id);
     // Tutar ayrımı: net (KDV hariç), KDV, brüt (KDV dahil) ve bugünkü cari hesabının topladığı tutar (fiyat neyse o)
-    const mm = (x) => { const m = workMoney(x); return m ? { net: m.net, kdv: m.kdv, gross: m.gross, booked: m.booked, rate: m.rate, basis: m.basis } : { net: 0, kdv: 0, gross: 0, booked: 0, rate: null, basis: null }; };
-    const m0 = mm(w), m1 = mm({ ...w, price_snapshot: f.price_snapshot });
+    const mm = (x, data = null) => { const m = workMoney(x, data); return m ? { net: m.net, kdv: m.kdv, gross: m.gross, booked: m.booked, rate: m.rate, basis: m.basis } : { net: 0, kdv: 0, gross: 0, booked: 0, rate: null, basis: null }; };
+    const m0 = mm(w, d), m1 = mm({ ...w, price_snapshot: f.price_snapshot });
     for (const k of ["net", "kdv", "gross", "booked"]) money[k] += m1[k] - m0[k];
     return {
       id: w.id,

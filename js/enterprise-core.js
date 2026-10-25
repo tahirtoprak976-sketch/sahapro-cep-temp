@@ -1,4 +1,5 @@
 import {linkedDumpExpenseIds} from "./dump-ledger-core.js";
+import { workForFinancialRead, claimWorkResolution } from './hakedis-finance.js';
 import { recognizedBill, pricedBill, applyAllocations } from "./ledger-policy.js";
 import { dumpFeeRows, unassignedDumpCosts } from "./dump-fees.js";
 import { meterNow } from "./maint-core.js";
@@ -444,7 +445,9 @@ export function operatingResult(data, f = {}) {
     revenue_rows: source,
   };
 }
-export function workFinancials(w) {
+export function workFinancials(w, data = null) {
+  const financialReview = data ? claimWorkResolution(data, w).issue : null;
+  w = workForFinancialRead(data, w);
   const p = w.price_snapshot;
   if (!p)
     return {
@@ -461,6 +464,7 @@ export function workFinancials(w) {
     !!p.kdv_included,
   );
   return {
+    ...(financialReview ? {financial_review: financialReview} : {}),
     unit_price: p.unit_price,
     kdv_rate: p.kdv_rate ?? 20,
     net_total: v.net,

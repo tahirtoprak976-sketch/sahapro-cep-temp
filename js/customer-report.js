@@ -4,6 +4,7 @@ import { isActive, toKurus, fromKurus, todayStr, addDays, trDate } from "./core.
 import { customerLedgerMovements, customerOpenItems, customerOpenItemLabel, chequeRows, workAmount, hasWorkPrice, missingCustomerWorkPrice } from "./collect-core.js";
 import { customerStatement } from "./statement.js";
 import { customerFuelLedger, fuelRulesOf } from "./assistant-rules.js";
+import { claimWorkResolution } from './hakedis-finance.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -40,7 +41,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
       id: w.id, priced:hasWorkPrice(w), unpriced:missingCustomerWorkPrice(w,billed.has(w.id)), date: w.date, customer: w.customer_id !== id ? nm("customers", w.customer_id) : "", vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
       type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
       from: nm("quarries", w.quarry_id) || w.quarry || "", site: nm("sites", w.site_id), to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
-      tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: w.price_snapshot?.unit_price==null || w.price_snapshot.unit_price==='' ? null : Number(w.price_snapshot.unit_price), amount: workAmount(w),
+      tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: w.price_snapshot?.unit_price==null || w.price_snapshot.unit_price==='' ? null : Number(w.price_snapshot.unit_price), amount: workAmount(w, d),
       fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil", locked: !!w.price_snapshot?.locked, note: w.description || "",
       kdv_included: w.price_snapshot ? !!w.price_snapshot.kdv_included : null, kdv_rate: w.price_snapshot?.kdv_rate ?? null,
     }));
@@ -89,7 +90,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   ].filter((f) => inR(f.date)).sort((a, b) => a.date.localeCompare(b.date));
   const months = [];
   { const d0 = new Date(today.slice(0, 8) + "01T12:00:00"); for (let i = 11; i >= 0; i--) { const x = new Date(d0); x.setMonth(x.getMonth() - i); months.push({ key: x.toISOString().slice(0, 7), work: 0, collected: 0 }); } }
-  for (const w of scopeWorks) { const m = months.find((x) => x.key === monthKey(w.date)); if (m) m.work = r2(m.work + workAmount(w)); }
+  for (const w of scopeWorks) { const m = months.find((x) => x.key === monthKey(w.date)); if (m) m.work = r2(m.work + workAmount(w, d)); }
   for (const c of live(d, "cari_movements").filter((m) => ids.has(m.customer_id) && m.type === "Tahsilat" && asOf(m))) { const m = months.find((x) => x.key === monthKey(c.date)); if (m) m.collected = r2(m.collected - Number(c.amount)); }
   const fuelMonths = months.map(({ key }) => ({ key, work: 0, collected: 0 }));
   for (const w of scopeWorks.filter((w) => Number(w.customer_fuel_allowance_l) > 0)) { const m = fuelMonths.find((x) => x.key === monthKey(w.date)); if (m) m.work = r2(m.work + Number(w.customer_fuel_allowance_l)); }
@@ -98,8 +99,10 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const workTotal = r2(works.reduce((n, w) => n + w.amount, 0));
   const collected = r2(collections.reduce((n, c) => n + c.amount, 0));
   const scopeNote = subs && children.length ? "Ana firma ve taşeronlar bu raporda birlikte gösterilir. Her müşterinin TL hesabı ayrıdır; bir müşterinin avansı diğerinin borcundan otomatik düşülmez. Birleşik TL bakiye ile açık kalemlerin toplamı bu nedenle farklı olabilir." : "";
+  const financialIssues = live(d, 'work_records').filter(w => ids.has(w.customer_id) && inR(w.date))
+    .map(w => ({id: w.id, issue: claimWorkResolution(d, w).issue})).filter(r => r.issue);
   return {
-    customer: me, parent, children, from, to, subs, scopeNote, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
+    customer: me, parent, children, from, to, subs, scopeNote, financialIssues, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
     totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), fuelReceivedL: r2(fuelCollections.reduce((n, f) => n + f.liters, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
@@ -141,6 +144,7 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
     ["Taşeronlar", R.children.length ? R.children.map((c) => c.name).join(", ") + (R.subs ? " (rapora dahil)" : " (dahil değil)") : ""],
   ] });
   if (R.scopeNote) S.push({ title: "Hesap kapsamı", layout: "notice", text: R.scopeNote });
+  if (R.financialIssues?.length) S.push({ title: 'Kaynak kontrolü gerekli', layout: 'notice', text: `${R.financialIssues.length} işte hakediş kaynağı doğrulanamadı. Kayıtlı değerler korunarak gösterildi; fatura hazırlamadan önce kaynakları kontrol edin.` });
   S.push({ title: "Özet", layout: "totals", pairs: [
     ["İş sayısı", String(R.totals.works)], ["Miktar", unitsText(R.units)],
     ...(R.totals.tonnage ? [["Toplam ton (fiş)", fmt(R.totals.tonnage) + " ton"]] : []),

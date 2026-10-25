@@ -1317,7 +1317,8 @@ ${fSelect(
     const sourceStore = ["dump_work", "quarry_work"].includes(f.store)
       ? "work_records"
       : f.store;
-    const records = (await db.listActive(sourceStore)).filter((r) =>
+    const financialData = sourceStore === "work_records" ? await db.dumpAll() : null;
+    const records = (financialData ? financialData.work_records.filter(core.isActive) : await db.listActive(sourceStore)).filter((r) =>
       f.store === "dump_work"
         ? r.dump_site_id || r.dump_area
         : f.store === "quarry_work"
@@ -1326,7 +1327,7 @@ ${fSelect(
     );
     const withOwnership = records.map((r) => ({
       ...r,
-      ...(sourceStore === "work_records" ? workFinancials(r) : {}),
+      ...(sourceStore === "work_records" ? workFinancials(r, financialData) : {}),
       dump_area: names.dump_sites[r.dump_site_id] || r.dump_area,
       quarry: names.quarries[r.quarry_id] || r.quarry,
       ...(f.store === "price_book"
@@ -1361,11 +1362,12 @@ ${fSelect(
       );
       liters += Number(r.liters) || 0;
     }
+    const financialReview = rows.filter(r => r.financial_review).length;
     const summary = `${rows.length} kayıt · ${Object.entries(units)
       .map(([u, n]) => core.fmtNum(n) + " " + u)
       .join(
         " · ",
-      )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}`;
+      )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}${financialReview ? ` · ⚠ ${financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi, kaynakları kontrol edin.` : ""}`;
     if (f.detail === "ÖZET") {
       const groups = groupRecords(rows, f.group || "date");
       table = {

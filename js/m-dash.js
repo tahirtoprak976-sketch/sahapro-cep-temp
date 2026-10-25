@@ -280,7 +280,7 @@ async function dashboard(ctx) {
     ${upcomingMaint.length || maintDue.length ? `<div class="section-title">Bakım Uyarıları</div>` + maintDue.map((r) => li({ ic: r.state === "late" ? "🔴" : "🟠", href: "#/bakim-takvimi/" + r.v.id, t1: esc(r.v.name + " · " + r.rule.title), t2: esc(r.text) })).join("") + upcomingMaint.map((v) => li({ ic: "🛠", href: "#/filo/" + v.id, t1: esc(v.name), t2: `Sonraki bakım: ${trDate(v.next_maintenance_date)}` })).join("") : ""}
 
     <div class="section-title">Aylık Özet — son 6 ay</div>
-    <div class="card">${mChart}
+    <div class="card">${mChart}${months.some(m => m.financialReview) ? notice("warn", "Bazı işlerde hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; Veri Sağlığı ve kaynak işi kontrol edin.") : ""}
       <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Maliyet</span></div>
       <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay kayıtlı maliyet", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
       ${cur.unpriced ? `<div class="muted tiny" style="margin-top:6px">⚠ Bu ay ${cur.unpriced} işin fiyatı yok; iş değeri eksik hesaplanır.</div>` : ""}
@@ -484,6 +484,7 @@ async function manager(ctx) {
       ${curM.pay ? kv("Personel maaşı (kapatılan aylar)", fmtTL(curM.pay) + " ₺") : ""}
       <div class="divider"></div>
       ${kv("TAHMİNİ SONUÇ", fmtTL(curM.profit) + " ₺")}
+      ${curM.financialReview ? notice("warn", `${curM.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) : ""}
       ${curM.unpriced ? `<div class="muted tiny">⚠ ${curM.unpriced} işin fiyatı yok; sonuç eksik olabilir.</div>` : ""}
     </div>`;
 }

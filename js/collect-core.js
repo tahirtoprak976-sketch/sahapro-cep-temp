@@ -3,6 +3,7 @@
 // tahsilat ve eksi düzeltmeler en eski borçtan başlayarak düşülür (FIFO). Kalan her kalemin yaşı tarihinden hesaplanır.
 import { isActive, toKurus, fromKurus, todayStr, COMPANY_NAME } from "./core.js";
 import { customerMovementText } from "./statement.js";
+import { workForFinancialRead } from './hakedis-finance.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const DAY = 86400000;
@@ -19,7 +20,8 @@ export const BUCKETS = [
 ];
 export const bucketOf = (days) => BUCKETS.find((b) => days <= b.max).key;
 
-export function workAmount(w) {
+export function workAmount(w, data = null) {
+  w = workForFinancialRead(data, w);
   const p = w.price_snapshot;
   if (!p) return 0;
   const a = Number(p.amount ?? Number(p.unit_price) * Number(w.quantity));

@@ -64,16 +64,18 @@ export function matchInvoice(d, inv) {
     c = custs.find((x) => fold(x.tax_title) === n) || custs.find((x) => { const a = fold(x.name); return a.length >= 4 && n.includes(a); }) || null;
   }
   if (!c) return { customer: null, works: [], sum: 0, diff: null, exact: false, issues: ["Müşteri bulunamadı — listeden seçin"] };
-  const all = uninvoicedWorks(d, { customerId: c.id, to: inv.date || undefined });
+  const candidates = uninvoicedWorks(d, { customerId: c.id, to: inv.date || undefined });
+  const review = candidates.filter(w => workNet(w, d).issue);
+  const all = candidates.filter(w => !workNet(w, d).issue);
   const net = inv.net ?? (inv.total && inv.kdv != null ? inv.total - inv.kdv : null);
-  let pick = all, sum = r2(all.reduce((n, w) => n + workNet(w).net, 0)), exact = net != null && Math.abs(sum - net) < 1;
+  let pick = all, sum = r2(all.reduce((n, w) => n + workNet(w, d).net, 0)), exact = net != null && Math.abs(sum - net) < 1;
   if (!exact && net != null) {
     let acc = 0;
-    for (let i = 0; i < all.length; i++) { acc = r2(acc + workNet(all[i]).net); if (Math.abs(acc - net) < 1) { pick = all.slice(0, i + 1); sum = acc; exact = true; break; } }
+    for (let i = 0; i < all.length; i++) { acc = r2(acc + workNet(all[i], d).net); if (Math.abs(acc - net) < 1) { pick = all.slice(0, i + 1); sum = acc; exact = true; break; } }
   }
-  const issues = [];
+  const issues = review.length ? ['Hakediş kaynağı doğrulanamayan ' + review.length + ' iş otomatik eşleştirilmedi; kaynak işi ve hakedişi kontrol edin.'] : [];
   if (!all.length) issues.push("Bu müşterinin faturasız işi yok");
   else if (net != null && !exact) issues.push(`Faturadaki tutar (${net.toLocaleString("tr-TR")} ₺) faturasız işlerin toplamıyla (${sum.toLocaleString("tr-TR")} ₺) tutmuyor — işleri kontrol edin`);
   if (c && inv.buyer_tax_no && !digits(c.tax_no)) issues.push("Müşteri kartına vergi numarası yazılacak");
-  return { customer: c, works: pick.map((w) => w.id), candidates: all.map((w) => w.id), sum, net, diff: net != null ? r2(net - sum) : null, exact, issues };
+  return { customer: c, works: pick.map((w) => w.id), candidates: candidates.map((w) => w.id), review: review.map(w => w.id), sum, net, diff: net != null ? r2(net - sum) : null, exact, issues };
 }

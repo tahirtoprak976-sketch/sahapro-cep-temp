@@ -1,4 +1,5 @@
 import {workAmount,missingCustomerWorkPrice,workReviewContext} from './collect-core.js';
+import { claimWorkResolution } from './hakedis-finance.js';
 // Panodaki grafikler için saf hesaplar. Kayıt yazmaz, kullanıcıya gösterilecek özetleri üretir.
 // Gelir = fiyatı girilmiş işlerin değeri (KDV durumu kayıttan bilinmediği için "iş değeri" denir),
 // tahsilat = "Müşteriden Para Alındı" kasa kayıtları. Fiyatsız işler ayrıca sayılır; gizlenmez.
@@ -36,8 +37,9 @@ export function monthlySeries(data, opts = {}) {
     const r = rows.get(monthKey(w.date));
     if (!r) continue;
     r.works++;
+    if (claimWorkResolution(data, w).issue) r.financialReview = (r.financialReview || 0) + 1;
     if (!internal.has(w.customer_id) && missingCustomerWorkPrice(w,billed.has(w.id))) r.unpriced++;
-    r.work += toKurus(workAmount(w));
+    r.work += toKurus(workAmount(w, data));
     // Ücreti mazotla ödenen iş (ör. Kılıç): TL gelir SAYILMAZ, yalnız hak edilen litre tutulur.
     // Müşterinin verdiği mazot da araca konunca masraf sayılmaz (kasadan para çıkmaz). İkisi litre hesabında izlenir.
     const L = Number(w.customer_fuel_allowance_l) || 0;

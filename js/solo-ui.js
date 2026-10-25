@@ -1645,7 +1645,7 @@ async function quoteResult(ctx, d) {
         (!q.from || w.date >= q.from) &&
         (!q.to || w.date <= q.to),
     );
-  const rows = rules.quoteActualRows(quote, works),
+  const rows = rules.quoteActualRows(quote, works, d),
     t = table(
       [
         "Teklif kalemi",
@@ -1668,7 +1668,7 @@ async function quoteResult(ctx, d) {
     );
   root.innerHTML =
     appbar("Teklif / Gerçekleşen İş", "Teklif #" + quote.quote_no) +
-    `<form><div class="formgrid2">${fDate("Başlangıç", "from", q.from || "", false)}${fDate("Bitiş", "to", q.to || "", false)}</div><button class="btn">Karşılaştır</button></form><p class="notice">Yalnız iş türü adı ve birimi tam eşleşen satırlar karşılaştırılır. Eşleşmeyen işler kapsam kontrolü gerektirir. Birim fiyatlar birbirine eklenmez; götürü/alternatif satırlar için varsayımsal toplam yapılmaz. İş bedeli tahsilat değildir.</p>${toolbar()}<div data-quote-lines></div>${button("Müşteri Maliyet Analizi", "#/sonuc?customer_id=" + quote.customer_id)}`;
+    `<form><div class="formgrid2">${fDate("Başlangıç", "from", q.from || "", false)}${fDate("Bitiş", "to", q.to || "", false)}</div><button class="btn">Karşılaştır</button></form><p class="notice">Yalnız iş türü adı ve birimi tam eşleşen satırlar karşılaştırılır. Eşleşmeyen işler kapsam kontrolü gerektirir. Birim fiyatlar birbirine eklenmez; götürü/alternatif satırlar için varsayımsal toplam yapılmaz. İş bedeli tahsilat değildir.</p>${rows.some(r=>r.financial_review) ? ui.notice("warn", "Bazı işlerde hakediş kaynağı doğrulanamadı; net karşılaştırma hesaplanmadı. Kaynak işi ve hakedişi kontrol edin.") : ""}${toolbar()}<div data-quote-lines></div>${button("Müşteri Maliyet Analizi", "#/sonuc?customer_id=" + quote.customer_id)}`;
   qs("form", root).onsubmit = (e) => {
     e.preventDefault();
     go(
@@ -1712,7 +1712,7 @@ export function customerWorkRows(d, id, { from = "", subs = false } = {}) {
     .filter((w) => ids.has(w.customer_id) && (!from || String(w.date) >= from))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.created_at || "").localeCompare(String(a.created_at || "")))
     .map((w) => {
-      const amt = workAmount(w);
+      const amt = workAmount(w, d);
       const where = [nm("sites", w.site_id), nm("quarries", w.quarry_id) || w.quarry, nm("dump_sites", w.dump_site_id) || w.dump_area].filter(Boolean).join(" → ");
       return { id: w.id, priced:hasWorkPrice(w), date: w.date, vehicle: nm("vehicles", w.vehicle_id), qty: Number(w.quantity) || 0, unit: w.unit || "", type: w.work_type || "", where,
         sub: w.customer_id !== id ? nm("customers", w.customer_id) : "", amount: Number.isFinite(amt) && amt > 0 ? amt : 0,
@@ -1788,6 +1788,8 @@ async function customerDashboard(ctx, id, d) {
     const fmt1 = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
     sec.innerHTML = `<h2 style="margin:0 0 6px">📊 Müşteri panosu</h2>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${Object.entries(CR.PERIODS).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-dper="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-dsubs>Taşeronlar dahil</button>` : ""}</div>
+      ${R.scopeNote ? ui.notice("info", R.scopeNote) : ""}
+      ${R.financialIssues.length ? ui.notice("warn", `${R.financialIssues.length} işte hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; fatura öncesi Veri Sağlığı ve kaynak işi kontrol edin.`) : ""}
       ${PM.fuel ? `<div class="card" data-fuelpanel style="margin:0 0 10px;border-left:4px solid #c98a00;padding:12px">
         <div class="small strong">⛽ Mazot hesabı <span class="muted tiny">(tüm zamanlar · bugün itibarıyla)</span></div>
         <div class="row between" style="gap:8px;flex-wrap:wrap;margin-top:6px"><span>Hak edilen mazot</span><b>${fmt1(PM.fuel.earned)} L</b></div>
