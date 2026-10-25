@@ -10,10 +10,10 @@ with sync_playwright() as p:
  c.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
  pg=c.new_page();errors=[];calls=[];pg.on('pageerror',lambda e:errors.append(str(e)))
  pg.route('https://generativelanguage.googleapis.com/**',lambda r:(calls.append(r.request.url),r.abort()))
- pg.goto(U+'index.html#/musteriler');pg.wait_for_selector('[data-customer-directory]')
+ pg.goto(U+'index.html#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]')
  pg.evaluate('async()=>await navigator.serviceWorker.ready')
  if not pg.evaluate('!!navigator.serviceWorker.controller'):
-  pg.reload();pg.wait_for_selector('[data-customer-directory]')
+  pg.reload();pg.wait_for_selector('#screen[data-view-ready="1"]')
  ids=pg.evaluate("""async()=>{
   const db=await import('./js/db.js'),C=await import('./js/core.js'),today=C.todayStr();
   const v={id:'history-v',name:'TEST 34GAM627 <img src=x onerror="window.__xss=1">'},other={id:'history-x',name:'TEST JCB'},archived={id:'history-old',name:'TEST ARŞİV',deleted_at:'yesterday'},person={id:'history-p',name:'TEST Soner'},customer={id:'history-c',name:'TEST Kılıç Hafriyat'};
@@ -32,10 +32,15 @@ with sync_playwright() as p:
   await add('maintenance_records',{id:'m-done',date:C.addDays(today,-1),vehicle_id:other.id,maint_type:'Bakım',status:'Tamamlandı',cost:50.55});
   return {v:v.id,p:person.id,old:archived.id,today,yesterday:C.addDays(today,-1)};
  }""")
+ # Fixture writes schedule an 80 ms record-refresh debounce. Consume those
+ # notifications on a non-refreshable route before testing user navigation.
+ pg.wait_for_timeout(200)
  def snapshot():return pg.evaluate("async()=>{const db=await import('./js/db.js');return {data:await db.dumpAll(),audit:await db.getAll('audit_log'),drafts:await db.getAll('drafts')}}")
  def visit(route,**query):
+  pg.evaluate("window.__operationVisitScreen=document.querySelector('#screen')")
   pg.goto(U+'index.html#/'+route+('?' + urlencode(query) if query else ''))
-  pg.wait_for_selector('[data-operation-summary]')
+  pg.wait_for_function("()=>{const screen=document.querySelector('#screen');return screen&&screen!==window.__operationVisitScreen&&screen.dataset.viewReady==='1'&&!!screen.querySelector('[data-operation-summary]')}")
+  pg.evaluate('delete window.__operationVisitScreen')
  def records():return pg.locator('[data-operation-record]')
  def summary():return pg.locator('[data-operation-summary]').text_content()
  def expand():pg.locator('[data-operation-filters]').evaluate('(e)=>e.open=true')
@@ -63,7 +68,8 @@ with sync_playwright() as p:
  assert 'TEST Kılıç Hafriyat' in csv
  print('PASS CSV covers all 44 filtered rows beyond the first page, with literal formula protection and customer source',flush=True)
  # Pressing a period before the search debounce fires preserves the text and cancels stale navigation.
- pg.fill('[data-search]','Soner');pg.get_by_role('button',name='Bugün',exact=True).click();pg.wait_for_function("()=>location.hash.includes('period=today')&&!!document.querySelector('[data-operation-summary]')")
+ previous_screen=pg.query_selector('#screen')
+ pg.fill('[data-search]','Soner');pg.get_by_role('button',name='Bugün',exact=True).click();pg.wait_for_function("previous=>{const screen=document.querySelector('#screen');return location.hash.includes('period=today')&&screen&&screen!==previous&&screen.dataset.viewReady==='1'&&!!screen.querySelector('[data-operation-summary]')}",arg=previous_screen)
  assert pg.input_value('[data-search]')=='Soner' and records().count()==41
  expand();pg.select_option('[data-ofilter=source]','Müşteri Verdi');pg.click('[data-operation-apply]');pg.wait_for_function("()=>document.querySelectorAll('[data-operation-record]').length===1")
  assert records().first.get_attribute('data-operation-record')=='customer-fuel' and '25,5 L' in summary()

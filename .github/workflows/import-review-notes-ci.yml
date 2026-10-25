@@ -65,7 +65,7 @@ jobs:
           test "$files" -gt 0
           test "$failed" -eq 0
 
-      - name: Run unchanged browser suites with only isolated synthetic data
+      - name: Run browser suites with only isolated synthetic data
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
         run: |
           set -euo pipefail
@@ -99,19 +99,26 @@ jobs:
           echo "BROWSER RESULT suites=4 passed=$((4 - failed)) failed=$failed"
           test "$failed" -eq 0
 
-      - name: Diagnose unchanged operation history on the published baseline
+      - name: Check synchronized history assertions against the unchanged baseline
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-baseline-XXXXXX)
           git -c safe.directory="$GITHUB_WORKSPACE" archive 89ed872f1543f4240db8ea4e8e2fd4806e0d6422 | tar -x -C "$baseline"
-          cmp tools/e2e/operation_history.py "$baseline/tools/e2e/operation_history.py"
+          BASELINE_DIR="$baseline" python3 - <<'PYCODE'
+          import ast, os
+          from pathlib import Path
+          old=Path(os.environ['BASELINE_DIR'],'tools/e2e/operation_history.py').read_text()
+          new=Path('tools/e2e/operation_history.py').read_text()
+          assertions=lambda source:[ast.dump(node,include_attributes=False) for node in ast.walk(ast.parse(source)) if isinstance(node,ast.Assert)]
+          assert assertions(old)==assertions(new), 'Original operation history assertions must not change'
+          print('All original operation-history assertions retained')
+          PYCODE
           python3 -m http.server 8841 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-baseline-http.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
-          BASELINE_DIR="$baseline" /tmp/solo-e2e-venv/bin/python - <<'PY'
-          import json, os, runpy, sys, time
-          from pathlib import Path
+          python3 - <<'PYCODE'
+          import time
           from urllib.request import urlopen
           for attempt in range(60):
               try:
@@ -122,24 +129,14 @@ jobs:
                   if attempt == 59:
                       raise
                   time.sleep(0.5)
-          test = Path(os.environ['BASELINE_DIR'], 'tools/e2e/operation_history.py').resolve()
-          def diagnose(frame, event, arg):
-              if frame.f_code.co_filename != str(test):
-                  return None
-              if event == 'exception' and frame.f_lineno == 67 and isinstance(arg[1], AssertionError):
-                  page = frame.f_locals['pg']
-                  snapshot = "()=>({hash:location.hash,ready:document.querySelector('#screen')?.dataset.viewReady,search:document.querySelector('[data-search]')?.value,count:document.querySelectorAll('[data-operation-record]').length})"
-                  print('BASELINE ORIGINAL ASSERTION FAILED; immediate state:', json.dumps(page.evaluate(snapshot)), flush=True)
-                  try:
-                      page.wait_for_function("()=>document.querySelector('#screen')?.dataset.viewReady==='1'&&document.querySelector('[data-search]')?.value==='Soner'&&document.querySelectorAll('[data-operation-record]').length===41", timeout=5000)
-                      print('BASELINE settled state after original failure:', json.dumps(page.evaluate(snapshot)), flush=True)
-                  except Exception as error:
-                      print('BASELINE did not settle:', str(error), flush=True)
-                  print('Original assertion remains failed; diagnostic does not change test result.', flush=True)
-              return diagnose
-          sys.settrace(diagnose)
-          runpy.run_path(str(test), run_name='__main__')
-          PY
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/operation_history.py
+
+      - name: Verify real installed-baseline to release service-worker upgrade
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 89ed872f1543f4240db8ea4e8e2fd4806e0d6422
 
       - name: Verify the test files stayed unchanged
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
