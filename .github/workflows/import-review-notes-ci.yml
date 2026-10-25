@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Install the normal Linux browser test runtime
         id: runtime
@@ -97,6 +98,48 @@ jobs:
           done
           echo "BROWSER RESULT suites=4 passed=$((4 - failed)) failed=$failed"
           test "$failed" -eq 0
+
+      - name: Diagnose unchanged operation history on the published baseline
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 89ed872f1543f4240db8ea4e8e2fd4806e0d6422 | tar -x -C "$baseline"
+          cmp tools/e2e/operation_history.py "$baseline/tools/e2e/operation_history.py"
+          python3 -m http.server 8841 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-baseline-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          BASELINE_DIR="$baseline" /tmp/solo-e2e-venv/bin/python - <<'PY'
+          import json, os, runpy, sys, time
+          from pathlib import Path
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8841/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          test = Path(os.environ['BASELINE_DIR'], 'tools/e2e/operation_history.py').resolve()
+          def diagnose(frame, event, arg):
+              if frame.f_code.co_filename != str(test):
+                  return None
+              if event == 'exception' and frame.f_lineno == 67 and isinstance(arg[1], AssertionError):
+                  page = frame.f_locals['pg']
+                  snapshot = "()=>({hash:location.hash,ready:document.querySelector('#screen')?.dataset.viewReady,search:document.querySelector('[data-search]')?.value,count:document.querySelectorAll('[data-operation-record]').length})"
+                  print('BASELINE ORIGINAL ASSERTION FAILED; immediate state:', json.dumps(page.evaluate(snapshot)), flush=True)
+                  try:
+                      page.wait_for_function("()=>document.querySelector('#screen')?.dataset.viewReady==='1'&&document.querySelector('[data-search]')?.value==='Soner'&&document.querySelectorAll('[data-operation-record]').length===41", timeout=5000)
+                      print('BASELINE settled state after original failure:', json.dumps(page.evaluate(snapshot)), flush=True)
+                  except Exception as error:
+                      print('BASELINE did not settle:', str(error), flush=True)
+                  print('Original assertion remains failed; diagnostic does not change test result.', flush=True)
+              return diagnose
+          sys.settrace(diagnose)
+          runpy.run_path(str(test), run_name='__main__')
+          PY
 
       - name: Verify the test files stayed unchanged
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
