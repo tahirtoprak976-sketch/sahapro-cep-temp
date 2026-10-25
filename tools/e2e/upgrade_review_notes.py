@@ -103,6 +103,9 @@ def main():
                 super().end_headers()
 
             def do_GET(self):
+                # Chromium may preconnect before deployment and send its GET
+                # later. Choose the deployed tree per request, not TCP accept.
+                self.directory = str(state['root'])
                 # The deployment swaps happen within one second; do not allow a
                 # filesystem mtime comparison to disguise changed release bytes.
                 if 'If-Modified-Since' in self.headers:
