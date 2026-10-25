@@ -41,7 +41,9 @@ async()=>{
  let noMethod;try{noMethod=await E.savePayroll({date:today,period:per,personnel_id:person.id,kind:'Avans',amount:10});}catch(e){noMethod={error:e.message}};
  d=await db.dumpAll();r.payroll_missing_method={accepted:!!noMethod.id,cash_delta:d.cash_records.length-cashCount,bank_delta:d.bank_movements.length-bankCount};
  const normalWork=await db.saveNew('work_records',{date:today,customer_id:other.id,site_id:otherSite.id,vehicle_id:vehicle.id,work_type:'Hafriyat Nakliye',unit:'Sefer',quantity:1,price_snapshot:{amount:1000,unit_price:1000,kdv_rate:0,kdv_included:false}},'AUDIT');
- const h=await db.createHakedis({customer_id:other.id,site_id:otherSite.id,date_from:today,date_to:today,created_date:today,hakedis_no:1,status:'Taslak',grand_total:1000,items:[{work_record_id:normalWork.id,site_id:otherSite.id,vehicle_id:vehicle.id,unit:'Sefer',quantity:1,unit_price:1000,amount:1000,kdv_rate:0,kdv_included:false}]});await db.finalizeHakedis(h.id);
+ // Complete canonical synthetic claim; all ledger_links.py expectations remain unchanged.
+ const claimTotals=C.calcHakedisTotals([{work_record_id:normalWork.id,date:today,customer_id:other.id,site_id:otherSite.id,vehicle_id:vehicle.id,work_type:normalWork.work_type,unit:'Sefer',quantity:1,unit_price:1000,kdv_rate:0,kdv_included:false}]);
+ const h=await db.createHakedis({customer_id:other.id,site_id:otherSite.id,date_from:today,date_to:today,created_date:today,hakedis_no:1,status:'Taslak',subtotal:claimTotals.subtotal,kdv_total:claimTotals.kdv,grand_total:claimTotals.grand,items:claimTotals.lines});await db.finalizeHakedis(h.id);
  const recPlan=await E.saveReceivablePlan({hakedis_id:h.id,first_due:today,count:2,days:30});
  const receipt=await E.customerBankReceipt({customer_id:other.id,bank_account_id:bank.id,date:today,amount:200,note:'AUDIT Tahsilat'});
  d=await db.dumpAll();const beforeAllocation={bank:d.bank_movements.length,cash:d.cash_records.length,cari:d.cari_movements.length};
