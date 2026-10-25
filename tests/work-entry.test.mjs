@@ -60,6 +60,29 @@ const source = readFileSync(new URL('../js/m-work.js', import.meta.url), 'utf8')
 assert.match(source, /t: customerLabel\(c, customers\)/);
 assert.match(source, /form\.addEventListener\('change', scheduleDraft\)/);
 assert.match(source, /root\.isConnected && location\.hash === formHash/);
+assert.match(source, /siteSelect\.dataset\.workSiteOwner = ''/);
+const augmentation = readFileSync(new URL('../js/pro.js', import.meta.url), 'utf8');
+assert.match(augmentation, /if \(customer && site && !site\.hasAttribute\("data-work-site-owner"\)\)/);
+// Run the real generic customer/site augmentation. Only the explicit work
+// owner marker bypasses it; unrelated forms retain the existing strict filter.
+const genericBlock = augmentation.slice(augmentation.indexOf('async function formSemantics(ctx)'), augmentation.indexOf('  const cashType =', augmentation.indexOf('async function formSemantics(ctx)'))) + '\n}';
+for (const owned of [false, true]) {
+  const customer = {value:'A',addEventListener(_event, fn){this.change=fn;}};
+  const site = {value:owned?'legacy':'a',html:'original',hasAttribute:name=>owned&&name==='data-work-site-owner',
+    set innerHTML(value){this.html=value;this.value='';},get innerHTML(){return this.html;}};
+  let reads=0;
+  const run = vm.runInNewContext(genericBlock + ';formSemantics', {
+    qs:selector=>selector==='[name=customer_id]'?customer:site,esc:String,
+  });
+  await run({root:{},db:{listActive:async store=>{assert.equal(store,'sites');reads++;return sites;}}});
+  if (owned) {
+    assert.equal(reads,0);assert.equal(site.value,'legacy');assert.equal(site.innerHTML,'original');assert.equal(customer.change,undefined);
+  } else {
+    assert.equal(reads,1);assert.equal(site.value,'a');assert.ok(!site.innerHTML.includes('B site'));assert.ok(!site.innerHTML.includes('No owner'));
+    customer.value='B';customer.change();assert.equal(site.value,'');assert.ok(site.innerHTML.includes('B site'));assert.ok(!site.innerHTML.includes('A site'));
+  }
+}
+
 // Execute the real production initialization/drawing block with the real contract
 // engine; do not duplicate the price-scope decision in the test.
 const drawing = source.slice(source.indexOf('  const jobInit ='), source.indexOf('  const fuelPreview='));

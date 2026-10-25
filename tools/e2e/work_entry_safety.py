@@ -87,7 +87,7 @@ with sync_playwright() as playwright:
             if(!window.__draftMatched&&Date.now()<until)setTimeout(poll,25);
           })();
         }""", values)
-        page.wait_for_function('window.__draftMatched===true')
+        page.wait_for_function('()=>window.__draftMatched===true')
 
     def option_values():
         return page.locator('[name=site_id] option').evaluate_all(
@@ -145,7 +145,10 @@ with sync_playwright() as playwright:
         assert page.input_value('[name=quantity]') == ''
         assert page.input_value('[name=description]') == ''
         assert 'Yarım kalan iş taslağı yüklendi.' in page.locator('#screen').inner_text()
-        assert {ids['sa'], ids['sb'], ids['orphan']}.issubset(option_values())
+        # Existing pro.augment already filters the final DOM; the old defect
+        # proved here is draft replacement, not visible incompatible site choices.
+        assert ids['sb'] in option_values()
+        assert not {ids['sa'], ids['orphan']}.intersection(option_values())
         assert draft() == original_draft
         page.fill('[name=description]', 'TEST baseline B silently replaces A')
         wait_draft({'customer_id': ids['b'], 'description': 'TEST baseline B silently replaces A'})
@@ -156,7 +159,7 @@ with sync_playwright() as playwright:
         assert business_snapshot() == original_business
         assert not errors, errors
         assert not external_calls, external_calls
-        print('EXPECTED BASELINE VULNERABILITY REPRODUCED: unchanged v3.9.70 offers B without a conflict, falsely says draft resumed, exposes incompatible/orphan sites, then autosave replaces valuable A draft; zero business/audit writes', flush=True)
+        print('EXPECTED BASELINE VULNERABILITY REPRODUCED: unchanged v3.9.70 offers B without a conflict, falsely says draft resumed, then autosave replaces valuable A draft despite existing final-DOM site filtering; zero business/audit writes', flush=True)
         browser.close()
         sys.exit(0)
 

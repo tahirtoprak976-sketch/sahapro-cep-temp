@@ -1892,7 +1892,7 @@ async function formSemantics(ctx) {
   const { root, db } = ctx;
   const customer = qs("[name=customer_id]", root),
     site = qs("[name=site_id]", root);
-  if (customer && site) {
+  if (customer && site && !site.hasAttribute("data-work-site-owner")) {
     const sites = await db.listActive("sites"),
       current = site.value;
     const update = () => {

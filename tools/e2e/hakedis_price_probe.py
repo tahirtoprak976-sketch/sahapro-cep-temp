@@ -167,7 +167,10 @@ with sync_playwright() as p:
           await db.metaSet('crane_first_hour',500);await db.metaSet('crane_next_hour',null);
           return {paid:paid.id,blank:blank.id,crane:crane.id};}""", ids)
         def fetch_ui():
-            page.goto(base + "index.html?db=" + database + "#/hakedis/new")
+            # Reusing exactly the same hash URL can be a same-document navigation;
+            # the old form deliberately retains its captured settings. A changed
+            # query forces a new document while retaining the same synthetic DB.
+            page.goto(base + "index.html?db=" + database + "&probe_reload=" + uuid.uuid4().hex + "#/hakedis/new")
             page.wait_for_selector("[data-fetch]")
             page.select_option("[name=customer_id]", ids["customer"])
             page.click("[data-fetch]")
@@ -185,11 +188,24 @@ with sync_playwright() as p:
         page.evaluate("async()=>await(await import('./js/db.js')).metaSet('crane_next_hour',100)")
         fetch_ui()
         page.check('[data-chk="' + ui["crane"] + '"]')
-        assert not page.is_disabled("[data-create]"), "Existing valid settings fallback must work"
+        fallback_state = page.evaluate("""async()=>{const db=await import('./js/db.js');return {
+          first:await db.metaGet('crane_first_hour'),next:await db.metaGet('crane_next_hour'),
+          selected:[...document.querySelectorAll('[data-chk]:checked')].map(x=>x.dataset.chk),
+          errors:[...document.querySelectorAll('[data-hakedis-row-error]:not([hidden])')].map(x=>x.textContent),
+          total:document.querySelector('[data-total]').textContent};}""")
+        print("CRANE FALLBACK CHECK " + json.dumps(fallback_state, ensure_ascii=False), flush=True)
+        assert fallback_state["first"] == 500 and fallback_state["next"] == 100
+        assert not page.is_disabled("[data-create]"), "Existing valid settings fallback must work: " + json.dumps(fallback_state, ensure_ascii=False)
         for width in [320, 360, 768]:
             page.set_viewport_size({"width": width, "height": 800})
             assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1"), width
         output["ui_mixed_and_crane_settings"] = True
+        page.click("[data-create]")
+        page.click('.sheet [data-x="1"]')
+        page.wait_for_selector("[data-final]")
+        crane_saved = page.evaluate("""async id=>{const db=await import('./js/db.js');const h=(await db.getAll('hakedis')).find(h=>h.items.some(i=>i.work_record_id===id));return {first:h.items[0].first_hour_price,next:h.items[0].next_hour_price,total:h.grand_total};}""", ui["crane"])
+        assert crane_saved == {"first": 500, "next": 100, "total": 720}, crane_saved
+        output["ui_crane_fallback_snapshot"] = crane_saved
 
         pending = page.evaluate("""async ids=>{const db=await import('./js/db.js'),core=await import('./js/core.js');
           const w=await db.saveNew('work_records',{date:ids.date,customer_id:ids.customer,vehicle_id:ids.vehicle,work_type:'Makine Çalışması',quantity:2,unit:'Saat'});
@@ -203,7 +219,7 @@ with sync_playwright() as p:
         page.evaluate("()=>{const button=document.querySelector('[data-final]');button.click();button.click()}")
         assert page.locator(".sheet").count() == 1, "Double click must open one confirmation"
         page.evaluate("location.hash='#/isler'")
-        page.wait_for_function("document.querySelector('#screen')?.textContent.includes('İş Kayıtları')")
+        page.wait_for_function("()=>document.querySelector('#screen')?.textContent.includes('İş Kayıtları')")
         page.click('.sheet [data-x="1"]')
         assert financial_state() == before, "Departed view must not finalize or mutate any financial record"
         page.goto(base + "index.html?db=" + database + "#/hakedis/" + pending)

@@ -561,6 +561,7 @@ async function workForm(ctx, editId) {
   dynamicWork();
   const customerSelect = qs('select[name=customer_id]', form);
   const siteSelect = qs('select[name=site_id]', form);
+  siteSelect.dataset.workSiteOwner = ''; // Do not let generic form augmentation replace this owned control.
   const syncSites = () => {
     const cid = customerSelect.value;
     const keepOld = (!!rec || startKind === "draft") && cid === v.customer_id && siteSelect.value === v.site_id;

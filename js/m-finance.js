@@ -968,6 +968,7 @@ async function hakedisNew(ctx) {
     if (!ok || !root.isConnected) return;
     const tot = calcHakedisTotals(items, crane);
     const no = await db.nextSeq("hakedis");
+    if (!root.isConnected) return;
     const created = await db.saveNew(
       "hakedis",
       {
@@ -985,8 +986,10 @@ async function hakedisNew(ctx) {
       },
       "Hakediş taslak",
     );
-    toast("Hakediş #" + String(no).padStart(6, "0"), "ok");
-    go("#/hakedis/" + created.id);
+    if (root.isConnected) {
+      toast("Hakediş #" + String(no).padStart(6, "0"), "ok");
+      go("#/hakedis/" + created.id);
+    }
     } catch (e) {
       if (root.isConnected) { errorBox.textContent = e.message || 'Hakediş oluşturulamadı'; errorBox.hidden = false; }
     } finally {
