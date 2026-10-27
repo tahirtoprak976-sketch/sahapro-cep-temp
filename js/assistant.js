@@ -66,7 +66,7 @@ export async function screen(ctx) {
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
       <div data-turn-intent class="small" role="status" aria-live="polite" style="margin-top:8px">Yeni istek veya belge gönderebilirsiniz.</div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine><span><b>↻ Önceki sonucu düzelt</b><span style="display:block;margin-top:4px">“Müşteri Kaya olacak”, “2 sefer” gibi kısa düzeltmeler tanınır. Bu kutuyla seçimi değiştirebilirsiniz.</span><span class="muted tiny" style="display:block;margin-top:4px" data-refine-prev></span></span></label>
-      <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
+      <button class="btn primary block" style="margin-top:10px" data-ask disabled>🤖 Asistana Gönder</button>
       <button class="btn block" style="margin-top:8px" data-part-document>Yedek parça / garanti belgesi oku</button>
     </div>
     <div data-lastundo></div>
@@ -148,7 +148,7 @@ export async function screen(ctx) {
   const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f)||isDriverPDF(f);
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
   const prepareInput = f => isTransfer(f) ? f : isAudio(f) ? prepareAudioPreview(f) : prepareAttachment(f);
-  const showThumbs = () => {
+  const showThumbs = (save = true) => {
     const errorBox = qs("[data-attachment-error]", root); errorBox.hidden = !attachmentError; errorBox.textContent = attachmentError;
     qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
     const box = qs("[data-thumbs]", root);
@@ -160,7 +160,7 @@ export async function screen(ctx) {
         : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
       .join("");
     for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { filesGeneration++; filesPending=false; files.splice(Number(b.dataset.rm), 1); showThumbs(); });
-    persistFiles();
+    if (save) persistFiles();
   };
   let fileDraftT = null, fileDraftWrite = Promise.resolve(), switchingTask = false;
   const persistFiles = () => {
@@ -266,8 +266,8 @@ export async function screen(ctx) {
     } catch (e) { attachmentError = "Paylaşılan dosya alınamadı; özgün paylaşım önbellekte korunuyor. " + e.message; toast(attachmentError,"err"); }
   }
   if (!files.length) {
-    try { const { loadPendingFiles } = await import("./assistant-task-files.js"); files = await loadPendingFiles(db); showThumbs(); }
-    catch (e) { attachmentError = "Dosya taslağı okunamadı: " + (e.message || e); showThumbs(); }
+    try { const { loadPendingFiles } = await import("./assistant-task-files.js"); files = await loadPendingFiles(db); showThumbs(false); }
+    catch (e) { attachmentError = "Dosya taslağı okunamadı: " + (e.message || e); showThumbs(false); }
   }
   // Yarım kalan mesaj saklanır (internet yoksa veya ekran kapanırsa kaybolmaz)
   if (!msgEl.value) msgEl.value = (await db.metaGet("assistant_draft")) || "";
@@ -631,6 +631,8 @@ export async function screen(ctx) {
       for(const el of locked)if(el.isConnected)el.disabled=false;
     }
   });
+  // The visible button must not accept a click before async setup binds its handler.
+  qs('[data-ask]',root).disabled = false;
   // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)
   if (ctx.query?.hazir) {
     let t = "";
