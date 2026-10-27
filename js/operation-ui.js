@@ -54,7 +54,7 @@ export async function mountOperationDesk(ctx, holder, data) {
     ${workRows.length > 30 ? `<a class="btn block" href="${source("")}">İlk 30 gösteriliyor · tüm ${workRows.length} kaydı Saha Akışında aç</a>` : ""}`;
   else if (tab === "pending") body = `
     <p class="small muted">Şoför aktarımı, fiyat/fiş, belge/döküm, yakıt, personeldeki nakit ve bakım öncelikleri mevcut denetimlerden gelir. Her madde gerçek kaynağa gider.</p>
-    ${model.pending.map(x => `<a class="card" href="${esc(x.href)}"><div class="row between"><b>${esc(x.title)}</b>${x.kind === "alert" ? badge("Acil", "danger") : badge("Bekliyor", "warn")}</div><p class="small">${esc(x.why)}</p><span class="tiny">${esc(x.action)} →</span></a>`).join("") || '<div class="card">Seçili kapsamda bekleyen madde yok. Bu, tüm kayıtların eksiksiz olduğu anlamına gelmez.</div>'}`;
+    ${model.pending.map(x => `<a class="card operation-pending-card" href="${esc(x.href)}"><div class="operation-pending-head"><h3>${esc(x.title)}</h3>${x.kind === "alert" ? badge("Acil", "danger") : badge("Bekliyor", "warn")}</div><p class="operation-pending-description">${esc(x.why)}</p><span class="operation-pending-action"><span>${esc(x.action)}</span><span aria-hidden="true">→</span></span></a>`).join("") || '<div class="card">Seçili kapsamda bekleyen madde yok. Bu, tüm kayıtların eksiksiz olduğu anlamına gelmez.</div>'}`;
   else {
     const c = model.close.current, saved = model.close.saved, scoped = model.close.scoped;
     body = `
