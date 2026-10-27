@@ -40,7 +40,7 @@ SNAPSHOT = """async()=>{
 }"""
 
 
-def assert_preserved(before, after):
+def assert_preserved(before, after, upgraded=False):
     # Schema 7 is additive only: every pre-existing byte and table is still compared.
     # The only allowed shape difference is the newly created, empty review store.
     expected = copy.deepcopy(before)
@@ -49,6 +49,28 @@ def assert_preserved(before, after):
     for store in added:
         assert after['data'][store] == [], 'Upgrade must not create historical fuel evidence'
         expected['data'][store] = []
+    if upgraded:
+        old_marker = [r for r in before['meta'] if r['key'] == 'schema_version_current']
+        new_marker = [r for r in after['meta'] if r['key'] == 'schema_version_current']
+        assert old_marker == [{'key':'schema_version_current','value':6}]
+        assert new_marker == [{'key':'schema_version_current','value':7}]
+        print('PASS exact migration metadata transition: schema_version_current 6 -> 7', flush=True)
+        # This marker describes the opened schema, not a user record. No other
+        # metadata value, entity field or audit entry is normalized.
+        for row in expected['meta']:
+            if row['key'] == 'schema_version_current':
+                row['value'] = 7
+    if after != expected:
+        # Synthetic fixture only: name the exact delta before deciding whether a
+        # schema migration is intentional. Never hide arbitrary metadata edits.
+        def differences(left, right, path='snapshot'):
+            if isinstance(left, dict) and isinstance(right, dict):
+                return [d for key in sorted(set(left) | set(right))
+                        for d in differences(left.get(key), right.get(key), path+'.'+key)]
+            if left != right:
+                return [{'path':path, 'before':left, 'after':right}]
+            return []
+        print('Upgrade preservation differences: '+json.dumps(differences(expected, after)), flush=True)
     assert after == expected, 'Every old entity, metadata, draft and attachment byte must survive'
 
 
@@ -274,16 +296,22 @@ def main():
                 assert page.evaluate("window.__upgradeMarker===undefined")
                 assert page.evaluate("async()=>(await import('./js/core.js')).APP_VERSION") == new_version
                 assert page.input_value('[name=quantity]') == '3'
-                assert_preserved(before, page.evaluate(SNAPSHOT))
+                assert_preserved(before, page.evaluate(SNAPSHOT), upgraded=True)
                 schema = page.evaluate("""async()=>{
                   const db=await import('./js/db.js'),connection=await db.openDB();
                   const denied=await new Promise(resolve=>{const q=indexedDB.open(connection.name,6);q.onerror=()=>resolve(q.error.name);q.onsuccess=()=>{q.result.close();resolve('opened');};});
-                  const recovery=await new Promise((resolve,reject)=>{const q=indexedDB.open(connection.name+'_recovery',1);q.onerror=()=>reject(q.error);q.onsuccess=()=>{const c=q.result,r=c.transaction('snapshots').objectStore('snapshots').getAll();r.onsuccess=()=>{resolve(r.result.map(x=>x.version));c.close();};};});
+                  const recovery=await new Promise((resolve,reject)=>{const q=indexedDB.open(connection.name+'_recovery',1);q.onerror=()=>reject(q.error);q.onsuccess=()=>{const c=q.result,r=c.transaction('snapshots').objectStore('snapshots').getAll();r.onsuccess=()=>{resolve(r.result);c.close();};};});
+                  for(const snapshot of recovery)for(const row of snapshot.stores.attachments||[])if(row.blob){row.blob_bytes=Array.from(new Uint8Array(await row.blob.arrayBuffer()));delete row.blob;}
                   return {version:connection.version,denied,recovery,pending:await db.getAll('pending_fuel_records')};
                 }""")
                 assert schema['version'] == 7 and schema['pending'] == []
                 assert schema['denied'] == 'VersionError', 'An old schema6 writer must not reopen upgraded data'
-                assert 6 in schema['recovery'], 'Pre-upgrade schema6 recovery snapshot must exist'
+                recovery = [r for r in schema['recovery'] if r['version'] == 6]
+                assert len(recovery) == 1, 'Exactly one pre-upgrade schema6 recovery snapshot must exist'
+                old_stores = {**before['data'], 'meta':before['meta'],
+                              'attachments':before['attachments'], 'drafts':before['drafts']}
+                assert recovery[0]['stores'] == old_stores, 'Recovery preserves every original schema6 byte including the old schema marker'
+                print('PASS schema7 empty pending store; old schema6 writer rejected with VersionError; recovery contains exact old schema6 records/meta/drafts/attachment bytes', flush=True)
 
                 assert page.evaluate("localStorage.getItem('TEST-upgrade-preserved')") == 'same-value'
                 caches = page.evaluate('()=>caches.keys()')
@@ -318,7 +346,7 @@ def main():
                 page.wait_for_selector('[data-h-review-notes]')
                 assert page.locator('[data-h-review-notes] .history-source').text_content() == package['rows'][0]['review_notes']
                 assert page.input_value('[data-h-row="0"] [data-h-field=description]') == package['rows'][0]['description']
-                assert_preserved(before, page.evaluate(SNAPSHOT))
+                assert_preserved(before, page.evaluate(SNAPSHOT), upgraded=True)
                 assert not errors, errors
                 print('PASS same upgraded profile reopens offline with new separate review-note UI; preview writes nothing; no page errors', flush=True)
                 browser.close()

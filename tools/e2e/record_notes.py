@@ -17,10 +17,22 @@ with sync_playwright() as p:
  def state(pg):return pg.evaluate("async()=>{const d=await import('./js/db.js');return JSON.stringify({d:await d.dumpAll(),audit:await d.getAll('audit_log')})}")
  c,pg=profile();ids=seed(pg)
  legacy=pg.evaluate("""async x=>{const d=await import('./js/db.js');const f=await d.saveNew('fuel_records',{date:'2026-10-23',vehicle_id:x.ids.v,liters:43,fuel_source:'Depo Tankı',description:'Asistan: '+x.message},'TEST');const w=await d.saveNew('work_records',{date:'2026-10-22',customer_id:x.ids.a,vehicle_id:x.ids.man,personnel_id:x.ids.s,work_type:'Makine Çalışması',quantity:3.5,unit:'Saat',description:'parke verildi',internal_note:'Bildiren: TEST Soner · Asistan: '+x.message},'TEST');return {f:f.id,w:w.id}}""",{'ids':ids,'message':MSG})
- before=state(pg);pg.goto(U+'index.html#/yakit');pg.wait_for_selector('[data-operation-record]')
+ before=state(pg)
+ # Seed writes schedule the app's 80 ms record-refresh debounce. Drain it on the
+ # non-refreshable fixture route, as operation_history.py does, before clicking
+ # disclosures in the view under test. No source/content assertion is changed.
+ pg.wait_for_timeout(200)
+ pg.goto(U+'index.html#/yakit');pg.wait_for_selector('[data-operation-record]')
  note=pg.locator('[data-operation-record="'+legacy['f']+'"] [data-record-note]').inner_text();assert '43' in note and 'U(55)' in note and 'TEST Beta' not in note and '150 litre' not in note,note
  assert not pg.locator('[data-record-source]').evaluate('(el)=>el.open')
- pg.locator('[data-record-source] summary').click();assert 'TEST Beta' in pg.locator('[data-record-source]').inner_text()
+ pg.evaluate("window.__recordSourceRootBeforeClick=document.querySelector('#screen')")
+ try:
+  pg.locator('[data-record-source] summary').click();assert 'TEST Beta' in pg.locator('[data-record-source]').inner_text()
+ except AssertionError:
+  diagnostic=pg.evaluate("""()=>{const el=document.querySelector('[data-record-source]'),root=document.querySelector('#screen');return {hash:location.hash,open:el?.open,outerHTML:el?.outerHTML,visibleText:el?.innerText,viewReady:root?.dataset.viewReady,rootReplaced:root!==window.__recordSourceRootBeforeClick}}""")
+  print('RECORD SOURCE FAILURE DIAGNOSTIC '+json.dumps(diagnostic,ensure_ascii=False),flush=True)
+  raise
+ pg.evaluate('delete window.__recordSourceRootBeforeClick')
  assert pg.locator('[data-record-source] img').count()==0 and pg.evaluate('window.__sourceInjected||0')==0
  assert state(pg)==before,'merely viewing legacy notes must not write business/audit data'
  pg.goto(U+'index.html#/yakit?q=TEST Beta');pg.wait_for_selector('[data-operation-list]');assert pg.locator('[data-operation-record]').count()==0
