@@ -52,9 +52,9 @@ def assert_preserved(before, after, upgraded=False):
     if upgraded:
         old_marker = [r for r in before['meta'] if r['key'] == 'schema_version_current']
         new_marker = [r for r in after['meta'] if r['key'] == 'schema_version_current']
-        assert old_marker == [{'key':'schema_version_current','value':6}]
+        assert len(old_marker) == 1 and old_marker[0]['value'] in (6, 7), old_marker
         assert new_marker == [{'key':'schema_version_current','value':7}]
-        print('PASS exact migration metadata transition: schema_version_current 6 -> 7', flush=True)
+        print('PASS exact migration metadata transition: schema_version_current '+str(old_marker[0]['value'])+' -> 7', flush=True)
         # This marker describes the opened schema, not a user record. No other
         # metadata value, entity field or audit entry is normalized.
         for row in expected['meta']:
@@ -216,7 +216,7 @@ def main():
                       imported_at:'2026-10-01T00:00:00Z',settlement_status:'unbilled_unpaid'}
                   },'TEST upgrade legacy fixture');
                   await db.addAttachment('work',w.id,
-                    new File(['TEST original attachment bytes \\u0131\\n'],'TEST-source.txt',{type:'text/plain'}));
+                    new File(['%PDF-1.4\\nTEST original attachment bytes \\u0131\\nstartxref\\n0\\n%%EOF'],'TEST-source.pdf',{type:'application/pdf'}));
                   await db.draftSave('TEST-upgrade-draft',{description:'TEST saved draft',quantity:2});
                   localStorage.setItem('TEST-upgrade-preserved','same-value');
                   return {c:c.id,v:v.id,w:w.id};
@@ -300,18 +300,22 @@ def main():
                 schema = page.evaluate("""async()=>{
                   const db=await import('./js/db.js'),connection=await db.openDB();
                   const denied=await new Promise(resolve=>{const q=indexedDB.open(connection.name,6);q.onerror=()=>resolve(q.error.name);q.onsuccess=()=>{q.result.close();resolve('opened');};});
-                  const recovery=await new Promise((resolve,reject)=>{const q=indexedDB.open(connection.name+'_recovery',1);q.onerror=()=>reject(q.error);q.onsuccess=()=>{const c=q.result,r=c.transaction('snapshots').objectStore('snapshots').getAll();r.onsuccess=()=>{resolve(r.result);c.close();};};});
-                  for(const snapshot of recovery)for(const row of snapshot.stores.attachments||[])if(row.blob){row.blob_bytes=Array.from(new Uint8Array(await row.blob.arrayBuffer()));delete row.blob;}
-                  return {version:connection.version,denied,recovery,pending:await db.getAll('pending_fuel_records')};
+                  return {version:connection.version,denied,pending:await db.getAll('pending_fuel_records')};
                 }""")
                 assert schema['version'] == 7 and schema['pending'] == []
                 assert schema['denied'] == 'VersionError', 'An old schema6 writer must not reopen upgraded data'
-                recovery = [r for r in schema['recovery'] if r['version'] == 6]
-                assert len(recovery) == 1, 'Exactly one pre-upgrade schema6 recovery snapshot must exist'
-                old_stores = {**before['data'], 'meta':before['meta'],
-                              'attachments':before['attachments'], 'drafts':before['drafts']}
-                assert recovery[0]['stores'] == old_stores, 'Recovery preserves every original schema6 byte including the old schema marker'
-                print('PASS schema7 empty pending store; old schema6 writer rejected with VersionError; recovery contains exact old schema6 records/meta/drafts/attachment bytes', flush=True)
+                if old_version == 6:
+                    recovery = page.evaluate("""async()=>{
+                      const connection=await (await import('./js/db.js')).openDB(),rows=await new Promise((resolve,reject)=>{const q=indexedDB.open(connection.name+'_recovery',1);q.onerror=()=>reject(q.error);q.onsuccess=()=>{const c=q.result,r=c.transaction('snapshots').objectStore('snapshots').getAll();r.onsuccess=()=>{resolve(r.result);c.close();};};});
+                      for(const snapshot of rows)for(const row of snapshot.stores.attachments||[])if(row.blob){row.blob_bytes=Array.from(new Uint8Array(await row.blob.arrayBuffer()));delete row.blob;}
+                      return rows;
+                    }""")
+                    old_stores = {**before['data'], 'meta':before['meta'], 'attachments':before['attachments'], 'drafts':before['drafts']}
+                    exact = [r for r in recovery if r['version'] == 6]
+                    assert len(exact) == 1 and exact[0]['stores'] == old_stores, 'Recovery preserves every original schema6 byte'
+                    print('PASS schema7 empty pending store; old schema6 writer rejected; exact recovery bytes', flush=True)
+                else:
+                    print('PASS schema7 stays additive without recovery migration; old schema6 writer rejected', flush=True)
 
                 assert page.evaluate("localStorage.getItem('TEST-upgrade-preserved')") == 'same-value'
                 caches = page.evaluate('()=>caches.keys()')

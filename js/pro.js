@@ -1,4 +1,5 @@
 import { attachmentHTML } from "./attachment-ui.js";
+import {financialResultText,financialResultWarning} from './cost-completeness.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 import {recordNoteText} from './record-notes.js';
 import {recordSourceHTML} from './record-notes-ui.js';
@@ -1857,14 +1858,15 @@ async function managementReport(ctx, names) {
   const { root, db } = ctx,
     data = await db.dumpAll(),
     p = operatingResult(data);
+  const resultWarning = financialResultWarning(p);
   const table = {
-    warning: p.pendingFuel?.warning||"",
+    warning: resultWarning,
     headers: ["Gösterge", "Değer"],
     rows: [
       ["Kesinleşmiş Gelir (KDV Hariç)", core.fmtTL(p.revenue) + " TL"],
       ["KDV Ayrımı Bilinen Maliyet", core.fmtTL(p.known_cost) + " TL"],
       ["KDV Ayrımı Olmayan Brüt Maliyet", core.fmtTL(p.unknown_cost) + " TL"],
-      ["Geçici Operasyon Sonucu", p.pendingFuel?.count?"Hesaplanamadı — yakıt mutabakat bekliyor":core.fmtTL(p.provisional_result) + " TL"],
+      ["Geçici Operasyon Sonucu", financialResultText(p,value=>core.fmtTL(value)+" TL")],
     ],
   };
   const spec = {
@@ -1872,7 +1874,7 @@ async function managementReport(ctx, names) {
     audience: "internal",
     sections: [
       {
-        text: (p.pendingFuel?.count?p.pendingFuel.warning+" ":"")+"Muhasebe net kârı değildir. KDV ayrımı bilinmeyen maliyetler brüt düşülür. Eksik veya dağıtılmamış maliyetler sonucu etkiler. Dönem/müşteri/şantiye/araç bazında incelemek için Maliyet Analizi ekranını kullanın.",
+        text: (resultWarning?resultWarning+" ":"")+"Muhasebe net kârı değildir. KDV ayrımı bilinmeyen maliyetler brüt düşülür. Eksik veya dağıtılmamış maliyetler sonucu etkiler. Dönem/müşteri/şantiye/araç bazında incelemek için Maliyet Analizi ekranını kullanın.",
       },
       table,
     ],
@@ -1880,6 +1882,7 @@ async function managementReport(ctx, names) {
   root.innerHTML =
     appbar("Yönetici Raporu", "Kaynaklı operasyon sonucu") +
     exportBar() +
+    (resultWarning?ui.notice("warn",resultWarning):"") +
     '<div class="card">' +
     table.rows.map((p) => kv(...p)).join("") +
     '</div><button class="btn primary block" data-go="#/maliyet">Dönem / Müşteri / Şantiye Maliyet Analizi</button>';

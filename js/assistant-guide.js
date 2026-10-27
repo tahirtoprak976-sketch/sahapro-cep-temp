@@ -1,25 +1,6 @@
 import {qs,qsa,esc,confirmDialog,toast} from './ui.js';
-export const ASSISTANT_TASKS=[
- {id:'payment_agenda',group:'Rapor',title:'Kime ödeme yapacağım?',detail:'Alış belgelerinde kayıtlı vadeler ve bağlı ödemeler sonrası kalan borçlar. İnternetsiz çalışır.',text:'Kime ödeme yapacağım?'},
- {id:'overview',group:'Rapor',title:'İşletme panosu',detail:'Dönem seç, grafiğe dokun, kaynak kayıtlarını aç.',hash:'#/isletme-panosu'},
- {id:'priorities',group:'Kontrol',title:'Bugün ne yapmalıyım?',detail:'Tahsilat, personelde nakit, bakım ve eksik kayıtlar için nedenleriyle öncelik önerir. İnternetsiz çalışır.',text:'Bugün ne yapmalıyım?'},
- {id:'today',group:'Rapor',title:'Bugünkü durum',detail:'İş, tahsilat, maliyet ve ayrı birim özeti. İnternetsiz çalışır.',text:'Bugünkü durum'},
- {id:'month',group:'Rapor',title:'Bu ayın özeti',detail:'Rakamlar bu cihazdaki kayıtlardan hesaplanır.',text:'Bu ayın özeti'},
- {id:'week',group:'Rapor',title:'Son 7 günün özeti',detail:'İş sayısı, fiyatlı işler ve tahsilat.',text:'Son 7 günün özeti'},
- {id:'pending',group:'Kontrol',title:'Bekleyen işler',detail:'Fiyatı eksik işler ve inceleme adayları. PDF taslakları panoda.',text:'Bekleyen işler'},
- {id:'quantity',group:'Kayıt',title:'İş miktarını düzelt',detail:'Örneği doldurur. Kayıt seçimi, tutar önizlemesi ve onay gerekir.',text:'Dünkü işi 3 saat yap'},
- {id:'work',group:'Kayıt',title:'Yeni iş kaydı',detail:'Müşteri, araç, tarih ve miktarı sohbetle tamamla; kartı kontrol edip kaydet. İnternetsiz çalışır.',text:'Yeni iş kaydı oluştur'},
- {id:'cash',group:'Kayıt',title:'Tahsilat gir',detail:'Müşteri, tarih, tutar ve ödeme şeklini sohbetle tamamla; alınan para iş fiyatından ayrı kalır.',text:'Tahsilat gir'},
- {id:'customer_fuel',group:'Kayıt',title:'Müşterinin forkliftine mazot',detail:'Depodan düş ve müşteriye TL borç yaz. Tarih, müşteri, litre ve fiyatı kontrol edip onayla; internetsiz çalışır.',text:'Müşteri adının forkliftine 20 litre mazot verildi, litresi 45 TL'},
- {id:'fuel',group:'Kayıt',title:'Yakıt kaydı',detail:'Araç, litre, tarih ve kaynağı kontrol kartında sohbetle tamamla.',text:'Yeni yakıt kaydı oluştur'},
- {id:'expense',group:'Kayıt',title:'Gider kaydı',detail:'Tarih, tutar, kategori ve açıklamayı sohbetle tamamla; onaydan önce kaydedilmez.',text:'Yeni gider ekle'},
- {id:'maintenance',group:'Kayıt',title:'Bakım / arıza bildir',detail:'Araç, tarih ve açıklamayı sohbetle tamamla; kartı kontrol edip kaydet.',text:'Yeni bakım kaydı oluştur'},
- {id:'pdf',group:'Aktarım',title:'Geçmiş PDF aktarımı',detail:'İş, yakıt ve gider satırlarını oku; taslaktan devam et. İlk okuma Gemini gerektirir.',hash:'#/akilli-asistan/pdf-gecmis'},
- {id:'wa',group:'Aktarım',title:'WhatsApp grubu',detail:'Günün mesajlarını ve fotoğraflarını kontrol kartlarına hazırla.',hash:'#/whatsapp-toplu'},
- {id:'fuel_accounts',group:'Kontrol',title:'Mazot alacakları',detail:'Hak edilen, alınan ve kalan litreyi ayrı takip et.',hash:'#/mazot-hesaplari'},
- {id:'backup',group:'Kontrol',title:'Yedek ve geri yükleme',detail:'Yedekleri ayarlardan yönet; dosyaları ayrıca sakla.',hash:'#/ayarlar?tab=yedek'},
- {id:'health',group:'Kontrol',title:'Veri sağlığı',detail:'Eksik bağlantı ve yarım geri yüklemeleri incele.',hash:'#/veri-sagligi'},
-];
+import {CAPABILITY_CATALOG as ASSISTANT_TASKS} from './assistant-capabilities.js';
+export {ASSISTANT_TASKS};
 const fold=s=>String(s||'').toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i');
 export function searchAssistantTasks(query='',group=''){
  const q=fold(query).trim();return ASSISTANT_TASKS.filter(x=>(!group||x.group===group)&&fold(x.title+' '+x.detail+' '+(x.text||'')).includes(q));

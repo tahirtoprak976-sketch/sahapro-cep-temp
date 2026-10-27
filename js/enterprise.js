@@ -1,4 +1,5 @@
 import { downloadAttachment } from "./attachment-ui.js";
+import {financialResultText,financialResultWarning} from './cost-completeness.js';
 import * as core from "./core.js";
 import * as rules from "./enterprise-core.js";
 import * as actions from "./enterprise-db.js";
@@ -454,7 +455,7 @@ function initItems(root, d, items = []) {
 async function form(ctx, d) {
   const { root, parts, query } = ctx,
     route = parts[0],
-    date = core.todayStr(),
+    date = route === 'gun-kapanis' && query.date ? query.date : core.todayStr(),
     banks = opts(d, "bank_accounts");
   let title = MODULES[route]?.[1] || "Banka İşlemi",
     html = "",
@@ -1421,8 +1422,9 @@ async function costReport(ctx, d) {
       return;
     }
     const p = rules.operatingResult(d, f);
+    const resultWarning = financialResultWarning(p);
     table = {
-      warning: p.pendingFuel?.warning||"",
+      warning: resultWarning,
       headers: [
         "Tarih",
         "Maliyet Türü",
@@ -1452,11 +1454,11 @@ async function costReport(ctx, d) {
           ["Hakediş ve Sözleşme Geliri (KDV Hariç)", amount(p.revenue)],
           ["KDV Ayrımı Bilinen Maliyet", amount(p.known_cost)],
           ["KDV Ayrımı Olmayan Brüt Maliyet", amount(p.unknown_cost)],
-          ["Geçici Operasyon Sonucu", p.pendingFuel?.count?"Hesaplanamadı — yakıt mutabakat bekliyor":amount(p.provisional_result)],
+          ["Geçici Operasyon Sonucu", financialResultText(p,amount)],
         ],
       },
       {
-        text: (p.pendingFuel?.count?p.pendingFuel.warning+" ":"")+"Muhasebe net kârı değildir. Eksik/dağıtılmamış maliyetler sonucu etkiler. KDV ayrımı olmayan maliyetler ihtiyatlı olarak brüt düşülür. Genel giderler müşteri/şantiye filtresinde dağıtılmadıkça görünmez.",
+        text: (resultWarning?resultWarning+" ":"")+"Muhasebe net kârı değildir. Eksik/dağıtılmamış maliyetler sonucu etkiler. KDV ayrımı olmayan maliyetler ihtiyatlı olarak brüt düşülür. Genel giderler müşteri/şantiye filtresinde dağıtılmadıkça görünmez.",
       },
     ];
     qs("[data-cost-result]", root).innerHTML =

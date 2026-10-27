@@ -68,7 +68,12 @@ with sync_playwright() as p:
  print('PASS model-created 2 works + collection completed offline; ambiguous quantity asks target, ordinal changes only second work; cash stays separate; invalid date writes nothing and never calls model',flush=True)
  # Selected-card preflight checks all cards before the first write, using current DB references.
  pg.check('[data-kind=work][data-i="0"] [data-pick]');pg.check('[data-kind=collection] [data-pick]');pg.fill('[data-kind=collection] [name=date]','');pg.click('[data-save]');pg.locator('.toast').get_by_text('Tarih alanını tamamlayın.',exact=False).wait_for();assert state()==multi
- pg.fill('[data-kind=collection] [name=date]',ids['date']);pg.evaluate("async id=>{const db=await import('./js/db.js');await db.softDelete('customers',id,'TEST deleted in another tab')}",ids['a']);deleted=state()
+ pg.fill('[data-kind=collection] [name=date]',ids['date'])
+ # Use a genuinely deletable fresh customer; financial-history customers are protected.
+ fresh=pg.evaluate("async()=>await(await import('./js/db.js')).saveNew('customers',{name:'TEST removable preflight customer'},'TEST')")
+ pg.eval_on_selector('[data-kind=work][data-i="0"] [name=customer]',"(el,c)=>el.add(new Option(c.name,c.id))",fresh)
+ pg.select_option('[data-kind=work][data-i="0"] [name=customer]',fresh['id'])
+ pg.evaluate("async id=>await(await import('./js/db.js')).softDelete('customers',id,'TEST deleted in another tab')",fresh['id']);deleted=state()
  pg.click('[data-save]');pg.locator('.toast').get_by_text('artık kullanılamıyor',exact=False).wait_for();assert state()==deleted
  for width in [320,360,768]:pg.set_viewport_size({'width':width,'height':850});assert pg.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
  c.set_offline(False);send('Ödemelerim');assert pg.locator('[data-answer]').count()==1 and not pg.locator('[data-draft-workflow]').count() and state()==deleted and len(calls)==1

@@ -791,6 +791,7 @@ async function putPlainOp(store, fields, auditReason, op) {
   });
 }
 export async function saveNew(store, fields, auditReason, { op = null } = {}) {
+  if (store === 'work_records' && fields.plan_assignment_id) throw Error('Planlı iş, planla birlikte kaydedilmeli.');
   if(store==='pending_fuel_records')throw Error('Geçmiş yakıt yalnız açık onaylı toplu incelemeden oluşturulabilir.');
   if(store==='fuel_tank_movements'&&fields.fuel_record_id!=null)throw Error('Yakıt / depo eş bağlantısı yalnız yakıt işlemi içinde oluşturulabilir.');
   if(store==='expense_records'&&fields.dump_deposit&&fields.invoice_paid)throw Error('Döküm faturası kendiliğinden ödenmiş sayılamaz; gerçek yükleme veya açılış bakiyesi girin');
@@ -822,6 +823,59 @@ export async function saveNew(store, fields, auditReason, { op = null } = {}) {
   });
   recordsCommitted(connection.name,[store]);
   return rec;
+}
+
+// The plan revision, actual work, operation receipt and both audit rows commit together.
+export async function savePlannedWork(expectedPlan, fields) {
+  if (!expectedPlan?.id || fields.plan_assignment_id !== expectedPlan.id || fields.driver_entry_id)
+    throw Error('Plan ve iş kaynağı uyuşmuyor.');
+  const identity = structuredClone(fields);
+  if (identity.price_snapshot) delete identity.price_snapshot.snapshot_at;
+  const op = { id: 'shift-work:' + expectedPlan.id, hash: await opHash(identity) };
+  const prepared = await validateFields('work_records', fields);
+  const references = {customer_id:'customers',site_id:'sites',vehicle_id:'vehicles',personnel_id:'personnel',contractor_id:'contractors',dump_site_id:'dump_sites',quarry_id:'quarries'};
+  const stores = ['shift_assignments','work_records',...new Set(Object.values(references))];
+  const connection = await openDB();
+  return new Promise((resolve,reject) => {
+    const t = connection.transaction([...stores,'meta','audit_log'],'readwrite');
+    const receipt = t.objectStore('meta').get(OP + op.id);
+    let result, error, wrote = false;
+    readTransactionRows(t, stores, data => {
+      try {
+        const plan = data.shift_assignments.find(r => r.id === expectedPlan.id);
+        const previous = receipt.result?.value;
+        if (previous) {
+          if (previous.hash !== op.hash || previous.store !== 'work_records') throw opConflict(previous);
+          const work = data.work_records.find(r => r.id === previous.record_id && isActive(r));
+          if (!work || !plan || !isActive(plan) || plan.status === 'İptal' || plan.work_record_id !== work.id || work.plan_assignment_id !== plan.id)
+            throw Error('Önceki plan işleminin kaydı veya bağlantısı değişmiş; kayıtları inceleyin. Yeni iş oluşturulmadı.');
+          result = {...work,_existing:true};
+          return;
+        }
+        if (!plan || !isActive(plan) || plan.status !== 'Planlı' || plan.work_record_id)
+          throw Error('Plan artık açık değil veya işe bağlanmış. Yeni iş oluşturulmadı.');
+        if ([...new Set([...Object.keys(plan),...Object.keys(expectedPlan)])].some(k => changedField(plan,expectedPlan,k)))
+          throw Error('Plan başka sekmede değişti. Güncel planı açıp tekrar kontrol edin; yeni iş oluşturulmadı.');
+        if (data.work_records.some(r => isActive(r) && r.plan_assignment_id === plan.id))
+          throw Error('Bu plana ait iş zaten var; bağlantıyı inceleyin. Yeni iş oluşturulmadı.');
+        for (const [key,store] of Object.entries(references))
+          if (prepared[key] && !data[store].some(r => r.id === prepared[key] && isActive(r)))
+            throw Error('İlgili kayıt artık kullanılamıyor: ' + key);
+        if (prepared.site_id && !data.sites.some(s => s.id === prepared.site_id && s.customer_id === prepared.customer_id))
+          throw Error('Şantiye seçilen müşteriye ait değil.');
+        result = newRecord(prepared);
+        const updated = {...plan,status:'Tamamlandı',work_record_id:result.id,work_request_id:op.id,converted_at:nowISO(),updated_at:nowISO()};
+        t.objectStore('work_records').add(result);
+        t.objectStore('shift_assignments').put(updated);
+        opPut(t,op,'work_records',result.id);
+        for (const [entity,id,old,value] of [['work_records',result.id,null,result],['shift_assignments',plan.id,plan,updated]])
+          t.objectStore('audit_log').add({id:uuid(),entity,entity_id:id,action:old?'update':'create',old,new:value,reason:'Planlı görevden onaylı iş',at:nowISO()});
+        wrote = true;
+      } catch (e) { error=e;t.abort(); }
+    });
+    t.oncomplete = () => {if(wrote)recordsCommitted(connection.name,['work_records','shift_assignments']);resolve(result);};
+    t.onabort = t.onerror = event => reject(error || transactionError(t,event));
+  });
 }
 
 // Doğrulanmış şoför kayıtları: imzası bu telefonda doğrulanan (security.checkPayloads) şoför kaydı kimlikleri.

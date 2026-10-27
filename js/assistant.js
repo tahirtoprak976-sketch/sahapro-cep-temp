@@ -58,7 +58,7 @@ export async function screen(ctx) {
       <div class="tiny muted">Son 20 konuşma turu bu telefonda saklanır. Eski mesajlar güncel hesap yerine geçmez.</div>
       <label class="history-check small"><input type="checkbox" data-chat-context checked> Önceki sohbeti ve açık isteği Gemini ile bağlam olarak paylaş</label>
     </section>
-    <div data-agent-task></div><div class="card">
+    <div data-agent-task></div><div data-task-center></div><div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="3" placeholder="Ne yapmak istiyorsunuz? İşi anlatın; eksik bilgiyi birlikte tamamlayalım."></textarea></div>
       <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos></div>
       <p class="tiny muted">En fazla 20 dosya. SAHAPRO iş özeti PDF’ini (.sahapro.pdf) veya eski tek paketi (.sahapro.zip) seçmeniz yeterlidir; fotoğraflar içindedir. Eski .sahapro.txt yönteminde dosyayı ve bütün fotoğrafları birlikte ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
@@ -66,7 +66,7 @@ export async function screen(ctx) {
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
       <div data-turn-intent class="small" role="status" aria-live="polite" style="margin-top:8px">Yeni istek veya belge gönderebilirsiniz.</div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine><span><b>↻ Önceki sonucu düzelt</b><span style="display:block;margin-top:4px">“Müşteri Kaya olacak”, “2 sefer” gibi kısa düzeltmeler tanınır. Bu kutuyla seçimi değiştirebilirsiniz.</span><span class="muted tiny" style="display:block;margin-top:4px" data-refine-prev></span></span></label>
-      <button class="btn primary block" style="margin-top:10px" data-ask>🤖 Asistana Gönder</button>
+      <button class="btn primary block" style="margin-top:10px" data-ask disabled>🤖 Asistana Gönder</button>
       <button class="btn block" style="margin-top:8px" data-part-document>Yedek parça / garanti belgesi oku</button>
     </div>
     <div data-lastundo></div>
@@ -134,8 +134,13 @@ export async function screen(ctx) {
     box.innerHTML=activeTask&&['draft','clarify','applying','review'].includes(activeTask.status)?`<section class="card"><b>Devam eden istek</b><p class="small">${esc(activeTask.goal)}</p><p class="small">${esc(taskOpen(activeTask)?(activeTask.plan.questions||[]).join(' · ')||'Kontrol kartları onay bekliyor.':'Kayıt sonucu kontrol gerektiriyor. Eski plan otomatik tekrar uygulanmaz.')}</p>${taskOpen(activeTask)?'<button class="btn block" data-task-resume>İsteğe devam et</button><button class="btn block" data-task-cancel style="margin-top:6px">Bu isteği kapat</button>':''}</section>`:'';
     qs('[data-task-resume]',box)?.addEventListener('click',()=>{if(asking)return;if(!qs('[data-chat-context]',root).checked)return toast('Devam etmek için önceki sohbet ve açık istek bağlamını paylaş seçeneğini açın.','err');msgEl.value='Bu isteğe devam edelim; eksik bilgiyi sor.';msgEl.dispatchEvent(new Event('input',{bubbles:true}));qs('[data-ask]',root).click();});
     qs('[data-task-cancel]',box)?.addEventListener('click',async()=>{if(asking)return;try{activeTask=await transitionTask(db,activeTask,'cancelled','Kullanıcı açık isteği kapattı.');if(prev?.v._agentTask?.id===activeTask.id){prev=null;qs('[data-out]',root).innerHTML='';}paintTask();}catch(e){toast(e.message,'err');}});
+    ctx.taskCenterRefresh?.();
   };
   paintTask();
+  {
+    const { mountTaskCenter } = await import("./assistant-task-center-ui.js");
+    ctx.taskCenterRefresh = await mountTaskCenter(ctx, qs("[data-task-center]", root));
+  }
   ctx.assistantTaskChanged=task=>{activeTask=task;paintTask();};
   await mountBulkResume(ctx);
   let files = [], attachmentError = "", filesGeneration = 0, filesPending = false;
@@ -143,7 +148,7 @@ export async function screen(ctx) {
   const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f)||isDriverPDF(f);
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
   const prepareInput = f => isTransfer(f) ? f : isAudio(f) ? prepareAudioPreview(f) : prepareAttachment(f);
-  const showThumbs = () => {
+  const showThumbs = (save = true) => {
     const errorBox = qs("[data-attachment-error]", root); errorBox.hidden = !attachmentError; errorBox.textContent = attachmentError;
     qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
     const box = qs("[data-thumbs]", root);
@@ -155,6 +160,35 @@ export async function screen(ctx) {
         : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
       .join("");
     for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { filesGeneration++; filesPending=false; files.splice(Number(b.dataset.rm), 1); showThumbs(); });
+    if (save) persistFiles();
+  };
+  let fileDraftT = null, fileDraftWrite = Promise.resolve(), switchingTask = false;
+  const persistFiles = () => {
+    clearTimeout(fileDraftT);
+    fileDraftT = setTimeout(async () => {
+      if (!root.isConnected || switchingTask) return;
+      try { const { savePendingFiles } = await import("./assistant-task-files.js"); fileDraftWrite = savePendingFiles(db, [...files]); await fileDraftWrite; }
+      catch (e) {
+        const box = qs("[data-attachment-error]", root);
+        if (box) { box.hidden = false; box.textContent = "Dosya taslağı kalıcı saklanamadı: " + (e.message || e); }
+        toast("Dosya taslağı saklanamadı; içerik ekranda açıkken kaybolabilir. İşlem yazımı başlamadı.", "err");
+      }
+    }, 250);
+  };
+  ctx.prepareTaskSwitch = async () => {
+    if (asking || filesPending || switchingTask) throw Error('Açık işlem veya dosya doğrulaması tamamlanınca görevi değiştirin.');
+    switchingTask = true;
+    clearTimeout(fileDraftT);
+    try {
+      await fileDraftWrite;
+      if (activeTask && taskOpen(activeTask)) {
+        const current = await readTask(db);
+        if (!current || current.id !== activeTask.id || current.rev !== activeTask.rev) throw Error('Görev başka sekmede değişti; yeniden açın. Dosyalar korunuyor.');
+        const { saveTaskFiles } = await import('./assistant-task-files.js');
+        await saveTaskFiles(db,activeTask.id,[...files]);
+      }
+    } catch (e) { switchingTask = false; throw e; }
+    return () => { switchingTask = false; };
   };
   qs("[data-clearfiles]",root).onclick=()=>{filesGeneration++;filesPending=false;files=[];attachmentError="";photosIn.value="";showThumbs();};
   photosIn.addEventListener("change", async () => {
@@ -230,6 +264,10 @@ export async function screen(ctx) {
       showThumbs();
       if (msgEl.value || files.length) toast("Paylaşılan içerik alındı", "ok");
     } catch (e) { attachmentError = "Paylaşılan dosya alınamadı; özgün paylaşım önbellekte korunuyor. " + e.message; toast(attachmentError,"err"); }
+  }
+  if (!files.length) {
+    try { const { loadPendingFiles } = await import("./assistant-task-files.js"); files = await loadPendingFiles(db); showThumbs(false); }
+    catch (e) { attachmentError = "Dosya taslağı okunamadı: " + (e.message || e); showThumbs(false); }
   }
   // Yarım kalan mesaj saklanır (internet yoksa veya ekran kapanırsa kaybolmaz)
   if (!msgEl.value) msgEl.value = (await db.metaGet("assistant_draft")) || "";
@@ -564,6 +602,9 @@ export async function screen(ctx) {
       if(useAgent&&(!agentResult.legacy||taskForRun?.native)&&hasTaskProposal(plan)){
         const proposal=agentResult.legacy&&refine&&taskOpen(taskForRun)?{...agentResult,mode:'continue',task_id:taskForRun.id}:agentResult;
         activeTask=await saveTaskProposal(db,{epoch:chatTurn.epoch,previous:taskForRun,result:proposal,source:vmsg});
+        const { savePendingFiles, attachFilesToTask } = await import("./assistant-task-files.js");
+        await savePendingFiles(db, files);
+        await attachFilesToTask(db, activeTask.id);
         v._agentTask=activeTask;
         if(activeTask.native)v._draftOperation=v._draftOperation||'agent:'+activeTask.id;
         paintTask();
@@ -590,6 +631,8 @@ export async function screen(ctx) {
       for(const el of locked)if(el.isConnected)el.disabled=false;
     }
   });
+  // The visible button must not accept a click before async setup binds its handler.
+  qs('[data-ask]',root).disabled = false;
   // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)
   if (ctx.query?.hazir) {
     let t = "";

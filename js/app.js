@@ -71,6 +71,7 @@ const MODULES = {
   musteriler: crmScreen,
   santiyeler: crmScreen,
   belgeler: crmScreen,
+  "belge-bagla": crmScreen,
   tara: crmScreen,
   ara: crmScreen,
   ayarlar: crmScreen,
@@ -89,6 +90,7 @@ const SECTION = {
   gecmis: "isler",
   fisler: "fisler",
   belgeler: "fisler",
+  "belge-bagla": "fisler",
   tara: "fisler",
   finans: "finans",
   // Finans girişleri ve alt defterleri aynı alt menüde kalır.

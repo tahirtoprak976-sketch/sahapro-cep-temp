@@ -210,6 +210,7 @@ async function dashboard(ctx) {
     </section>
 
     <div data-brief style="margin-top:12px"></div>
+    <div data-operation-desk-mount style="margin-top:12px"></div>
     <div data-yonetim></div>
     ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="card tap" data-board-all><div class="row between"><span class="small">+${board.items.length - 6} madde daha</span><span class="muted small">tümü ›</span></div></div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
@@ -303,6 +304,22 @@ async function dashboard(ctx) {
       <button class="btn primary grow" data-go="#/gunsonu">🌙 Günü Kapat</button>
       <button class="btn grow" data-go="#/yonetici">📊 Yönetici</button>
     </div>`;
+
+  {
+    const holder = qs("[data-operation-desk-mount]", root);
+    if (holder) {
+      try {
+        const operationData = { ...data };
+        for (const store of ["shift_assignments", "daily_closings", "attachments", "downtime_records", "meta"])
+          operationData[store] = (await db.getAll(store)) || [];
+        const { mountOperationDesk } = await import("./operation-ui.js");
+        await mountOperationDesk(ctx, holder, operationData);
+      } catch (e) {
+        holder.innerHTML = `<section class="card" data-operation-desk><div role="alert">Operasyon kayıtları okunamadı; boş veya sıfır kabul edilmedi. ${esc(e.message || e)}</div><button class="btn" data-op-reload>Yeniden dene</button></section>`;
+        qs("[data-op-reload]", holder)?.addEventListener("click", () => ctx.reload());
+      }
+    }
+  }
 
   // Ana ekrandaki asistan alanı: metin asistana taşınır ve oradan gönderilir (ekran açılışında yapay zekâ çağrısı yok)
   qs("[data-hero-go]", root)?.addEventListener("click", () => {

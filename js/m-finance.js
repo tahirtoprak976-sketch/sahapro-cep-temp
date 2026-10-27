@@ -377,6 +377,8 @@ async function quoteDetail(ctx, id) {
     return;
   }
   const tot = calcQuoteTotals(t);
+  const [{ dealChainModel }, { dealChainHtml }] = await Promise.all([import("./deal-chain-core.js"), import("./deal-chain-ui.js")]);
+  const chain = dealChainModel(await db.dumpAll(), id);
   root.innerHTML =
     appbar("Teklif #" + String(t.quote_no).padStart(4, "0"), trDate(t.date), {
       right: statusBadge(t.status || "Taslak"),
@@ -393,6 +395,7 @@ async function quoteDetail(ctx, id) {
       ${tot.show_total ? kv("Ara Toplam", fmtTL(tot.subtotal) + " ₺") + kv("KDV %" + tot.kdv_rate, fmtTL(tot.kdv) + " ₺") + kv("GENEL TOPLAM", fmtTL(tot.grand) + " ₺") : `<div class="notice info"><span>ℹ</span><span>${quoteTypeNote(t.type)}</span></div>`}
       ${t.notes ? kv("Notlar", t.notes) : ""}
     </div>
+    ${dealChainHtml(chain)}
     <div class="actionbar">
       <button class="btn primary" data-pdf>PDF</button>
       ${t.status === "Taslak" ? `<button class="btn" data-go="#/teklif/${id}/edit">Düzenle</button>` : ""}

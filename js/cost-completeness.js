@@ -15,3 +15,14 @@ export function costCompleteness({ pendingFuel = 0, dumpUnknown = 0 } = {}) {
     costIncompleteReason: reasons.map(r => r.label).join('; '),
   };
 }
+
+export function financialResultText(result, formatValue) {
+  if (result.costIncomplete) return `Hesaplanamadı — ${result.costIncompleteReason || 'maliyet eksik'}`;
+  return result.provisional_result == null ? 'Belirtilmedi' : formatValue(result.provisional_result);
+}
+
+export function financialResultWarning(result) {
+  return [result.pendingFuel?.warning, result.unknown_cost_count > 0
+    ? `${result.unknown_cost_count} maliyet satırında tutar veya kalan maliyet doğrulanmadı; bilinen gider ara toplamı gösteriliyor, sonuç hesaplanamadı.`
+    : ''].filter(Boolean).join(' ');
+}

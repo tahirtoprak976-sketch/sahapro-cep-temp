@@ -2,6 +2,7 @@
 import {uuid,nowISO} from './core.js';
 import {chatText} from './assistant-conversation.js';
 import {cleanAgentPlan} from './assistant-agent-core.js';
+import {CENTER_KEY,upsertTaskCenter} from './assistant-task-center.js';
 export const TASK_KEY='assistant_task_v1';
 const CHAT_KEY='assistant_conversation_v1';
 const states=new Set(['draft','clarify','applying','complete','review','cancelled']);
@@ -28,22 +29,25 @@ function assertCurrent(values,epoch,previous){
 export async function saveTaskProposal(db,{epoch,previous,result,source}){
  if(String(source).length>12000)throw Error('Bu görev çok uzadı. Kaydı kontrol edip yeni bir istek başlatın.');
  const plan=cleanAgentPlan(result.plan),status=(plan.questions||[]).length?'clarify':'draft';
- return db.metaTxn([TASK_KEY,CHAT_KEY],values=>{
+ return db.metaTxn([TASK_KEY,CHAT_KEY,CENTER_KEY],values=>{
   const current=assertCurrent(values,epoch,previous),continuing=result.mode==='continue';
   if(continuing&&(!taskOpen(current)||current.id!==result.task_id))throw stale();
   const task=cleanTask({version:1,id:continuing?current.id:uuid(),chat_id:epoch,rev:continuing?current.rev+1:1,status,native:continuing?current.native:!result.legacy||!!current?.native,goal:result.goal||current?.goal||'İşlem isteği',source,plan,updated_at:nowISO(),receipt:''});
-  if(!task)throw Error('Görev saklanamadı.');return {set:{[TASK_KEY]:task},result:task};
+  if(!task)throw Error('Görev saklanamadı.');
+  const center=upsertTaskCenter(values[CENTER_KEY],task,values[CHAT_KEY]);
+  return {set:{[TASK_KEY]:task,[CENTER_KEY]:center},result:task};
  });
 }
 export async function transitionTask(db,previous,status,receipt=''){
  if(!previous)return null;
  if(!states.has(status))throw Error('Geçersiz görev durumu');
- return db.metaTxn([TASK_KEY,CHAT_KEY],values=>{
+ return db.metaTxn([TASK_KEY,CHAT_KEY,CENTER_KEY],values=>{
   const current=assertCurrent(values,previous.chat_id,previous);
   const allowed=taskOpen(current)?['applying','cancelled']:current.status==='applying'?['complete','review']:[];
   if(!allowed.includes(status))throw Error('Bu görev artık uygulanamaz; kayıtları inceleyin.');
   const next={...current,rev:current.rev+1,status,updated_at:nowISO(),receipt:chatText(receipt,1000)};
-  return {set:{[TASK_KEY]:next},result:next};
+  const center=upsertTaskCenter(values[CENTER_KEY],next,values[CHAT_KEY]);
+  return {set:{[TASK_KEY]:next,[CENTER_KEY]:center},result:next};
  });
 }
 export function hasTaskProposal(plan){

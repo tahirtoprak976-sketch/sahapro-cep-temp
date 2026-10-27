@@ -1,4 +1,5 @@
 import {pendingFuelSummary} from './historical-fuel.js';
+import {costCompleteness} from './cost-completeness.js';
 import {linkedDumpExpenseIds} from "./dump-ledger-core.js";
 import { workForFinancialRead, claimWorkResolution } from './hakedis-finance.js';
 import { recognizedBill, pricedBill, applyAllocations } from "./ledger-policy.js";
@@ -437,14 +438,17 @@ export function operatingResult(data, f = {}) {
     unknown = costs
       .filter((r) => !r.known_tax)
       .reduce((s, r) => s + toKurus(r.gross), 0);
+  const unknownCostCount = costs.filter((r) => r.unverified || r.remaining_estimated_amount === null).length;
+  const completeness = costCompleteness({pendingFuel:pendingFuel.count,dumpUnknown:unknownCostCount});
   return {
+    ...completeness,
     revenue: fromKurus(revenueKurus),
     known_cost: fromKurus(knownCost),
     unknown_cost: fromKurus(unknown),
-    provisional_result: pendingFuel.count?null:fromKurus(revenueKurus - knownCost - unknown),
+    provisional_result: completeness.costIncomplete ? null : fromKurus(revenueKurus - knownCost - unknown),
     pendingFuel,
-    unknown_cost_count: costs.filter(r=>r.unverified || r.remaining_estimated_amount===null).length,
-    complete: !pendingFuel.count && unknown === 0 && !costs.some(r=>r.unverified || r.remaining_estimated_amount===null),
+    unknown_cost_count: unknownCostCount,
+    complete: !completeness.costIncomplete && unknown === 0,
     costs,
     revenue_rows: source,
   };

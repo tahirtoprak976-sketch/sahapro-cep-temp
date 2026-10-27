@@ -1,4 +1,5 @@
 import {pendingFuelSummary} from './historical-fuel.js';
+import {costCompleteness} from './cost-completeness.js';
 import { validateStoredPart } from "./parts-core.js";
 import { applyAllocations } from "./ledger-policy.js";
 // SOLO extensions: deterministic rules. No remote credentials or automatic financial writes.
@@ -332,12 +333,16 @@ export function resultReport(d, f = {}) {
             r.date === w.date),
       ),
   );
+  const unknownCostCount = costs.filter((r) => r.unverified || r.remaining_estimated_amount === null).length;
+  const completeness = costCompleteness({pendingFuel:original.pendingFuel?.count || 0,dumpUnknown:unknownCostCount});
   return {
     ...original,
+    ...completeness,
     costs,
     known_cost: fromKurus(known),
     unknown_cost: fromKurus(unknown),
-    provisional_result: original.pendingFuel?.count?null:fromKurus(toKurus(original.revenue) - known - unknown),
+    provisional_result: completeness.costIncomplete ? null : fromKurus(toKurus(original.revenue) - known - unknown),
+    unknown_cost_count: unknownCostCount,
     unbilled_value: fromKurus(
       priced.reduce((n, w) => n + toKurus(workFinancials(w).net_total || 0), 0),
     ),
