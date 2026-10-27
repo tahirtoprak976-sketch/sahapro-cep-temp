@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.76** — 27.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.77** — 27.10.2026
+
+Bağlantılı kartlar uygulamanın yazı rengini ve blok düzenini korur; ziyaret edilmiş kartlar morlaşmaz.
+Operasyon Masası'nın Bekleyenler görünümünde başlık, durum, açıklama ve kaynak işlemi ayrı gösterilir.
+Bu sürüm yalnız görünümü ve uygulama önbelleğini günceller; veri şeması ve hesaplama kuralları değişmez.
 
 Operasyon Masası, kimlik bağlantılı İş Dosyası, bağımsız asistan görevleri, ortak belge bağlama ve teklif zinciri:
 [v3.9.76 davranış ve doğrulama notları](docs/WORKFLOW_v3976.md).
