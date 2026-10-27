@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 // Esnaf hesabı: lastikçi, tamirci, kaynakçı gibi veresiye çalışılan ustaların borç takibi.
 // Mevcut tedarikçi / alış belgesi / tedarikçi ödemesi kayıtlarının üstünde basit bir ön yüzdür;
 // yeni veri türü eklemez. Alış belgesi = borç, tedarikçi ödemesi = ödeme.
@@ -362,7 +363,7 @@ function billSheet(ctx, d, s) {
     ${fText("Ne yapıldı / alındı?", "description", "", { req: true, ph: "ör. 2 lastik değişimi" })}
     ${fSelect("Kategori", "category", CATEGORIES, "Lastik", { empty: false })}
     ${fSelect("İlgili araç (ops.)", "vehicle_id", vehicles.map((v) => ({ v: v.id, t: v.name })), "")}
-    <div class="field"><label>Fiş fotoğrafı (ops.)</label><input type="file" name="photo" accept="image/*"></div>
+    <div class="field"><label>Fiş fotoğrafı (ops.)</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></div>
     ${fNum("KDV % (biliniyorsa; tutar KDV dahil)", "kdv_rate", "", { step: "any" })}
     <p class="muted small">KDV boşsa bilinmiyor kabul edilir, tahmin edilmez.</p>
     <button class="btn primary block" data-ok>Kaydet</button>`);
@@ -461,15 +462,7 @@ async function billDetail(ctx, e) {
     ${e.paid === 0 ? '<button class="btn danger block" style="margin-top:12px" data-cancel>Bu alışı iptal et</button>' : '<p class="muted small">Ödemesi olan alış iptal edilemez.</p>'}
     <button class="btn block" style="margin-top:8px" data-close>Kapat</button>`);
   const box = qs("[data-photos]", sh);
-  for (const a of atts)
-    if ((a.type || "").startsWith("image/")) {
-      const img = document.createElement("img");
-      img.src = URL.createObjectURL(a.blob);
-      img.alt = "Fiş";
-      img.style.cssText =
-        "width:100%;max-height:55vh;object-fit:contain;border-radius:10px;border:1px solid var(--border);margin-bottom:8px";
-      box.appendChild(img);
-    }
+  for (const a of atts) box.insertAdjacentHTML("beforeend", await attachmentHTML(a));
   qs("[data-close]", sh).addEventListener("click", () => sheetClose());
   qs("[data-cancel]", sh)?.addEventListener("click", async () => {
     sheetClose(true);

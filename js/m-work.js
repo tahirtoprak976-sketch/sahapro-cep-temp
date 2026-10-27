@@ -1,3 +1,6 @@
+import { prepareAttachment } from "./attachment-safety.js";
+import { enteredTonnageText } from "./work-tonnage.js";
+import { attachmentHTML } from "./attachment-ui.js";
 import {recordNoteHTML,recordSourceHTML} from './record-notes-ui.js';
 import {recordNoteText,recordLocalText,noteEditPatch} from './record-notes.js';
 import {bindWorkFuelPreview, workFuelState} from "./work-fuel-preview.js";
@@ -342,7 +345,7 @@ async function workForm(ctx, editId) {
       ${fSelect("Tonajın kapsamı (toplu seferde)","tonnage_scope",[{v:"unknown",t:"Bilinmiyor — tutar hesaplanamaz"},{v:"total",t:"Yazılan tonaj tüm seferlerin toplamı"},{v:"per_trip",t:"Yazılan tonaj bir sefer için"}],v.tonnage_scope||"unknown",{empty:false})}
       <div class="muted tiny">Bu bilgiler yalnız maliyet tahminidir. Tonaj boşsa yeni işte aracın sefer başı tahmini yükü × sefer sayısı × tarife saklanır; araç kartı veya tarife değişince eski tahmin yenilenmez. Toplu seferde yazılan tonajın kapsamı bilinmiyorsa tahmin yapılmaz. Gerçek kesintiyi Ortak Döküm Hesabına fişle girin; yalnız fişin kapsadığı seferin tahmini kaldırılır. Döküm dahil müşteri fiyatına ayrıca borç eklenmez.</div>
       <section class="card" style="margin:8px 0" data-slip-ai>
-        <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/*,application/pdf" multiple data-wfiles></div>
+        <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-wfiles></div>
         <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>
         <button type="button" class="btn block" style="margin-top:6px" data-wai>🤖 Gemini ile fişi oku (ton, fiş no, tarih, plaka)</button>
         <div data-wai-out></div>
@@ -388,14 +391,19 @@ async function workForm(ctx, editId) {
   form.addEventListener("input", () => { formDirty = true; });
   form.addEventListener("change", () => { formDirty = true; });
   // ---- Fiş fotoğrafı: işe eklenir; Gemini tonu ve fiş bilgisini okuyup boş alanları doldurur ----
-  let wfiles = [];
+  let wfiles = [], wfilesGeneration = 0, wfilesPending = false;
   const wIn = qs("[data-wfiles]", form), wOut = qs("[data-wai-out]", form);
-  wIn.addEventListener("change", () => {
-    wfiles = [...wIn.files].slice(0, 10);
+  wIn.addEventListener("change", async () => {
+    if (saving) return;
+    const generation = ++wfilesGeneration; wfilesPending = true;
+    try { const prepared = await Promise.all([...wIn.files].slice(0, 10).map(f => prepareAttachment(f))); if (generation !== wfilesGeneration) return; wfiles = prepared; }
+    catch (error) { if (generation === wfilesGeneration) { wIn.value = ""; toast(error.message,"err"); } return; }
+    finally { if (generation === wfilesGeneration) wfilesPending = false; }
     qs("[data-wthumbs]", form).innerHTML = wfiles.map((f) => (f.type.startsWith("image/") ? `<img src="${URL.createObjectURL(f)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : `<span class="chip">📄 ${esc(f.name)}</span>`)).join("");
   });
   qs("[data-wai]", form).addEventListener("click", async (ev) => {
     const b = ev.currentTarget;
+    if (wfilesPending) return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin", "err");
     const imgs = wfiles.filter((f) => f.type.startsWith("image/"));
     if (!imgs.length) return toast("Önce fiş fotoğrafı seçin", "err");
     const { geminiSettings, withModelFallback, geminiJson, blobToBase64, shrink } = await import("./ai-gemini.js");
@@ -651,6 +659,7 @@ async function workForm(ctx, editId) {
 
   qs("[data-save]", root).addEventListener("click", async () => {
     if (saving || copying) return;
+    if (wfilesPending) return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin", "err");
     saving = true;
     qs("[data-save]", root).disabled = true;
     clearTimeout(draftTimer);
@@ -969,7 +978,7 @@ async function workDetail(ctx, id) {
       ${w.dump_area ? kv("Döküm", w.dump_area) : ""}
       ${w.quarry ? kv("Ocak", w.quarry) : ""}
       ${w.slip_status ? kv("Fiş", w.slip_status + (w.slip_no ? " #" + w.slip_no : "")) : ""}
-      ${w.tonnage ? kv("Tonaj", fmtNum(w.tonnage) + " ton") : ""}
+      ${w.tonnage ? kv("Tonaj", enteredTonnageText(w)) : ""}
       ${w.dump_cost ? kv("Döküm maliyeti", fmtNum(w.dump_cost) + " ₺ (elle)") : ""}
       ${w.customer_fuel_allowance_l ? kv("Mazot karşılığı", fmtNum(w.customer_fuel_allowance_l) + " L" + (w.price_snapshot?.price_source === "Mazot karşılığı" ? " (ücret yalnız mazot)" : "")) : ""}
       ${recordNoteHTML(w,'description',names,'work',{source:false,label:'Açıklama'})}
@@ -981,11 +990,11 @@ async function workDetail(ctx, id) {
     </div>
     ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid ${slipChanges.length || sst.kind === "legacy" ? "#d9534f" : "#2e9e6b"}">${slipChanges.length ? notice("warn", "Bu iş, müşterinin imzaladığı fişten SONRA değiştirildi: " + slipChanges.join(" · ") + ". İmzalı fiş PDF'i imzalanan hâli gösterir; yeni hâl için revizyon fişiyle müşteriden yeniden imza alın.") : ""}${sst.kind === "legacy" ? notice("warn", "İmza anındaki içerik doğrulanamıyor (bu iş, imzalanan içerik saklanmadan kaydedildi). İmzalı fiş üretilemez; " + (sst.original ? "aşağıdaki orijinal PDF'e bakın ya da " : "") + "revizyon fişiyle yeniden imza alın.") : ""}<div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${sst.kind === "signed" && !slipChanges.length ? "ok" : "warn"}">${sst.kind === "signed" ? (slipChanges.length ? "imza sonrası değişti" : "imzalı") : sst.kind === "legacy" ? "imza içeriği doğrulanamıyor" : "imza yok"}</span></div>
       <div class="small muted">${esc(w.slip_receiver ? "Teslim alan: " + w.slip_receiver : "")}${w.slip_signed_at ? " · " + esc(new Date(w.slip_signed_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })) : ""} · şoför sahada imzalattı</div>
-      ${sst.original ? `<a class="btn block" style="margin-top:8px" href="${URL.createObjectURL(sst.original.blob)}" target="_blank" rel="noopener">📎 Orijinal fiş PDF (şoförün telefonunda üretilen)</a>` : ""}
+      ${sst.original ? await attachmentHTML(sst.original, {label:"📎 Orijinal fiş PDF (şoförün telefonunda üretilen)"}) : ""}
       ${sst.kind === "signed" || sst.kind === "unsigned" ? `<button class="btn block" style="margin-top:8px" data-dslip>📄 ${sst.kind === "signed" ? "İmzalı fiş PDF — imzalanan hâl" : "Fiş PDF (imzasız taslak)"}</button>` : ""}
       ${sst.kind === "legacy" || slipChanges.length ? `<button class="btn block" style="margin-top:8px" data-dslip-rev>📄 Revizyon fişi — güncel hâl (imzasız, yeniden imza için)</button>` : ""}</div>` : ""}
-    <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/*,application/pdf" multiple data-watt hidden></label></div>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${atts.map((a) => (String(a.type).startsWith("image/") ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"></a>` : `<a class="chip" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name)}</a>`)).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
+    <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-watt hidden></label></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${(await Promise.all(atts.map(a => attachmentHTML(a, {imageStyle:"width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"})))).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
     <a class="btn block" data-repeat-work href="#/isler/new?repeat=${esc(encodeURIComponent(w.id))}">＋ Benzer iş oluştur</a>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
     <div class="actionbar">
@@ -1018,7 +1027,8 @@ async function workDetail(ctx, id) {
   });
   if (ctx.query?.foto && qs("[data-watt]", root)) { const el = qs("[data-watt]", root); el.scrollIntoView({ block: "center" }); (el.closest("label") || el).style.outline = "3px solid var(--brand-orange,#f5a623)"; (el.closest("label") || el).scrollIntoView({ block: "center" }); }
   qs("[data-watt]", root)?.addEventListener("change", async (e) => {
-    for (const f of [...e.target.files].slice(0, 10)) await db.addAttachment("work", id, f, { kind: "slip_photo" });
+    try { const prepared = await Promise.all([...e.target.files].slice(0, 10).map(f => prepareAttachment(f))); for (const f of prepared) await db.addAttachment("work", id, f, { kind: "slip_photo" }); }
+    catch (error) { toast(error.message, "err"); return; }
     toast("Eklendi", "ok");
     ctx.reload();
   });
@@ -1447,12 +1457,7 @@ async function slipDetail(ctx, id) {
       ${s.status !== "İmzalandı" ? '<button class="btn danger" data-del>İptal</button>' : ""}
     </div>`;
 
-  if (sig) {
-    const url = URL.createObjectURL(sig.blob);
-    const img = qs("[data-sig]", root);
-    img.onload = () => URL.revokeObjectURL(url);
-    img.src = url;
-  }
+  if (sig) qs("[data-sig]", root).outerHTML = await attachmentHTML(sig, {imageStyle:"max-width:100%;height:100px;object-fit:contain"});
   const rv = qs("[data-revize]", root);
   if (rv)
     rv.addEventListener("click", async () => {

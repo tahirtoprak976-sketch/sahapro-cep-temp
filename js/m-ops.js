@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
 import {tankTimeline} from './tank-timeline.js';
 import {recordNoteHTML} from './record-notes-ui.js';
@@ -646,7 +647,7 @@ async function maintForm(ctx, editId) {
         ${fText("Servis/Firma (ops.)", "service_company", v.service_company || "")}
       </div>
       ${fText("KM / Çalışma Saati (ops.)", "km_hours", v.km_hours || "")}
-      <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/*"></div>
+      <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   bindSafeFormSave(root,db,async save => {
@@ -718,7 +719,7 @@ async function maintDetail(ctx, id) {
     </div>`;
   for (const img of qsa("[data-att]", root)) {
     const a = atts.find((x) => x.id === img.dataset.att);
-    if (a) img.src = URL.createObjectURL(a.blob);
+    if (a) { img.outerHTML = await attachmentHTML(a); continue; }
     img.addEventListener("click", () => {
       sheet(
         `<h3>Fotoğraf</h3><img src="${img.src}" style="width:100%;border-radius:10px">`,
@@ -1029,16 +1030,15 @@ async function tankInSheet(ctx, m) {
     ${row("Petrolcü", sup || m.company)}${row("Fatura no", m.invoice_no)}${row("İrsaliye no", m.irsaliye_no)}${row("ETTN", m.ettn)}${row("Satıcı VKN", m.seller_tax_no)}
     ${(m.items || []).length ? `<div class="tiny muted" style="margin-top:6px">Kalemler: ${m.items.map((i) => esc(`${i.desc || ""} ${i.qty ?? ""} ${i.unit || ""}`.trim())).join(" · ")}</div>` : ""}
     <div class="section-title">Fatura / fotoğraf (${atts.length})</div>
-    <div data-att>${atts.map((a) => String(a.type).startsWith("image/")
-      ? `<a href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener"><img src="${URL.createObjectURL(a.blob)}" alt="fatura" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:6px"></a>`
-      : `<a class="btn block" href="${URL.createObjectURL(a.blob)}" target="_blank" rel="noopener">📄 ${esc(a.name || "Dosya")} — aç</a>`).join("") || '<div class="muted small">Fatura eklenmemiş.</div>'}</div>
-    <div class="field" style="margin-top:8px"><label>Fatura fotoğrafı / PDF ekle</label><input type="file" accept="image/*,application/pdf" data-addf></div>
+    <div data-att>${(await Promise.all(atts.map(a => attachmentHTML(a)))).join("") || '<div class="muted small">Fatura eklenmemiş.</div>'}</div>
+    <div class="field" style="margin-top:8px"><label>Fatura fotoğrafı / PDF ekle</label><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-addf></div>
     <button class="btn block" data-x>Kapat</button>`, { modal: true });
   qs("[data-x]", sh).onclick = () => sheetClose();
   qs("[data-addf]", sh).addEventListener("change", async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
-    await db.addAttachment("tank", m.id, f, { kind: "invoice" });
+    try { await db.addAttachment("tank", m.id, f, { kind: "invoice" }); }
+    catch (error) { toast(error.message, "err"); return; }
     toast("Eklendi", "ok");
     tankInSheet(ctx, m);
   });

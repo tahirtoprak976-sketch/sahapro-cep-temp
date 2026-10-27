@@ -5,6 +5,7 @@ import { customerLedgerMovements, customerOpenItems, customerOpenItemLabel, cheq
 import { customerStatement } from "./statement.js";
 import { customerFuelLedger, fuelRulesOf } from "./assistant-rules.js";
 import { claimWorkResolution } from './hakedis-finance.js';
+import { resolveWorkTonnage } from './work-tonnage.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -37,14 +38,14 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const billed=new Set(live(d,"hakedis").filter(h=>h.status==="Kesinleşti").flatMap(h=>(h.items||[]).map(i=>i.work_record_id)));
   const works = live(d, "work_records").filter((w) => ids.has(w.customer_id) && inR(w.date))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")))
-    .map((w) => ({
+    .map((w) => { const weight = resolveWorkTonnage(w); return {
       id: w.id, priced:hasWorkPrice(w), unpriced:missingCustomerWorkPrice(w,billed.has(w.id)), date: w.date, customer: w.customer_id !== id ? nm("customers", w.customer_id) : "", vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
       type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
       from: nm("quarries", w.quarry_id) || w.quarry || "", site: nm("sites", w.site_id), to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
-      tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", unit_price: w.price_snapshot?.unit_price==null || w.price_snapshot.unit_price==='' ? null : Number(w.price_snapshot.unit_price), amount: workAmount(w, d),
+      tonnage: weight.enteredTon == null ? 0 : weight.totalTon, enteredTonnage: weight.enteredTon, tonnageScope: weight.scope, tonnageUnknown: weight.uncertain, tonnagePerTrip: weight.scope === "per_trip" && weight.trips > 1, slip: w.slip_no || "", unit_price: w.price_snapshot?.unit_price==null || w.price_snapshot.unit_price==='' ? null : Number(w.price_snapshot.unit_price), amount: workAmount(w, d),
       fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil", locked: !!w.price_snapshot?.locked, note: w.description || "",
       kdv_included: w.price_snapshot ? !!w.price_snapshot.kdv_included : null, kdv_rate: w.price_snapshot?.kdv_rate ?? null,
-    }));
+    }; });
   const units = {};
   for (const w of works) units[w.unit] = r2((units[w.unit] || 0) + w.qty);
   const byType = {}, byVehicle = {};
@@ -103,7 +104,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
     .map(w => ({id: w.id, issue: claimWorkResolution(d, w).issue})).filter(r => r.issue);
   return {
     customer: me, parent, children, from, to, subs, scopeNote, financialIssues, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
-    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + w.tonnage, 0)), fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), fuelReceivedL: r2(fuelCollections.reduce((n, f) => n + f.liters, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
+    totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + (w.tonnage || 0), 0)), tonnageUnknown: works.filter(w => w.tonnageUnknown).length, tonnagePerTrip: works.filter(w => w.tonnagePerTrip).length, fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), fuelReceivedL: r2(fuelCollections.reduce((n, f) => n + f.liters, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
 
@@ -134,6 +135,10 @@ export function panelModel(R, label = "") {
 
 const unitsText = (u) => Object.entries(u).map(([k, q]) => `${fmt(q)} ${String(k).toLocaleLowerCase("tr-TR")}`).join(", ") || "—";
 
+// Ton totals use scope, while each original entered weight stays available for review.
+export const tonnageSummaryLabel = R => R.totals.tonnageUnknown ? "Bilinen ton (kapsamı doğrulanan)" : R.totals.tonnagePerTrip ? "Toplam ton (sefer başı dahil)" : "Toplam ton (fiş)";
+export const tonnageScopeNote = R => [R.totals.tonnageUnknown ? `${R.totals.tonnageUnknown} işte tonajın tek sefer mi toplam mı olduğu doğrulanmadı; bu işler ton toplamına katılmadı. Girilen özgün tonaj iş satırında korunur.` : "", R.totals.tonnagePerTrip ? "Sefer başı tonaj, kayıttaki sefer sayısıyla çarpıldı; tüm seferler ayrı ayrı tartılmış sayılmaz." : ""].filter(Boolean).join(" ");
+
 // PDF tanımı (document-engine bölümleri)
 export function customerReportSpec(R, { audience = "customer", chart = null, fuelChart = null, photos = [], company = "" } = {}) {
   const per = R.from ? `${trDate(R.from)} – ${trDate(R.to)}` : `Başlangıç – ${trDate(R.to)}`;
@@ -147,17 +152,18 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
   if (R.financialIssues?.length) S.push({ title: 'Kaynak kontrolü gerekli', layout: 'notice', text: `${R.financialIssues.length} işte hakediş kaynağı doğrulanamadı. Kayıtlı değerler korunarak gösterildi; fatura hazırlamadan önce kaynakları kontrol edin.` });
   S.push({ title: "Özet", layout: "totals", pairs: [
     ["İş sayısı", String(R.totals.works)], ["Miktar", unitsText(R.units)],
-    ...(R.totals.tonnage ? [["Toplam ton (fiş)", fmt(R.totals.tonnage) + " ton"]] : []),
+    ...(R.totals.tonnage ? [[tonnageSummaryLabel(R), fmt(R.totals.tonnage) + " ton"]] : []),
     ...(R.fuel ? [["Dönemde hak edilen mazot", fmt(R.totals.fuelL) + " L"], ["Mazot tahsilatı (dönem)", fmt(R.totals.fuelReceivedL) + " L"]] : []),
     ["İş tutarı (dönem, TL)", tl(R.totals.workTotal)], ["Tahsilat (dönem, TL)", tl(R.totals.collected)],
     ["Dönem başı devir", tl(R.statement.opening)], ["Dönem sonu bakiye", tl(R.statement.closing)],
   ] });
+  if (tonnageScopeNote(R)) S.push({title:"Tonaj kapsamı", layout:"notice", text:tonnageScopeNote(R)});
   if (fuelChart) S.push({ title: "Son 12 ay: hak edilen ve alınan mazot (L)", image: fuelChart, image_width: 760, max_h: 200 });
   if (chart) S.push({ title: "Son 12 ay: iş tutarı ve tahsilat (TL)", image: chart, image_width: 760, max_h: 200 });
-  S.push({ title: "İş Dökümü", headers: ["Tarih", "Araç", "Operatör", "İş", "Miktar", "Nereden → Nereye", "Malzeme", "Ton", "Fiş No", "Birim Fiyat", "Tutar"],
+  S.push({ title: "İş Dökümü", headers: ["Tarih", "Araç", "Operatör", "İş", "Miktar", "Nereden → Nereye", "Malzeme", R.totals.tonnagePerTrip || R.totals.tonnageUnknown ? "Toplam Ton" : "Ton", "Fiş No", "Birim Fiyat", "Tutar"],
     widths: [7, 9, 8, 11, 7, 17, 8, 5, 7, 8, 9],
     rows: R.works.map((w) => [trDate(w.date), w.vehicle, w.personnel, w.type + (w.customer ? ` [${w.customer}]` : ""), `${fmt(w.qty)} ${w.unit}`,
-      [w.from, w.site, w.to].filter(Boolean).join(" → "), w.material, w.tonnage ? fmt(w.tonnage) : "", w.slip,
+      [w.from, w.site, w.to].filter(Boolean).join(" → "), w.material, w.tonnageUnknown ? fmt(w.enteredTonnage) + " (kapsam?)" : w.tonnage ? fmt(w.tonnage) : "", w.slip,
       w.priced && w.unit_price!=null ? tl(w.unit_price) : "", w.amount || w.fuelL ? breakdownLabel(w) : w.included ? "Sözleşmeye dahil" : w.priced ? tl(0) : "fiyatsız"]) });
   S.push({ title: "İş türüne göre", headers: ["İş türü", "İş sayısı", "Miktar", R.fuel ? "Tutar / mazot" : "Tutar"], widths: [40, 15, 25, 20],
     rows: Object.entries(R.byType).map(([k, v]) => [k, String(v.count), unitsText(v.units), breakdownLabel(v)]) });

@@ -4,6 +4,7 @@
 import { isActive, transportVehicleType } from "./core.js";
 import { materials, payload, tripEstimate } from "./haul-core.js";
 import { DEFAULT_LOAD_TON, dumpFee } from "./dump-fees.js";
+import { resolveWorkTonnage } from "./work-tonnage.js";
 
 const live = (d, s) => (d?.[s] || []).filter(isActive);
 const r1 = (n) => Math.round(n * 10) / 10;
@@ -122,18 +123,22 @@ export function jobReport(d, site, { matOver = {}, calib = {}, today = "" } = {}
   const vehicles = Object.fromEntries(live(d, "vehicles").map((v) => [v.id, v]));
   const works = live(d, "work_records").filter((w) => w.site_id === site.id);
   const trucks = works.filter((w) => w.unit === "Sefer" && !w.job_extra); // ekstra seferler kazı metrajına girmez
-  // Fişteki ton kaç seferi kapsıyor? Bir kayıtta 5 sefer + tek fiş tonu (ör. 21 t) çoğu zaman TEK seferin fişidir.
-  // Kapsanan sefer sayısı = ton ÷ aracın sefer başı yükü (yuvarlanır, 1…sefer sayısı). Yük bilinmiyorsa ton tüm seferlerin toplamı sayılır.
-  const refTon = (v) => { if (!v) return 0; const pl = payload(v, { defaultTon: DEFAULT_LOAD_TON[transportVehicleType(v.type)] || 0 }); return pl?.ton || 0; };
-  const covers = (w) => { const q = Number(w.quantity) || 1, t = Number(w.tonnage) || 0, ref = refTon(vehicles[w.vehicle_id]); if (!(t > 0)) return 0; if (!(ref > 0)) return q; return Math.min(q, Math.max(1, Math.round(t / ref))); };
-  // aynı işte, aynı aracın kantarlı seferlerinin ortalama net tonu (sefer başı)
+  // Explicit total/per-trip scope is authoritative. Unknown scope is never guessed from vehicle capacity.
+  // Only scoped weights seed the same vehicle + material's per-trip scale average.
   const avgTon = {};
-  for (const w of trucks) if (Number(w.tonnage) > 0) { const a = (avgTon[w.vehicle_id] ||= { ton: 0, trips: 0 }); a.ton += Number(w.tonnage); a.trips += covers(w); }
+  for (const w of trucks) {
+    const weight = resolveWorkTonnage(w);
+    if (!weight.known || !(weight.trips > 0)) continue;
+    const key = w.vehicle_id + "|" + materialKeyOf(w, D);
+    const a = (avgTon[key] ||= { ton: 0, trips: 0 });
+    a.ton += weight.totalTon; a.trips += weight.trips;
+  }
   const src = { kantar: 0, "kantar-ort": 0, ogrenilmis: 0, kasa: 0, yok: 0 };
   const groups = {};
-  let est = 0, trips = 0, ton = 0, suspect = 0;
+  let est = 0, trips = 0, ton = 0, suspect = 0, tonnageUnknown = 0;
   const fallback = (w, v, m, key, n) => { // kantarı olmayan n sefer
-    if (avgTon[w.vehicle_id] && m.bank) { const t = (avgTon[w.vehicle_id].ton / avgTon[w.vehicle_id].trips) * n; return { m3: t / m.bank, s: "kantar-ort", t }; }
+    const average = avgTon[w.vehicle_id + "|" + key];
+    if (average && m.bank) { const t = (average.ton / average.trips) * n; return { m3: t / m.bank, s: "kantar-ort", t }; }
     if (calib[w.vehicle_id + "|" + key]?.m3_per_trip > 0) return { m3: calib[w.vehicle_id + "|" + key].m3_per_trip * n, s: "ogrenilmis", t: 0 };
     if (v) {
       const pl = payload(v, { defaultTon: DEFAULT_LOAD_TON[transportVehicleType(v.type)] || 0 });
@@ -148,11 +153,20 @@ export function jobReport(d, site, { matOver = {}, calib = {}, today = "" } = {}
     let m3 = null, s = "yok";
     const g = (groups[(w.vehicle_id || "") + "|" + key] ||= { vehicle_id: w.vehicle_id, vehicle: v?.name || "—", material: key, materialName: m.name, trips: 0, m3: 0, unknown: 0, kantar: 0 });
     g.trips += q;
-    if (Number(w.tonnage) > 0 && m.bank) {
-      const k = covers(w), per = Number(w.tonnage) / k;
-      if (per < 5 || per > 45) suspect += 1;
-      src.kantar += k; g.kantar += k; ton += Number(w.tonnage); est += Number(w.tonnage) / m.bank; g.m3 += Number(w.tonnage) / m.bank;
-      if (q > k) { const f = fallback(w, v, m, key, q - k); src[f.s] += q - k; ton += f.t; if (f.m3 != null) { est += f.m3; g.m3 += f.m3; } else g.unknown += q - k; }
+    const weight = resolveWorkTonnage(w);
+    if (weight.uncertain) {
+      tonnageUnknown += 1; src.yok += q; g.unknown += q;
+      continue; // Neither card guesses nor learned values may disguise an ambiguous entered weight.
+    }
+    if (weight.known) {
+      ton += weight.totalTon;
+      if (weight.perTripTon < 5 || weight.perTripTon > 45) suspect += 1;
+      if (m.bank) {
+        const measured = weight.measuredTrips;
+        src.kantar += measured; g.kantar += measured;
+        src["kantar-ort"] += q - measured;
+        est += weight.totalTon / m.bank; g.m3 += weight.totalTon / m.bank;
+      } else { src.yok += q; g.unknown += q; }
       continue;
     }
     const f = fallback(w, v, m, key, q); m3 = f.m3; s = f.s; ton += f.t;
@@ -170,16 +184,17 @@ export function jobReport(d, site, { matOver = {}, calib = {}, today = "" } = {}
   const included = { count: includedW.length, amount: r2(includedW.reduce((n, w) => n + amountOf(w), 0)), notJob: includedW.filter((w) => !isJobPriced(w) && amountOf(w) > 0).length };
   const meas = D?.measurement || null;
   const m3For = meas?.m3 > 0 ? Number(meas.m3) : null;
-  const money = D?.basis === "Götürü" ? { ...dealMoney(D, 1), estimated: false, charged: !!D.charge } : D?.basis === "m³" ? (m3For ? { ...dealMoney(D, m3For), estimated: false } : est > 0 ? { ...dealMoney(D, r1(est)), estimated: true } : null) : null;
+  const estimationIncomplete = src.yok > 0;
+  const money = D?.basis === "Götürü" ? { ...dealMoney(D, 1), estimated: false, charged: !!D.charge } : D?.basis === "m³" ? (m3For ? { ...dealMoney(D, m3For), estimated: false } : !estimationIncomplete && est > 0 ? { ...dealMoney(D, r1(est)), estimated: true } : null) : null;
   const lastDate = works.map((w) => w.date).filter(Boolean).sort().at(-1) || null;
   const idleDays = lastDate && today ? Math.round((new Date(today + "T12:00:00") - new Date(lastDate + "T12:00:00")) / 86400000) : null;
   const paid = r2(-live(d, "cari_movements").filter((m) => m.customer_id === site.customer_id && m.type === "Tahsilat" && (!D?.start_date || m.date >= D.start_date)).reduce((n, m) => n + (Number(m.amount) || 0), 0));
-  const base = m3For || (est > 0 ? est : null);
+  const base = m3For || (!estimationIncomplete && est > 0 ? est : null);
   const dumpCost = r2(works.reduce((n, w) => { try { const f = dumpFee(d, w); return n + (Number(f?.amount) || 0); } catch { return n; } }, 0));
   const scrap = r2((D?.scrap_sales || []).reduce((n, x) => n + (Number(x.amount) || 0), 0));
   const hoursIn = hoursW.filter((w) => !w.job_extra).reduce((n, w) => n + (Number(w.quantity) || 0), 0);
   return {
-    works: works.length, trips, ton: r1(ton), est: r1(est), src, suspect, groups: Object.values(groups).map((g) => ({ ...g, m3: r1(g.m3), perTrip: g.trips > g.unknown ? r1(g.m3 / (g.trips - g.unknown)) : null })),
+    works: works.length, trips, ton: r1(ton), est: r1(est), src, suspect, tonnageUnknown, estimationIncomplete, groups: Object.values(groups).map((g) => ({ ...g, m3: r1(g.m3), perTrip: g.trips > g.unknown ? r1(g.m3 / (g.trips - g.unknown)) : null })),
     hours: r1(hours), yev, machines: Object.values(machines), extras, included, money, measured: m3For,
     perTrip: base && trips ? r2(base / trips) : null, perHour: base && hoursIn ? r1(base / hoursIn) : null, hoursIncluded: r1(hoursIn), extraTrips: works.filter((w) => w.unit === "Sefer" && w.job_extra).reduce((n, w) => n + (Number(w.quantity) || 0), 0),
     ratio: m3For && est > 0 ? r2(m3For / est) : null, lastDate, idleDays, paid, dumpCost, scrap,

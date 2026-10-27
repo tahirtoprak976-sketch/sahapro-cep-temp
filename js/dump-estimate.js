@@ -1,6 +1,7 @@
 // A saved estimate is an assumption, never a receipt or a measured historical load.
 import { transportVehicleType } from './core.js';
 import { dumpTariffFor } from './dump-ledger-core.js';
+import { resolveWorkTonnage } from './work-tonnage.js';
 const round = n => Math.round(n * 100) / 100;
 export const DEFAULT_LOAD_TON = { TIR: 27, TRUCK: 22 };
 export function loadTon(vehicle) {
@@ -22,12 +23,12 @@ export function freezeDumpEstimate(work, site, vehicle, previous = null) {
   const trips = work.unit === 'Sefer' ? quantity : 1;
   const tonnage = Number(work.tonnage) > 0 ? Number(work.tonnage) : null;
   const scope = work.tonnage_scope || 'unknown';
-  let ton = null, missing = null;
-  if (tonnage && work.unit === 'Sefer' && trips > 1 && !['total','per_trip'].includes(scope)) missing = 'Tonajın tek sefer mi toplam mı olduğu doğrulanmadı';
-  else if (tonnage) ton = work.unit === 'Sefer' && scope === 'per_trip' ? tonnage * trips : tonnage;
-  else if (work.unit === 'Ton') ton = quantity;
-  else if (work.unit === 'Sefer' && load > 0) ton = load * trips;
-  else missing = 'Tahmini tonaj bilinmiyor';
+  const weight = resolveWorkTonnage(work);
+  let ton = weight.totalTon, missing = weight.reason;
+  if (!weight.known && !weight.uncertain) {
+    if (work.unit === 'Sefer' && load > 0) ton = load * trips;
+    else missing = 'Tahmini tonaj bilinmiyor';
+  }
   const manual = Number(work.dump_cost) > 0 ? round(Number(work.dump_cost)) : null;
   const fee = Number(tariff?.fee) || 0, unit = tariff?.fee_unit || '';
   const tariffKnown = old && old.site_id === work.dump_site_id && old.work_date === work.date ? old.tariff_known : !!(tariff?.rate_known);

@@ -1,3 +1,4 @@
+import { prepareAttachment } from "./attachment-safety.js";
 import { newRecord, uuid, stableStringify, nowISO, isActive } from "./core.js";
 import { transaction } from "./enterprise-db.js";
 import { sparePartFields } from "./parts-core.js";
@@ -22,35 +23,15 @@ export async function preparePartFiles(files = []) {
     if (!file.size || file.size > 15 * 1024 * 1024)
       throw Error("Her belge 0–15 MB arasında olmalı");
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const pdf =
-      bytes[0] === 37 &&
-      bytes[1] === 80 &&
-      bytes[2] === 68 &&
-      bytes[3] === 70 &&
-      bytes[4] === 45;
-    const imageType=bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':
-      [137,80,78,71,13,10,26,10].every((b,i)=>bytes[i]===b)?'image/png':
-      String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP'?'image/webp':null;
-    if (!pdf) {
-      if (!imageType)
-        throw Error("JPEG, PNG, WebP veya PDF seçin");
-      try {
-        const bitmap = await createImageBitmap(new Blob([file],{type:imageType}));
-        const tooLarge=bitmap.width*bitmap.height>40000000;
-        bitmap.close();
-        if(tooLarge)throw Error('Fotoğraf 40 megapikselden büyük');
-      } catch {
-        throw Error("Fotoğraf açılamadı veya 40 megapikselden büyük; geçerli bir fotoğraf seçin");
-      }
-    }
+    const normalized = await prepareAttachment(file, { maxBytes:15*1024*1024 });
     const hash = [
       ...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
     ]
       .map((x) => x.toString(16).padStart(2, "0"))
       .join("");
     // Garanti/fatura kanıtı özgün çözünürlükte korunur; boyut sınırı girişte uygulanır.
-    const type=pdf?'application/pdf':imageType;
-    const blob = file.type===type?file:new Blob([file],{type});
+    const type=normalized.type;
+    const blob = normalized;
     result.push({
       id: uuid(),
       name: file.name || "belge",

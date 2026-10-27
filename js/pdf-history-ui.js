@@ -1,3 +1,4 @@
+import { prepareAttachment } from "./attachment-safety.js";
 import {pdfRowRecorded} from './pending-records.js';
 import { qs,qsa,esc,appbar,notice,toast,confirmDialog,todayStr } from './ui.js';
 import { WORK_TYPES,WORK_UNITS,EXPENSE_CATEGORIES,FUEL_SOURCES,isActive } from './core.js';
@@ -32,7 +33,7 @@ export async function screen(ctx) {
     const cached=await db.get('drafts','pdf_history_file:'+hash);
     const attachment=cached?.blob?null:(await db.attachmentsFor('document','pdf-history-'+hash)).find(x=>x.src_sha256===hash);
     const blob=cached?.blob||attachment?.blob;
-    if(blob){const candidate=new File([blob],cached?.name||attachment?.name||plan._file_name||'kaynak.pdf',{type:'application/pdf'});if(await P.pdfDigest(candidate)===hash)file=candidate;}
+    if(blob){const candidate=new File([blob],cached?.name||attachment?.name||plan._file_name||'kaynak.pdf',{type:'application/pdf'});if(await P.pdfDigest(candidate)===hash)file=await prepareAttachment(candidate,{pdfOnly:true});}
     if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=file?URL.createObjectURL(file):'';qs('[data-pdf-file]',root).value='';
     await draw();out.scrollIntoView({behavior:'smooth'});
    }catch(e){toast(e.message,'err');}finally{busy=false;read.disabled=false;}
@@ -162,7 +163,7 @@ export async function screen(ctx) {
  read.onclick=async()=>{
   if(busy)return;if(!file)return toast('PDF seçin.','err');busy=true;read.disabled=true;qs('[data-pdf-file]',root).disabled=true;
   try{
-   hash=await P.pdfDigest(file);if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(file);
+   file=await prepareAttachment(file,{pdfOnly:true});hash=await P.pdfDigest(file);if(blobUrl)URL.revokeObjectURL(blobUrl);blobUrl=URL.createObjectURL(file);
    const cached=await db.metaGet('pdf_history_draft:'+hash);
    if(cached?.version===1&&Array.isArray(cached.rows)){plan=cached;try{await keepFile();delete plan._file_warning;}catch(e){plan._file_warning=e.message;}await remember();await draw();return;}
    if(!qs('[data-pdf-consent]',root).checked)throw Error('PDF’nin Gemini’ye gönderilmesi için onay gerekli.');

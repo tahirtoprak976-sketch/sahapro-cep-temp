@@ -1,4 +1,5 @@
 import {workAmount,hasWorkPrice,missingCustomerWorkPrice} from "./collect-core.js";
+import { enteredTonnageText } from "./work-tonnage.js";
 import {
   messageWorkbench,
   memoryScreen,
@@ -1730,7 +1731,7 @@ export function customerWorkRows(d, id, { from = "", subs = false } = {}) {
       return { id: w.id, priced:hasWorkPrice(w), date: w.date, vehicle: nm("vehicles", w.vehicle_id), qty: Number(w.quantity) || 0, unit: w.unit || "", type: w.work_type || "", where,
         sub: w.customer_id !== id ? nm("customers", w.customer_id) : "", amount: Number.isFinite(amt) && amt > 0 ? amt : 0,
         fuelL: Number(w.customer_fuel_allowance_l) || 0, unpriced: missingCustomerWorkPrice(w,billed.has(w.id)), included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
-        tonnage: Number(w.tonnage) || 0, slip: w.slip_no || "", material: w.material || "" };
+        tonnage: Number(w.tonnage) || 0, tonnageLabel: enteredTonnageText(w), slip: w.slip_no || "", material: w.material || "" };
     });
   const units = {};
   for (const r of rows) units[r.unit] = Math.round(((units[r.unit] || 0) + r.qty) * 100) / 100;
@@ -1740,7 +1741,7 @@ export function customerWorksText(name, res, label) {
   const tr = (s) => (s ? String(s).slice(0, 10).split("-").reverse().join(".") : "");
   const tl = (n) => Number(n).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   const lines = [`*${name}* — Yapılan işler (${label})`, ""];
-  for (const r of [...res.rows].reverse()) lines.push(`${tr(r.date)} · ${r.vehicle || "-"} · ${tl(r.qty)} ${r.unit.toLocaleLowerCase("tr-TR")} ${r.type}${r.sub ? " [" + r.sub + "]" : ""}${r.where ? " (" + r.where + ")" : ""}${r.tonnage ? " · " + tl(r.tonnage) + " ton" : ""}${r.amount ? " · " + tl(r.amount) + " ₺" : ""}`);
+  for (const r of [...res.rows].reverse()) lines.push(`${tr(r.date)} · ${r.vehicle || "-"} · ${tl(r.qty)} ${r.unit.toLocaleLowerCase("tr-TR")} ${r.type}${r.sub ? " [" + r.sub + "]" : ""}${r.where ? " (" + r.where + ")" : ""}${r.tonnage ? " · " + (r.tonnageLabel || enteredTonnageText({...r,quantity:r.qty})) : ""}${r.amount ? " · " + tl(r.amount) + " ₺" : ""}`);
   lines.push("", "Toplam: " + Object.entries(res.units).map(([u, q]) => `${tl(q)} ${u.toLocaleLowerCase("tr-TR")}`).join(", ") + (res.amount ? ` · ${tl(res.amount)} ₺` : ""));
   return lines.join("\n");
 }
@@ -1767,7 +1768,7 @@ async function customerWorks(ctx, id, d) {
     sec.innerHTML = `<div class="row between" style="flex-wrap:wrap"><h2 style="margin:0">⚒ Yapılan işler</h2><span style="white-space:normal;overflow-wrap:anywhere" class="${bal > 0 || fuelBal > 0 ? "badge warn" : "badge ok"}">TL bakiye ${fmt(bal)} ₺${fuelBal > 0 ? ` · ⛽ ${fmt(fuelBal)} L mazot alacağı` : ""}</span></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin:8px 0">${Object.entries(PER).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-per="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-subs>Taşeronlar dahil</button>` : ""}</div>
       <p class="small"><b>${res.rows.length} iş</b> · ${Object.entries(res.units).map(([u, q]) => `${fmt(q)} ${esc(u.toLocaleLowerCase("tr-TR"))}`).join(" · ") || "—"}${res.amount ? ` · <b>${fmt(res.amount)} ₺</b>` : ""}${res.fuelL ? ` · ⛽ ${fmt(res.fuelL)} L mazot karşılığı` : ""}${res.unpriced ? ` · <span class="badge warn">${res.unpriced} fiyatsız</span>` : ""}</p>
-      ${res.rows.length ? res.rows.slice(0, limit).map((r) => `<div class="li" data-go="#/isler/${esc(r.id)}"><div class="ic">${r.unit === "Sefer" ? "🚚" : "⚙"}</div><div class="grow"><div class="t1 ellipsis">${esc(core.trDate(r.date))} · ${fmt(r.qty)} ${esc(r.unit.toLocaleLowerCase("tr-TR"))} ${esc(r.type)}${r.sub ? ` <span class="muted tiny">(${esc(r.sub)})</span>` : ""}</div><div class="t2 ellipsis">${esc([r.vehicle, r.where, r.material, r.tonnage ? fmt(r.tonnage) + " ton" : "", r.slip ? "fiş " + r.slip : ""].filter(Boolean).join(" · "))}</div></div><div class="end"><span class="amt">${r.amount ? fmt(r.amount) + " ₺" : r.fuelL ? "⛽ " + fmt(r.fuelL) + " L" : r.included ? "Sözleşmeye dahil" : r.priced ? "0 ₺" : '<span class="muted tiny">fiyatsız</span>'}</span></div></div>`).join("") : '<p class="muted small">Bu dönemde iş yok.</p>'}
+      ${res.rows.length ? res.rows.slice(0, limit).map((r) => `<div class="li" data-go="#/isler/${esc(r.id)}"><div class="ic">${r.unit === "Sefer" ? "🚚" : "⚙"}</div><div class="grow"><div class="t1 ellipsis">${esc(core.trDate(r.date))} · ${fmt(r.qty)} ${esc(r.unit.toLocaleLowerCase("tr-TR"))} ${esc(r.type)}${r.sub ? ` <span class="muted tiny">(${esc(r.sub)})</span>` : ""}</div><div class="t2 ellipsis">${esc([r.vehicle, r.where, r.material, r.tonnage ? r.tonnageLabel : "", r.slip ? "fiş " + r.slip : ""].filter(Boolean).join(" · "))}</div></div><div class="end"><span class="amt">${r.amount ? fmt(r.amount) + " ₺" : r.fuelL ? "⛽ " + fmt(r.fuelL) + " L" : r.included ? "Sözleşmeye dahil" : r.priced ? "0 ₺" : '<span class="muted tiny">fiyatsız</span>'}</span></div></div>`).join("") : '<p class="muted small">Bu dönemde iş yok.</p>'}
       ${res.rows.length > limit ? `<button class="btn block sm" data-more>+${res.rows.length - limit} iş daha</button>` : ""}
       <div class="row" style="gap:6px;margin-top:8px"><button class="btn grow" data-go="#/isler/new?customer_id=${esc(id)}">+ Bu müşteriye iş</button><button class="btn grow" data-wshare>📤 Listeyi paylaş</button><button class="btn grow" data-go="#/tahsilat/${esc(id)}">💰 Tahsilat</button></div>`;
     for (const b of sec.querySelectorAll("[data-per]")) b.onclick = () => { per = b.dataset.per; limit = 40; draw(); };
@@ -1819,8 +1820,9 @@ async function customerDashboard(ctx, id, d) {
       <div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">
         ${PM.fuel ? tile(fmt1(R.totals.fuelL) + " L", "Hak edilen mazot · " + rg.label, "accent") + tile(fmt1(R.totals.fuelReceivedL) + " L", "Mazot tahsilatı · " + rg.label, "ok") : ""}
         ${tile(fmt(R.totals.workTotal) + " ₺", "İş tutarı" + (PM.basis === "net" ? " (KDV hariç)" : PM.basis === "brut" ? " (KDV dahil)" : PM.basis === "mixed" ? " (karışık KDV)" : "") + " · " + rg.label, "accent")}${tile(fmt(R.totals.collected) + " ₺", "Tahsilat · " + rg.label, "ok")}
-        ${tile(String(R.totals.works), "İş sayısı · " + (Object.entries(R.units).map(([u, q]) => fmt(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "—"))}${R.totals.tonnage ? tile(fmt(R.totals.tonnage) + " ton", "Fişlerdeki ton · " + rg.label) : ""}
+        ${tile(String(R.totals.works), "İş sayısı · " + (Object.entries(R.units).map(([u, q]) => fmt(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "—"))}${R.totals.tonnage ? tile(fmt(R.totals.tonnage) + " ton", CR.tonnageSummaryLabel(R) + " · " + rg.label) : ""}
       </div>
+      ${CR.tonnageScopeNote(R) ? ui.notice(R.totals.tonnageUnknown ? "warn" : "info", CR.tonnageScopeNote(R)) : ""}
       ${PM.basisText ? `<div class="muted tiny">İş tutarı temeli: ${esc(PM.basisText)}. Bu tutar "KDV dahil alacak" değildir; KDV hakedişte eklenir.</div>` : ""}
       <div class="small strong" style="margin-top:10px">Güncel durum <span class="muted tiny">(tüm zamanlar · bugün itibarıyla, dönem seçiminden bağımsız)</span></div>
       <div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">

@@ -90,7 +90,7 @@ export async function screen(ctx) {
     const sh = sheet(`<h3>Faturayı kestim</h3>
       <div class="formgrid2"><div class="field"><label>Fatura no</label><input data-no placeholder="ör. GIB2026000000123"></div>
       <div class="field"><label>Fatura tarihi</label><input type="date" data-dt value="${today}"></div></div>
-      <div class="field"><label>Fatura PDF / görüntü (isteğe bağlı)</label><input type="file" accept="application/pdf,image/*" data-file></div>
+      <div class="field"><label>Fatura PDF / görüntü (isteğe bağlı)</label><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" data-file></div>
       <div class="small" style="margin:6px 0">${F.works.length} iş "faturalandı" işaretlenir · ${tl(F.payable)}</div>
       <div class="row" style="gap:8px"><button class="btn ghost grow" data-x>Vazgeç</button><button class="btn primary grow" data-ok>Kaydet</button></div>`, { modal: true });
     qs("[data-x]", sh).onclick = () => sheetClose();

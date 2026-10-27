@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 // İzin Talep ve Onay Formu (#/izinler/form/new?pid=…, #/izinler/form/{id}).
 // Form "İzin Formu" belgesi olarak tutulur (Belge Merkezi'nde de görünür). İmzalar telefonda parmakla atılır
 // (ek: record_type "leave_signature", kind "employee" / "approver") ya da form yazdırılıp ıslak imzalanır ve taranıp eklenir.
@@ -156,12 +157,12 @@ export async function formScreen(ctx) {
     <div class="section-title">İmzalar</div>
     <div class="card">
       <div class="row between"><span>👷 Personel${sig.employee ? ` <span class="tiny muted">· ${at(f.employee_signed_at)}</span>` : ""}</span>${sig.employee ? '<span class="badge ok">✓ İmzalı</span>' : ""}</div>
-      ${sig.employee ? `<img src="${URL.createObjectURL(sig.employee)}" alt="imza" style="height:60px;background:#fff;border-radius:6px;margin:4px 0">` : ""}
+      ${sig.employee ? await attachmentHTML({blob:sig.employee,name:"Çalışan imzası"},{imageStyle:"height:60px;background:#fff;border-radius:6px;margin:4px 0"}) : ""}
       ${st === "İptal" ? "" : `<button class="btn sm block" data-sign="employee" style="margin-top:4px">✍ ${sig.employee ? "Yeniden imzalat" : "Personele imzalat"}</button>`}
       <div class="divider"></div>
       <div class="field" style="margin:4px 0"><label>Onaylayan yetkili (ad soyad)</label><input data-apn value="${esc(approver)}" ${st === "Onay bekliyor" ? "" : "disabled"}></div>
       <div class="row between"><span>🏢 İşveren / yetkili${sig.approver ? ` <span class="tiny muted">· ${at(f.approver_signed_at)}</span>` : ""}</span>${sig.approver ? '<span class="badge ok">✓ İmzalı</span>' : ""}</div>
-      ${sig.approver ? `<img src="${URL.createObjectURL(sig.approver)}" alt="imza" style="height:60px;background:#fff;border-radius:6px;margin:4px 0">` : ""}
+      ${sig.approver ? await attachmentHTML({blob:sig.approver,name:"Onaylayan imzası"},{imageStyle:"height:60px;background:#fff;border-radius:6px;margin:4px 0"}) : ""}
       ${st === "İptal" ? "" : `<button class="btn sm block" data-sign="approver" style="margin-top:4px">✍ ${sig.approver ? "Yeniden imzala" : "Yetkili imzası"}</button>`}
     </div>
     ${st === "Onay bekliyor" ? `<div class="row" style="gap:8px;margin:8px 0"><button class="btn grow" data-rej>✗ Reddet</button><button class="btn primary grow" data-ok>✓ Onayla ve işle</button></div>` : ""}
@@ -170,7 +171,7 @@ export async function formScreen(ctx) {
     <div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn grow" data-pdf="print">🖨 Yazdır</button><button class="btn grow" data-pdf="share">📤 Paylaş</button><button class="btn grow" data-pdf="download">⬇ İndir</button></div>
     <div class="card" style="margin-top:8px">
       <div class="small"><b>Kâğıtla imza:</b> Formu yazdırın, personele ve yetkiliye ıslak imza attırın, sonra fotoğrafını çekip ekleyin. ${scans ? `<span class="badge ok">${scans} taranmış nüsha</span>` : ""}</div>
-      <label class="btn sm block" style="margin-top:6px;cursor:pointer">📎 Islak imzalı formun fotoğrafını ekle<input type="file" accept="image/*,application/pdf" data-scan hidden></label>
+      <label class="btn sm block" style="margin-top:6px;cursor:pointer">📎 Islak imzalı formun fotoğrafını ekle<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" data-scan hidden></label>
       ${scans ? `<button class="btn sm block ghost" data-go="#/belgeler/${esc(f.id)}" style="margin-top:6px">Taranmış nüshayı aç</button>` : ""}
     </div>
     <div class="row" style="gap:6px;margin:10px 0 80px"><button class="btn grow" data-go="#/izinler/${esc(f.owner_id)}">← ${esc(p?.name || "Personel")}</button><button class="btn grow" data-go="#/izinler">Tüm izinler</button></div>`;

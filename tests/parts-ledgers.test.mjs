@@ -1,3 +1,4 @@
+import {pdfBytes} from './support/attachment-fixtures.mjs';
 import assert from "node:assert/strict";
 import {
   sparePartFields,
@@ -310,7 +311,7 @@ assert.equal(
 );
 
 const { preparePartFiles } = await import("../js/parts-db.js");
-const pdf = new File(["%PDF-1.4\nTEST WARRANTY\n%%EOF"], "warranty.pdf", {
+const pdf = new File([pdfBytes()], "warranty.pdf", {
   type: "application/octet-stream",
 });
 const prepared = await preparePartFiles([pdf]);

@@ -121,12 +121,12 @@ test("ekstra iş: sözleşmedeki ekstra fiyatı (birim + ad), birden çok aday v
   assert.deepEqual(b, { site_id: "g", job_extra: true });
 });
 test("cariye yazılmış anlaşma kilitli sayılır", () => { assert.equal(J.isLocked({ charge: {} }), true); assert.equal(J.isLocked({ measurement: {} }), true); assert.equal(J.isLocked({}), false); });
-test("5 seferlik kayıtta tek fiş tonu: 1 sefer kantarlı sayılır, kalan 4 sefer o tonla tahmin edilir", () => {
+test("5 seferlik kayıtta açık sefer başı / toplam ton: kapsam onaylı, kalan seferler tahmini", () => {
   const s = site("s1", "c1", M3);
-  const d = base({ sites: [s], work_records: [{ id: "a", customer_id: "c1", site_id: "s1", vehicle_id: "v4", unit: "Sefer", quantity: 5, tonnage: 19.5 }] });
+  const d = base({ sites: [s], work_records: [{ id: "a", customer_id: "c1", site_id: "s1", vehicle_id: "v4", unit: "Sefer", quantity: 5, tonnage: 19.5, tonnage_scope: "per_trip" }] });
   const r = J.jobReport(d, s, {});
   assert.equal(r.src.kantar, 1); assert.equal(r.src["kantar-ort"], 4); assert.equal(r.est, 50); assert.equal(r.groups[0].perTrip, 10); assert.equal(r.suspect, 0);
-  const d2 = base({ sites: [s], work_records: [{ id: "a", customer_id: "c1", site_id: "s1", vehicle_id: "v4", unit: "Sefer", quantity: 5, tonnage: 97.5 }] });
+  const d2 = base({ sites: [s], work_records: [{ id: "a", customer_id: "c1", site_id: "s1", vehicle_id: "v4", unit: "Sefer", quantity: 5, tonnage: 97.5, tonnage_scope: "total" }] });
   const r2 = J.jobReport(d2, s, {}); assert.equal(r2.src.kantar, 5); assert.equal(r2.est, 50); // toplam ton yazılmışsa 5 seferi kapsar
   const d3 = base({ sites: [s], work_records: [{ id: "a", customer_id: "c1", site_id: "s1", vehicle_id: "v4", unit: "Sefer", quantity: 1, tonnage: 2 }] });
   assert.equal(J.jobReport(d3, s, {}).suspect, 1); // 2 ton bir sefer için şüpheli

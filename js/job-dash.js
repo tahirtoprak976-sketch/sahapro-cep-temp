@@ -11,16 +11,16 @@ export const C = { gelir: "#2a78d6", mazot: "#eb6834", iscilik: "#1baf7a", dokum
 
 function hero(c, D) {
   const pos = c.profit >= 0;
-  const status = c.costIncomplete ? ["⏳", "Yakıt mutabakat bekliyor", "var(--muted)"] : c.income <= 0 ? ["⏳", "Gelir henüz belli değil", "var(--muted)"] : pos ? ["▲", "Kârda", "var(--ok)"] : ["▼", "Zararda", "var(--danger)"];
+  const status = c.profitIncomplete || c.costIncomplete ? ["⏳", c.profitIncompleteReason || c.costIncompleteReason || "maliyet eksik", "var(--muted)"] : c.income <= 0 ? ["⏳", "Gelir henüz belli değil", "var(--muted)"] : pos ? ["▲", "Kârda", "var(--ok)"] : ["▼", "Zararda", "var(--danger)"];
   const T = c.targetGross;
   const paidPct = T > 0 ? Math.max(0, Math.min(100, Math.round((c.paid / T) * 100))) : null;
   return `<div class="card" data-hero style="padding:16px">
     <div class="tiny muted" style="letter-spacing:.06em;text-transform:uppercase">Tahmini kâr (KDV hariç)</div>
     <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:2px">
-      <div style="font-size:32px;font-weight:800;line-height:1.1;color:var(--text)">${c.costIncomplete?"Hesaplanamadı":(c.profit < 0 ? "−" : "")+tl(Math.abs(c.profit))}</div>
-      <div class="small" style="color:${status[2]};font-weight:700">${status[0]} ${status[1]}${c.margin != null ? ` · %${c.margin}` : ""}</div>
+      <div style="font-size:32px;font-weight:800;line-height:1.1;color:var(--text)">${c.profitIncomplete||c.costIncomplete?"Hesaplanamadı":(c.profit < 0 ? "−" : "")+tl(Math.abs(c.profit))}</div>
+      <div class="small" style="color:${status[2]};font-weight:700">${status[0]} ${esc(status[1])}${c.margin != null ? ` · %${c.margin}` : ""}</div>
     </div>
-    <div class="small muted" style="margin-top:4px">Gelir ${tl(c.income)} − gider ${tl(c.cost)}${c.revenueEst ? " · gelir tahmini" : ""}</div>
+    <div class="small muted" style="margin-top:4px">Gelir ${c.income == null ? "hesaplanamadı" : tl(c.income)} ${c.costIncomplete ? "· Bilinen gider ara toplamı" : "− gider"} ${tl(c.cost)}${c.revenueEst ? " · gelir tahmini" : ""}</div>
     ${paidPct != null ? `<div style="margin-top:12px">
       <div class="row between small"><span>Tahsilat</span><span><b>${tl(c.paid)}</b> / ${c.targetEst ? "≈ " : ""}${tl(T)} <span class="muted">(%${paidPct})</span></span></div>
       <div style="height:8px;border-radius:4px;background:var(--border);margin-top:4px;overflow:hidden" role="img" aria-label="Tahsilat yüzde ${paidPct}"><div style="height:100%;width:${paidPct}%;background:${C.gelir};border-radius:4px"></div></div>
@@ -50,15 +50,15 @@ function moneyChart(c) {
   const segDivs = seg.map((s) => `<div title="${esc(s.label)}: ${tl(s.tl)}" style="height:100%;width:${(s.tl / max) * 100}%;background:${C[s.key]}"></div>`).join("");
   return `<div class="card" data-moneychart>
     <div class="section-title" style="margin:0 0 6px">Gelir ve gider</div>
-    ${bar(`<div title="Gelir: ${tl(c.income)}" style="height:100%;width:${(c.income / max) * 100}%;background:${C.gelir}"></div>`, "Gelir (net)", tl(c.income))}
-    ${bar(segDivs, "Gider (tahmini)", tl(c.cost))}
+    ${bar(c.income == null ? "" : `<div title="Gelir: ${tl(c.income)}" style="height:100%;width:${(c.income / max) * 100}%;background:${C.gelir}"></div>`, "Gelir (net)", c.income == null ? "Hesaplanamadı" : tl(c.income))}
+    ${bar(segDivs, c.costIncomplete ? "Bilinen gider ara toplamı (eksik)" : "Gider (tahmini)", tl(c.cost))}
     <table class="small" style="width:100%;border-collapse:collapse;margin-top:8px">
       <tbody>
-        <tr><td style="padding:3px 0"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${C.gelir};margin-right:6px"></span>${esc(c.revenueBasis || "Gelir")}</td><td style="text-align:right">${tl(c.revenue)}</td></tr>
+        <tr><td style="padding:3px 0"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${C.gelir};margin-right:6px"></span>${esc(c.revenueBasis || "Gelir")}</td><td style="text-align:right">${c.revenue == null ? "Hesaplanamadı" : tl(c.revenue)}</td></tr>
         ${c.extras ? `<tr><td style="padding:3px 0;padding-left:16px">+ ekstralar</td><td style="text-align:right">${tl(c.extras)}</td></tr>` : ""}
         ${c.scrap ? `<tr><td style="padding:3px 0;padding-left:16px">+ hurda satışı</td><td style="text-align:right">${tl(c.scrap)}</td></tr>` : ""}
         ${c.costs.map((s) => `<tr style="border-top:1px solid var(--border)"><td style="padding:4px 0"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${C[s.key]};margin-right:6px"></span>${esc(s.label)}${s.est ? ' <span class="tiny muted">tahmini</span>' : ""}<div class="tiny muted" style="padding-left:16px">${esc(s.note)}</div></td><td style="text-align:right;vertical-align:top;padding-top:4px">− ${tl(s.tl)}</td></tr>`).join("")}
-        <tr style="border-top:2px solid var(--border)"><td style="padding:5px 0"><b>Tahmini kâr</b></td><td style="text-align:right"><b>${c.costIncomplete?"Hesaplanamadı":(c.profit < 0 ? "−" : "")+tl(Math.abs(c.profit))}</b></td></tr>
+        <tr style="border-top:2px solid var(--border)"><td style="padding:5px 0"><b>Tahmini kâr</b></td><td style="text-align:right"><b>${c.profitIncomplete||c.costIncomplete?"Hesaplanamadı":(c.profit < 0 ? "−" : "")+tl(Math.abs(c.profit))}</b></td></tr>
         ${c.profitPerM3 != null ? `<tr><td class="tiny muted">m³ başı kâr</td><td class="tiny muted" style="text-align:right">${tl(c.profitPerM3)}</td></tr>` : ""}
       </tbody>
     </table>

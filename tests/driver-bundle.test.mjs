@@ -1,9 +1,10 @@
+import {PNG,PNG_BLUE} from './support/attachment-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {makeDriverBundle,openDriverBundle,isDriverBundle,DRIVER_BUNDLE_LIMIT} from '../js/driver-bundle.js';
 import {buildZip} from '../js/core.js';
 import {listZip} from '../js/unzip.js';
-const packet={text:'📋 TEST\n🚚 TEST iş\nSP1:abcdefghijk.signature123',rows:[{id:'test'}],files:[new File(['one'],'aynı.jpg',{type:'image/jpeg'}),new File(['two'],'aynı.jpg',{type:'image/jpeg'})]};
-const payload=await makeDriverBundle(packet);assert.equal(payload.files.length,1);assert.ok(isDriverBundle(payload.files[0]));assert.ok(!payload.text.includes('SP1:'));const opened=await openDriverBundle(payload.files[0]);assert.equal(opened.message,packet.text);assert.deepEqual(await Promise.all(opened.files.map(f=>f.text())),['one','two']);assert.deepEqual(opened.files.map(f=>f.name),['aynı.jpg','aynı.jpg']);
+const packet={text:'📋 TEST\n🚚 TEST iş\nSP1:abcdefghijk.signature123',rows:[{id:'test'}],files:[new File([PNG],'aynı.jpg',{type:'image/jpeg'}),new File([PNG_BLUE],'aynı.jpg',{type:'image/jpeg'})]};
+const payload=await makeDriverBundle(packet);assert.equal(payload.files.length,1);assert.ok(isDriverBundle(payload.files[0]));assert.ok(!payload.text.includes('SP1:'));const opened=await openDriverBundle(payload.files[0]);assert.equal(opened.message,packet.text);assert.deepEqual(await Promise.all(opened.files.map(async f=>new Uint8Array(await f.arrayBuffer()))),[PNG,PNG_BLUE]);assert.deepEqual(opened.files.map(f=>f.type),['image/png','image/png']);assert.deepEqual(opened.files.map(f=>f.name),['aynı.jpg','aynı.jpg']);
 assert.equal(Buffer.compare(Buffer.from(await payload.files[0].arrayBuffer()),Buffer.from(await (await makeDriverBundle(packet)).files[0].arrayBuffer())),0,'stable retry bytes');
 assert.equal((await openDriverBundle((await makeDriverBundle({...packet,files:[]})).files[0])).files.length,0);
 assert.equal((await openDriverBundle((await makeDriverBundle({...packet,files:Array(20).fill(packet.files[0])})).files[0])).files.length,20);

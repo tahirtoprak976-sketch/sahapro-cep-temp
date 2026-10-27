@@ -1,5 +1,6 @@
 import {dumpReceiptRows,companyDumpReceipt} from "./dump-ledger-core.js";
 import { isActive } from "./core.js";
+import { resolveWorkTonnage } from "./work-tonnage.js";
 import { recognizedBill } from "./ledger-policy.js";
 import {freezeDumpEstimate, loadTon, DEFAULT_LOAD_TON} from "./dump-estimate.js";
 export {loadTon, DEFAULT_LOAD_TON};
@@ -27,7 +28,7 @@ export function calculatedDumpFee(d, w) {
     // Existing explicit amount or an explicitly scoped ton + frozen tariff is usable as an estimate,
     // but does not prove a receipt. Missing old assumptions stay unknown; no bulk data mutation.
     const tariff = w.dump_tariff_snapshot;
-    const knownTonnage = Number(w.tonnage)>0 && (w.unit !== 'Sefer' || trips === 1 || ['total','per_trip'].includes(w.tonnage_scope));
+    const knownTonnage = resolveWorkTonnage(w).known;
     if (manual || (tariff?.site_id === w.dump_site_id && (tariff.fee_unit === 'Sefer' || knownTonnage || w.unit === 'Ton'))) {
       snapshot = freezeDumpEstimate(w, tariff ? {id:w.dump_site_id,fee:tariff.fee,fee_unit:tariff.fee_unit,fee_effective_from:tariff.effective_from} : site, null);
       if(snapshot) snapshot={...snapshot,provenance:'legacy_recorded_basis',captured_at:null};

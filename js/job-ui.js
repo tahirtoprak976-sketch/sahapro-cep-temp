@@ -29,9 +29,9 @@ async function list(ctx) {
   const jobs = (d.sites || []).filter((s) => isActive(s) && J.dealOf(s) && (!cid || s.customer_id === cid));
   const row = (s) => {
     const D = J.dealOf(s), rep = J.jobReport(d, s, { today });
-    const info = D.basis === "m³" ? (rep.measured ? `ölçülen ${n(rep.measured)} m³` : rep.est ? `tahmini ≈ ${n(rep.est)} m³` : "henüz sefer yok") : `${n(rep.trips)} sefer`;
+    const info = D.basis === "m³" ? (rep.measured ? `ölçülen ${n(rep.measured)} m³` : rep.estimationIncomplete ? `metraj eksik (bilinen ≈ ${n(rep.est)} m³)` : rep.est ? `tahmini ≈ ${n(rep.est)} m³` : "henüz sefer yok") : `${n(rep.trips)} sefer`;
     const price = D.basis === "Götürü" ? `götürü ${fmtTL(D.price)} ₺` : `${D.basis === "m³" ? "m³" : "sefer"} başı ${fmtTL(D.price)} ₺`;
-    let pr = ""; try { const c = jobCosts(d, s, rep, { today, fuelRef }); if(c.costIncomplete)pr=" · yakıt mutabakat bekliyor, kâr hesaplanmadı"; else if (c.income > 0) pr = ` · kâr ≈ ${c.profit < 0 ? "−" : ""}${fmtTL(Math.abs(c.profit))} ₺`; } catch { /* yok */ }
+    let pr = ""; try { const c = jobCosts(d, s, rep, { today, fuelRef }); if(c.profitIncomplete||c.costIncomplete)pr=` · Kâr: Hesaplanamadı — ${c.profitIncompleteReason || c.costIncompleteReason || "maliyet eksik"}`; else if (c.income > 0) pr = ` · kâr ≈ ${c.profit < 0 ? "−" : ""}${fmtTL(Math.abs(c.profit))} ₺`; } catch { /* yok */ }
     return li({ ic: "📐", href: "#/is-sozlesmesi/" + s.id, t1: esc(s.name), t2: esc(`${cust(s.customer_id)} · ${price} · ${info}${pr}`), badgeHtml: statusBadge(D.status) });
   };
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
@@ -123,15 +123,16 @@ async function detail(ctx, id) {
       <div style="overflow-x:auto"><table class="small" style="width:100%;border-collapse:collapse"><thead><tr><th style="text-align:left">Araç</th><th style="text-align:right">Sefer</th><th style="text-align:right">Fişli</th><th style="text-align:right">Sefer başı</th><th style="text-align:right">≈ m³</th></tr></thead><tbody>
         ${rep.groups.map((g) => `<tr style="border-top:1px solid var(--line,#e3e7ee)"><td style="padding:4px 6px 4px 0">${esc(g.vehicle)}<div class="tiny muted">${esc(g.materialName)}</div></td><td style="text-align:right">${n(g.trips)}</td><td style="text-align:right">${n(g.kantar || 0)}</td><td style="text-align:right">${g.perTrip == null ? "—" : n(g.perTrip)}</td><td style="text-align:right">${g.unknown === g.trips ? "—" : n(g.m3)}</td></tr>`).join("")}
       </tbody></table></div>
-      <div style="margin-top:6px"><b>Toplam ≈ ${n(rep.est)} m³ yerinde</b> <span class="muted small">(tahmini)</span></div>
+      <div style="margin-top:6px"><b>${rep.estimationIncomplete ? "Bilinen ara toplam" : "Toplam"} ≈ ${n(rep.est)} m³ yerinde</b> <span class="muted small">(tahmini)</span></div>
       <div class="muted small">${esc(srcLine)}</div>
+      ${rep.tonnageUnknown ? notice("warn", `${rep.tonnageUnknown} kayıtta tonajın toplam mı sefer başı mı olduğu doğrulanmadı. Bu kayıtların tonu ve hacmi hesaplanmadı; toplam gelir tahmini için kapsamı doğrulayın.`) : ""}
       ${rep.suspect ? notice("warn", `${rep.suspect} kayıtta fiş tonu bir sefer için olağan dışı (5 tonun altı ya da 45 tonun üstü). İşi açıp tonu kontrol edin; yanlış ton tahmini bozar.`) : ""}
       <details class="small" style="margin-top:6px"><summary>Nasıl hesaplandı?</summary><div class="muted" style="margin-top:4px;line-height:1.5">
         • <b>Fişli sefer:</b> fişteki net ton ÷ malzemenin yerinde yoğunluğu (toprak ≈ 1,95 t/m³). Örnek: 21 ton ÷ 1,95 ≈ 10,8 m³.<br>
-        • Bir kayıtta birden çok sefer ve tek fiş tonu varsa, o ton aracın sefer başı yüküne göre kaç sefere denk geliyorsa o kadar sefer fişli sayılır (genelde 1). Kalan seferler aynı aracın fişli seferlerinin ortalama tonuyla hesaplanır.<br>
+        • <b>Tonaj kapsamı:</b> toplam ton tüm seferleri kapsar, yeniden çoğaltılmaz; sefer başı ton sefer sayısıyla çarpılır. Çok seferli kayıtta kapsam bilinmiyorsa araç yükünden kapsam tahmin edilmez, kullanıcı teyidi gerekir.<br>
         • <b>Fişi hiç olmayan araç:</b> önce önceki işlerden öğrenilen katsayı, o da yoksa araç kartındaki yük (ortalama yük ya da yasal net yük) ve kasa hacmi kullanılır.<br>
         • Malzeme yoğunlukları Daha Fazla → Malzeme Katsayıları'ndan düzeltilebilir. Ölçüm girilince sistem farkı öğrenir.</div></details>
-      ${rep.src.yok ? `<div class="muted small">Hesaplanamayan seferler: araç kartında yük / kasa bilgisi yok ya da malzemenin (moloz) yerinde yoğunluğu bilinmiyor.</div>` : ""}
+      ${rep.src.yok ? `<div class="muted small">Hesaplanamayan seferler: tonaj kapsamı, araç yük / kasa bilgisi ya da malzemenin yerinde yoğunluğu bilinmiyor. Bilinen ara toplam işin tamamı değildir.</div>` : ""}
       ${rep.perTrip ? `<div class="small" style="margin-top:4px">Sefer başı ≈ ${n(rep.perTrip)} m³${rep.perHour ? ` · makine saatinde ≈ ${n(rep.perHour)} m³` : ""}${M ? " (ölçüme göre)" : ""}</div>` : ""}
       ${M && rep.ratio ? `<div class="small">Ölçüm / tahmin: <b>${n(rep.ratio * 100)}%</b></div>` : ""}
       <div class="muted small" style="margin-top:4px">"Sefer × kasa m³" kabarma payı yüzünden gerçeği yaklaşık iki kat fazla gösterir; bu hesap kantar tonu, yük ve malzeme yoğunluğundan gelir. Kesin miktar ölçümcünün metrajıdır.</div>
@@ -139,7 +140,7 @@ async function detail(ctx, id) {
     ${isM3 ? `<div class="card" data-money>
       <div class="section-title" style="margin:0 0 6px">Hakediş</div>
       ${M ? `${kv("Ölçüm", `${trDate(M.date)} · ${n(M.m3)} m³${M.surveyor ? " · " + M.surveyor : ""}`)}${kv("Net", fmtTL(M.net) + " ₺")}${kv("KDV %" + M.kdv_rate, fmtTL(M.kdv) + " ₺")}${kvh("Brüt (cariye yazılan)", "<b>" + fmtTL(M.gross) + " ₺</b>")}`
-        : money ? `${kv("Tahmini hakediş", `≈ ${fmtTL(money.gross)} ₺ brüt (≈ ${n(rep.est)} m³ × ${fmtTL(D.price)} ₺)`)}<div class="notice warn small"><span>ℹ</span><span>Tahmindir, cariye yazılmaz. Hakediş ölçüm girilince cariye yazılır.</span></div>` : `<div class="muted small">Henüz sefer yok.</div>`}
+        : money ? `${kv("Tahmini hakediş", `≈ ${fmtTL(money.gross)} ₺ brüt (≈ ${n(rep.est)} m³ × ${fmtTL(D.price)} ₺)`)}<div class="notice warn small"><span>ℹ</span><span>Tahmindir, cariye yazılmaz. Hakediş ölçüm girilince cariye yazılır.</span></div>` : `<div class="muted small">${rep.estimationIncomplete ? "Hesaplanamadı — tonaj kapsamı veya metraj eksik." : "Henüz sefer yok."}</div>`}
       ${kvh("Müşterinin " + trDate(D.start_date) + "'den beri ödemeleri", fmtTL(rep.paid) + " ₺ <span class='muted small'>(müşterinin tüm işleri; ara ödemeler carideki tahsilattır)</span>")}
     </div>` : isLump ? "" : `<div class="card">${kvh("Müşterinin " + trDate(D.start_date) + "'den beri ödemeleri", fmtTL(rep.paid) + " ₺ <span class='muted small'>(müşterinin tüm işleri)</span>")}</div>`}
     ${D.scrap === "ayrica" ? `<div class="card" data-scrap>
@@ -348,7 +349,7 @@ async function readContract(ctx) {
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
   root.innerHTML = appbar("Sözleşmeden Oluştur", "PDF ya da fotoğraf") + `
     <div class="card" style="margin-top:10px">
-      <div class="field"><label>Sözleşme / teklif (PDF ya da fotoğraf)</label><input type="file" accept="application/pdf,image/*" data-cfile></div>
+      <div class="field"><label>Sözleşme / teklif (PDF ya da fotoğraf)</label><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" data-cfile></div>
       <button class="btn primary block" data-cread>🤖 Gemini ile oku</button>
       <div class="muted small" style="margin-top:6px">Belge okunmak için Google Gemini'ye gönderilir (anahtar telefonunuzda). Okunan bilgiler yalnız öneridir; siz onaylamadan kayıt yazılmaz.</div>
     </div>

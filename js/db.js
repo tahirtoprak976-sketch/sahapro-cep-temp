@@ -1,3 +1,4 @@
+import { prepareAttachment, prepareInvoiceOriginal } from "./attachment-safety.js";
 import {historicalFuelIdentity} from './historical-fuel.js';
 import {recordsCommitted} from "./record-refresh.js";
 import {assertHakedisItems, assertHakedisDocument, captureHakedisSources, assertHakedisSources, hakedisWorkSnapshot} from './hakedis-validation.js';
@@ -517,6 +518,7 @@ export async function draftClear(form) {
 
 // ---- attachments (Blob ayrı store; JSON'a GÖMÜLMEZ; orijinal immutable, türev derived_of) ----
 export async function addAttachment(recordType, recordId, file, extra = {}) {
+  file = await prepareAttachment(file);
   // Aynı dosya aynı kayda ikinci kez eklenmez (tekrar Kaydet / yarım kalan işlemin yeniden denenmesi): özgün dosyanın özeti
   let src_sha256 = null;
   try { src_sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer()))].map((b) => b.toString(16).padStart(2, "0")).join(""); } catch {}
@@ -1890,6 +1892,17 @@ export async function ensureCompany() {
   if (!cur) await metaSet("company_profile", { name: (await import("./core.js")).COMPANY_NAME });
 }
 export async function saveDocument(fields, file) {
+  file = await prepareAttachment(file);
+  return persistDocument(fields,file);
+}
+// Only the already-parsed invoice importer uses this inert archival path.
+// Every viewer still validates actual bytes; no stored flag grants navigation.
+export async function saveInvoiceSourceDocument(fields,file) {
+  if (fields.category !== 'Fatura') throw Error('Arşiv kaynağı yalnız e-fatura içindir.');
+  file = await prepareInvoiceOriginal(file);
+  return persistDocument(fields,file);
+}
+async function persistDocument(fields,file) {
   const f = await validateFields("documents", fields),
     owner = await get(
       (await import("./business.js")).OWNER_STORES[f.owner_type],
@@ -1922,6 +1935,7 @@ export async function saveDocument(fields, file) {
   return rec;
 }
 export async function signContract(id, blobs) {
+  blobs = await Promise.all(blobs.map(blob => prepareAttachment(blob, { imageOnly:true })));
   const d = await openDB();
   return new Promise((resolve, reject) => {
     const t = d.transaction(["contracts", "attachments"], "readwrite");
@@ -2030,6 +2044,7 @@ export async function saveCashEvent(fields, { op = null } = {}) {
 }
 
 export async function signSlip(id, file) {
+  file = await prepareAttachment(file, { imageOnly:true });
   const d = await openDB();
   return new Promise((resolve, reject) => {
     const t = d.transaction(["slips", "attachments"], "readwrite");
@@ -2199,6 +2214,7 @@ export async function linkPdfWorkSource({recordId,expected,source,op}) {
 
 // Taslak PDF dosyaları için cihaz başına 60 MB bütçe; iki sekmede de atomik.
 export async function storePdfHistoryFile(hash,file) {
+  file = await prepareAttachment(file, { pdfOnly:true, maxBytes:15*1024*1024 });
   if(!/^[a-f0-9]{64}$/.test(hash)||!(file instanceof Blob)||!file.size||file.size>15*1024*1024)throw Error('PDF taslak dosyası geçersiz.');
   const db=await openDB();
   return new Promise((resolve,reject)=>{
