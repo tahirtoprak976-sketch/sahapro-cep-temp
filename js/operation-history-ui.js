@@ -1,3 +1,4 @@
+import {pendingFuelBanner} from './historical-fuel-ui.js';
 import {recordNoteHTML,recordSourceHTML} from './record-notes-ui.js';
 import {appbar,esc,notice,segBar,searchBar,fmtNum,fmtTL,badge,statusBadge,shareOrDownload,toast} from './ui.js';
 import {isActive,FUEL_SOURCES,todayStr,trDate} from './core.js';
@@ -9,12 +10,13 @@ export async function operationHistory({root,db,query={}},kind){
  const mount=document.createElement('div');root.replaceChildren(mount);
  const fuel=kind==='fuel',title=fuel?'Yakıt Kayıtları':'Bakım / Arıza',store=fuel?'fuel_records':'maintenance_records';
  mount.innerHTML=appbar(title)+'<p role="status">Kayıtlar yükleniyor…</p>';
- let data;try{data=await Promise.all([db.getAll(store),db.getAll('vehicles'),db.getAll('personnel'),...(fuel?[db.getAll('customers')]:[])]);}
+ let data;try{data=await Promise.all([db.getAll(store),db.getAll('vehicles'),db.getAll('personnel'),...(fuel?[db.getAll('customers'),db.getAll('pending_fuel_records')]:[])]);}
  catch{if(mount.isConnected)mount.innerHTML=appbar(title)+notice('danger','Kayıtlar okunamadı. Listeyi yeniden açın; kayıtlarınız değiştirilmedi.');return;}
  if(!mount.isConnected)return;
- const [all,vehicles,personnel,customers=[]]=data,names={};
+ const [all,vehicles,personnel,customers=[],pending=[]]=data,names={};
  for(const [k,list] of Object.entries({vehicles,personnel,customers}))names[k]=Object.fromEntries(list.map(r=>[r.id,r.name||r.plate||r.id]));
  const today=todayStr(),m=exploreOperations(kind,all,names,query,today),s=m.state,route=operationRoute(kind),renderHash=location.hash;
+ const pendingRows=fuel?exploreOperations('fuel',pending,names,query,today).rows:[];
  const url=patch=>operationURL(kind,query,patch);
  const selectedLabel=(list,value)=>{const r=list.find(x=>x.id===value);return r?`${r.name||r.plate||r.id}${isActive(r)?'':' (arşiv)'}`:value+' (listede yok)';};
  const opts=(list,value,label)=>`<option value="">${esc(label)}</option>`+(value&&!list.some(r=>r.id===value)?`<option selected value="${esc(value)}">${esc(selectedLabel(list,value))}</option>`:'')+list.filter(r=>isActive(r)||r.id===value).map(r=>`<option value="${esc(r.id)}" ${r.id===value?'selected':''}>${esc(selectedLabel(list,r.id))}</option>`).join('');
@@ -27,6 +29,7 @@ export async function operationHistory({root,db,query={}},kind){
  ${s.error?`<div role="alert">${notice('danger',s.error)}</div>`:`<div class="work-explorer-metrics">${metric(m.rows.length,'kayıt')}${metric(m.days,'farklı gün')}${fuel?metric(fmtNum(m.liters)+' L','verilen yakıt'):metric(fmtTL(m.cost)+' ₺','kayıtlı maliyet')}</div>
  ${fuel?`<div class="operation-source-summary">${m.sources.map(x=>`<span class="badge">${esc(x.source)} · ${fmtNum(x.liters)} L</span>`).join('')}</div><details class="operation-explanation"><summary>Bu özet neyi gösterir?</summary><p class="small muted">Litre, araca verilen yakıttır; ölçülmüş tüketim değildir. Müşterinin verdiği mazot burada ayrı görünür; müşteri hakedişine otomatik para yazılmaz.</p></details>${m.invalidLiters?notice('warn',m.invalidLiters+' kaydın litre bilgisi geçersiz; litre toplamına alınmadı.'):''}`:`<p class="small muted">${m.priced} kaydın maliyeti girilmiş · ${m.unpriced} kaydın maliyeti belirtilmemiş. 0 ₺ açıkça girildiyse belirtilmiş sayılır. Bu toplam ödeme veya kasa çıkışı değildir.</p>`}
  ${m.undated?notice('warn',m.undated+' kaydın tarihi eksik veya geçersiz; listenin sonunda gösterilir. Tarih filtresinde bu kayıtlar görünmez.'):''}`}</section>
+ ${fuel?pendingFuelBanner({pending_fuel_records:pendingRows}):''}
  ${segBar([{v:'all',t:'Tüm tarihler'},{v:'today',t:'Bugün'},{v:'week',t:'Son 7 gün'},{v:'month',t:'Bu ay'}],query.from||query.to?'custom':s.period,p=>url({period:p,from:null,to:null}))}
  ${fuel?'':segBar([{v:'open',t:'Açık'},{v:'all',t:'Tümü'},{v:'done',t:'Tamamlanan'}],s.f,f=>url({f}))}
  ${searchBar(fuel?'Araç, personel, kaynak, müşteri, açıklama…':'Araç, personel, arıza, parça, servis…',s.q)}

@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict';
+import {APP_VERSION,SCHEMA_VERSION,ENTITY_STORES,calcTankBalance,daySummary,profitability,buildWhatsAppText} from '../js/core.js';
+import {pendingFuelSummary} from '../js/historical-fuel.js';
+import {costRows,costTotals} from '../js/costs-core.js';
+import {monthlySeries,vehicleSeries} from '../js/finance-chart.js';
+import {operatingResult,closingSummary} from '../js/enterprise-core.js';
+import {businessOverview,localOverviewCommand} from '../js/business-overview.js';
+import {buildReport,reportCsv,reportSpec,forAudience} from '../js/report-core.js';
+import {vehicleKpis,businessReview} from '../js/expert-core.js';
+import {morningBrief} from '../js/brief.js';
+import {fuelPerUnit,quoteFor} from '../js/quote-core.js';
+import {priceHealth} from '../js/price-health.js';
+import {jobCosts} from '../js/job-cost.js';
+import {jobReport} from '../js/job-core.js';
+import {dashboardHtml} from '../js/job-dash.js';
+import {dayFacts,runAskTool,localSummary} from '../js/day-summary.js';
+import {resultReport,fuelEfficiency,localAnswer} from '../js/solo-core.js';
+import {fuelFlags} from '../js/fuel-rules.js';
+import {attentionItems} from '../js/attention.js';
+
+const today='2026-10-27',date='2026-10-20';
+const site={id:'S',name:'TEST site',customer_id:'C',deal:{basis:'Sefer',price:1000,kdv_rate:20,kdv_included:false,start_date:'2026-10-01',status:'Açık'}};
+const pending={id:'PF',date,vehicle_id:'V',personnel_id:'P',liters:854,fuel_source:'Depo Tankı',reconciliation_status:'pending',total:null,unit_price:null,reconciliation:{source_amounts:{total:999999,unit_price:1234}}};
+const d={customers:[{id:'C',name:'TEST customer'}],vehicles:[{id:'V',name:'TEST vehicle',type:'Kamyon'},{id:'V2',name:'TEST second',type:'Kamyon'}],personnel:[{id:'P',name:'TEST operator',daily_wage:100}],sites:[site],
+ work_records:[{id:'W',date,vehicle_id:'V',personnel_id:'P',customer_id:'C',site_id:'S',quantity:5,unit:'Sefer',work_type:'TEST haul',description:'TEST preserved work description',price_snapshot:{unit_price:1000,amount:5000,kdv_rate:20,kdv_included:false}}],
+ fuel_records:[{id:'F',date,vehicle_id:'V',personnel_id:'P',liters:20,total:1000,unit_price:50,fuel_source:'Akaryakıt İstasyonu'}],fuel_tank_movements:[{id:'I',date:'2026-10-01',move_type:'GİRİŞ',liters:80,total:4000}],pending_fuel_records:[pending],expense_records:[],maintenance_records:[],cash_records:[],cari_movements:[],hakedis:[],payables:[],dump_sites:[],dump_entries:[]};
+const clean={...d,pending_fuel_records:[]},before=JSON.stringify(d);
+assert.equal(SCHEMA_VERSION,7);assert.match(APP_VERSION,/3\.9\.74$/);assert.ok(ENTITY_STORES.includes('pending_fuel_records'));
+assert.equal(pendingFuelSummary(d).count,1);assert.equal(pendingFuelSummary(d).liters,854);
+assert.equal(pendingFuelSummary(d,{from:'2026-10-21'}).count,0);assert.equal(pendingFuelSummary(d,{vehicle_id:'V2'}).count,0);
+assert.deepEqual(calcTankBalance(d.fuel_tank_movements),{in:80,out:0,remaining:80});
+assert.deepEqual(costRows(d),costRows(clean),'pending source amounts cannot become finalized or estimated monetary costs');
+assert.equal(costTotals(costRows(d)).total,1000);
+assert.equal(daySummary(date,d).fuel_liters,20);assert.equal(daySummary(date,d).pending_fuel.liters,854);
+assert.equal(closingSummary(d,date).fuel_liters,20);assert.equal(closingSummary(d,date).pending_fuel.count,1);
+assert.match(buildWhatsAppText(date,d),/854.*depo mutabakatı bekliyor/);
+const month=monthlySeries(d,{today,months:1})[0];assert.equal(month.cost,1000);assert.equal(month.fuel,1000);assert.equal(month.fuelPending,1);assert.equal(month.fuelPendingLiters,854);assert.equal(month.costIncomplete,true);assert.equal(month.profit,null);
+assert.equal(monthlySeries(clean,{today,months:1})[0].profit,4000);
+const v=vehicleSeries(d,{today})[0];assert.equal(v.liters,20);assert.equal(v.cost,1000);assert.equal(v.fuelPendingLiters,854);assert.equal(v.costIncomplete,true);
+const op=operatingResult(d);assert.equal(op.provisional_result,null);assert.equal(op.pendingFuel.count,1);assert.equal(op.complete,false);assert.equal(op.unknown_cost,1000);assert.equal(operatingResult(d,{vehicle_id:'V2'}).pendingFuel.count,0);
+assert.equal(profitability(d).sonuc,null);
+assert.equal(resultReport(d).provisional_result,null,"allocation wrapper must not recompute a confident result over pending fuel");
+assert.equal(resultReport(d,{vehicle_id:"V2"}).pendingFuel.count,0);
+const overview=businessOverview(d,{today});assert.equal(overview.totals.liters,20);assert.equal(overview.totals.cost,1000);assert.equal(overview.pendingFuel.count,1);assert.equal(overview.costIncomplete,true);assert.match(localOverviewCommand('bu ayın özeti',d,today).text,/depo mutabakatı bekliyor/);
+assert.ok(attentionItems(d,{today}).some(x=>x.key==='historical_fuel'));
+for(const k of ['arac','yakit','personel']){
+ const r=buildReport(d,{k,from:'2026-10-01',to:today,today});assert.equal(r.costIncomplete,true);assert.ok(r.kpis.some(x=>/Mutabakat bekleyen/.test(x[0])));assert.ok(r.notes.some(x=>/depo mutabakatı bekliyor/.test(x)));
+ assert.match(reportCsv(r),/854/);assert.match(reportCsv(r),/maliyet bilinmiyor/);assert.match(JSON.stringify(reportSpec(r)),/mutabakat bekliyor/);
+ assert.equal(forAudience(r,'customer').tables.some(x=>/mutabakat bekliyor/.test(x.title)),false,'internal operator and reconciliation detail stays out of customer copies');
+ assert.match(reportCsv(r,'customer'),/yalnız kesinleşen kayıtları gösterir/);assert.doesNotMatch(reportCsv(r,'customer'),/854/,'customer copy only gets a generic completeness note, not internal pending quantities');
+ if(k==='arac')assert.match(r.kpis.find(x=>x[0].startsWith('Kalan'))[1],/Hesaplanamadı/);
+}
+assert.equal(buildReport(d,{k:'arac',id:'V2',from:'2026-10-01',to:today,today}).costIncomplete,false);
+const fuelReport=buildReport(d,{k:'yakit',to:today,today});assert.equal(fuelReport.kpis.find(x=>x[0]==='Toplam litre')[1],'20 L');assert.equal(fuelReport.kpis.find(x=>x[0]==='Ödenen tutar')[1],'1.000,00 ₺');
+const customerBefore=buildReport(clean,{k:'musteri',id:'C',to:today,today}),customerAfter=buildReport(d,{k:'musteri',id:'C',to:today,today});assert.deepEqual(customerAfter,customerBefore,'customer work/account report preserved exactly');assert.equal(d.work_records[0].description,'TEST preserved work description');
+const opts={today,from:'2026-10-01',to:today};const vk=vehicleKpis(d,opts).find(x=>x.id==='V');assert.equal(vk.kar_TL,null);assert.equal(vk.gunluk_getiri_TL,null);assert.equal(vk.L_sefer,null);assert.equal(vk.litre,20);assert.equal(vk.yakit_TL,1000);assert.equal(vk.yakit_mutabakat_litre,854);assert.equal(businessReview(d,opts).ozet.kar_TL,null);
+const brief=morningBrief(d,{today});assert.equal(brief.facts.month_profit,null);assert.match(brief.text,/yakıt mutabakat bekliyor/);
+assert.equal(fuelPerUnit(d,{vehicle_id:'V',today}),null);assert.ok(fuelPerUnit(clean,{vehicle_id:'V',today}));
+const q=quoteFor(d,{vehicle_id:'V',unit:'Sefer',quantity:3},{today,fuelRefPrice:50});assert.equal(q.calc.profitTotal,null);assert.equal(q.calc.suggest,null);assert.equal(q.calc.floor,null);assert.ok(q.calc.warns.some(x=>/mutabakat/.test(x.text)));
+const health=priceHealth(d,{today})[0];assert.equal(health.costIncomplete,true);assert.equal(health.margin,null);assert.equal(health.suggest,null);assert.equal(health.contrib,null);
+const rep=jobReport(d,site,{today}),job=jobCosts(d,site,rep,{today,fuelRef:50});assert.equal(job.profit,null);assert.equal(job.margin,null);assert.equal(job.profitPerM3,null);assert.equal(job.costIncomplete,true);assert.match(dashboardHtml(job,rep,site.deal),/Hesaplanamadı/);
+const early={...d,pending_fuel_records:[{...pending,date:'2026-10-02'}]};assert.equal(jobCosts(early,site,rep,{today}).costIncomplete,true,'pending in consumption-estimate window blocks false job margin even before first work');
+const facts=dayFacts(d,date);assert.equal(facts.yakit_litre,20);assert.equal(facts.yakit_TL,1000);assert.equal(facts.yakit_mutabakat_litre,854);assert.match(localSummary(facts),/depo mutabakatı bekliyor/);
+const ask=runAskTool(d,'fuel_totals',{from:'2026-10-01',to:today},today);assert.equal(ask.depodan_litre,0);
+assert.equal(ask.litre,20);assert.equal(ask.TL,1000);assert.equal(ask.mutabakat_bekleyen_litre,854);assert.equal(ask.maliyet_eksik,true);
+assert.equal(runAskTool(d,'expense_totals',{from:'2026-10-01',to:today},today).maliyet_eksik,true);
+assert.match(localAnswer('TEST vehicle mazot',d).answer,/mutabakatı bekliyor/);assert.deepEqual(fuelEfficiency(d,'V'),[]);assert.ok(fuelFlags(d,{today}).some(x=>x.rule==='historical_review'));
+assert.equal(JSON.stringify(d),before,'all summaries, reports and advice are read-only');
+for(const status of ['reconciled','cancelled']){const inactive={...d,pending_fuel_records:[{...pending,reconciliation_status:status}]};assert.equal(pendingFuelSummary(inactive).count,0);assert.equal(monthlySeries(inactive,{today,months:1})[0].profit,4000);}
+console.log('historical-fuel-reporting PASS: isolated pending liters/source amounts never become stock, cash or costs; scoped reports and all profit/advice surfaces disclose unknown costs; customer jobs stay unchanged');

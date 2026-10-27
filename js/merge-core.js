@@ -143,6 +143,7 @@ export function planMergeCards(d, store, srcIds, targetId) {
     if (withDeal.length) throw Error(`İş sözleşmesi olan şantiye (${withDeal.map((x) => x.name).join(", ")}) birleşen kart olamaz; onu kalacak kart seçin`);
   }
   const from = new Set(sources.map((s) => s.id));
+  if(['vehicles','personnel'].includes(store)&&(d.pending_fuel_records||[]).some(r=>r.reconciliation_status!=='cancelled'&&from.has(r[K.key])))throw Error('Geçmiş yakıt mutabakatına bağlı araç / personel birleştirilemez; özgün kaynak kartını koruyun.');
   const updates = [], counts = {}, aliases = [];
   // ID'ler benzersiz (uuid): bu kartlara işaret eden her alan hedefe çevrilir
   const KEYS = [K.key, "owner_id", "party_id", "target_id"];

@@ -72,7 +72,7 @@ function exportsBind(root, getSpec, getTable) {
   qs("[data-e-csv]", root)?.addEventListener("click", async () => {
     const t = await getTable();
     downloadBlob(
-      new Blob(["\ufeff" + core.toCSV(t.headers, t.rows)], {
+      new Blob(["\ufeff" + core.toCSV(t.headers, t.warning?[...t.rows,["Açıklama: "+t.warning,...t.headers.slice(1).map(()=>"")]]:t.rows)], {
         type: "text/csv;charset=utf-8",
       }),
       "SAHAPRO_Defter.csv",
@@ -1421,6 +1421,7 @@ async function costReport(ctx, d) {
     }
     const p = rules.operatingResult(d, f);
     table = {
+      warning: p.pendingFuel?.warning||"",
       headers: [
         "Tarih",
         "Maliyet Türü",
@@ -1450,11 +1451,11 @@ async function costReport(ctx, d) {
           ["Hakediş ve Sözleşme Geliri (KDV Hariç)", amount(p.revenue)],
           ["KDV Ayrımı Bilinen Maliyet", amount(p.known_cost)],
           ["KDV Ayrımı Olmayan Brüt Maliyet", amount(p.unknown_cost)],
-          ["Geçici Operasyon Sonucu", amount(p.provisional_result)],
+          ["Geçici Operasyon Sonucu", p.pendingFuel?.count?"Hesaplanamadı — yakıt mutabakat bekliyor":amount(p.provisional_result)],
         ],
       },
       {
-        text: "Muhasebe net kârı değildir. Eksik/dağıtılmamış maliyetler sonucu etkiler. KDV ayrımı olmayan maliyetler ihtiyatlı olarak brüt düşülür. Genel giderler müşteri/şantiye filtresinde dağıtılmadıkça görünmez.",
+        text: (p.pendingFuel?.count?p.pendingFuel.warning+" ":"")+"Muhasebe net kârı değildir. Eksik/dağıtılmamış maliyetler sonucu etkiler. KDV ayrımı olmayan maliyetler ihtiyatlı olarak brüt düşülür. Genel giderler müşteri/şantiye filtresinde dağıtılmadıkça görünmez.",
       },
     ];
     qs("[data-cost-result]", root).innerHTML =

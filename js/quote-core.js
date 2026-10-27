@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // Teklif asistanı — SAF hesap katmanı. Telefonda fiyat verirken: bu iş bana kaça mal olur, bu müşteriye daha önce kaça yaptım,
 // başkalarına kaça yapıyorum, en az kaça vermeliyim? Rakamlar kayıtlardan hesaplanır; yapay zekâ yalnız formu doldurur ve yorum yazar.
 // Tüm tutarlar KDV DAHİL düşünülür (döküm ücretleri ve mazot KDV dahil ödenir); teklif kaydına KDV hariç birim fiyat yazılır.
@@ -53,6 +54,7 @@ export function fuelPerUnit(d, { vehicle_id = null, unit = "Sefer", today = toda
   if (unit === "Ton") unit = "Sefer";
   const from = addDays(today, -days);
   const one = (v) => {
+    if(pendingFuelSummary(d,{from,to:today,vehicle_id:v.id}).count)return null;
     const L = live(d, "fuel_records").filter((f) => f.vehicle_id === v.id && f.date >= from && f.date <= today).reduce((n, f) => n + (Number(f.liters) || 0), 0);
     const ws = live(d, "work_records").filter((w) => w.vehicle_id === v.id && w.date >= from && w.date <= today);
     const u = ws.filter((w) => w.unit === unit).reduce((n, w) => n + (Number(w.quantity) || 0), 0);
@@ -61,6 +63,7 @@ export function fuelPerUnit(d, { vehicle_id = null, unit = "Sefer", today = toda
     return u >= 3 && L > 0 && other <= ws.length * 0.2 ? { L: L / u, units: u, liters: L } : null;
   };
   const v = live(d, "vehicles").find((x) => x.id === vehicle_id);
+  if (v && pendingFuelSummary(d,{from,to:today,vehicle_id:v.id}).count)return null;
   if (v) { const s = one(v); if (s) return { per: r1(s.L), basis: `${v.name}: son ${days} günde ${r0(s.liters)} L ÷ ${r1(s.units)} ${unit.toLocaleLowerCase("tr-TR")}`, own: true }; }
   const kind = v ? String(v.type || "").toLocaleLowerCase("tr-TR") : "";
   if (kind) {
@@ -144,7 +147,9 @@ export function quoteFor(d, f, { today = todayStr(), settings = {}, fuelRefPrice
   const extra = f.extra != null && f.extra !== "" ? Number(f.extra) : Number(S.extra[unit]) || 0;
   const dump = f.dump != null && f.dump !== "" ? Number(f.dump) : dumpInfo?.amount ?? null;
   const calc = quoteCalc({ unit, quantity: f.quantity, dump, dump_included: f.dump_included !== false, dump_expected: !!f.dump_site_id, fuel_l, fuel_price, extra, margin: f.margin ?? S.margin, kdv: f.kdv ?? S.kdv, history });
-  return { input: { ...f, unit, fuel_l, fuel_price, extra, dump }, history, dumpInfo, fuelInfo, fuelPriceKnown: fp, calc };
+  const pendingFuel=pendingFuelSummary(d,{from:addDays(today,-90),to:today,vehicle_id:f.vehicle_id});
+  if(pendingFuel.count){calc.costIncomplete=true;calc.warns.push({kind:"warn",text:pendingFuel.warning});calc.profitPerUnit=calc.profitTotal=calc.floor=calc.byCost=calc.suggest=calc.suggestNet=calc.total=null;calc.why="Yakıt mutabakatı tamamlanmadan maliyet tabanlı fiyat önerisi hesaplanmadı.";}
+  return { input: { ...f, unit, fuel_l, fuel_price, extra, dump }, history, dumpInfo, fuelInfo, fuelPriceKnown: fp, pendingFuel, calc };
 }
 
 // Teklif kaydı (mevcut Teklifler ekranı / PDF ile aynı yapı)

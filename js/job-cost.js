@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // İş sözleşmesi panosu için maliyet ve kârlılık — SAF hesap, kayıt yazmaz. Tüm giderler TAHMİNDİR ve yöntemiyle döner:
 // • Mazot: aracın son 90 gün sefer/saat başı litresi (yoksa aynı tür araçlar) × o günkü mazot litre fiyatı (fuelPerUnit, fuelPriceAt).
 // • İşçilik: şoför/operatörün günlük maliyeti (yevmiye ya da aylık maaş ÷ 26 iş günü) × o gün bu işe ayırdığı pay (o günkü kayıtlarının oranı).
@@ -31,6 +32,7 @@ export function dailyCost(p) {
 export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = {}) {
   const D = dealOf(site);
   const works = live(d, "work_records").filter((w) => w.site_id === site.id);
+  const pendingFuel=pendingFuelSummary({pending_fuel_records:(d.pending_fuel_records||[]).filter(f=>works.some(w=>w.vehicle_id===f.vehicle_id))},{from:[works.map(w=>w.date).filter(Boolean).sort()[0]||today,addDays(today,-90)].sort()[0],to:today});
   const vehicles = Object.fromEntries(live(d, "vehicles").map((v) => [v.id, v]));
   const people = Object.fromEntries(live(d, "personnel").map((p) => [p.id, p]));
   // ---- Mazot
@@ -91,6 +93,7 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   const workDays = new Set(works.map((w) => w.date).filter(Boolean)).size;
   const m3 = rep.measured || rep.est || 0;
   const warnings = [];
+  if(pendingFuel.count)warnings.push(pendingFuel.warning);
   if (dumpUnknown) warnings.push(`${dumpUnknown} işte döküm tahmini doğrulanmadı; maliyet ve kâr eksik olabilir`);
   if (fuelMissing) warnings.push(`${r1(fuelMissing)} sefer/saat için aracın mazot ortalaması yok (son 90 günde yeterli yakıt kaydı yok) — mazot gideri eksik`);
   if (laborMissing) warnings.push(`${laborMissing} kişi-günde şoför/operatörün ücreti girilmemiş — işçilik eksik (Personel kartından yevmiye ya da maaş girin)`);
@@ -106,8 +109,8 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
       { key: "dokum", label: "Döküm", tl: r0(dumpTL), note: dumpEst ? "kayıtlardaki döküm ücreti (bir kısmı tahmini ton)" : "kayıtlardaki döküm ücreti", est: dumpEst },
       { key: "diger", label: "Diğer giderler", tl: r0(otherTL), note: `${exp.length} gider bu şantiyeye yazılmış`, est: false },
     ],
-    cost: r0(cost), profit: r0(profit), margin: income > 0 ? Math.round((profit / income) * 100) : null,
-    costPerM3: m3 > 0 ? r0(cost / m3) : null, profitPerM3: m3 > 0 ? r0(profit / m3) : null, m3,
+    pendingFuel,costIncomplete:pendingFuel.count>0,cost: r0(cost), profit: pendingFuel.count?null:r0(profit), margin: !pendingFuel.count && income > 0 ? Math.round((profit / income) * 100) : null,
+    costPerM3: !pendingFuel.count && m3 > 0 ? r0(cost / m3) : null, profitPerM3: !pendingFuel.count && m3 > 0 ? r0(profit / m3) : null, m3,
     billedGross: r0(billedGross), paid: rep.paid || 0,
     targetGross: r0(billedGross || (D?.basis === "m³" && rep.est > 0 ? dealMoney(D, rep.est).gross : 0)), targetEst: !billedGross && D?.basis === "m³" && rep.est > 0, workDays, tripsPerDay: workDays ? r1(rep.trips / workDays) : null,
     vehicles: Object.values(byVeh).map((v) => ({ ...v, L: r0(v.L), tl: r0(v.tl) })).sort((a, b) => b.tl - a.tl || b.sefer - a.sefer),

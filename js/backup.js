@@ -1,3 +1,4 @@
+import {validatePendingFuelData} from './historical-fuel.js';
 import {validateDumpData} from "./dump-ledger-core.js";
 import { startActivity } from "./update-safety.js";
 import {validateCustomerFuelLinks} from './customer-fuel.js';
@@ -229,6 +230,9 @@ export async function restoreBackup(db, obj, replace = false) {
   return await new Promise((resolve, reject) => {
     const t = connection.transaction(stores, "readwrite");
     let error;
+    // Recheck isolated historical evidence against a coherent, serialized snapshot.
+    const fresh={};let reads=ENTITY_STORES.length;
+    for(const s of ENTITY_STORES){const q=t.objectStore(s).getAll();q.onsuccess=()=>{fresh[s]=q.result;if(!--reads)try{validateRestoreLinks(fresh,obj,preview,replace);}catch(e){error=e;t.abort();}};}
     for (const [s, ids] of Object.entries(drop)) for (const id of ids) t.objectStore(s).delete(id);
     for (const s of ENTITY_STORES) {
       const rows = [
@@ -239,6 +243,9 @@ export async function restoreBackup(db, obj, replace = false) {
         const get = t.objectStore(s).get(r.id);
         get.onsuccess = () => {
           const existing = get.result;
+          if(existing&&(s==='pending_fuel_records'||s==='fuel_records'&&existing.historical_pending_id)&&JSON.stringify(existing)!==JSON.stringify(r)){
+            error=Error('Geçmiş yakıt mutabakat kaydı yedekle geriye alınamaz veya değiştirilemez; mevcut kayıt korunuyor.');t.abort();return;
+          }
           if (
             existing &&
             (ENTERPRISE_STORES.includes(s) ||
@@ -372,6 +379,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
     ];
     merged[store] = new Map(rows.map((r) => [r.id, r]));
   }
+  for(const r of replace?preview.stores.pending_fuel_records?.conflict||[]:[]){const old=(local.pending_fuel_records||[]).find(x=>x.id===r.id);if(old&&JSON.stringify(old)!==JSON.stringify(r))throw Error('Geçmiş yakıt mutabakatı eski yedekle değiştirilemez; mevcut durum korunuyor.');}
   const ownStores = {
     vehicle: "vehicles",
     personnel: "personnel",
@@ -411,6 +419,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
       )
         throw Error("Yedekte kopuk tank / yakıt olayı");
     }
+  validatePendingFuelData(Object.fromEntries(Object.entries(merged).map(([s,m])=>[s,[...m.values()]])));
   validateCustomerFuelLinks(Object.fromEntries(Object.entries(merged).map(([s,m]) => [s,[...m.values()]])));
   validateDumpData(Object.fromEntries(Object.entries(merged).map(([s,m])=>[s,[...m.values()]])));
   validateEnterpriseData(

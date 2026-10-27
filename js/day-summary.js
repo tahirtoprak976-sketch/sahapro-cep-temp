@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // Gün sonu özeti ve "Soru Sor" araçları — SAF katman. Rakamlar telefonda hesaplanır;
 // Gemini yalnız bu rakamlarla cümle kurar. Doğrulanamayan rakam içeren cümle atılır.
 import { isActive, cariBalance, todayStr, addDays, daySummary, tankStatus } from "./core.js";
@@ -52,11 +53,14 @@ export function dayFacts(d, date = todayStr()) {
     gider_TL: r2(sum.expense_total),
     gider_kategorileri: cats,
     yakit_litre: r2(sum.fuel_liters),
+    yakit_mutabakat_bekleyen: sum.pending_fuel.count,
+    yakit_mutabakat_litre: sum.pending_fuel.liters,
     yakit_TL: r2(fuel.reduce((n, f) => n + (Number(f.total) || 0), 0)),
     tahsilat_TL: r2(sum.tahsilat_total),
     tahsilatlar: collections.map((c) => ({ musteri: nameOf(d, "customers", c.customer_id), TL: r2(c.amount) })),
     acik_ariza: sum.open_breakdowns,
     uyarilar: [
+      ...(sum.pending_fuel.count?[sum.pending_fuel.warning]:[]),
       ...fuelFlags(d, { today: date, days: 0 }).map((f) => f.text),
       ...ticketReconcile(d, { today: date, days: 0 }).map((r) => `${nameOf(d, "vehicles", r.vehicle_id)}: ${r.tickets} döküm fişi, ${r.sefer} sefer`),
     ],
@@ -185,8 +189,9 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const fl = live(d, "fuel_records").filter((f) => inR(f) && (!v.id || f.vehicle_id === v.id));
     const per = {};
     for (const f of fl) { const k = nameOf(d, "vehicles", f.vehicle_id); per[k] = r2((per[k] || 0) + Number(f.liters)); }
+    const pendingFuel=pendingFuelSummary(d,{from,to,vehicle_id:v.id});
     const depo = r2(fl.filter((f) => f.fuel_source === "Depo Tankı").reduce((n, f) => n + (Number(f.liters) || 0), 0));
-    return { from, to, arac: v.name || "hepsi", depodan_litre: depo, litre: r2(fl.reduce((n, f) => n + (Number(f.liters) || 0), 0)), TL: r2(fl.reduce((n, f) => n + (Number(f.total) || 0), 0)), kayit: fl.length, arac_bazinda_litre: per };
+    return { from, to, arac: v.name || "hepsi", depodan_litre: depo, litre: r2(fl.reduce((n, f) => n + (Number(f.liters) || 0), 0)), TL: r2(fl.reduce((n, f) => n + (Number(f.total) || 0), 0)), kayit: fl.length, arac_bazinda_litre: per, mutabakat_bekleyen_kayit:pendingFuel.count,mutabakat_bekleyen_litre:pendingFuel.liters,maliyet_eksik:pendingFuel.count>0,uyari:pendingFuel.warning };
   }
   if (name === "expense_totals") {
     const v = resolve(d, a, "vehicle", "vehicles", "vehicle");
@@ -194,9 +199,10 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
     const ex = live(d, "expense_records").filter((e) => inR(e) && (!v.id || e.vehicle_id === v.id) && (!a.category || norm(e.category).includes(norm(a.category))));
     const cats = {};
     for (const e of ex) cats[e.category || "Diğer"] = r2((cats[e.category || "Diğer"] || 0) + Number(e.amount));
+    const pendingFuel=pendingFuelSummary(d,{from,to,vehicle_id:v.id});
     const all = costTotals(costRows(d, { from, to }).filter((r) => !v.id || r.vehicle_id === v.id));
     return { from, to, TL: r2(ex.reduce((n, e) => n + (Number(e.amount) || 0), 0)), kayit: ex.length, kategoriler: cats,
-      tum_masraflar_TL: all.total, masraf_dagilimi: { gider: all.gider, yakit: all.yakit, bakim_ariza: all.bakim, esnaf_alisi: all.esnaf } };
+      maliyet_eksik:pendingFuel.count>0,uyari:pendingFuel.warning,tum_masraflar_TL: all.total, masraf_dagilimi: { gider: all.gider, yakit: all.yakit, bakim_ariza: all.bakim, esnaf_alisi: all.esnaf } };
   }
   if (name === "collection_totals") {
     const c = resolve(d, a, "customer", "customers", "customer");

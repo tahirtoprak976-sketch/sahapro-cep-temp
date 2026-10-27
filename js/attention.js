@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 import {pdfPending} from './pending-records.js';
 // "Dikkat isteyen işler" ve ana ekran özetleri — SAF katman, kayıt yazmaz; mevcut denetimlerin sonuçlarını toplar.
 // İnceleme adayları kesin hata olarak sunulmaz; her maddede neden ve sonraki adım yazılır.
@@ -10,6 +11,8 @@ import { fuelAudit } from "./fuel-audit.js";
 const live = (d, s) => (d[s] || []).filter(isActive);
 export function attentionItems(d, { restoreSets = [], meta = [], today = todayStr() } = {}) {
   const out = [];
+  const pendingFuel=pendingFuelSummary(d);
+  if(pendingFuel.count)out.push({key:"historical_fuel",count:pendingFuel.count,title:pendingFuel.count+" geçmiş yakıt kaydı mutabakat bekliyor",why:pendingFuel.warning,next:"Gerçek geçmiş depo girişlerini tamamlayın; sonra Depo ekranında yeniden doğrulayıp açıkça onaylayın.",hash:"#/depo"});
   const {internal,billed}=workReviewContext(d);
   const works = live(d, "work_records");
   const unpriced = works.filter((w) => w.customer_id && !internal.has(w.customer_id) && missingCustomerWorkPrice(w,billed.has(w.id)));

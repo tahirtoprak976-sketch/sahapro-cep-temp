@@ -31,7 +31,7 @@ async function list(ctx) {
     const D = J.dealOf(s), rep = J.jobReport(d, s, { today });
     const info = D.basis === "m³" ? (rep.measured ? `ölçülen ${n(rep.measured)} m³` : rep.est ? `tahmini ≈ ${n(rep.est)} m³` : "henüz sefer yok") : `${n(rep.trips)} sefer`;
     const price = D.basis === "Götürü" ? `götürü ${fmtTL(D.price)} ₺` : `${D.basis === "m³" ? "m³" : "sefer"} başı ${fmtTL(D.price)} ₺`;
-    let pr = ""; try { const c = jobCosts(d, s, rep, { today, fuelRef }); if (c.income > 0) pr = ` · kâr ≈ ${c.profit < 0 ? "−" : ""}${fmtTL(Math.abs(c.profit))} ₺`; } catch { /* yok */ }
+    let pr = ""; try { const c = jobCosts(d, s, rep, { today, fuelRef }); if(c.costIncomplete)pr=" · yakıt mutabakat bekliyor, kâr hesaplanmadı"; else if (c.income > 0) pr = ` · kâr ≈ ${c.profit < 0 ? "−" : ""}${fmtTL(Math.abs(c.profit))} ₺`; } catch { /* yok */ }
     return li({ ic: "📐", href: "#/is-sozlesmesi/" + s.id, t1: esc(s.name), t2: esc(`${cust(s.customer_id)} · ${price} · ${info}${pr}`), badgeHtml: statusBadge(D.status) });
   };
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);

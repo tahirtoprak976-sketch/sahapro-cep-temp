@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // Yönetim uzmanı: hafriyat / nakliye / iş makinesi kiralama işletmesi için saf göstergeler (KPI) ve sektör bilgisi.
 // Rakamlar burada hesaplanır; yapay zekâ yalnız yorumlar ve öneri yazar (rakamlar doğrulanır).
 import { isActive, todayStr, addDays } from "./core.js";
@@ -40,8 +41,9 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
   for (const v of live(d, "vehicles")) {
     const ws = live(d, "work_records").filter((w) => w.vehicle_id === v.id && inR(w.date));
     const fuel = live(d, "fuel_records").filter((f) => f.vehicle_id === v.id && inR(f.date));
+    const pendingFuel=pendingFuelSummary(d,{from,to,vehicle_id:v.id});
     const lastAll = live(d, "work_records").filter((w) => w.vehicle_id === v.id).map((w) => w.date).sort().at(-1) || null;
-    if (!ws.length && !fuel.length && !lastAll) continue;
+    if (!ws.length && !fuel.length && !pendingFuel.count && !lastAll) continue;
     // Mazotla ödenen işler TL gelir sayılmaz; müşterinin verdiği mazot da masraf sayılmaz (ikisi litre olarak ayrı)
     let revenue = 0, earnedL = 0;
     for (const w of ws) { revenue += workAmount(w); earnedL += Number(w.customer_fuel_allowance_l) || 0; }
@@ -62,8 +64,8 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
     const income = revenue, cost = fuelCost + maint + expense + dump;
     rows.push({
       id: v.id, arac: v.name, tur: v.type || "", is: ws.length, calisilan_gun: worked, is_gunu: days, doluluk_yuzde: days ? r0((worked / days) * 100) : 0,
-      birimler: u, gelir_TL: r0(income), yakit_TL: r0(fuelCost), bakim_TL: r0(maint), gider_TL: r0(expense), dokum_TL: r0(dump), bilinen_masraf_TL:r0(cost), maliyet_dogrulanmadi:!!dumpUnknown,dokum_bilinmeyen_is:dumpUnknown, kar_TL:dumpUnknown?null:r0(income - cost),
-      gunluk_getiri_TL: dumpUnknown?null:worked ? r0((income - cost) / worked) : 0, mazot_karsiligi_hak_L: r1(earnedL), musteriden_alinan_mazot_L: r1(gotL), litre: r1(liters), L_sefer: trips ? r1(liters / trips) : null, L_saat: hours ? r1(liters / hours) : null,
+      birimler: u, gelir_TL: r0(income), yakit_TL: r0(fuelCost), bakim_TL: r0(maint), gider_TL: r0(expense), dokum_TL: r0(dump), bilinen_masraf_TL:r0(cost), maliyet_dogrulanmadi:!!(dumpUnknown||pendingFuel.count),yakit_mutabakat_bekleyen:pendingFuel.count,yakit_mutabakat_litre:pendingFuel.liters,dokum_bilinmeyen_is:dumpUnknown, kar_TL:dumpUnknown||pendingFuel.count?null:r0(income - cost),
+      gunluk_getiri_TL: dumpUnknown||pendingFuel.count?null:worked ? r0((income - cost) / worked) : 0, mazot_karsiligi_hak_L: r1(earnedL), musteriden_alinan_mazot_L: r1(gotL), litre: r1(liters), L_sefer: !pendingFuel.count && trips ? r1(liters / trips) : null, L_saat: !pendingFuel.count && hours ? r1(liters / hours) : null,
       fiyatsiz_is: ws.filter((w) => !workAmount(w) && !w.customer_fuel_allowance_l).length, son_is: lastAll, bos_gun: lastAll ? Math.max(0, Math.round((new Date(to) - new Date(lastAll)) / 86400000)) : null,
     });
   }
@@ -121,7 +123,7 @@ export function businessReview(d, { from, to = todayStr(), today = todayStr(), n
   for (const v of veh) {
     if (v.bos_gun != null && v.bos_gun >= 7) findings.push({ kind: "bos", text: `${v.arac} ${v.bos_gun} gündür iş kaydı yok` });
     else if (v.is_gunu >= 6 && v.doluluk_yuzde < 50 && v.is) findings.push({ kind: "doluluk", text: `${v.arac} doluluğu %${v.doluluk_yuzde} (${v.calisilan_gun}/${v.is_gunu} gün)` });
-    if(v.maliyet_dogrulanmadi) findings.push({kind:"maliyet",text:`${v.arac}: ${v.dokum_bilinmeyen_is} işte döküm maliyeti doğrulanmadı; kâr hesaplanmadı.`});
+    if(v.maliyet_dogrulanmadi) findings.push({kind:"maliyet",text:`${v.arac}: ${v.yakit_mutabakat_bekleyen? v.yakit_mutabakat_bekleyen+" geçmiş yakıt kaydı mutabakat bekliyor; ":""}${v.dokum_bilinmeyen_is?v.dokum_bilinmeyen_is+" işte döküm maliyeti doğrulanmadı; ":""}kâr hesaplanmadı.`});
     if (v.kar_TL < 0 && v.is) findings.push({ kind: "zarar", text: `${v.arac} bu dönemde ${v.kar_TL.toLocaleString("tr-TR")} ₺ (gelir ${v.gelir_TL.toLocaleString("tr-TR")} − masraf)${v.mazot_karsiligi_hak_L ? ` · ayrıca ${v.mazot_karsiligi_hak_L.toLocaleString("tr-TR")} L mazot karşılığı iş yaptı (TL sayılmaz)` : ""}` });
     if (v.fiyatsiz_is) findings.push({ kind: "fiyatsiz", text: `${v.arac}: ${v.fiyatsiz_is} iş fiyatsız` });
   }

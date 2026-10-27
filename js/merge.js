@@ -91,8 +91,9 @@ export async function screen(ctx) {
 export async function applyMerge(plan) {
   const { transaction } = await import("./enterprise-db.js");
   const own = plan.store || "customers";
-  const stores = [...new Set([own, "customers", "sites", "aliases", ...plan.updates.map((u) => u.store)])];
+  const stores = [...new Set([own, "customers", "sites", "aliases", "pending_fuel_records", ...plan.updates.map((u) => u.store)])];
   return transaction(stores, (data, t) => {
+    if(['vehicles','personnel'].includes(own)){const key=own==='vehicles'?'vehicle_id':'personnel_id';if((data.pending_fuel_records||[]).some(r=>r.reconciliation_status!=='cancelled'&&plan.sources.some(s=>s.id===r[key])))throw Error('Geçmiş yakıt mutabakatına bağlı kart birleştirilemez; kaynak korunuyor.');}
     const ids = new Map();
     for (const s of plan.newSites) {
       const r = newRecord({ name: s.name, customer_id: s.customer_id, note: s.note, active: true });

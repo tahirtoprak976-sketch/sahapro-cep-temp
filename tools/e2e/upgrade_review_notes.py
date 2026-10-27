@@ -9,6 +9,7 @@ either. A temporary loopback server swaps the same origin from old to new bytes.
 No worker/cache/controller APIs are mocked and no tests or browser flags change.
 """
 import argparse
+import copy
 import hashlib
 import io
 import json
@@ -37,6 +38,18 @@ SNAPSHOT = """async()=>{
   }
   return snap;
 }"""
+
+
+def assert_preserved(before, after):
+    # Schema 7 is additive only: every pre-existing byte and table is still compared.
+    # The only allowed shape difference is the newly created, empty review store.
+    expected = copy.deepcopy(before)
+    added = set(after['data']) - set(before['data'])
+    assert added <= {'pending_fuel_records'}, f'Unexpected new stores: {added}'
+    for store in added:
+        assert after['data'][store] == [], 'Upgrade must not create historical fuel evidence'
+        expected['data'][store] = []
+    assert after == expected, 'Every old entity, metadata, draft and attachment byte must survive'
 
 
 def constant(root, file, name):
@@ -194,7 +207,7 @@ def main():
                 page.fill('[name=quantity]', '7')
                 page.fill('[name=description]', 'TEST unsaved edit must survive canceled update')
                 page.evaluate("window.__upgradeMarker='keep'")
-                assert page.evaluate(SNAPSHOT) == before, 'Editing a form must not save the legacy work'
+                assert_preserved(before, page.evaluate(SNAPSHOT))
 
                 # boot() does not await registerSW(). A ready view alone does
                 # not prove the real app has installed its update listeners.
@@ -239,7 +252,7 @@ def main():
                 assert page.evaluate("window.__upgradeMarker==='keep'")
                 assert page.input_value('[name=quantity]') == '7'
                 assert page.input_value('[name=description]') == 'TEST unsaved edit must survive canceled update'
-                assert page.evaluate(SNAPSHOT) == before
+                assert_preserved(before, page.evaluate(SNAPSHOT))
                 page.click('#update-bar [data-upd]')
                 page.wait_for_selector('.sheet')
                 page.click('.sheet [data-x="0"]')
@@ -248,7 +261,7 @@ def main():
                 assert page.input_value('[name=quantity]') == '7'
                 assert page.input_value('[name=description]') == 'TEST unsaved edit must survive canceled update'
                 assert page.evaluate('async()=>!!(await navigator.serviceWorker.getRegistration()).waiting')
-                assert page.evaluate(SNAPSHOT) == before
+                assert_preserved(before, page.evaluate(SNAPSHOT))
                 print('PASS real old worker stays active while new release waits; unsaved quantity/description survive update cancel; all records/audit/attachment bytes/drafts unchanged', flush=True)
 
                 # Only an explicit second confirmation may discard the form and
@@ -261,7 +274,17 @@ def main():
                 assert page.evaluate("window.__upgradeMarker===undefined")
                 assert page.evaluate("async()=>(await import('./js/core.js')).APP_VERSION") == new_version
                 assert page.input_value('[name=quantity]') == '3'
-                assert page.evaluate(SNAPSHOT) == before
+                assert_preserved(before, page.evaluate(SNAPSHOT))
+                schema = page.evaluate("""async()=>{
+                  const db=await import('./js/db.js'),connection=await db.openDB();
+                  const denied=await new Promise(resolve=>{const q=indexedDB.open(connection.name,6);q.onerror=()=>resolve(q.error.name);q.onsuccess=()=>{q.result.close();resolve('opened');};});
+                  const recovery=await new Promise((resolve,reject)=>{const q=indexedDB.open(connection.name+'_recovery',1);q.onerror=()=>reject(q.error);q.onsuccess=()=>{const c=q.result,r=c.transaction('snapshots').objectStore('snapshots').getAll();r.onsuccess=()=>{resolve(r.result.map(x=>x.version));c.close();};};});
+                  return {version:connection.version,denied,recovery,pending:await db.getAll('pending_fuel_records')};
+                }""")
+                assert schema['version'] == 7 and schema['pending'] == []
+                assert schema['denied'] == 'VersionError', 'An old schema6 writer must not reopen upgraded data'
+                assert 6 in schema['recovery'], 'Pre-upgrade schema6 recovery snapshot must exist'
+
                 assert page.evaluate("localStorage.getItem('TEST-upgrade-preserved')") == 'same-value'
                 caches = page.evaluate('()=>caches.keys()')
                 assert new_cache in caches and old_cache not in caches, caches
@@ -295,7 +318,7 @@ def main():
                 page.wait_for_selector('[data-h-review-notes]')
                 assert page.locator('[data-h-review-notes] .history-source').text_content() == package['rows'][0]['review_notes']
                 assert page.input_value('[data-h-row="0"] [data-h-field=description]') == package['rows'][0]['description']
-                assert page.evaluate(SNAPSHOT) == before
+                assert_preserved(before, page.evaluate(SNAPSHOT))
                 assert not errors, errors
                 print('PASS same upgraded profile reopens offline with new separate review-note UI; preview writes nothing; no page errors', flush=True)
                 browser.close()

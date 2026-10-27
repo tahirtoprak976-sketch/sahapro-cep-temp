@@ -88,7 +88,7 @@ export async function screen(ctx) {
       <div class="card" style="border-left:4px solid #f5a623">
         <div class="muted tiny">ÖNERİLEN FİYAT (KDV dahil)</div>
         <div style="font-size:28px;font-weight:800;line-height:1.2">${c.suggest ? tl(c.suggest) + ` <span class="small muted">/ ${u}</span>` : "—"}</div>
-        ${c.suggest ? `<div class="small muted">KDV hariç ${tl(c.suggestNet)} · ${esc(c.why)}</div>` : '<div class="small muted">Maliyet ya da geçmiş fiyat bulunamadı; aşağıdan mazot / diğer maliyeti girin.</div>'}
+        ${c.suggest ? `<div class="small muted">KDV hariç ${tl(c.suggestNet)} · ${esc(c.why)}</div>` : c.costIncomplete?'<div class="small muted">Geçmiş yakıt mutabakatı tamamlanmadan fiyat önerisi hesaplanmadı.</div>':'<div class="small muted">Maliyet ya da geçmiş fiyat bulunamadı; aşağıdan mazot / diğer maliyeti girin.</div>'}
         ${c.total ? `<div class="small" style="margin-top:4px">${fmtNum(c.qty)} ${u} → toplam <b>${tl(c.total)}</b>${c.profitTotal != null ? ` · tahmini kâr <b style="color:${c.profitTotal < 0 ? "#d9534f" : "#2e9e6b"}">${tl(c.profitTotal)}</b>` : ""}</div>` : ""}
         ${warnHtml}
       </div>

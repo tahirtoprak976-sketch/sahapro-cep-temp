@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // Detaylı kayıt raporları — SAF katman (DOM yok). Her "kalem" (döküm sahası, ocak, müşteri, şantiye, araç, personel,
 // esnaf, iş türü, malzeme, yakıt, gider, bakım, taşeron) için: kimlik bilgileri, özet rakamlar, ayrıntılı tablolar.
 // Aynı sonuç ekranda tablo, PDF'te kurumsal rapor, CSV'de satır olarak kullanılır.
@@ -169,6 +170,8 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
   const R = { k, kind: K.t, id, name, from, to, info: [], kpis: [], tables: [], notes: [] };
   const per = from ? `${trDate(from)} – ${trDate(to)}` : `Başlangıç – ${trDate(to)}`;
   R.period = per;
+  const pendingFuel=pendingFuelSummary({pending_fuel_records:(d.pending_fuel_records||[]).filter(f=>['arac','yakit'].includes(k)?(!id||f.vehicle_id===id):k==='personel'?(!id||f.personnel_id===id):false)},{from,to});
+  R.costIncomplete=pendingFuel.count>0;
 
   if (k === "dokum") {
     const sites = live(d, "dump_sites");
@@ -257,10 +260,10 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     const trips = r2(ws.filter((x) => x.unit === "Sefer").reduce((n, x) => n + x.qty, 0)), hours = r2(ws.filter((x) => x.unit === "Saat").reduce((n, x) => n + x.qty, 0));
     R.kpis = [...workKpis(ws, { dump: false }),
       ["Yakıt", `${num(fuelL)} L${custL ? ` (${num(custL)} L müşteriden)` : ""} · ${tl(fuelTL)}`, true],
-      ...(trips && fuelL ? [["Sefer başı yakıt", num(r2(fuelL / trips)) + " L", true]] : []),
-      ...(hours && fuelL && !trips ? [["Saat başı yakıt", num(r2(fuelL / hours)) + " L", true]] : []),
+      ...(!pendingFuel.count && trips && fuelL ? [["Sefer başı yakıt", num(r2(fuelL / trips)) + " L", true]] : []),
+      ...(!pendingFuel.count && hours && fuelL && !trips ? [["Saat başı yakıt", num(r2(fuelL / hours)) + " L", true]] : []),
       ["Bakım / onarım", tl(maintTL), true], ["Diğer giderler", tl(expTL), true], ...(dumpTL ? [["Döküm maliyeti", tl(dumpTL), true]] : []),
-      ["Kalan (gelir − giderler)", tl(r2(income - fuelTL - maintTL - expTL - dumpTL)), true]];
+      ["Kalan (gelir − giderler)", pendingFuel.count?"Hesaplanamadı — yakıt mutabakat bekliyor":tl(r2(income - fuelTL - maintTL - expTL - dumpTL)), true]];
     R.notes.push("Kalan; personel maaşı, amortisman, sigorta ve vergi hariçtir. Müşterinin verdiği mazot gider sayılmaz.");
     R.tables.push(workTable("İş dökümü", ws, ["date", ...(id ? [] : ["vehicle"]), "personnel", "customer", "site", "type", "qty", "material", "route", "ton", "slip", "price", "amount", "dump"]));
     R.tables.push({ title: "Yakıt kayıtları", internal: true, headers: ["Tarih", ...(id ? [] : ["Araç"]), "Personel", "Litre", "Birim fiyat", "Tutar", "Kaynak", "Km", "Saat", "Not"], widths: [9, ...(id ? [] : [10]), 10, 7, 8, 10, 12, 8, 7, 18],
@@ -279,7 +282,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
           const inc = r2(w2.reduce((n, x) => n + x.amount, 0)), fT = r2(f2.filter((f) => f.fuel_source !== "Müşteri Verdi").reduce((n, f) => n + (Number(f.total) || 0), 0));
           const mT = r2(m2.reduce((n, m) => n + (Number(m.cost) || 0), 0)), eT = r2(e2.reduce((n, e) => n + (Number(e.amount) || 0), 0)), dT = r2(w2.reduce((n, x) => n + x.dump, 0));
           if (!w2.length && !f2.length && !m2.length && !e2.length) return null;
-          return [v.name, String(w2.length), tl(inc), num(f2.reduce((n, f) => n + (Number(f.liters) || 0), 0)), tl(fT), tl(mT), tl(eT), tl(dT), tl(r2(inc - fT - mT - eT - dT))];
+          return [v.name, String(w2.length), tl(inc), num(f2.reduce((n, f) => n + (Number(f.liters) || 0), 0)), tl(fT), tl(mT), tl(eT), tl(dT), pendingFuel.rows.some(f=>f.vehicle_id===v.id)?"Hesaplanamadı — yakıt mutabakat bekliyor":tl(r2(inc - fT - mT - eT - dT))];
         }).filter(Boolean) });
     }
     R.tables.push(groupTable("Müşteriye göre", ws, (x) => x.customer, "Müşteri", { dump: true }));
@@ -385,6 +388,11 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.tables.push(grp((m) => m.maint_type, "Tür"));
     R.tables.push(grp((m) => m.service_company || nm("suppliers", m.supplier_id), "Servis / esnaf"));
   }
+  if(pendingFuel.count){
+    R.kpis.push(["Mutabakat bekleyen geçmiş yakıt",`${pendingFuel.count} kayıt · ${num(pendingFuel.liters)} L (stok / maliyet değil)`,true]);
+    R.notes.push(pendingFuel.warning);
+    R.tables.push({title:"Geçmiş yakıt — mutabakat bekliyor (stok / maliyet değil)",internal:true,headers:["Tarih","Araç","Personel","Litre","Durum"],widths:[14,25,25,12,24],rows:pendingFuel.rows.map(f=>[trDate(f.date),nm("vehicles",f.vehicle_id),nm("personnel",f.personnel_id),num(f.liters),"Mutabakat bekliyor — maliyet bilinmiyor"])});
+  }
   if (R.kpis.some(([label]) => label === "Fiyatı eksik iş")) R.notes.push("Fiyat eksik, bedelsiz demek değildir. Fiyatı girilmemiş işler TL toplamına katılmaz; açıkça kaydedilmiş sıfır fiyat 0,00 ₺ olarak gösterilir.");
   if(dumpUnverified.size) R.notes.push(`${dumpUnverified.size} işte döküm maliyeti dayanağı doğrulanmadı; bilinmeyen kısım sıfır değildir ve toplam eksik olabilir.`);
   R.tables = R.tables.filter((t) => t.rows.length);
@@ -403,7 +411,7 @@ export function forAudience(R, audience = "internal") {
     const pick = (a) => a.filter((_, i) => keep[i]);
     return { ...t, headers: pick(t.headers), widths: pick(t.widths), internalCols: pick(t.internalCols), rows: t.rows.map(pick) };
   });
-  return { ...R, kpis: R.kpis.filter((x) => !x[2]), tables, notes: R.notes.filter((n) => !/maliyet|gider|maaş/i.test(n)) };
+  return { ...R, kpis: R.kpis.filter((x) => !x[2]), tables, notes: [...R.notes.filter((n) => !/maliyet|gider|maaş/i.test(n)),...(R.costIncomplete?["Yakıt geçmişinin bir kısmı mutabakat bekliyor; bu nüsha yalnız kesinleşen kayıtları gösterir."]:[])] };
 }
 
 // PDF tanımı (document-engine)

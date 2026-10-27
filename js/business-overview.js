@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 import {pdfPending} from './pending-records.js';
 export {pdfPending} from './pending-records.js';
 // İşletme panosu ve yerel asistan özetleri. SAF, kayıt yazmaz; para ve birimler ayrı.
@@ -77,7 +78,8 @@ export function businessOverview(d,{today=todayStr(),period='month',from,to,meta
  const attention=attentionItems(d,{today,restoreSets:restore,meta});
  const due=maintenanceBoard(d,{today}).filter(x=>x.state==='late'||x.state==='soon');
  if(due.length)attention.push({key:'maintenance',count:due.length,title:due.length+' bakım kuralı yaklaşıyor veya gecikti',why:'Bakım takvimindeki gün / sayaç kayıtlarına göre.',next:'İlgili aracı ve bakım kuralını kontrol edin.',hash:'#/bakim-takvimi'});
- return {range,works,cash,costs,fuel,priced,missing,units,
+ const pendingFuel=pendingFuelSummary(d,range);
+ return {range,works,cash,costs,fuel,priced,missing,units,pendingFuel,costIncomplete:pendingFuel.count>0,
   totals:{works:works.length,value:sumMoney(priced,workAmount),cash:sumMoney(cash,x=>x.amount),cost:costTotals(costs).total,liters:Math.round(fuel.reduce((n,f)=>n+num(f.liters),0)*100)/100},
   comparison:{...previous,count:previousCount,change:works.length-previousCount,percent:previousCount?Math.round((works.length-previousCount)/previousCount*100):null},
   timeline:timeline(d,range),customers:group('customers','customer_id'),vehicles:group('vehicles','vehicle_id'),
@@ -97,5 +99,5 @@ export function localOverviewCommand(text,d,today=todayStr()){
  if(!periods[t])return null;
  const p=businessOverview(d,{period:periods[t],today});
  const units=Object.entries(p.units).map(([u,n])=>fmt(n)+' '+u).join(' · ')||'Miktar kaydı yok';
- return {kind:'answer',label:p.range.label+' — işletme özeti',text:p.range.from+' → '+p.range.to+'\n'+p.totals.works+' iş · '+units+'\nFiyatlı iş değeri: '+fmt(p.totals.value)+' TL (kayıttaki tutarlar; KDV esasları farklı olabilir).\nTahsilat: '+fmt(p.totals.cash)+' TL · Kayıtlı maliyet: '+fmt(p.totals.cost)+' TL.\n'+p.missing.length+' işin fiyatı eksik. Mazot hesabı litre olarak ayrı izlenir; bu rakamlar kâr veya cari bakiye değildir.',items:[{hash:'#/isletme-panosu?period='+p.range.period,label:'Grafikleri ve kaynak kayıtlarını aç'},{hash:'#/isler?from='+p.range.from+'&to='+p.range.to,label:'Bu dönemin işleri'}]};
+ return {kind:'answer',label:p.range.label+' — işletme özeti',text:p.range.from+' → '+p.range.to+'\n'+p.totals.works+' iş · '+units+'\nFiyatlı iş değeri: '+fmt(p.totals.value)+' TL (kayıttaki tutarlar; KDV esasları farklı olabilir).\nTahsilat: '+fmt(p.totals.cash)+' TL · Kayıtlı maliyet: '+fmt(p.totals.cost)+' TL.\n'+p.missing.length+' işin fiyatı eksik. Mazot hesabı litre olarak ayrı izlenir; bu rakamlar kâr veya cari bakiye değildir.'+(p.pendingFuel.count?'\n'+p.pendingFuel.warning:''),items:[{hash:'#/isletme-panosu?period='+p.range.period,label:'Grafikleri ve kaynak kayıtlarını aç'},{hash:'#/isler?from='+p.range.from+'&to='+p.range.to,label:'Bu dönemin işleri'}]};
 }

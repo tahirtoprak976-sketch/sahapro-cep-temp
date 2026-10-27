@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 import {recordNoteText} from './record-notes.js';
 import {recordSourceHTML} from './record-notes-ui.js';
 import {driverCashContextHTML} from "./driver-cash-context.js";
@@ -406,7 +407,7 @@ function bindExports(root, getSpec, getCsv) {
   qs("[data-pro-csv]", root)?.addEventListener("click", async () => {
     const s = await getCsv();
     downloadBlob(
-      new Blob([core.toCSV(s.headers, s.rows)], {
+      new Blob([core.toCSV(s.headers, s.warning?[...s.rows,["Açıklama: "+s.warning,...s.headers.slice(1).map(()=>"")]]:s.rows)], {
         type: "text/csv;charset=utf-8",
       }),
       "SAHAPRO_Rapor.csv",
@@ -1110,6 +1111,7 @@ async function card(ctx) {
       const total = p.costs.reduce((n,cost)=>n+core.toKurus(cost.gross),0);
       el.innerHTML = '<div class="card">' + [...categories].map(([label,value])=>kv(label, core.fmtTL(core.fromKurus(value))+" TL")).join("") +
         kv("Kayıtlı toplam maliyet (brüt)", core.fmtTL(core.fromKurus(total))+" TL") +
+        (p.pendingFuel?.count?ui.notice("warn",p.pendingFuel.warning):"") +
         '<p class="small">Bağlı alışlar ve maliyet dağıtımları dahildir. Yalnız garanti takibi yapılan parçalar gider sayılmaz.</p><button class="btn" data-go="#/maliyet?vehicle_id='+encodeURIComponent(id)+'">Maliyet Kaynakları ve KDV Ayrımı</button></div>';
       return;
     }
@@ -1362,6 +1364,7 @@ ${fSelect(
       );
       liters += Number(r.liters) || 0;
     }
+    const pendingFuel=sourceStore==="fuel_records"?pendingFuelSummary({pending_fuel_records:filterRecords((await db.listActive("pending_fuel_records")).map(r=>({...r,ownership:byId[r.vehicle_id]?.ownership})),f)}):{count:0,warning:""};
     const financialReview = rows.filter(r => r.financial_review).length;
     const summary = `${rows.length} kayıt · ${Object.entries(units)
       .map(([u, n]) => core.fmtNum(n) + " " + u)
@@ -1441,6 +1444,7 @@ ${fSelect(
           ),
       };
     }
+    table.warning=pendingFuel.warning;
     spec = {
       store: f.store,
       title: reportLabels[f.store] + " Raporu",
@@ -1455,13 +1459,13 @@ ${fSelect(
           ...Object.entries({customer_id:"Müşteri",site_id:"Şantiye",vehicle_id:"Araç",personnel_id:"Personel",dump_site_id:"Döküm Sahası",quarry_id:"Ocak"}).filter(([key])=>f[key]).map(([key,label])=>[label,value(key,f[key],names)]),
           ...Object.entries({work_type:"İş Türü",material:"Malzeme",unit:"Birim",ownership:"Mülkiyet",document_status:"Belge Durumu"}).filter(([key])=>f[key]).map(([key,label])=>[label,f[key]]),
         ]},
-        { title: "Rapor Özeti", text: summary }, { ...table },
+        { title: "Rapor Özeti", text: summary+(pendingFuel.count?" "+pendingFuel.warning:"") }, { ...table },
       ],
     };
     const el = qs("[data-results]", root);
     el.innerHTML =
       '<div class="notice info">' +
-      esc(summary) +
+      esc(summary+(pendingFuel.count?" "+pendingFuel.warning:"")) +
       "</div><div data-result-list></div>";
     pagedRender(
       qs("[data-result-list]", el),
@@ -1858,12 +1862,13 @@ async function managementReport(ctx, names) {
     data = await db.dumpAll(),
     p = operatingResult(data);
   const table = {
+    warning: p.pendingFuel?.warning||"",
     headers: ["Gösterge", "Değer"],
     rows: [
       ["Kesinleşmiş Gelir (KDV Hariç)", core.fmtTL(p.revenue) + " TL"],
       ["KDV Ayrımı Bilinen Maliyet", core.fmtTL(p.known_cost) + " TL"],
       ["KDV Ayrımı Olmayan Brüt Maliyet", core.fmtTL(p.unknown_cost) + " TL"],
-      ["Geçici Operasyon Sonucu", core.fmtTL(p.provisional_result) + " TL"],
+      ["Geçici Operasyon Sonucu", p.pendingFuel?.count?"Hesaplanamadı — yakıt mutabakat bekliyor":core.fmtTL(p.provisional_result) + " TL"],
     ],
   };
   const spec = {
@@ -1871,7 +1876,7 @@ async function managementReport(ctx, names) {
     audience: "internal",
     sections: [
       {
-        text: "Muhasebe net kârı değildir. KDV ayrımı bilinmeyen maliyetler brüt düşülür. Eksik veya dağıtılmamış maliyetler sonucu etkiler. Dönem/müşteri/şantiye/araç bazında incelemek için Maliyet Analizi ekranını kullanın.",
+        text: (p.pendingFuel?.count?p.pendingFuel.warning+" ":"")+"Muhasebe net kârı değildir. KDV ayrımı bilinmeyen maliyetler brüt düşülür. Eksik veya dağıtılmamış maliyetler sonucu etkiler. Dönem/müşteri/şantiye/araç bazında incelemek için Maliyet Analizi ekranını kullanın.",
       },
       table,
     ],

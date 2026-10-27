@@ -92,7 +92,7 @@ function bindExport(root, getSpec, getTable) {
     safe(() => {
       const t = getTable();
       downloadBlob(
-        new Blob(["\ufeff" + core.toCSV(t.headers, t.rows)], {
+        new Blob(["\ufeff" + core.toCSV(t.headers, t.warning?[...t.rows,["Açıklama: "+t.warning,...t.headers.slice(1).map(()=>"")]]:t.rows)], {
           type: "text/csv;charset=utf-8",
         }),
         "SAHAPRO_Rapor.csv",
@@ -1172,6 +1172,7 @@ async function resultScreen(ctx, d) {
       money(r.gross),
     ]),
   );
+  t.warning=result.pendingFuel?.warning||"";
   const summary = {
     pairs: [
       ["Hakediş ve sözleşme geliri (KDV hariç)", money(result.revenue)],
@@ -1181,7 +1182,7 @@ async function resultScreen(ctx, d) {
       ],
       ["Bilinen net maliyet", money(result.known_cost)],
       ["KDV ayrımı bilinmeyen maliyet (brüt)", money(result.unknown_cost)],
-      ["Geçici faaliyet sonucu", money(result.provisional_result)],
+      ["Geçici faaliyet sonucu", result.pendingFuel?.count?"Hesaplanamadı — yakıt mutabakat bekliyor":money(result.provisional_result)],
       ["Fiyatı olmayan iş", result.unpriced.length],
       ["Doğrudan maliyet bulunmayan iş", result.costless.length],
       ["Dağıtılmamış gider", result.unallocated.length],
@@ -1189,7 +1190,7 @@ async function resultScreen(ctx, d) {
   };
   root.innerHTML =
     appbar("Sonuç / Maliyet Analizi", "Kaynaklarla açıklanabilir hesap") +
-    `<form><div class="formgrid2">${fDate("Başlangıç", "from", filters.from, false)}${fDate("Bitiş", "to", filters.to, false)}</div>${contextFields(d, filters)}${fSelect("Araç", "vehicle_id", options(d, "vehicles"), filters.vehicle_id)}<button class="btn">Hesapla</button></form><section class="card">${summary.pairs.map((p) => kv(...p)).join("")}</section><p class="notice warn">Bu sonuç kesin muhasebe kârı değildir. Eksik maliyetler, amortisman ve vergi ayrıca değerlendirilmelidir. Fiyatlı açık işler ve tahsilat gelirle karıştırılmaz.</p>${button("Ortak Gider Dağıt", "#/dagitim/new")}${toolbar()}<div data-s-list></div><details class="card"><summary>Fiyatı olmayan işler (${result.unpriced.length})</summary>${result.unpriced
+    `<form><div class="formgrid2">${fDate("Başlangıç", "from", filters.from, false)}${fDate("Bitiş", "to", filters.to, false)}</div>${contextFields(d, filters)}${fSelect("Araç", "vehicle_id", options(d, "vehicles"), filters.vehicle_id)}<button class="btn">Hesapla</button></form><section class="card">${summary.pairs.map((p) => kv(...p)).join("")}</section>${result.pendingFuel?.count?ui.notice("warn",result.pendingFuel.warning):""}<p class="notice warn">Bu sonuç kesin muhasebe kârı değildir. Eksik maliyetler, amortisman ve vergi ayrıca değerlendirilmelidir. Fiyatlı açık işler ve tahsilat gelirle karıştırılmaz.</p>${button("Ortak Gider Dağıt", "#/dagitim/new")}${toolbar()}<div data-s-list></div><details class="card"><summary>Fiyatı olmayan işler (${result.unpriced.length})</summary>${result.unpriced
       .slice(0, 100)
       .map((w) =>
         button(
@@ -1220,7 +1221,7 @@ async function resultScreen(ctx, d) {
       spec("Faaliyet Sonuç Raporu", [
         summary,
         {
-          text: "Geçici sonuç. Eksik maliyet ve KDV ayrımı kontrol edilmelidir.",
+          text: (result.pendingFuel?.count?result.pendingFuel.warning+" ":"")+"Geçici sonuç. Eksik maliyet ve KDV ayrımı kontrol edilmelidir.",
         },
         t,
       ]),

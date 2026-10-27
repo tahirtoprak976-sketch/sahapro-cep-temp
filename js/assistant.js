@@ -1061,7 +1061,7 @@ async function save(ctx, out, v, d, { message, files }) {
   // Depo stoku: işaretli depo girişleri + mevcut stok, depodan verilen yakıta yetmeli
   {
     const budget=selectedFuelBudget(preflightData.fuel_tank_movements,cards.map(c=>({kind:c.dataset.kind,date:val(c,'date'),source:val(c,'source')||'Depo Tankı',liters:Number(val(c,'liters')),linkId:c.dataset.kind==='tank'&&val(c,'tank_link')==='link'?v.tankIn[Number(c.dataset.i)]?.match?.id:null})));
-    if(!budget.ok)return toast(budget.error,'err');
+    if(!budget.ok){qs('[data-bulk-start]',out)?.scrollIntoView({block:'center'});return toast(budget.error+' Geçmiş kayıt için “Geçmiş işleri / yakıt mutabakatını kontrollü kaydet” bölümünde tarih aralığını ve bekleyecek yakıtları açıkça seçebilirsiniz.','err');}
   }
   const btn = qs("[data-save]", out);
   btn.disabled = true;

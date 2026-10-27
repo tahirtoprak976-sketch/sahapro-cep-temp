@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 import {linkedDumpExpenseIds} from "./dump-ledger-core.js";
 import { workForFinancialRead, claimWorkResolution } from './hakedis-finance.js';
 import { recognizedBill, pricedBill, applyAllocations } from "./ledger-policy.js";
@@ -388,6 +389,7 @@ export function costLedger(data, f = {}) {
   return rows;
 }
 export function operatingResult(data, f = {}) {
+  const pendingFuel=pendingFuelSummary(data,f);
   const costs = applyAllocations(data, costLedger(data), f);
   const workMap = new Map((data.work_records || []).map((w) => [w.id, w]));
   let revenueKurus = 0;
@@ -439,9 +441,10 @@ export function operatingResult(data, f = {}) {
     revenue: fromKurus(revenueKurus),
     known_cost: fromKurus(knownCost),
     unknown_cost: fromKurus(unknown),
-    provisional_result: fromKurus(revenueKurus - knownCost - unknown),
+    provisional_result: pendingFuel.count?null:fromKurus(revenueKurus - knownCost - unknown),
+    pendingFuel,
     unknown_cost_count: costs.filter(r=>r.unverified || r.remaining_estimated_amount===null).length,
-    complete: unknown === 0 && !costs.some(r=>r.unverified || r.remaining_estimated_amount===null),
+    complete: !pendingFuel.count && unknown === 0 && !costs.some(r=>r.unverified || r.remaining_estimated_amount===null),
     costs,
     revenue_rows: source,
   };
@@ -491,6 +494,7 @@ export function closingSummary(data, date) {
   return {
     work_count: works.length,
     units,
+    pending_fuel: pendingFuelSummary(data,{from:date,to:date}),
     fuel_liters: (data.fuel_records || [])
       .filter((r) => isActive(r) && r.date === date)
       .reduce((s, r) => s + Number(r.liters || 0), 0),

@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // Fiyat sağlığı — SAF katman. Her müşteri × iş türü × birim için: şu anki fiyat, ne zamandır aynı, birim başı doğrudan maliyet
 // (mazot + döküm), katkı ve kâr oranı; mazot fiyatı arttıysa ya da kâr düşükse zam önerisi.
 // Şoför maaşı, amortisman, bakım dahil DEĞİL (doğrudan maliyet) — ekranda yazar.
@@ -56,13 +57,15 @@ export function priceHealth(d, { today = todayStr(), days = 120, targetMargin = 
     const perFuelL = fuelQ ? fuelL / fuelQ : null;
     // Birim başı döküm: kesinleşen + kalan tahmin; eksik tutar fiyat güveni yaratmaz.
     const dumpFees=recent.map(x=>dumpFee(d,x.w));
+    const vids=new Set(recent.map(x=>x.w.vehicle_id));
+    const pendingFuel=pendingFuelSummary({pending_fuel_records:(d.pending_fuel_records||[]).filter(f=>vids.has(f.vehicle_id))},{from:addDays(today,-90),to:today});
     const dumpUnknown=dumpFees.filter(f=>f?.unverified || f?.remaining_estimated_amount===null).length;
     const dumpT = dumpFees.reduce((n,f)=>n+(f?.amount||0),0);
     const perDump = qty ? dumpT / qty : 0;
     const fpThen = fuelPriceAt(d, since, fuelRefPrice);
     const fuelCost = perFuelL != null && fpNow ? perFuelL * fpNow : null;
     const cost = (fuelCost || 0) + perDump;
-    const margin = !dumpUnknown && price > 0 && (fuelCost != null || perDump) ? ((price - cost) / price) * 100 : null;
+    const margin = !pendingFuel.count && !dumpUnknown && price > 0 && (fuelCost != null || perDump) ? ((price - cost) / price) * 100 : null;
     const age = Math.round((Date.parse(today + "T12:00:00Z") - Date.parse(since + "T12:00:00Z")) / 864e5);
     const fuelRise = perFuelL != null && fpNow && fpThen ? perFuelL * (fpNow - fpThen) : 0;
     let suggest = null, why = "";
@@ -70,9 +73,10 @@ export function priceHealth(d, { today = todayStr(), days = 120, targetMargin = 
     if (fuelRise > price * 0.02 && age >= 60) { suggest = round50(price + fuelRise); why = `Fiyat ${age} gündür aynı; bu sürede mazot litresi ${r0(fpThen)} → ${r0(fpNow)} ₺ oldu (birim başı +${r0(fuelRise)} ₺ maliyet).`; }
     if (minPrice && minPrice > price && (!suggest || minPrice > suggest)) { suggest = minPrice; why = (why ? why + " " : "") + `Doğrudan maliyet ${r0(cost)} ₺; %${targetMargin} katkı için en az ${minPrice} ₺.`; }
     if(dumpUnknown) { suggest=null; why=`${dumpUnknown} işte döküm maliyeti doğrulanmadı; katkı, kâr oranı ve fiyat önerisi hesaplanmadı.`; }
+    if(pendingFuel.count){suggest=null;why=pendingFuel.warning+" Katkı, kâr oranı ve fiyat önerisi hesaplanmadı.";}
     out.push({
       key: k, customer_id: cid, customer: nm("customers", cid), work_type, unit, price: r0(price), since, age, n: recent.length, qty: r1(qty), revenue: r0(revenue),
-      fuelL: perFuelL != null ? r1(perFuelL) : null, fuelCost: fuelCost != null ? r0(fuelCost) : null, dump: r0(perDump), cost: r0(cost), knownCostSubtotal:r0(cost), dumpUnknown, costIncomplete:!!dumpUnknown, contrib:dumpUnknown?null:r0(price - cost),
+      fuelL: perFuelL != null ? r1(perFuelL) : null, fuelCost: fuelCost != null ? r0(fuelCost) : null, dump: r0(perDump), cost: r0(cost), knownCostSubtotal:r0(cost), dumpUnknown, fuelPending:pendingFuel.count,costIncomplete:!!(dumpUnknown||pendingFuel.count), contrib:dumpUnknown||pendingFuel.count?null:r0(price - cost),
       margin: margin != null ? Math.round(margin) : null, fpNow: fpNow ? r1(fpNow) : null, fpThen: fpThen ? r1(fpThen) : null, suggest, why,
       state: margin == null ? "?" : margin < 0 ? "zarar" : margin < targetMargin / 2 ? "düşük" : suggest ? "zam" : "iyi",
     });
