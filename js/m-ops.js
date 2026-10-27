@@ -1,3 +1,4 @@
+import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
 import {tankTimeline} from './tank-timeline.js';
 import {recordNoteHTML} from './record-notes-ui.js';
 import { vehicleDocumentStatus } from "./business.js";
@@ -239,6 +240,7 @@ async function tank(ctx) {
   const { hasFuelRules: hasFuelRulesT } = await import("./assistant-rules.js");
   const { tankDupPairs } = await import("./tank-match.js");
   const dupPairs = tankDupPairs(rows);
+  const pendingData = {fuel_tank_movements:all,pending_fuel_records:await db.getAll("pending_fuel_records")};
   const uncosted = fuels.filter((f) => isActive(f) && f.fuel_source === "Depo Tankı" && !(Number(f.total) > 0)).length;
 
   root.innerHTML =
@@ -252,6 +254,7 @@ async function tank(ctx) {
       ${stat(st.daily ? fmtNum(st.daily) : "—", "Günlük L (14g)")}
       ${stat(st.daysLeft != null ? fmtNum(st.daysLeft) : "—", "Kaç gün yeter")}
     </div>
+    ${pendingFuelPanel(pendingData,names)}
     ${dupPairs.map((p, i) => `<div class="card" style="border-left:4px solid #e0a030"><div class="small"><b>⚠ Aynı yakıt iki kez girilmiş olabilir</b><br>${trDate(p.keep.date)} elle girilen ${fmtNum(p.keep.liters)} L ve ${trDate(p.drop.date)} faturadan gelen ${fmtNum(p.drop.liters)} L (fatura ${esc(p.drop.invoice_no)}). Aynı teslimatsa birleştirin: fatura bilgisi ve fotoğrafı elle girdiğiniz kayda geçer, fazla giriş silinir, borç bir kez kalır.</div><button class="btn block" style="margin-top:8px" data-merge="${i}">🔗 Birleştir</button></div>`).join("")}
     ${chronology.invalid.length?notice('warn','Depo geçmişinde geçersiz hareket var; Veri Sağlığı bölümünden kontrol edin.'):firstGap?`<section class="card" data-tank-chronology><b>Tarih sırası kontrolü</b>${notice('warn',trDate(firstGap.date)+' tarihinde depo '+fmtNum(Math.abs(firstGap.balance))+' L eksiye düşüyor. O tarihten önceki gerçek giriş / açılışı kontrol edin. Bugünkü pozitif bakiye geçmiş açığı kapatmaz.')}<button type="button" class="btn block" data-go="#/veri-sagligi">Veri Sağlığında İncele</button></section>`:''}
     ${uncosted && st.unitCost ? `<div class="card"><div class="small">${uncosted} depo yakıtı kaydının tutarı yok. Yakıtın kendi tarihine kadar fiyatlı giriş bulunan ve maliyeti başka kayda bağlı olmayanlar hesaplanabilir. Bugünkü ortalama ${fmtTL(st.unitCost)} ₺/L geçmiş fiyat yerine kullanılmaz.</div><button class="btn block" style="margin-top:8px" data-fillcost>₺ Maliyetleri Yaz</button></div>` : ""}
@@ -293,6 +296,7 @@ async function tank(ctx) {
     <div class="row between"><div class="section-title" style="margin:0">Hareketler</div><button class="btn sm" data-pdf>🖨 A4 Rapor</button></div>
     <div data-list style="margin-top:8px"></div>`;
 
+  bindPendingFuelReview(ctx);
   const move = qs("[name=move_type]", root),
     vehicle = qs("[name=vehicle_id]", root);
   const updateMove = () => {

@@ -20,6 +20,7 @@ export const HISTORY_STORES = [
   "quarries",
   "work_records",
   "fuel_records",
+  "pending_fuel_records",
   "fuel_tank_movements",
 ];
 const text = (v) => (typeof v === "string" ? v.trim() : "");
@@ -160,12 +161,12 @@ export function prepareHistory(
     sourceSeen = new Set(),
     workSeen = new Set(),
     fuelSeen = new Set();
-  for (const s of ["work_records", "fuel_records"])
+  for (const s of ["work_records", "fuel_records", "pending_fuel_records"])
     for (const r of data[s] || []) {
       // Deleted imported rows remain tombstones: importing again must not resurrect them.
       if (r.history_source?.row_id && r.history_source?.original_row)
         sourceSeen.add(r.history_source.row_id);
-      if (isActive(r))
+      if (isActive(r)&&!(s==='pending_fuel_records'&&r.reconciliation_status==='cancelled'))
         (s === "work_records" ? workSeen : fuelSeen).add(
           s === "work_records" ? historyWorkKey(r) : historyFuelKey(r),
         );

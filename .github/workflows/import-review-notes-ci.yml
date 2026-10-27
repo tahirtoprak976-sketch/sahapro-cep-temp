@@ -8,6 +8,7 @@ on:
       - dot/solo-simplification
       - dot/solo-finance-audit
       - dot/solo-dump-accounting
+      - codex/historical-fuel-review
 
 permissions:
   contents: read
@@ -90,7 +91,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -182,6 +183,12 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref fbfb32c9ea3c6faffa439e210918f0384a167e41
+
+      - name: Verify installed v3.9.73 schema6 to historical-review schema7 preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 79b60e5111bbf9807e8e8f3618ff2e4f4ca8dccd
 
       - name: Reproduce dump-cost defects on unchanged v3.9.72
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}

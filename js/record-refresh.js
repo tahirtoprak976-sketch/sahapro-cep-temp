@@ -10,6 +10,7 @@ const relevant = new Set([
   "bank_movements",
   "work_records",
   "fuel_records",
+  "pending_fuel_records",
   "fuel_tank_movements",
 ]);
 let channel;

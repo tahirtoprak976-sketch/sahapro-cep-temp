@@ -1,10 +1,11 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // SAHAPRO SOLO — çekirdek saf mantık (DOM/IndexedDB bağımsız)
 // v1 (SAHAPRO CEP) ile geriye dönük uyumlu; hesap kuralları sahapro-hakedis-engine skill'ine göre.
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.73";
-export const SCHEMA_VERSION = 6;
+export const APP_VERSION = "SAHAPRO SOLO v3.9.74";
+export const SCHEMA_VERSION = 7;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
 export const SW_CACHE = "sahapro-solo-v2";
@@ -19,6 +20,7 @@ export const ENTITY_STORES = [
   "personnel",
   "work_records",
   "fuel_records",
+  "pending_fuel_records", // v7 additive: isolated historical review, never actual fuel / stock
   "fuel_tank_movements",
   "expense_records",
   "maintenance_records",
@@ -629,6 +631,7 @@ export function daySummary(dateStr, data) {
     total_saat: sumUnit("Saat"),
     total_yevmiye: sumUnit("Yevmiye"),
     fuel_liters: fuels.reduce((s, f) => s + (Number(f.liters) || 0), 0),
+    pending_fuel: pendingFuelSummary(data,{from:dateStr,to:dateStr}),
     expense_total: expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0),
     tahsilat_total: cash
       .filter((c) => c.cash_type === "Müşteriden Para Alındı")
@@ -646,6 +649,8 @@ export function daySummary(dateStr, data) {
 export function smartAlerts(data, opts = {}) {
   const today = opts.today || todayStr();
   const alerts = [];
+  const pendingFuel=pendingFuelSummary(data);
+  if(pendingFuel.count)alerts.push({kind:"warn",key:"historical_fuel",text:pendingFuel.warning,ref:{type:"tank"}});
   const act = (arr) => (arr || []).filter(isActive);
   for (const e of act(data.expense_records))
     if (e.receipt === "Hayır")
@@ -842,7 +847,8 @@ export function profitability(data, filter = {}) {
   ))
     bakim += Number(m.cost) || 0;
   const sonuc = gelir - yakit - gider - bakim;
-  return { gelir, yakit, yakitLt, gider, bakim, sonuc };
+  const pendingFuel=pendingFuelSummary(data,filter);
+  return { gelir, yakit, yakitLt, gider, bakim, sonuc:pendingFuel.count?null:sonuc, pendingFuel, costIncomplete:pendingFuel.count>0 };
 }
 
 // ---- WhatsApp gün sonu metni ----
@@ -869,6 +875,8 @@ export function buildWhatsAppText(dateStr, data, names = {}) {
     L.push("");
   }
   const fuels = on(data.fuel_records);
+  const pendingFuel=pendingFuelSummary(data,{from:dateStr,to:dateStr});
+  if(pendingFuel.count)L.push("YAKIT MUTABAKATI",pendingFuel.warning,"");
   if (fuels.length) {
     L.push("YAKIT");
     for (const f of fuels)

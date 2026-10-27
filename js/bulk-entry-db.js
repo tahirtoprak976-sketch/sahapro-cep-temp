@@ -69,6 +69,7 @@ export async function commitBulk(draft,previewToken){
     const f=withRecordSource(mapFields(r.fields),r.raw_message,{...r.fields,source_quote:r.quote},r.kind,data,r.kind==='work'?['internal_note']:['description']),bulk_source={key:r.source_key,op_id:op,batch_id:draft.id,raw_message:r.raw_message};
     let record,store;
     if(r.kind==='work'){store='work_records';record=add(store,{...f,bulk_source});}
+    else if(r.pending_fuel){store='pending_fuel_records';record=add(store,{...f,bulk_source});}
     else{
      store='fuel_records';const event=uuid(),moveId=uuid();
      record=add(store,{...f,event_id:event,tank_movement_id:moveId,bulk_source});

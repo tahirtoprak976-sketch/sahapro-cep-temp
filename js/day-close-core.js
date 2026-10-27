@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // "Günü kapat" kontrolü — SAF katman. Akşam tek listede: bugün eksik kalanlar + biriken açıklar.
 // Her madde ilgili kayda gider (href). Yalnız işlem gerektiren maddeler; bilgi amaçlı olanlar "info".
 import { isActive, addDays } from "./core.js";
@@ -16,6 +17,8 @@ const OFF_EVENTS = ["İzin", "Rapor", "Devamsızlık", "Çalıştı", "Yarım G�
 export function dayCloseChecks(d, { date, attCount = {} } = {}) {
   const items = [];
   const push = (kind, group, text, sub, href) => items.push({ kind, group, text, sub: sub || "", href: href || "" });
+  const pendingFuel=pendingFuelSummary(d,{from:date,to:date});
+  if(pendingFuel.count)push("warn","Yakıt mutabakatı",pendingFuel.warning,"Bekleyen kayıtlar gerçek stok / maliyet değildir.","#/depo");
   const nm = (s, id) => (id ? live(d, s).find((r) => r.id === id)?.name || "" : "");
   const internal = new Set(live(d, "customers").filter((c) => c.internal).map((c) => c.id));
   const works = live(d, "work_records");

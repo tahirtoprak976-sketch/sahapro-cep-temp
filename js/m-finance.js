@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 import { customerBankReceipt } from "./enterprise-db.js";
 import {hakedisNumber, hakedisItemIssues, assertHakedisItems, hakedisSourcePriceReview} from './hakedis-validation.js';
 import {customerLabel} from './driver-customer.js';
@@ -124,10 +125,11 @@ async function hub(ctx) {
     </div>
     ${cur.financialReview ? notice("warn", `${cur.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) + '<a class="btn sm" href="#/veri-sagligi" data-go="#/veri-sagligi">Veri Sağlığı ›</a>' : ""}
     ${dumpCostBreakdown(monthCosts)}
+    ${pendingFuelSummary(d,{from,to:today}).count?notice("warn",pendingFuelSummary(d,{from,to:today}).warning):""}
     <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
-    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span data-month-profit class="strong ${!cur.dumpUnknown&&!cur.dumpUnverified&&cur.profit < 0 ? "danger" : ""}">${cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit)+" ₺"}</span></div>
+    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span data-month-profit class="strong ${!cur.costIncomplete&&cur.profit < 0 ? "danger" : ""}">${cur.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit)+" ₺"}</span></div>
       <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
@@ -1477,6 +1479,7 @@ async function expenses(ctx) {
     </div>
     <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti + personel maaşı (puantajda ay kapatılınca; avans ayrıca sayılmaz). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
     ${dumpCostBreakdown(all)}
+    ${pendingFuelSummary(d,{from,to:today}).count?notice("warn",pendingFuelSummary(d,{from,to:today}).warning):""}
     ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Ayrıca yazılmış döküm giderleri var. Aynı kesintiyse Ortak Döküm Hesabı'nda fişe bağlayın; kayıtları silmeden tek maliyet olarak izleyin. Yüklemeyi yalnız gerçekten sahaya yatırılan paraysa yükleme olarak işaretleyin.") : ""}
     ${tot.personel && all.some((r) => r.kind === "gider" && /personel|maaş|maas|avans/i.test(r.label)) ? notice("warn", "Maaş puantajdan masrafa yazılıyor; giderlerde de \"Personel\" kaydı var. Aynı maaşı ya da avansı gider olarak da girdiyseniz iki kez sayılır — gider kaydını silin.") : ""}
     ${searchBar("Kategori, araç, esnaf, açıklama…", q)}

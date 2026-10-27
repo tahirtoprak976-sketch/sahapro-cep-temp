@@ -53,6 +53,7 @@ export async function screen(ctx){
   </div><p class="tiny muted">İş değeri kayıtlardaki tutardır; KDV esasları farklı olabilir. Tahsilatla aynı şey değildir. Bu özet kâr veya cari bakiye değildir.</p>
   <div>${model.missing.length?`<button class="btn block" data-overview-source="missing">Fiyatı eksik ${model.missing.length} işi aç</button>`:""}</div>
   <section class="ultimate-unit-strip" aria-label="Ayrı iş birimleri">${Object.entries(model.units).map(([u,n])=>`<span><strong>${fmtNum(n)}</strong> ${esc(u)}</span>`).join('')||'<span>Bu dönemde iş miktarı yok.</span>'}<span><strong>${fmtNum(t.liters)}</strong> L yakıt kaydı</span></section>
+  ${model.pendingFuel.count?notice("warn",model.pendingFuel.warning):""}
   ${chart()}
   <section class="card ultimate-inspector" data-overview-inspector aria-live="polite"></section>
   <section class="card"><div class="row between"><h3>Kontrol listesi</h3><span class="badge">Tüm kayıtlar</span></div><p class="tiny muted">Dönem seçimine bağlı değildir. İnceleme adayları otomatik düzeltilmez.</p>${model.attention.length?model.attention.map(a=>`<button class="ultimate-attention" data-go="${esc(a.hash)}"><strong>${esc(a.title)} ›</strong><small>${esc(a.why)}</small><span>${esc(a.next)}</span></button>`).join(''):'<p class="muted">Mevcut denetimlerde kontrol maddesi bulunmadı.</p>'}</section>

@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 import { validateStoredPart } from "./parts-core.js";
 import { applyAllocations } from "./ledger-policy.js";
 // SOLO extensions: deterministic rules. No remote credentials or automatic financial writes.
@@ -336,7 +337,7 @@ export function resultReport(d, f = {}) {
     costs,
     known_cost: fromKurus(known),
     unknown_cost: fromKurus(unknown),
-    provisional_result: fromKurus(toKurus(original.revenue) - known - unknown),
+    provisional_result: original.pendingFuel?.count?null:fromKurus(toKurus(original.revenue) - known - unknown),
     unbilled_value: fromKurus(
       priced.reduce((n, w) => n + toKurus(workFinancials(w).net_total || 0), 0),
     ),
@@ -674,6 +675,7 @@ export function historyFromMessage(m, d) {
   };
 }
 export function fuelEfficiency(d, vehicle_id) {
+  if(pendingFuelSummary(d,{vehicle_id}).count)return [];
   const rows = live(d, "fuel_records")
     .filter((r) => r.vehicle_id === vehicle_id)
     .sort(
@@ -740,7 +742,7 @@ export function localAnswer(question, d) {
         rows
           .reduce((n, r) => n + Number(r.liters || 0), 0)
           .toLocaleString("tr-TR") +
-        " litre. Gerçek motor tüketimi değildir.",
+        " litre. Gerçek motor tüketimi değildir."+(pendingFuelSummary(d,{vehicle_id:vehicle?.id}).count?" "+pendingFuelSummary(d,{vehicle_id:vehicle?.id}).warning:""),
       sources: rows.map((r) => ({
         store: "fuel_records",
         id: r.id,

@@ -1,4 +1,5 @@
 // Pure review decisions. Model proposals never supply authority, source IDs or write receipts.
+import {assertHistoricalScope,pendingFuelFields,historicalFuelProjection,historicalFuelIdentity} from './historical-fuel.js';
 import {foldTr} from './parser.js';
 import {analyzeMessage} from './message-engine.js';
 import {isActive,WORK_TYPES,WORK_UNITS,todayStr} from './core.js';
@@ -6,7 +7,7 @@ import {customerNameKey} from './driver-customer.js';
 import {historyWorkKey,historyFuelKey,validHistoryDate} from './history-core.js';
 
 export const BULK_VERSION=1;
-export const BULK_STORES=['customers','sites','vehicles','personnel','quarries','dump_sites','aliases','work_records','fuel_records','fuel_tank_movements'];
+export const BULK_STORES=['customers','sites','vehicles','personnel','quarries','dump_sites','aliases','work_records','fuel_records','fuel_tank_movements','pending_fuel_records'];
 const norm=s=>foldTr(String(s||'')).replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' ');
 const contains=(hay,needle)=>!!norm(needle)&&(' '+norm(hay)+' ').includes(' '+norm(needle)+' ');
 const text=s=>String(s||'').trim();
@@ -70,7 +71,7 @@ export function normalizeBulkRows(v,message,data,rawPlan={}){
   rows.push({key:kind+':'+i,kind,quote:q,raw_message:unique.length===1?unique[0].header+' '+unique[0].text:q,
    source_key:unique.length===1?JSON.stringify([unique[0].key,kind,nq]):null,source_candidates:unique.length===1?[]:lines,
    labels,fields:f,review:[...new Set(review)].filter(field=>!r._bulkReviewed?.includes(field)),blocked,parent_id:(!r._bulkReviewed?.includes('customer_id')&&raw.new_customer_parent_id)||r.new_customer_parent_id||(data.customers||[]).find(c=>c.id===f.customer_id)?.parent_customer_id||null,
-   ...(kind==='fuel'?{fields:{date:f.date,vehicle_id:f.vehicle_id,personnel_id:f.personnel_id||null,liters:r.liters,fuel_source:raw.source||raw.fuel_source||'',description:q}}:{})});
+   ...(kind==='fuel'?{fields:{date:f.date,vehicle_id:f.vehicle_id,personnel_id:f.personnel_id||null,liters:r.liters,total:r.total??raw.total??null,unit_price:r.unit_price??raw.unit_price??null,fuel_source:r.source||r.fuel_source||raw.source||raw.fuel_source||'',description:q}}:{})});
  }
  return rows;
 }
@@ -167,24 +168,34 @@ export function buildBulkPlan(draft,data,{today=todayStr()}={}){
    }
    if(f.fuel_source!=='Depo Tankı')issues.push('Yalnız kaynağı açıkça Depo Tankı olan çıkış desteklenir; diğer yakıt ayrı incelenmeli.');
    if(!draft.tank_confirmed)issues.push('Yakıtların daha önce stoktan düşülmediğini paket için doğrulayın.');
-   f.liters=Number(f.liters);f.customer_billable=false;f.receipt='Depo';
+   f.liters=Number(f.liters);f.customer_billable=false;f.receipt='Depo';delete f.total;delete f.unit_price;
   }
   f.vehicle_id=resolve(r,'vehicle_id',r.labels.vehicle_id,null,true);if(!f.vehicle_id)issues.push('Araç seçilmeli.');
   f.personnel_id=resolve(r,'personnel_id',r.labels.personnel_id);
   // An optional named card is not silently discarded when unresolved.
   for(const [field]of Object.entries(fields))if(r.labels[field]&&!f[field]&&!issues.some(x=>x.startsWith(field)))issues.push((fields[field][1])+' doğrulanmalı.');
   const signature=r.kind==='work'?historyWorkKey(f):historyFuelKey(f),store=r.kind==='work'?'work_records':'fuel_records';
-  const similar=registry[store].filter(x=>(r.kind==='work'?historyWorkKey(x):historyFuelKey(x))===signature);
+  const similar=[...registry[store],...(r.kind==='fuel'?registry.pending_fuel_records.filter(x=>x.reconciliation_status!=='cancelled'):[])].filter(x=>r.kind==='fuel'&&x.reconciliation_status&&historicalFuelIdentity(x)===historicalFuelIdentity(f)||(r.kind==='work'?historyWorkKey(x):historyFuelKey(x))===signature);
   const earlier=rows.filter(x=>x.kind===r.kind&&x.status==='ready'&&(r.kind==='work'?historyWorkKey(x.fields):historyFuelKey(x.fields))===signature);
-  if(similar.length||earlier.length){
+  const historicalRequested=r.kind==='fuel'&&draft.historical_fuel?.enabled&&draft.historical_fuel.keys?.includes(r.key);
+  const historicalDuplicates=historicalRequested&&[...registry.fuel_records,...registry.pending_fuel_records.filter(x=>x.reconciliation_status!=='cancelled'),...rows.filter(x=>x.kind==='fuel'&&x.status==='ready'&&!draft.deselected?.includes(x.key)).map(x=>x.fields)].some(x=>historicalFuelIdentity(x)===historicalFuelIdentity(f));
+  if(historicalDuplicates)issues.push('Aynı tarih / araç / litreyle gerçek veya bekleyen yakıt var. Bu modda ikinci kayıt kesinleştirilemez; mevcut kaydı inceleyin veya bu satırı dışlayın.');
+  else if(similar.length||earlier.length){
    const {question,answer}=ask(r,'similar','Benzer kayıt var; ayrı bir iş/çıkış mı?',[{value:'separate',label:'Gerçekten ayrı kayıt'},{value:'exclude',label:'Tekrar; bu satırı dışla'}],{perRow:true});
    if(answer?.value==='exclude'){question.resolved=true;r.status='excluded';rows.push(r);continue;}
    if(answer?.value==='separate')question.resolved=true;else issues.push('Olası mükerrer kaydı kontrol edin.');
   }
+  if(historicalRequested){
+   try{assertHistoricalScope(draft.historical_fuel,f.date,today);r.pending_fuel=true;Object.assign(f,pendingFuelFields({...f,total:original.fields.total??null,unit_price:original.fields.unit_price??null},draft.historical_fuel,draft.historical_fuel.approved_at));}catch(e){issues.push(e.message);}
+  }
   r.status=issues.length?'waiting':'ready';rows.push(r);
  }
+ // A later normal/pending row cannot make already accepted review evidence unpromotable.
+ for(const r of rows.filter(r=>r.pending_fuel&&r.status==='ready'&&!draft.deselected?.includes(r.key))){
+  if(rows.some(x=>x!==r&&x.kind==='fuel'&&x.status==='ready'&&!draft.deselected?.includes(x.key)&&historicalFuelIdentity(x.fields)===historicalFuelIdentity(r.fields))){r.status='waiting';r.issues.push('Aynı tarih / araç / litreyle seçili ikinci yakıt var. Çift çıkış riski nedeniyle bu kaydı ayrı mutabakat olarak alamıyoruz; kaynağı inceleyin veya tekrar satırını dışlayın.');}
+ }
  // Historical stock must remain nonnegative on every date, including later existing outs.
- const candidates=rows.filter(r=>r.kind==='fuel'&&r.status==='ready'&&!draft.deselected?.includes(r.key));
+ const candidates=rows.filter(r=>r.kind==='fuel'&&!r.pending_fuel&&r.status==='ready'&&!draft.deselected?.includes(r.key));
  for(const r of candidates){
   const selected=candidates.filter(x=>x!==r&&x.status==='ready');
   const timeline=[...(data.fuel_tank_movements||[]).filter(isActive),...selected.map(x=>({...x.fields,move_type:'ÇIKIŞ'})),{...r.fields,move_type:'ÇIKIŞ'}].sort((a,b)=>String(a.date).localeCompare(String(b.date))||(a.move_type==='GİRİŞ'?-1:1));
@@ -202,10 +213,12 @@ export function buildBulkPlan(draft,data,{today=todayStr()}={}){
  return {rows,questions:[...questions.values()].filter(q=>!q.resolved),newCards,totals,counts:Object.fromEntries(['ready','waiting','duplicate','recorded','excluded','conflict'].map(s=>[s,rows.filter(r=>r.status===s).length])),priceNote:'Fiyatlar bekliyor; güncel fiyat, sözleşme ve mazot anlaşması uygulanmayacak.'};
 }
 export function finalizeBulk(draft,data,options){
- const plan=buildBulkPlan(draft,data,options),writes=plan.rows.filter(r=>r.status==='ready'&&!draft.deselected?.includes(r.key));
+ const plan=buildBulkPlan(draft,data,options);
+ const atomicBlocked=draft.historical_fuel?.enabled&&plan.rows.some(r=>!draft.deselected?.includes(r.key)&&['waiting','conflict'].includes(r.status));
+ const writes=atomicBlocked?[]:plan.rows.filter(r=>r.status==='ready'&&!draft.deselected?.includes(r.key));
  const needed=new Set(writes.flatMap(r=>Object.values(r.fields)));
  for(let i=0;i<plan.newCards.length;i++)for(const c of plan.newCards)if(needed.has(c.id))for(const ref of ['parent_customer_id','customer_id'])if(c[ref])needed.add(c[ref]);
  const totals={};for(const r of writes)if(r.kind==='work'){const k=JSON.stringify([r.fields.customer_id,r.fields.unit]);totals[k]=(totals[k]||0)+r.fields.quantity;}
- return {...plan,totals,newCards:plan.newCards.filter(c=>needed.has(c.id)),writes,skipped:plan.rows.filter(r=>!writes.includes(r)).map(r=>({key:r.key,status:r.status,reasons:r.issues}))};
+ return {...plan,atomicBlocked,projection:historicalFuelProjection(data,writes.filter(r=>r.pending_fuel).map(r=>r.fields)),totals,newCards:plan.newCards.filter(c=>needed.has(c.id)),writes,skipped:plan.rows.filter(r=>!writes.includes(r)).map(r=>({key:r.key,status:r.status,reasons:r.issues}))};
 }
 export const bulkSelectionToken=plan=>JSON.stringify({writes:plan.writes.map(r=>({key:r.key,source_key:r.source_key,fields:r.fields})),cards:plan.newCards});

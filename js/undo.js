@@ -90,7 +90,7 @@ export async function applyUndo(db) {
     const apply=()=>{
     for (const [s, x] of Object.entries(plan.stores)) {
       const os = t.objectStore(s);
-      for (const r of x.added) os.delete(r.id);
+      for (const r of x.added) {if(s==='pending_fuel_records')os.put({...r,reconciliation_status:'cancelled',updated_at:nowISO(),reconciliation:{...r.reconciliation,cancelled_at:nowISO()}});else os.delete(r.id);}
       for (const c of x.changed) os.put(c.before);
     }
     for (const id of plan.attAdded) t.objectStore("attachments").delete(id);

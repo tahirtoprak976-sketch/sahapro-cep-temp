@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // Yakıt kuralları — SAF katman. Yapay zeka gerekmez; telefondaki kayıtlarla hesaplanır.
 // 1) litre × birim fiyat ≠ toplam  2) depodan fazla dolum  3) iş olmayan gün yakıt  4) tüketim kendi ortalamasının %30 üstünde
 import { isActive, addDays, todayStr } from "./core.js";
@@ -33,6 +34,8 @@ export function fuelFlags(data, { today = todayStr(), days = 7 } = {}) {
   }
   // 4) Tüketim: son 14 gün L/iş birimi, aracın 15–90 gün önceki ortalamasıyla
   for (const v of live(data, "vehicles")) {
+    const pendingFuel=pendingFuelSummary(data,{from:addDays(today,-90),to:today,vehicle_id:v.id});
+    if(pendingFuel.count){out.push({rule:"historical_review",kind:"warn",vehicle_id:v.id,date:today,text:pendingFuel.warning+" Tüketim karşılaştırması yapılmadı."});continue;}
     const vw = works.filter((w) => w.vehicle_id === v.id && w.date <= today && w.date >= addDays(today, -90));
     const units = {};
     for (const w of vw) units[w.unit] = (units[w.unit] || 0) + 1;

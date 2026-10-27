@@ -1,3 +1,4 @@
+import {pendingFuelSummary} from './historical-fuel.js';
 // SAHAPRO SOLO — Dashboard · Gün Sonu · Yönetici · Raporlar · Daha Fazla
 import { todayBoard } from "./today.js";
 import { monthlySeries, vehicleSeries } from "./finance-chart.js";
@@ -53,6 +54,7 @@ async function loadAll(db) {
   const stores = [
     "work_records",
     "fuel_records",
+    "pending_fuel_records",
     "fuel_tank_movements",
     "expense_records",
     "maintenance_records",
@@ -84,9 +86,9 @@ async function loadAll(db) {
 }
 
 function dumpReviewNotice(months) {
-  return months.some(m=>m.dumpUnknown||m.dumpUnverified)
+  return (months.some(m=>m.fuelPending) ? '<div data-fuel-reconciliation-review>'+notice('warn','Geçmiş yakıt mutabakat bekliyor. Bekleyen litreler stoktan düşülmedi ve maliyet sayılmadı; maliyet toplamı eksik, kâr hesaplanmadı. Depo ekranından inceleyin.')+'</div>' : '') + (months.some(m=>m.dumpUnknown||m.dumpUnverified)
     ? '<div data-dump-review>'+notice("warn","Bazı döküm tahminlerinin dayanağı doğrulanamadı. Bilinmeyen kısım sıfır maliyet değildir; maliyet eksik, tahmini kâr fazla görünebilir. Masraflar ekranında fiş ve tahmin kapsamını kontrol edin.")+'</div>'
-    : "";
+    : "");
 }
 
 // ================= DASHBOARD =================
@@ -289,7 +291,7 @@ async function dashboard(ctx) {
     <div class="section-title">Aylık Özet — son 6 ay</div>
     <div class="card" data-monthly-costs>${mChart}${months.some(m => m.financialReview) ? notice("warn", "Bazı işlerde hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; Veri Sağlığı ve kaynak işi kontrol edin.") : ""}${dumpReviewNotice(months)}
       <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Maliyet</span></div>
-      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay kayıtlı maliyet", fmtTL(cur.cost) + " ₺")}<div data-home-profit>${kv("Tahmini kâr (iş değeri − maliyet)", cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit) + " ₺")}</div></div>
+      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay kayıtlı maliyet", fmtTL(cur.cost) + " ₺")}<div data-home-profit>${kv("Tahmini kâr (iş değeri − maliyet)", cur.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit) + " ₺")}</div></div>
       ${cur.dump||cur.dumpUnknown||cur.dumpUnverified?'<div data-home-dump>'+kv("Döküm — kesinleşen",fmtTL(cur.dumpConfirmed)+" ₺")+kv("Döküm — kalan tahmin",fmtTL(cur.dumpEstimated)+" ₺"+(cur.dumpUnknown?" + bilinmeyen kısım":""))+'</div>':""}
       ${cur.unpriced ? `<div class="muted tiny" style="margin-top:6px">⚠ Bu ay ${cur.unpriced} işin fiyatı yok; iş değeri eksik hesaplanır.</div>` : ""}
     </div>
@@ -491,7 +493,7 @@ async function manager(ctx) {
       ${curM.dump ? kv("Döküm ücreti", fmtTL(curM.dump) + " ₺") : ""}
       ${curM.pay ? kv("Personel maaşı (kapatılan aylar)", fmtTL(curM.pay) + " ₺") : ""}
       <div class="divider"></div>
-      <div data-manager-profit>${kv("TAHMİNİ SONUÇ", curM.dumpUnknown||curM.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(curM.profit) + " ₺")}</div>
+      <div data-manager-profit>${kv("TAHMİNİ SONUÇ", curM.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":curM.dumpUnknown||curM.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(curM.profit) + " ₺")}</div>
       ${curM.financialReview ? notice("warn", `${curM.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) : ""}
       ${dumpReviewNotice([curM])}
       ${curM.unpriced ? `<div class="muted tiny">⚠ ${curM.unpriced} işin fiyatı yok; sonuç eksik olabilir.</div>` : ""}
@@ -537,6 +539,7 @@ async function reports(ctx) {
   const nm = (s, id) => names[s][id] || "—";
   let rows = [],
     total = null,
+    reportWarning = "",
     headers = [],
     title = REPORTS.find((r) => r.v === type).t;
 
@@ -581,7 +584,9 @@ async function reports(ctx) {
       x.total ? fmtTL(x.total) + " ₺" : "—",
       x.fuel_source || "",
     ]);
-    total = `${xs.reduce((s, x) => s + (Number(x.liters) || 0), 0)} Lt · ${fmtTL(xs.reduce((s, x) => s + (Number(x.total) || 0), 0))} ₺`;
+    const pending=pendingFuelSummary({pending_fuel_records:(data.pending_fuel_records||[]).filter(match)});
+    reportWarning=pending.warning;
+    total = `${xs.reduce((s, x) => s + (Number(x.liters) || 0), 0)} Lt · ${fmtTL(xs.reduce((s, x) => s + (Number(x.total) || 0), 0))} ₺${pending.count?' · '+pending.warning:''}`;
   } else if (type === "gider") {
     const xs = data.expense_records.filter(isActive).filter(match);
     headers = ["Tarih", "Kategori", "Personel", "Tutar", "Ödeme", "Açıklama"];
@@ -773,7 +778,7 @@ async function reports(ctx) {
   qs("[data-csv]", root).addEventListener("click", () => {
     const bom = "﻿";
     downloadBlob(
-      new Blob([bom + toCSV(headers, frows)], {
+      new Blob([bom + toCSV(headers, reportWarning?[...frows,["Açıklama: "+reportWarning,...headers.slice(1).map(()=>"")]]:frows)], {
         type: "text/csv;charset=utf-8",
       }),
       csvName,
