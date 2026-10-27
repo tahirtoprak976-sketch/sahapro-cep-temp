@@ -170,6 +170,20 @@ with sync_playwright() as playwright:
         assert download.value.suggested_filename.endswith(".bin")
         safe_image_sources(page)
         results[label] = {"quarantined": expected, "downloaded_original_unchanged": True}
+        if label.startswith("legacy-"):
+            current = page.evaluate(FINGERPRINT)
+            if current != unchanged:
+                # Entirely synthetic snapshots: retain exact failure evidence,
+                # including drafts/audit, without excluding any compared field.
+                (ARTIFACT / (label + "-before.json")).write_text(unchanged)
+                (ARTIFACT / (label + "-after.json")).write_text(current)
+                before_value, after_value = json.loads(unchanged), json.loads(current)
+                changed = [key for key in before_value if before_value[key] != after_value.get(key)]
+                print("PRESERVATION MISMATCH", label, "sections:", changed, flush=True)
+                for key in changed:
+                    if isinstance(before_value[key], dict):
+                        print("CHANGED", key, [name for name in before_value[key] if before_value[key][name] != after_value[key].get(name)], flush=True)
+            assert current == unchanged, "Exact stored snapshot changed after " + label
 
     def wait_async_predicate(page, predicate, arg, timeout=30):
         # Playwright 1.62 wait_for_function treats a returned Promise as truthy;
