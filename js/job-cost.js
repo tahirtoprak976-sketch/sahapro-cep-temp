@@ -7,6 +7,7 @@ import { isActive, todayStr, addDays } from "./core.js";
 import { fuelPerUnit } from "./quote-core.js";
 import { fuelPriceAt } from "./price-health.js";
 import { dumpFee } from "./dump-fees.js";
+import { linkedDumpExpenseIds } from "./dump-ledger-core.js";
 import { dealOf, dealMoney } from "./job-core.js";
 
 const live = (d, s) => (d?.[s] || []).filter(isActive);
@@ -61,9 +62,10 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   }
   const noPerson = works.filter((w) => !personOf(w)).length;
   // ---- Döküm ve diğer giderler
-  let dumpTL = 0, dumpEst = false;
-  for (const w of works) { try { const f = dumpFee(d, w); if (f?.amount) { dumpTL += f.amount; if (f.estimated || f.provisional) dumpEst = true; } } catch { /* yok */ } }
-  const exp = live(d, "expense_records").filter((e) => e.site_id === site.id);
+  let dumpTL = 0, dumpEst = false, dumpUnknown = 0;
+  for (const w of works) { try { const f = dumpFee(d, w); if(f?.unverified) dumpUnknown++; if (f?.amount) { dumpTL += f.amount; if (f.estimated || f.provisional) dumpEst = true; } } catch { /* yok */ } }
+  const dumpLinked = linkedDumpExpenseIds(d);
+  const exp = live(d, "expense_records").filter((e) => e.site_id === site.id && !e.dump_deposit && !dumpLinked.has(e.id));
   const otherTL = exp.reduce((n, e) => n + (Number(e.amount ?? e.total) || 0), 0);
   // ---- Gelir (net)
   let revenue = 0, revenueBasis = "", revenueEst = false;
@@ -89,6 +91,7 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   const workDays = new Set(works.map((w) => w.date).filter(Boolean)).size;
   const m3 = rep.measured || rep.est || 0;
   const warnings = [];
+  if (dumpUnknown) warnings.push(`${dumpUnknown} işte döküm tahmini doğrulanmadı; maliyet ve kâr eksik olabilir`);
   if (fuelMissing) warnings.push(`${r1(fuelMissing)} sefer/saat için aracın mazot ortalaması yok (son 90 günde yeterli yakıt kaydı yok) — mazot gideri eksik`);
   if (laborMissing) warnings.push(`${laborMissing} kişi-günde şoför/operatörün ücreti girilmemiş — işçilik eksik (Personel kartından yevmiye ya da maaş girin)`);
   if (noPerson) warnings.push(`${noPerson} kayıtta şoför/operatör yok ve araçta zimmetli personel yok — işçilik hesaplanmadı`);

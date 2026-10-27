@@ -381,10 +381,10 @@ export function costLedger(data, f = {}) {
       });
   }
   for (const fee of dumpFeeRows(data, f)) {
-    if (!(fee.amount > 0) || (data.payables || []).some(b => recognizedBill(b) && b.party_type === "dump_site" && (b.items || []).some(i => i.work_record_id === fee.w.id))) continue;
-    add({ ...fee.w, date: fee.w.date, source_store: "work_records", source_id: fee.w.id, work_record_id: fee.w.id, category: fee.confirmed ? "Döküm ücreti" : "Döküm ücreti (tahmin)", description: fee.site, net: null, tax: null, gross: fee.amount, known_tax: false, estimated: !!fee.estimated || !!fee.provisional, confirmed: !!fee.confirmed, pending_trips: fee.pending_trips || 0 });
+    if ((!(fee.amount > 0) && !fee.unverified) || (fee.payable_overlap && !fee.unverified)) continue;
+    add({ ...fee.w, date: fee.w.date, source_store: "work_records", source_id: fee.w.id, work_record_id: fee.w.id, category: fee.provisional ? "Döküm ücreti (kesinleşen + kalan tahmin)" : "Döküm ücreti", description: fee.site, net: null, tax: null, gross: fee.payable_overlap?0:fee.amount ?? 0, confirmed_amount:fee.payable_overlap?0:fee.confirmed_amount, remaining_estimated_amount:fee.remaining_estimated_amount, expected_total:fee.expected_total, unverified:fee.unverified, missing_reason:fee.missing_reason, known_tax: false, estimated: !!fee.estimated || !!fee.provisional, confirmed: !!fee.confirmed, pending_trips: fee.pending_trips || 0 });
   }
-  for(const e of unassignedDumpCosts(data,f))add({...e,source_store:"dump_entries",source_id:e.id,category:"Döküm ücreti",description:e.receipt_no||e.note||"İş bağlantısı bekliyor",net:null,tax:null,gross:e.amount,known_tax:false});
+  for(const e of unassignedDumpCosts(data,f))add({...e,source_store:"dump_entries",source_id:e.id,category:"Döküm ücreti",description:e.receipt_no||e.note||"İş bağlantısı bekliyor",confirmed_amount:e.amount,remaining_estimated_amount:0,expected_total:e.amount,net:null,tax:null,gross:e.amount,known_tax:false});
   return rows;
 }
 export function operatingResult(data, f = {}) {
@@ -440,7 +440,8 @@ export function operatingResult(data, f = {}) {
     known_cost: fromKurus(knownCost),
     unknown_cost: fromKurus(unknown),
     provisional_result: fromKurus(revenueKurus - knownCost - unknown),
-    complete: unknown === 0,
+    unknown_cost_count: costs.filter(r=>r.unverified || r.remaining_estimated_amount===null).length,
+    complete: unknown === 0 && !costs.some(r=>r.unverified || r.remaining_estimated_amount===null),
     costs,
     revenue_rows: source,
   };

@@ -2,7 +2,8 @@
 // Rakamlar burada hesaplanır; yapay zekâ yalnız yorumlar ve öneri yazar (rakamlar doğrulanır).
 import { isActive, todayStr, addDays } from "./core.js";
 import { workAmount, receivables } from "./collect-core.js";
-import { dumpFee } from "./dump-fees.js";
+import { dumpFee, unassignedDumpCosts } from "./dump-fees.js";
+import { linkedDumpExpenseIds } from "./dump-ledger-core.js";
 import { fuelPrice } from "./finance-chart.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -34,6 +35,7 @@ export function workDays(from, to) {
 export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = {}) {
   const inR = (x) => x && x >= from && x <= to;
   const days = workDays(from, to);
+  const dumpLinked = linkedDumpExpenseIds(d);
   const rows = [];
   for (const v of live(d, "vehicles")) {
     const ws = live(d, "work_records").filter((w) => w.vehicle_id === v.id && inR(w.date));
@@ -50,8 +52,8 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
       else fuelCost += Number(f.total) || 0;
     }
     const maint = live(d, "maintenance_records").filter((m) => m.vehicle_id === v.id && inR(m.date)).reduce((n, m) => n + (Number(m.cost) || 0), 0);
-    const expense = live(d, "expense_records").filter((e) => e.vehicle_id === v.id && inR(e.date)).reduce((n, e) => n + (Number(e.amount) || 0), 0);
-    const dump = ws.reduce((n, w) => n + (dumpFee(d, w)?.amount || 0), 0);
+    const expense = live(d, "expense_records").filter((e) => e.vehicle_id === v.id && inR(e.date) && !e.dump_deposit && !dumpLinked.has(e.id)).reduce((n, e) => n + (Number(e.amount) || 0), 0);
+    const dump = ws.reduce((n, w) => n + (dumpFee(d, w)?.amount || 0), 0) + unassignedDumpCosts(d,{from,to}).filter(e=>e.vehicle_id===v.id).reduce((n,e)=>n+e.amount,0);
     const worked = new Set(ws.map((w) => w.date)).size;
     const u = {};
     for (const w of ws) u[w.unit || "?"] = r1((u[w.unit || "?"] || 0) + (Number(w.quantity) || 0));

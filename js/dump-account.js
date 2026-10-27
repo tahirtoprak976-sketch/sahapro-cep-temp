@@ -80,9 +80,9 @@ export function dumpAccounts(d, { today = todayStr(), siteId = null } = {}) {
   for(const w of works){
    if(state.start&&w.date<state.start)continue;
    if(w.dump_payer==="customer")continue;
-   const confirmed=allReceipts.filter(e=>e.work_record_id===w.id).reduce((n,e)=>n+e.trips,0),expected=w.unit==="Sefer"?Number(w.quantity):1,remaining=Math.max(0,expected-confirmed);
-   if(!remaining)continue;const base=calculatedDumpFee(d,w);
-   pending.push({w,f:base,remaining_trips:remaining,amount:base?.amount>0?r2(base.amount*remaining/expected):null});
+   const summary=dumpFee({...d,dump_entries:(d.dump_entries||[]).filter(e=>e.date<=today)},w);
+   if(!summary || summary.pending_trips===0)continue;
+   pending.push({w,f:summary,remaining_trips:summary.pending_trips,amount:summary.remaining_estimated_amount});
   }
   const estimated=r2(pending.reduce((n,x)=>n+(x.amount||0),0));
   const inv=invoices.map(doc=>{
@@ -92,7 +92,7 @@ export function dumpAccounts(d, { today = todayStr(), siteId = null } = {}) {
   });
   const recent=state.account_receipts.filter(e=>e.date>addDays(today,-14)),perDay=r2(recent.reduce((n,e)=>n+e.amount,0)/14);
   const reported=site.account_reported,reportedBalance=reported?.date&&reported.date<=today?sharedDumpBalance(d,site.id,{today:reported.date}).balance:null;
-  out.push({...state,site,dep:state.credit,usedEst:estimated,pending,pending_count:pending.length,pending_unknown:pending.filter(x=>x.amount==null).length,projected_balance:r2(state.balance-estimated),trips:state.account_receipts.reduce((n,e)=>n+e.trips,0),perDay,daysLeft:perDay>0?Math.floor(Math.max(0,state.balance)/perDay):null,invoices:inv,invTotal:r2(inv.reduce((n,e)=>n+e.amount,0)),balanceCalc:state.balance,balanceInv:null,reported:reported||null,reported_balance:reportedBalance,reported_difference:reportedBalance==null?null:r2(Number(reported.amount)-reportedBalance),missingTon:pending.filter(x=>x.f?.estimated).length});
+  out.push({...state,site,dep:state.credit,usedEst:estimated,pending,pending_count:pending.length,pending_unknown:pending.filter(x=>x.amount==null).length,projected_balance:r2(state.balance-estimated),trips:state.account_receipts.reduce((n,e)=>n+e.trips,0),perDay,daysLeft:perDay>0?Math.floor(Math.max(0,state.balance)/perDay):null,invoices:inv,invTotal:r2(inv.reduce((n,e)=>n+e.amount,0)),balanceCalc:state.balance,balanceInv:null,reported:reported||null,reported_balance:reportedBalance,reported_difference:reportedBalance==null?null:r2(Number(reported.amount)-reportedBalance),missingTon:pending.filter(x=>x.f?.estimate_snapshot?.work_unit==="Sefer"&&!x.f.estimate_snapshot.source_tonnage&&x.f.unit==="Ton").length});
  }
  return out.sort((a,b)=>a.balance-b.balance);
 }

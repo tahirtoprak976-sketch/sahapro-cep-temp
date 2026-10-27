@@ -5,7 +5,6 @@ import { recognizedBill, pricedBill } from "./ledger-policy.js";
 // Müşterinin iş karşılığı verdiği mazot masraf sayılmaz (litre olarak müşterinin mazot hesabında izlenir).
 // Depoya alınan mazot (tank girişi) masraf sayılmaz: araca verildikçe "Yakıt" olarak sayılır (çift sayım olmasın).
 import { isActive, toKurus, fromKurus } from "./core.js";
-import { fuelPrice } from "./finance-chart.js";
 import { dumpFeeRows, unassignedDumpCosts } from "./dump-fees.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -42,11 +41,16 @@ export function costRows(d, { from = "", to = "", fuelRefPrice = null } = {}) {
     const a = billTotal(b);
     if (a > 0) rows.push({ kind: "esnaf", id: b.id, date: b.date, amount: Math.round(a * 100) / 100, label: `${name(({supplier:"suppliers", contractor:"contractors", quarry:"quarries", dump_site:"dump_sites"})[b.party_type] || "suppliers", b.party_id) || "İşletme"} · ${b.cost_category || "Alış"}`, sub: b.description || "", vehicle_id: b.vehicle_id || null, href: "#/alislar/" + b.id });
   }
-  // Döküm ücreti: döküm sahası kartındaki ücret × fişteki ton (ya da aracın ortalama yükü) / sefer
-  for (const f of dumpFeeRows(d, { from, to }))
-    if (f.amount > 0 && !live(d, "payables").some(b => recognizedBill(b) && b.party_type === "dump_site" && (b.items || []).some(i => i.work_record_id === f.w.id)))
-      rows.push({ kind: "dokum", id: "dokum:" + f.w.id, date: f.w.date, amount: f.amount, estimated: !!(f.provisional || f.estimated), confirmed: !!f.confirmed, label: `${f.site} · ${f.confirmed ? "gerçek fiş kesintisi" : (f.manual ? "elle yazılan tahmin" : f.unit === "Ton" ? (f.estimated ? "~" : "") + f.ton + " ton × " + f.fee + " ₺ (tahmin)" : f.trips + " sefer × " + f.fee + " ₺ (tahmin)")}`, sub: [name("vehicles", f.w.vehicle_id), name("customers", f.w.customer_id)].filter(Boolean).join(" · ") + (f.estimated ? " · ton tahmini (fiş yok)" : ""), vehicle_id: f.w.vehicle_id || null, href: "#/isler/" + f.w.id });
-  for(const e of unassignedDumpCosts(d,{from,to}))rows.push({kind:"dokum",id:e.id,date:e.date,amount:e.amount,label:"Fişli döküm · iş bağlantısı bekliyor",sub:e.receipt_no||e.note||"",vehicle_id:e.vehicle_id,href:"#/dokum-hesap/"+e.dump_site_id});
+  // Actual + remaining estimate share one row; unknown remainder is visible, not silently zero.
+  for (const f of dumpFeeRows(d, { from, to })) {
+    if (f.payable_overlap && !f.unverified) continue;
+    rows.push({ ...f, w: undefined, kind:"dokum", id:"dokum:"+f.w.id, work_record_id:f.w.id,
+      date:f.w.date, amount:f.payable_overlap?0:f.amount ?? 0, confirmed_amount:f.payable_overlap?0:f.confirmed_amount,
+      label:`${f.site} · ${f.payable_overlap?"alış belgesinde":f.confirmed_amount} ₺ kesinleşen + ${f.remaining_estimated_amount==null?'doğrulanmamış':f.remaining_estimated_amount+' ₺ kalan tahmin'}`,
+      sub:[name("vehicles",f.w.vehicle_id),name("customers",f.w.customer_id),f.unverified?f.missing_reason:null,...(f.payable_links||[]).map(b=>"Alış belgesi: "+b.date)].filter(Boolean).join(" · "),
+      vehicle_id:f.w.vehicle_id||null, href:"#/isler/"+f.w.id });
+  }
+  for (const e of unassignedDumpCosts(d,{from,to})) rows.push({kind:"dokum",id:e.id,date:e.date,amount:e.amount,confirmed:true,confirmed_amount:e.amount,remaining_estimated_amount:0,expected_total:e.amount,pending_trips:0,label:"Fişli döküm · iş bağlantısı bekliyor",sub:e.receipt_no||e.note||"",vehicle_id:e.vehicle_id,href:"#/dokum-hesap/"+e.dump_site_id});
   // Personel maaşı: puantajda ay kapatılınca yazılan "Ücret Tahakkuku" (avans ve ödemeler ayrıca sayılmaz → çift sayım yok)
   for (const p of live(d, "payroll_entries"))
     if (p.kind === "Ücret Tahakkuku" && inR(p.date) && Number(p.amount) > 0)

@@ -14,7 +14,6 @@ import {
   dumpReference,
   dumpMoney,
   dumpDate,
-  freezeDumpTariff,
 } from "./dump-ledger-core.js";
 import { preparePartFiles } from "./parts-db.js";
 const stores = [
@@ -260,15 +259,8 @@ export async function changeDumpTariff(rec, fields, reason) {
           ))
       )
         throw Error("Hareketi olan saha iç depoya çevrilemez");
-      for (const w of d.work_records.filter(
-        (w) =>
-          isActive(w) && w.dump_site_id === site.id && !w.dump_tariff_snapshot,
-      ))
-        t.put("work_records", {
-          ...w,
-          dump_tariff_snapshot: freezeDumpTariff(w, site),
-          updated_at: stamp(w),
-        });
+      // Unknown historical tariff/load bases stay unknown. A tariff change never
+      // rewrites old work records or manufactures snapshots from today's card.
       const history = [
         ...(site.fee_history || []),
         {

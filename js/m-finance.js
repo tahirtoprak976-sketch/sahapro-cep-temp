@@ -79,6 +79,16 @@ function financeCard(value,label,color,route) {
   return `<a class="stat finance-stat ${esc(color)}" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="v">${esc(value)}</span><span class="l">${esc(label)}</span></a>`;
 }
 
+function dumpCostBreakdown(rows) {
+  const dump=rows.filter(r=>r.kind==="dokum");
+  if(!dump.length)return "";
+  const confirmed=dump.reduce((n,r)=>n+(Number(r.confirmed_amount)||0),0);
+  const remaining=dump.reduce((n,r)=>n+(Number(r.remaining_estimated_amount)||0),0);
+  const unknown=dump.filter(r=>r.remaining_estimated_amount==null).length;
+  const unverified=dump.filter(r=>r.unverified).length;
+  return `<section class="card" data-dump-cost-summary><h3>Döküm maliyeti</h3>${kv("Kesinleşen",fmtTL(confirmed)+" ₺")}${kv("Kalan tahmin",fmtTL(remaining)+" ₺"+(unknown?" + hesaplanamayan kısım":""))}${kv("Beklenen toplam"+(unknown?" (eksik)":""),fmtTL(confirmed+remaining)+" ₺"+(unknown?" + bilinmeyen tahmin":""))}${unknown||unverified?notice("warn",`${Math.max(unknown,unverified)} kayıtta döküm tahmini doğrulama bekliyor. Bilinmeyen kısım sıfır maliyet değildir; gösterilen toplam eksik olabilir.`):""}<p class="small">Kesinleşen ve tahmini tutar birbirinden ayrıdır. Fiş yalnız kapsadığı seferin tahminini kaldırır. Ortak saha bakiyesi yalnız gerçek yükleme ve kesintilerle değişir.</p></section>`;
+}
+
 // ============ FİNANS HUB ============
 async function hub(ctx) {
   const { root, db } = ctx;
@@ -86,6 +96,8 @@ async function hub(ctx) {
   const from = today.slice(0, 8) + "01";
   const d = await db.dumpAll();
   const { monthlySeries } = await import("./finance-chart.js");
+  const { costRows } = await import("./costs-core.js");
+  const monthCosts=costRows(d,{from,to:today});
   const cur = monthlySeries(d, { today, months: 1, fuelRefPrice: await db.metaGet("fuel_ref_price") })[0];
   const monthH = cur.work;
   const monthT = cur.collected;
@@ -111,6 +123,7 @@ async function hub(ctx) {
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
     ${cur.financialReview ? notice("warn", `${cur.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) + '<a class="btn sm" href="#/veri-sagligi" data-go="#/veri-sagligi">Veri Sağlığı ›</a>' : ""}
+    ${dumpCostBreakdown(monthCosts)}
     <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
@@ -1463,7 +1476,7 @@ async function expenses(ctx) {
       ${chip("", "Hepsi", tot.total)}${chip("gider", "Gider", tot.gider)}${chip("yakit", "Yakıt", tot.yakit)}${chip("bakim", "Bakım", tot.bakim)}${chip("esnaf", "Esnaf", tot.esnaf)}${tot.dokum ? chip("dokum", "Döküm", tot.dokum) : ""}${tot.personel ? chip("personel", "Maaş", tot.personel) : ""}
     </div>
     <div class="muted tiny" style="margin:0 2px 8px">Masraf = gider + araca verilen yakıt + bakım/arıza + esnafa veresiye alış + döküm ücreti + personel maaşı (puantajda ay kapatılınca; avans ayrıca sayılmaz). Depoya alınan mazot araca verildikçe "Yakıt" olarak sayılır.</div>
-    ${all.some(r => r.kind === "dokum" && r.estimated) ? notice("info", "Toplam masrafın " + fmtTL(all.filter(r => r.kind === "dokum" && r.estimated).reduce((n,r) => n+r.amount,0)) + " ₺ bölümü henüz fişle doğrulanmamış döküm tahminidir. Ortak saha bakiyesi yalnız gerçek yükleme ve kesintilerle değişir.") : ""}
+    ${dumpCostBreakdown(all)}
     ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Ayrıca yazılmış döküm giderleri var. Aynı kesintiyse Ortak Döküm Hesabı'nda fişe bağlayın; kayıtları silmeden tek maliyet olarak izleyin. Yüklemeyi yalnız gerçekten sahaya yatırılan paraysa yükleme olarak işaretleyin.") : ""}
     ${tot.personel && all.some((r) => r.kind === "gider" && /personel|maaş|maas|avans/i.test(r.label)) ? notice("warn", "Maaş puantajdan masrafa yazılıyor; giderlerde de \"Personel\" kaydı var. Aynı maaşı ya da avansı gider olarak da girdiyseniz iki kez sayılır — gider kaydını silin.") : ""}
     ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
@@ -1479,7 +1492,7 @@ async function expenses(ctx) {
         id: r.kind === "gider" ? r.id : "",
         href: r.kind === "gider" ? "" : r.href,
         ic: IC[r.kind],
-        t1: `${esc(r.label)} · ${fmtTL(r.amount)} ₺`,
+        t1: `${esc(r.label)} · ${r.kind==="dokum"&&r.remaining_estimated_amount==null?"bilinen ":""}${fmtTL(r.amount)} ₺`,
         t2: `${trDate(r.date)} · ${esc(COST_KINDS[r.kind])}${r.sub ? " · " + esc(r.sub) : ""}${e && attMap[e.id] ? " · 📷" + attMap[e.id] : ""}`,
         badgeHtml: e
           ? e.payment_method === "Personel Ödedi"

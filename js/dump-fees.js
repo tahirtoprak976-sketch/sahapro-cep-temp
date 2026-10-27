@@ -1,83 +1,87 @@
-import {dumpReceiptRows,companyDumpReceipt,dumpTariffFor} from "./dump-ledger-core.js";
-// Döküm ücreti: döküm sahasının kartındaki ücret (ton başı ya da sefer başı, KDV dahil) × işin tonu / seferi.
-// Ton: fişteki ton (iş kaydında "tonaj"); fiş yoksa aracın "ortalama yük"ü (kartta yoksa tır 27, kamyon 22 ton) × sefer — tahmin olarak işaretlenir.
-// Belediyenin resmi sahaları: Bolluca 160 ₺/ton, Cebeci 210 ₺/ton, İSTAÇ 235 ₺/ton (KDV dahil, Ekim 2026, işletme sahibinden).
-import { isActive, transportVehicleType } from "./core.js";
-
+import {dumpReceiptRows,companyDumpReceipt} from "./dump-ledger-core.js";
+import { isActive } from "./core.js";
+import { recognizedBill } from "./ledger-policy.js";
+import {freezeDumpEstimate, loadTon, DEFAULT_LOAD_TON} from "./dump-estimate.js";
+export {loadTon, DEFAULT_LOAD_TON};
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
 const r2 = (n) => Math.round(n * 100) / 100;
-
 export const OFFICIAL_DUMPS = [
-  { key: "bolluca", name: "Bolluca", fee: 160 },
-  { key: "cebeci", name: "Cebeci", fee: 210 },
-  { key: "istac", name: "İSTAÇ Döküm", fee: 235 },
+  {key:"bolluca",name:"Bolluca",fee:160}, {key:"cebeci",name:"Cebeci",fee:210}, {key:"istac",name:"İSTAÇ Döküm",fee:235},
 ];
 export const FEE_UNITS = ["Ton", "Sefer"];
-// Araç kartında "ortalama yük" yoksa türüne göre (işletme sahibinden, Ekim 2026): tır 27 ton, kamyon 22 ton
-export const DEFAULT_LOAD_TON = { TIR: 27, TRUCK: 22 };
-export function loadTon(v) {
-  if (Number(v?.load_ton) > 0) return Number(v.load_ton);
-  return DEFAULT_LOAD_TON[transportVehicleType(v?.type)] || 0;
-}
 
-// Bir işin döküm ücreti. null: maliyet yok (döküm yeri/ücret tanımlı değil ya da depodan çıkışta elle yazılmamış)
+// Only saved assumptions may price saved work. Never backfill a historical load from today's card.
 export function calculatedDumpFee(d, w) {
   if (!w) return null;
-  const s0 = live(d, "dump_sites").find((x) => x.id === w.dump_site_id);
-  // Elle yazılan döküm maliyeti her zaman geçerli (iş kaydında "Döküm maliyeti ₺")
-  if (Number(w.dump_cost) > 0) return { site: s0?.name || w.dump_area || "Döküm", unit: "Elle", fee: null, amount: r2(Number(w.dump_cost)), trips: w.unit === "Sefer" ? Number(w.quantity) || 0 : 1, ton: null, estimated: false, manual: true };
-  // Kendi depodan çıkış (iç iş): maliyeti işletme sahibi elle yazar; boşsa maliyet yok (ör. stabilize çıkışı)
-  if (live(d, "customers").find((c) => c.id === w.customer_id)?.internal) return null;
-  if (!w.dump_site_id) return null;
-  const s = s0;
-  const tariff=w.dump_tariff_snapshot?.site_id===s?.id?w.dump_tariff_snapshot:dumpTariffFor(s,w.date,w.created_at);
-  const fee = Number(tariff?.fee) || 0;
-  if (!s || !(fee > 0) || !FEE_UNITS.includes(tariff.fee_unit)) return null;
-  const qty = Number(w.quantity) || 0;
-  const trips = w.unit === "Sefer" ? qty : 1;
-  if (tariff.fee_unit === "Sefer") return { site: s.name, unit: "Sefer", fee, amount: r2(fee * trips), trips, ton: null, estimated: false };
-  let ton = Number(w.tonnage) || (w.unit === "Ton" ? qty : 0), estimated = false;
-  // Birden çok seferlik kayıtta tek fiş tonu yazılmış olabilir: ton aracın sefer başı yükünün katı değilse kalan seferler o fişin tonuyla tahmin edilir
-  if (Number(w.tonnage) > 0 && w.unit === "Sefer" && trips > 1 && w.tonnage_scope !== "total") {
-    if(w.tonnage_scope === "per_trip") { ton=r2(Number(w.tonnage)*trips); } else {
-    const ref = loadTon(live(d, "vehicles").find((x) => x.id === w.vehicle_id));
-    const k = ref > 0 ? Math.min(trips, Math.max(1, Math.round(Number(w.tonnage) / ref))) : trips;
-    if (k < trips) { ton = r2((Number(w.tonnage) / k) * trips); estimated = true; }
+  const site = (d.dump_sites || []).find(s => s.id === w.dump_site_id);
+  const manual = Number(w.dump_cost) > 0;
+  if (!manual && live(d,"customers").find(c=>c.id===w.customer_id)?.internal) return null;
+  if (!manual && (!w.dump_site_id || site?.own_yard)) return null;
+  const trips = w.unit === 'Sefer' ? Number(w.quantity) || 0 : 1;
+  let snapshot = w.dump_estimate_snapshot;
+  let unverified = false;
+  if (!snapshot && !w.id) snapshot = freezeDumpEstimate(w, site, live(d,'vehicles').find(v=>v.id===w.vehicle_id)); // unsaved quote/preview
+  if (!snapshot) {
+    unverified = true;
+    // Existing explicit amount or an explicitly scoped ton + frozen tariff is usable as an estimate,
+    // but does not prove a receipt. Missing old assumptions stay unknown; no bulk data mutation.
+    const tariff = w.dump_tariff_snapshot;
+    const knownTonnage = Number(w.tonnage)>0 && (w.unit !== 'Sefer' || trips === 1 || ['total','per_trip'].includes(w.tonnage_scope));
+    if (manual || (tariff?.site_id === w.dump_site_id && (tariff.fee_unit === 'Sefer' || knownTonnage || w.unit === 'Ton'))) {
+      snapshot = freezeDumpEstimate(w, tariff ? {id:w.dump_site_id,fee:tariff.fee,fee_unit:tariff.fee_unit,fee_effective_from:tariff.effective_from} : site, null);
+      if(snapshot) snapshot={...snapshot,provenance:'legacy_recorded_basis',captured_at:null};
     }
   }
-  if (!(ton > 0)) {
-    const v = live(d, "vehicles").find((x) => x.id === w.vehicle_id);
-    const load = loadTon(v);
-    if (load > 0 && w.unit === "Sefer") { ton = r2(load * trips); estimated = true; }
-  }
-  if (!(ton > 0)) return { site: s.name, unit: "Ton", fee, amount: null, trips, ton: null, estimated: false, missing: true };
-  return { site: s.name, unit: "Ton", fee, amount: r2(fee * ton), trips, ton: r2(ton), estimated };
+  if (!snapshot) return {site:site?.name||w.dump_area||'Döküm',unit:'Ton',fee:null,amount:null,trips,ton:null,estimated:true,missing:true,unverified:true,missing_reason:'Geçmiş tahminin tarife/tonaj dayanağı doğrulanmadı',estimate_snapshot:null};
+  // Explicit zero/free-site records do not add a cost; absence of a historical basis is not zero.
+
+  return {site:site?.name||w.dump_area||'Döküm',unit:manual?'Elle':snapshot.fee_unit,fee:snapshot.fee,amount:snapshot.amount,trips,ton:snapshot.total_ton,estimated:true,manual,missing:snapshot.amount==null,unverified:unverified||snapshot.amount==null,missing_reason:snapshot.missing_reason||(unverified?'Eski kayıttaki dayanak; fişle doğrulanmadı':null),estimate_snapshot:snapshot};
 }
 
+// One company-cost projection: actual receipts replace only their covered trips.
+// The remainder is an allocation of the saved estimate, never a measured residual tonnage.
 export function dumpFee(d,w) {
-  if(!w)return null;
-  const receipts=dumpReceiptRows(d).filter(e=>e.work_record_id===w.id);
-  if(receipts.length){
-    const company=receipts.filter(companyDumpReceipt),site=live(d,"dump_sites").find(s=>s.id===w.dump_site_id);
-    if(!company.length)return null;
-    const amount=r2(company.reduce((n,e)=>n+e.amount,0)),trips=receipts.reduce((n,e)=>n+e.trips,0),expected=w.unit==="Sefer"?Number(w.quantity):1;
-    return {site:site?.name||"Döküm",unit:"Fiş",fee:null,amount,trips:company.reduce((n,e)=>n+e.trips,0),ton:r2(company.reduce((n,e)=>n+(e.tonnage||0),0))||null,estimated:false,confirmed:true,pending_trips:Math.max(0,expected-trips),receipt_ids:company.map(e=>e.id)};
-  }
-  if(w.dump_payer==="customer")return null;
-  const fee=calculatedDumpFee(d,w);return fee?{...fee,provisional:true}:fee;
+  if (!w) return null;
+  const receipts = dumpReceiptRows(d).filter(e=>w.id && e.work_record_id===w.id);
+  const company = receipts.filter(companyDumpReceipt);
+  const expected = w.unit==='Sefer' ? Number(w.quantity) : 1;
+  const rawCovered = receipts.reduce((n,e)=>n+(typeof e.trips==='number'?e.trips:NaN),0);
+  const coverageUnknown = !(expected>0) || receipts.some(e=>!Number.isInteger(e.trips)||e.trips<1) || !Number.isFinite(rawCovered) || rawCovered>expected;
+  const covered = coverageUnknown ? null : rawCovered;
+  const pending = covered == null ? null : Math.max(0,expected-covered);
+  const actual = r2(company.reduce((n,e)=>n+(Number.isFinite(Number(e.amount))?Number(e.amount):0),0));
+  const base = calculatedDumpFee(d,w);
+  const customerPays = w.dump_payer==='customer';
+  let remaining = customerPays || pending===0 ? 0 : coverageUnknown || base?.amount==null ? null : r2(base.amount*pending/expected);
+  if (!company.length && (customerPays || (pending===0 && receipts.length))) return null;
+  if (!base && !company.length) return null;
+  const payableLinks = (d.payables||[]).filter(b=>recognizedBill(b)&&b.party_type==='dump_site'&&(b.items||[]).some(i=>i.work_record_id===w.id)).map(b=>({id:b.id,date:b.date}));
+  const payableOverlap = payableLinks.length>0;
+  const unreconciledEstimate = payableOverlap ? remaining : null;
+  if(payableOverlap && !customerPays) remaining=null;
+  const missing = payableOverlap || (!customerPays && pending!==0 && remaining==null);
+  return {...(base||{}),site:base?.site||(d.dump_sites||[]).find(s=>s.id===w.dump_site_id)?.name||'Döküm',
+    amount:remaining==null ? (company.length?actual:null) : r2(actual+remaining),
+    payable_links:payableLinks,payable_overlap:payableOverlap,unreconciled_estimate:unreconciledEstimate,
+    confirmed_amount:actual,remaining_estimated_amount:remaining,expected_total:missing?null:r2(actual+(remaining||0)),
+    confirmed:company.length>0, estimated:!customerPays&&pending!==0, provisional:!customerPays&&pending!==0,
+    missing,unverified:missing||coverageUnknown||!!(pending&&base?.unverified),coverage_unknown:coverageUnknown,
+    missing_reason:payableOverlap?'Bağlı döküm alış belgesi ile fişlerin örtüşmesi doğrulanmadı; beklenen toplam kesinleştirilmedi':coverageUnknown?'Fişlerin kapsadığı sefer sayısı doğrulanmadı':missing?base?.missing_reason||'Kalan seferlerin tahmin dayanağı bilinmiyor':base?.missing_reason||null,
+    pending_trips:pending,covered_trips:covered,expected_trips:expected,
+    actual_ton:r2(company.reduce((n,e)=>n+(Number(e.tonnage)||0),0))||null,
+    receipt_ids:company.map(e=>e.id),
+  };
 }
 export function unassignedDumpCosts(d,{from="",to=""}={}) {
- return dumpReceiptRows(d).filter(e=>!e.work_record_id&&companyDumpReceipt(e)&&(!from||e.date>=from)&&(!to||e.date<=to));
+ const works = new Set(live(d,'work_records').map(w=>w.id));
+ return dumpReceiptRows(d).filter(e=>(!e.work_record_id||!works.has(e.work_record_id))&&companyDumpReceipt(e)&&(!from||e.date>=from)&&(!to||e.date<=to));
 }
-
-export function dumpFeeRows(d, { from = "", to = "" } = {}) {
-  const inR = (x) => x && (!from || x >= from) && (!to || x <= to);
-  const out = [];
-  for (const w of live(d, "work_records")) {
-    if (!inR(w.date)) continue;
-    const f = dumpFee(d, w);
-    if (f) out.push({ w, ...f });
+export function dumpFeeRows(d, {from="",to=""}={}) {
+  const out=[];
+  for (const w of live(d,'work_records')) {
+    if (!w.date || (from&&w.date<from) || (to&&w.date>to)) continue;
+    const f=dumpFee(d,w); if(f) out.push({w,...f});
   }
   return out;
 }

@@ -1,3 +1,4 @@
+import { freezeDumpEstimate } from "../js/dump-estimate.js";
 import assert from "node:assert/strict";
 import { vehicleKpis, customerKpis, priceCheck, businessReview, workDays } from "../js/expert-core.js";
 const n = "x";
@@ -14,6 +15,8 @@ const d = {
   fuel_records: [{ id: "F", date: "2026-10-05", vehicle_id: "T", liters: 120, total: 5400, created_at: n }],
   maintenance_records: [{ id: "M", date: "2026-10-07", vehicle_id: "J", cost: 20000, created_at: n }],
 };
+// These fixtures model newly saved estimates; legacy unknowns have separate regression coverage.
+for (const w of d.work_records) w.dump_estimate_snapshot = freezeDumpEstimate(w, d.dump_sites.find(s=>s.id===w.dump_site_id), d.vehicles.find(v=>v.id===w.vehicle_id));
 assert.equal(workDays("2026-10-01", "2026-10-15"), 13, "pazarlar hariç");
 const v = vehicleKpis(d, { from: "2026-10-01", to: "2026-10-15" });
 const t = v.find((x) => x.arac === "34GAM627");

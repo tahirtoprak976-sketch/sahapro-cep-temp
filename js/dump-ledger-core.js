@@ -1,5 +1,6 @@
 // Ortak saha bakiyesi: kayıtlı yüklemeler ve doğrulanmış kesintiler. Araç filtresi bakiyeyi değiştirmez.
 import { isActive, toKurus, fromKurus, todayStr } from "./core.js";
+import { validateDumpEstimate } from "./dump-estimate.js";
 export const DUMP_KINDS = ["TOPUP", "RECEIPT", "OPENING", "REFUND"];
 export const DUMP_PAYERS = ["company_account", "company_direct", "customer"];
 export const liveDumpEntries = (d) => (d.dump_entries || []).filter(isActive);
@@ -229,6 +230,7 @@ export function dumpTariffFor(site, date, createdAt = "") {
   return {
     site_id: site.id,
     fee: Number(rate.fee) || 0,
+    rate_known: ["string","number"].includes(typeof rate.fee) && String(rate.fee).trim() !== "" && Number.isFinite(Number(rate.fee)) && Number(rate.fee) >= 0,
     fee_unit: rate.fee_unit || "",
     effective_from: rate.from || rate.fee_effective_from || null,
     legacy_rate: !rate.from && !rate.fee_effective_from,
@@ -316,6 +318,7 @@ export function validateDumpData(d) {
       throw Error("Yedekte sahipsiz döküm yükleme gideri");
   }
   for (const w of (d.work_records || []).filter(isActive)) {
+    if (w.dump_estimate_snapshot != null) validateDumpEstimate(w.dump_estimate_snapshot, w);
     const s = w.dump_tariff_snapshot;
     if (!s) continue;
     if (
