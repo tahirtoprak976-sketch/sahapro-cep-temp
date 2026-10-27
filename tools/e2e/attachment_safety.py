@@ -3,13 +3,15 @@
 The baseline proof executes a harmless, locally fulfilled canary in an uploaded
 SVG. It reads only the randomly named TEST database created by this script and
 writes a TEST localStorage marker. No network script, app data, or secret is read.
-All non-local requests except that exact synthetic script response are aborted.
+All non-local network requests except that exact synthetic script response are aborted.
+Only exact browser-internal PDF viewer resources are additionally allowed.
 Run only against a localhost checkout; --baseline-proof is NOT a candidate pass.
 """
 import argparse
 import hashlib
 import json
 import os
+import time
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
@@ -102,6 +104,13 @@ with sync_playwright() as playwright:
             parsed = urlparse(request.request.url)
             if (parsed.scheme, parsed.hostname, parsed.port) == (origin.scheme, origin.hostname, origin.port):
                 request.continue_()
+            elif (parsed.scheme, parsed.hostname) in {
+                # Chromium's built-in PDF viewer and its bundled resources only;
+                # never external HTTP(S), arbitrary extensions, or app data.
+                ("chrome", "resources"),
+                ("chrome-extension", "mhjfbmdgcfjbbpaeojofohoefgiehjai"),
+            }:
+                request.continue_()
             elif request.request.url == CANARY_URL:
                 canary_requests.append(request.request.url)
                 request.fulfill(status=200, content_type="application/javascript", body=CANARY_SCRIPT)
@@ -162,6 +171,16 @@ with sync_playwright() as playwright:
         safe_image_sources(page)
         results[label] = {"quarantined": expected, "downloaded_original_unchanged": True}
 
+    def wait_async_predicate(page, predicate, arg, timeout=30):
+        # Playwright 1.62 wait_for_function treats a returned Promise as truthy;
+        # page.evaluate awaits it, so explicitly repoll the resolved boolean.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if page.evaluate(predicate, arg):
+                return
+            page.wait_for_timeout(50)
+        raise AssertionError("Async predicate did not become true before timeout")
+
     def selection_race(page, database, route, picker, thumbs, buttons, colors):
         visit(page, database, route)
         state = page.evaluate(FINGERPRINT)
@@ -180,7 +199,7 @@ with sync_playwright() as playwright:
             page.locator(picker).set_input_files({"name": "TEST-newer.png", "mimeType": "image/png", "buffer": bytes(colors[1])})
             expected = hashlib.sha256(bytes(colors[1])).hexdigest()
             is_expected = """async ({selector,expected})=>{const img=document.querySelector(selector);if(!img)return false;const b=await(await fetch(img.src)).arrayBuffer();const h=[...new Uint8Array(await crypto.subtle.digest('SHA-256',b))].map(x=>x.toString(16).padStart(2,'0')).join('');return h===expected;}"""
-            page.wait_for_function(is_expected, arg={"selector": thumbs, "expected": expected})
+            wait_async_predicate(page, is_expected, {"selector": thumbs, "expected": expected})
             page.evaluate("()=>window.__rtReleaseBitmap()")
             page.wait_for_function("()=>window.__rtSlowFinished")
             assert page.evaluate(is_expected, {"selector": thumbs, "expected": expected}), "Older decode overwrote newer file selection"
@@ -199,7 +218,7 @@ with sync_playwright() as playwright:
         before = page.evaluate(FINGERPRINT)
         page.locator('[data-watt]').set_input_files({"name": "TEST-canary.svg", "mimeType": "image/svg+xml", "buffer": SVG})
         if args.baseline_proof:
-            page.wait_for_function("""async id=>(await (await import('./js/db.js')).attachmentsFor('work',id)).length===1""", arg=ids["work"])
+            wait_async_predicate(page, """async id=>(await (await import('./js/db.js')).attachmentsFor('work',id)).length===1""", ids["work"])
             page.wait_for_selector('#screen a[href^="blob:"] img')
             with context.expect_page() as opened:
                 page.locator('#screen a[href^="blob:"]').first.click()
@@ -399,7 +418,7 @@ with sync_playwright() as playwright:
                 tank=await d.saveNew('fuel_tank_movements',{date:ids.date,move_type:'GİRİŞ',liters:10,total:500},'TEST'),
                 part=await P.saveSparePart({vehicle_id:ids.vehicle,date:ids.date,description:'TEST legacy warranty',quantity:1,unit_price:null,cost_mode:'tracking'},[],'TEST legacy part');
               const expense=await d.saveNew('expense_records',{date:ids.date,vehicle_id:ids.vehicle,category:'Diğer',amount:100,description:'TEST legacy expense'},'TEST');
-              const supplier=await d.saveNew('suppliers',{name:'TEST Legacy Supplier',type:'Servis'},'TEST');
+              const supplier=await E.saveSupplier({name:'TEST Legacy Supplier',type:'Servis'},'TEST legacy supplier');
               const payable=await E.savePayable({date:ids.date,due_date:ids.date,party_type:'supplier',party_id:supplier.id,document_no:'TEST-LEGACY-RT01',bill_kind:'Alış',cost_category:'Diğer',description:'TEST legacy payable',items:[{description:'TEST original',quantity:1,unit_price:100,kdv_rate:0,kdv_included:false}]},'TEST legacy payable');
               const site=await d.saveNew('dump_sites',{name:'TEST Legacy Dump Site',fee:100,fee_unit:'Ton'},'TEST');
               const dump=await D.saveDumpEntry({kind:'TOPUP',date:ids.date,dump_site_id:site.id,amount:100,payment_method:'Havale',reference:'TEST RT01 legacy'},[],'TEST RT01 legacy');
