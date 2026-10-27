@@ -1,3 +1,4 @@
+import { downloadAttachment } from "./attachment-ui.js";
 import * as core from "./core.js";
 import * as rules from "./enterprise-core.js";
 import * as actions from "./enterprise-db.js";
@@ -530,7 +531,7 @@ async function form(ctx, d) {
         "</details>" +
         itemForm(d, initial) +
         fArea("Açıklama", "description") +
-        '<div class="field"><label>Orijinal Belge / Fiş Eki (opsiyonel)</label><input type="file" name="attachment" accept="image/*,application/pdf"></div>';
+        '<div class="field"><label>Orijinal Belge / Fiş Eki (opsiyonel)</label><input type="file" name="attachment" accept="image/jpeg,image/png,image/webp,application/pdf"></div>';
       if (source)
         html =
           '<div class="notice info">Kaynak belgeyle bağlantılı kayıt. Aynı kaynak tekrar borçlandırılamaz.</div>' +
@@ -1167,7 +1168,7 @@ async function detail(ctx, d, store, r, label) {
   for (const b of qsa("[data-original]", root))
     b.onclick = () => {
       const a = attachments.find((a) => a.id === b.dataset.original);
-      if (a) downloadBlob(a.blob, a.name);
+      if (a) downloadAttachment(a);
     };
   const guarded = (selector, fn) => {
     qs(selector, root)?.addEventListener("click", async (e) => {

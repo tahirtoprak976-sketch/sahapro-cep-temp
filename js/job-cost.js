@@ -1,3 +1,4 @@
+import {costCompleteness, dumpCostIncomplete} from './cost-completeness.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 // İş sözleşmesi panosu için maliyet ve kârlılık — SAF hesap, kayıt yazmaz. Tüm giderler TAHMİNDİR ve yöntemiyle döner:
 // • Mazot: aracın son 90 gün sefer/saat başı litresi (yoksa aynı tür araçlar) × o günkü mazot litre fiyatı (fuelPerUnit, fuelPriceAt).
@@ -65,16 +66,27 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   const noPerson = works.filter((w) => !personOf(w)).length;
   // ---- Döküm ve diğer giderler
   let dumpTL = 0, dumpEst = false, dumpUnknown = 0;
-  for (const w of works) { try { const f = dumpFee(d, w); if(f?.unverified) dumpUnknown++; if (f?.amount) { dumpTL += f.amount; if (f.estimated || f.provisional) dumpEst = true; } } catch { /* yok */ } }
+  for (const w of works) {
+    try {
+      const f = dumpFee(d, w);
+      if (dumpCostIncomplete(f)) dumpUnknown++;
+      if (Number.isFinite(f?.amount)) { dumpTL += f.amount; if (f.estimated || f.provisional) dumpEst = true; }
+    } catch { dumpUnknown++; } // A failed projection is unknown, never a zero-cost success.
+  }
+  const completeness = costCompleteness({ pendingFuel: pendingFuel.count, dumpUnknown });
   const dumpLinked = linkedDumpExpenseIds(d);
   const exp = live(d, "expense_records").filter((e) => e.site_id === site.id && !e.dump_deposit && !dumpLinked.has(e.id));
   const otherTL = exp.reduce((n, e) => n + (Number(e.amount ?? e.total) || 0), 0);
   // ---- Gelir (net)
+  const revenueIncomplete = D?.basis === "m³" && !D.measurement && !!rep.estimationIncomplete;
+  const revenueIncompleteReason = revenueIncomplete ? (rep.tonnageUnknown ? "tonaj kapsamı doğrulanmadı" : "metraj tahmini eksik") : "";
+  const profitIncomplete = completeness.costIncomplete || revenueIncomplete;
+  const profitIncompleteReason = [completeness.costIncompleteReason, revenueIncompleteReason].filter(Boolean).join("; ");
   let revenue = 0, revenueBasis = "", revenueEst = false;
   if (D?.basis === "Götürü") { revenue = dealMoney(D, 1).net; revenueBasis = "sözleşme bedeli"; }
   else if (D?.basis === "m³") {
     if (D.measurement) { revenue = Number(D.measurement.net) || 0; revenueBasis = "ölçülen metraj"; }
-    else if (rep.est > 0) { revenue = dealMoney(D, rep.est).net; revenueBasis = "tahmini m³ × fiyat"; revenueEst = true; }
+    else if (!revenueIncomplete && rep.est > 0) { revenue = dealMoney(D, rep.est).net; revenueBasis = "tahmini m³ × fiyat"; revenueEst = true; }
   } else { revenue = works.filter((w) => !w.job_extra).reduce((n, w) => n + netOf(w), 0); revenueBasis = "sefer tutarları"; }
   const extras = works.filter((w) => w.job_extra).reduce((n, w) => n + netOf(w), 0);
   const scrap = Number(rep.scrap) || 0;
@@ -91,10 +103,11 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   for (let t = first; t <= today && days.length < 31; t = addDays(t, 1)) days.push({ date: t, sefer: 0, saat: 0 });
   for (const w of works) { const x = days.find((y) => y.date === w.date); if (!x) continue; if (w.unit === "Sefer") x.sefer += Number(w.quantity) || 0; if (w.unit === "Saat") x.saat += Number(w.quantity) || 0; }
   const workDays = new Set(works.map((w) => w.date).filter(Boolean)).size;
-  const m3 = rep.measured || rep.est || 0;
+  const m3 = rep.measured || (!rep.estimationIncomplete && rep.est) || 0;
   const warnings = [];
+  if (revenueIncomplete) warnings.push(`${revenueIncompleteReason}; bilinen metraj ara toplamından gelir veya kâr hesaplanmadı`);
   if(pendingFuel.count)warnings.push(pendingFuel.warning);
-  if (dumpUnknown) warnings.push(`${dumpUnknown} işte döküm tahmini doğrulanmadı; maliyet ve kâr eksik olabilir`);
+  if (dumpUnknown) warnings.push(`${dumpUnknown} işte döküm maliyeti veya kalan tahmin doğrulanmadı; bilinen gider ara toplamı gösteriliyor, kâr hesaplanamadı`);
   if (fuelMissing) warnings.push(`${r1(fuelMissing)} sefer/saat için aracın mazot ortalaması yok (son 90 günde yeterli yakıt kaydı yok) — mazot gideri eksik`);
   if (laborMissing) warnings.push(`${laborMissing} kişi-günde şoför/operatörün ücreti girilmemiş — işçilik eksik (Personel kartından yevmiye ya da maaş girin)`);
   if (noPerson) warnings.push(`${noPerson} kayıtta şoför/operatör yok ve araçta zimmetli personel yok — işçilik hesaplanmadı`);
@@ -102,17 +115,17 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
   if (rep.suspect) warnings.push(`${rep.suspect} kayıtta fiş tonu olağan dışı — tahmini m³ yanlış olabilir`);
   if (D?.basis === "m³" && !D.measurement && revenueEst) warnings.push("Gelir tahmini m³'e göre; kesin gelir ölçüm girilince belli olur");
   return {
-    income: r0(income), revenue: r0(revenue), revenueBasis, revenueEst, extras: r0(extras), scrap: r0(scrap),
+    income: revenueIncomplete ? null : r0(income), revenue: revenueIncomplete ? null : r0(revenue), revenueBasis, revenueEst, revenueIncomplete, revenueIncompleteReason, profitIncomplete, profitIncompleteReason, extras: r0(extras), scrap: r0(scrap),
     costs: [
       { key: "mazot", label: "Mazot", tl: r0(fuelTL), note: `${r0(fuelL)} L · aracın son 90 gün ortalaması × litre fiyatı`, est: true },
       { key: "iscilik", label: "İşçilik", tl: r0(laborTL), note: `${r1(laborDays)} kişi-gün · yevmiye ya da maaş ÷ ${WORKDAYS}`, est: true },
       { key: "dokum", label: "Döküm", tl: r0(dumpTL), note: dumpEst ? "kayıtlardaki döküm ücreti (bir kısmı tahmini ton)" : "kayıtlardaki döküm ücreti", est: dumpEst },
       { key: "diger", label: "Diğer giderler", tl: r0(otherTL), note: `${exp.length} gider bu şantiyeye yazılmış`, est: false },
     ],
-    pendingFuel,costIncomplete:pendingFuel.count>0,cost: r0(cost), profit: pendingFuel.count?null:r0(profit), margin: !pendingFuel.count && income > 0 ? Math.round((profit / income) * 100) : null,
-    costPerM3: !pendingFuel.count && m3 > 0 ? r0(cost / m3) : null, profitPerM3: !pendingFuel.count && m3 > 0 ? r0(profit / m3) : null, m3,
+    pendingFuel, dumpUnknown, ...completeness, cost: r0(cost), knownCostSubtotal: r0(cost), profit: profitIncomplete ? null : r0(profit), margin: !profitIncomplete && income > 0 ? Math.round((profit / income) * 100) : null,
+    costPerM3: !completeness.costIncomplete && m3 > 0 ? r0(cost / m3) : null, profitPerM3: !profitIncomplete && m3 > 0 ? r0(profit / m3) : null, m3,
     billedGross: r0(billedGross), paid: rep.paid || 0,
-    targetGross: r0(billedGross || (D?.basis === "m³" && rep.est > 0 ? dealMoney(D, rep.est).gross : 0)), targetEst: !billedGross && D?.basis === "m³" && rep.est > 0, workDays, tripsPerDay: workDays ? r1(rep.trips / workDays) : null,
+    targetGross: r0(billedGross || (D?.basis === "m³" && !revenueIncomplete && rep.est > 0 ? dealMoney(D, rep.est).gross : 0)), targetEst: !billedGross && D?.basis === "m³" && !revenueIncomplete && rep.est > 0, workDays, tripsPerDay: workDays ? r1(rep.trips / workDays) : null,
     vehicles: Object.values(byVeh).map((v) => ({ ...v, L: r0(v.L), tl: r0(v.tl) })).sort((a, b) => b.tl - a.tl || b.sefer - a.sefer),
     days, warnings, fuelL: r0(fuelL),
   };

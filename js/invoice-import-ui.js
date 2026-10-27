@@ -1,3 +1,4 @@
+import { prepareAttachment } from "./attachment-safety.js";
 // eLogo faturasını yükle: XML / ZIP (telefonda okunur) ya da PDF / fotoğraf (Gemini okur) → müşteri ve işlerle eşleştir → faturalandı.
 import { qs, qsa, esc, toast, notice, todayStr, trDate, sheet, sheetClose } from "./ui.js";
 import { parseUblInvoice, checkReadInvoice, matchInvoice } from "./invoice-import.js";
@@ -17,15 +18,16 @@ export async function readInvoiceFile(db, file) {
     const x = es.find((e) => /\.xml$/i.test(e.name));
     const pdf = es.find((e) => /\.pdf$/i.test(e.name));
     const keep = pdf ? new File([await readEntry(buf, pdf)], pdf.name.split("/").pop(), { type: "application/pdf" }) : file;
-    if (x) { const inv = parseUblInvoice(new TextDecoder("utf-8").decode(await readEntry(buf, x))); if (inv) return { inv, file: keep }; }
+    if (x) { const inv = parseUblInvoice(new TextDecoder("utf-8").decode(await readEntry(buf, x))); if (inv) return { inv, file: keep, archiveOnly: !pdf }; }
     if (pdf) return readInvoiceFile(db, keep);
     throw new Error("ZIP içinde fatura (XML/PDF) bulunamadı");
   }
   if (name.endsWith(".xml") || /^\s*(<\?xml|<)/.test(asText().slice(0, 200))) {
     const inv = parseUblInvoice(asText());
     if (!inv) throw new Error("XML bir e-fatura değil");
-    return { inv, file };
+    return { inv, file, archiveOnly: true };
   }
+  file = await prepareAttachment(file);
   // PDF / fotoğraf: Gemini
   const { withModelFallback, geminiJson, blobToBase64 } = await import("./ai-gemini.js");
   const mime = file.type || (name.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
@@ -38,7 +40,7 @@ export function openImport(ctx) {
   const { db } = ctx;
   const sh = sheet(`<h3>📥 eLogo faturasını yükle</h3>
     <div class="small muted" style="margin-bottom:8px">eLogo'da faturayı açıp <b>Paylaş / İndir</b> deyin; XML ya da PDF dosyasını burada seçin. XML telefonda okunur; PDF ve fotoğrafı Gemini okur.</div>
-    <div class="field"><input type="file" accept=".xml,.zip,application/pdf,image/*,text/xml,application/xml,application/zip" data-ifile></div>
+    <div class="field"><input type="file" accept=".xml,.zip,application/pdf,image/jpeg,image/png,image/webp,text/xml,application/xml,application/zip" data-ifile></div>
     <div data-iout></div>
     <div class="row" style="gap:8px;margin-top:8px"><button class="btn ghost grow" data-x>Kapat</button></div>`, { modal: true });
   qs("[data-x]", sh).onclick = () => sheetClose();
@@ -48,12 +50,12 @@ export function openImport(ctx) {
     const out = qs("[data-iout]", sh);
     out.innerHTML = '<div class="muted small">Okunuyor…</div>';
     try {
-      const { inv, file } = await readInvoiceFile(db, f);
+      const { inv, file, archiveOnly } = await readInvoiceFile(db, f);
       const d = await db.dumpAll();
-      render(out, d, inv, file);
+      render(out, d, inv, file, null, archiveOnly);
     } catch (e) { out.innerHTML = notice("err", e.message || String(e)); }
   });
-  const render = (out, d, inv, file, cid = null) => {
+  const render = (out, d, inv, file, cid = null, archiveOnly = false) => {
     const m = cid ? matchInvoice(d, { ...inv, buyer_tax_no: (d.customers || []).find((c) => c.id === cid)?.tax_no || "", buyer_name: (d.customers || []).find((c) => c.id === cid)?.name || "" }) : matchInvoice(d, inv);
     const custs = (d.customers || []).filter((c) => !c.deleted_at && !c.internal).sort((a, b) => a.name.localeCompare(b.name, "tr"));
     const cand = m.customer ? uninvoicedWorks(d, { customerId: m.customer.id }) : [];
@@ -66,6 +68,7 @@ export function openImport(ctx) {
         <div class="small" style="margin-top:4px">KDV hariç ${tl(inv.net)} · KDV ${tl(inv.kdv)}${inv.withheld ? ` · tevkifat ${tl(inv.withheld)}` : ""} · <b>ödenecek ${tl(inv.payable)}</b></div>
         ${inv.ettn ? `<div class="tiny muted">ETTN ${esc(inv.ettn)}</div>` : ""}
       </div>
+      ${archiveOnly ? notice("info", "Özgün XML/ZIP fatura kaynağı aynen saklanır; güvenlik için uygulamada açılmaz, .bin olarak indirilebilir.") : ""}
       ${dup ? notice("warn", "Bu fatura numarası zaten kayıtlı.") : ""}
       ${(inv.issues || []).map((x) => notice("warn", x)).join("")}
       ${m.issues.map((x) => notice(m.exact ? "info" : "warn", x)).join("")}
@@ -78,7 +81,7 @@ export function openImport(ctx) {
     const upd = () => { if (!sumEl) return; const s = qsa("[data-iw]", out).filter((x) => x.checked).reduce((n, x) => n + workNet(cand.find((w) => w.id === x.dataset.iw), d).net, 0); sumEl.textContent = `Seçilen: ${tl(s)}${inv.net != null ? ` · fatura: ${tl(inv.net)}${Math.abs(s - inv.net) < 1 ? " ✓" : " — fark " + tl(inv.net - s)}` : ""}`; };
     for (const x of qsa("[data-iw]", out)) x.addEventListener("change", upd);
     upd();
-    qs("[data-cust]", out).addEventListener("change", (e) => render(out, d, inv, file, e.target.value || null));
+    qs("[data-cust]", out).addEventListener("change", (e) => render(out, d, inv, file, e.target.value || null, archiveOnly));
     qs("[data-isave]", out)?.addEventListener("click", async (e) => {
       const b = e.currentTarget; b.disabled = true;
       const c = m.customer;
@@ -87,7 +90,7 @@ export function openImport(ctx) {
       try {
         const doc = { category: "Fatura", owner_type: "customer", owner_id: c.id, customer_id: c.id, date: inv.date || todayStr(), doc_no: inv.invoice_no, title: "Fatura", amount: inv.payable ?? inv.total ?? null, ettn: inv.ettn || null,
           note: `eLogo · KDV hariç ${tl(inv.net)} · KDV ${tl(inv.kdv)}${inv.withheld ? " · tevkifat " + tl(inv.withheld) : ""} · ${ids.length} iş` };
-        const rec = file ? await db.saveDocument(doc, file) : await db.saveNew("documents", doc, "eLogo faturası");
+        const rec = file ? await (archiveOnly ? db.saveInvoiceSourceDocument(doc,file) : db.saveDocument(doc,file)) : await db.saveNew("documents", doc, "eLogo faturası");
         for (const id of ids) { const w = await db.get("work_records", id); if (w) await db.saveExisting("work_records", w, { invoice_no: inv.invoice_no, invoice_date: doc.date, invoice_doc_id: rec?.id || null, invoice_ettn: inv.ettn || null }, "Faturalandı (eLogo)"); }
         if (inv.buyer_tax_no && !String(c.tax_no || "").replace(/\D/g, "")) await db.saveExisting("customers", c, { tax_no: inv.buyer_tax_no, ...(inv.buyer_name && !c.tax_title ? { tax_title: inv.buyer_name } : {}) }, "Faturadan vergi no");
         sheetClose(); toast(`Fatura ${inv.invoice_no} kaydedildi · ${ids.length} iş faturalandı`, "ok"); ctx.reload();

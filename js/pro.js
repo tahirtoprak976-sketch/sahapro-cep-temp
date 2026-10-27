@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelSummary} from './historical-fuel.js';
 import {recordNoteText} from './record-notes.js';
 import {recordSourceHTML} from './record-notes-ui.js';
@@ -470,7 +471,7 @@ async function documentScreen(ctx) {
         Object.entries(OWNER_LABELS).map(([v, t]) => ({ v, t })),
         query.owner_type || "vehicle",
         { empty: false },
-      )}<div data-owner></div><div class="formgrid2">${fText("Belge No", "doc_no", "", { req: true })}${fText("Kurum", "institution", "")}</div><div class="formgrid2">${fDate("Belge tarihi", "date")}${fDate("Geçerlilik bitişi", "expiry_date", "", false)}</div>${fDate("Hatırlatma tarihi", "reminder_date", "", false)}${fNum("Tutar (opsiyonel)", "amount", "", { step: "any" })}${fArea("Açıklama", "description")}<div class="field"><label>Dosya / fotoğraf / PDF *</label><input name="attachment" type="file" accept="image/*,application/pdf" required></div><button type="button" class="btn" data-ocr>OCR Çalıştır</button><div data-ocr-status class="notice"></div></form><div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+      )}<div data-owner></div><div class="formgrid2">${fText("Belge No", "doc_no", "", { req: true })}${fText("Kurum", "institution", "")}</div><div class="formgrid2">${fDate("Belge tarihi", "date")}${fDate("Geçerlilik bitişi", "expiry_date", "", false)}</div>${fDate("Hatırlatma tarihi", "reminder_date", "", false)}${fNum("Tutar (opsiyonel)", "amount", "", { step: "any" })}${fArea("Açıklama", "description")}<div class="field"><label>Dosya / fotoğraf / PDF *</label><input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div><button type="button" class="btn" data-ocr>OCR Çalıştır</button><div data-ocr-status class="notice"></div></form><div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
     let ocr = { status: "YOK" };
     const form = qs("[data-form]", root);
     async function owner() {
@@ -604,12 +605,7 @@ async function documentScreen(ctx) {
           "</pre></details>"
         : "");
     for (const a of atts) {
-      const url = URL.createObjectURL(a.blob);
-      qs("[data-files]", root).insertAdjacentHTML(
-        "beforeend",
-        (String(a.type).startsWith("image/") ? `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="" style="width:100%;border-radius:8px;border:1px solid var(--border);margin-bottom:6px"></a>` : "") +
-          `<a class="btn block" href="${url}" target="_blank" rel="noopener">${String(a.type).startsWith("image/") ? "🔍 Büyük aç" : "📄 " + esc(a.name) + " — aç"}</a>`,
-      );
+      qs("[data-files]", root).insertAdjacentHTML("beforeend", await attachmentHTML(a));
     }
     if (!atts.length) qs("[data-files]", root).innerHTML = '<div class="muted small" style="margin:4px">Dosya yok</div>';
     bindExports(

@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelSummary} from './historical-fuel.js';
 import { customerBankReceipt } from "./enterprise-db.js";
 import {hakedisNumber, hakedisItemIssues, assertHakedisItems, hakedisSourcePriceReview} from './hakedis-validation.js';
@@ -1539,22 +1540,7 @@ async function expenseDetail(db, e, names) {
     <div data-photos style="margin-top:10px">${atts.length ? "" : '<span class="muted small">Bu giderde fiş fotoğrafı yok</span>'}</div>
     <button class="btn block" style="margin-top:12px" data-close>Kapat</button>`);
   const box = qs("[data-photos]", sh);
-  for (const a of atts) {
-    if ((a.type || "").startsWith("image/")) {
-      const img = document.createElement("img");
-      img.src = URL.createObjectURL(a.blob);
-      img.alt = a.name || "Fiş";
-      img.style.cssText =
-        "width:100%;max-height:60vh;object-fit:contain;border-radius:10px;border:1px solid var(--border);margin-bottom:8px";
-      box.appendChild(img);
-    }
-    const b = document.createElement("button");
-    b.className = "btn sm";
-    b.style.marginRight = "6px";
-    b.textContent = "⬇ " + (a.name || "dosya");
-    b.addEventListener("click", () => downloadBlob(a.blob, a.name || "fis"));
-    box.appendChild(b);
-  }
+  for (const a of atts) box.insertAdjacentHTML("beforeend", await attachmentHTML(a));
   qs("[data-close]", sh).addEventListener("click", () => sheetClose());
 }
 
@@ -1603,7 +1589,7 @@ async function expenseForm(ctx) {
       ${fSelect("Veresiye usta / esnaf (ops.)", "supplier_id", suppliers.map((s) => ({ v: s.id, t: s.name })), "", { emptyText: "— peşin / veresiye değil —" })}
       ${fText("Firma", "company", "")}
       ${fArea("Açıklama", "description", "")}
-      <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/*"></div>
+      <div class="field"><label>Fiş Fotoğrafı</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></div>
       <button type="button" class="btn block" data-gread hidden>🤖 Fişi Gemini ile oku ve formu doldur</button>
       <div data-gres></div>
     </form>

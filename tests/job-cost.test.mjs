@@ -13,7 +13,7 @@ const mk = (deal, extra = {}) => {
     fuel_records: [{ id: "f1", date: "2026-10-01", vehicle_id: "v1", liters: 400, total: 18400, unit_price: 46 }],
     work_records: [
       { id: "w0", date: "2026-10-01", vehicle_id: "v1", customer_id: "c1", site_id: "s2", unit: "Sefer", quantity: 10 }, // tüketim ortalaması için
-      { id: "w1", date: "2026-10-15", vehicle_id: "v1", customer_id: "c1", site_id: "s1", unit: "Sefer", quantity: 6, tonnage: 19.5, price_snapshot: { amount: 0, price_source: "Sözleşmeye dahil" } },
+      { id: "w1", date: "2026-10-15", vehicle_id: "v1", customer_id: "c1", site_id: "s1", unit: "Sefer", quantity: 6, tonnage: 19.5, tonnage_scope: "per_trip", price_snapshot: { amount: 0, price_source: "Sözleşmeye dahil" } },
       { id: "w2", date: "2026-10-15", vehicle_id: "v1", customer_id: "c1", site_id: "s2", unit: "Sefer", quantity: 2 },
     ],
     cari_movements: [{ id: "m1", customer_id: "c1", type: "Tahsilat", amount: -50000, date: "2026-10-16" }],

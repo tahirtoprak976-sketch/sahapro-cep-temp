@@ -115,8 +115,9 @@ with sync_playwright() as playwright:
         customer_note:'TEST legacy customer report note',
         price_snapshot:{amount:300,unit_price:100,kdv_rate:20,kdv_included:false,price_source:'Manuel'}
       },'TEST');
-      await db.addAttachment('work',legacy.id,
-        new File(['TEST preserved attachment bytes'],'TEST-entry.txt',{type:'text/plain'}));
+      // Seed an already-existing unsupported original; new uploads are intentionally strict.
+      const legacyFile=new File(['TEST preserved attachment bytes'],'TEST-entry.txt',{type:'text/plain'});
+      await db.put('attachments',{id:'TEST-legacy-entry-attachment',record_type:'work',record_id:legacy.id,name:legacyFile.name,type:legacyFile.type,size:legacyFile.size,blob:legacyFile,kind:'photo',created_at:'2026-10-20T00:00:00Z'});
       // Reproduce a pre-existing inconsistent relation, not a permitted new save.
       await db.put('work_records',{...legacy,site_id:sb.id});
       return {a:a.id,b:b.id,sa:sa.id,sb:sb.id,orphan:orphan.id,

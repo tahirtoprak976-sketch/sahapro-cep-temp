@@ -1,3 +1,4 @@
+import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {readBatchPolicy,selectedFuelBudget,untrustedWorkPlan} from './assistant-batch.js';
@@ -59,7 +60,7 @@ export async function screen(ctx) {
     </section>
     <div data-agent-task></div><div class="card">
       <div class="field"><label>Mesaj</label><textarea data-msg rows="3" placeholder="Ne yapmak istiyorsunuz? İşi anlatın; eksik bilgiyi birlikte tamamlayalım."></textarea></div>
-      <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/*,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos></div>
+      <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos></div>
       <p class="tiny muted">En fazla 20 dosya. SAHAPRO iş özeti PDF’ini (.sahapro.pdf) veya eski tek paketi (.sahapro.zip) seçmeniz yeterlidir; fotoğraflar içindedir. Eski .sahapro.txt yönteminde dosyayı ve bütün fotoğrafları birlikte ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
       <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
       <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
@@ -137,10 +138,11 @@ export async function screen(ctx) {
   paintTask();
   ctx.assistantTaskChanged=task=>{activeTask=task;paintTask();};
   await mountBulkResume(ctx);
-  let files = [], attachmentError = "";
+  let files = [], attachmentError = "", filesGeneration = 0, filesPending = false;
   const attachmentLimit = 20;
   const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f)||isDriverPDF(f);
   const isAudio = (f) => /^audio\//.test(f.type) || /\.(m4a|mp3|ogg|opus|wav|aac|webm|amr)$/i.test(f.name || "");
+  const prepareInput = f => isTransfer(f) ? f : isAudio(f) ? prepareAudioPreview(f) : prepareAttachment(f);
   const showThumbs = () => {
     const errorBox = qs("[data-attachment-error]", root); errorBox.hidden = !attachmentError; errorBox.textContent = attachmentError;
     qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
@@ -152,17 +154,21 @@ export async function screen(ctx) {
         ? `<div class="card" style="margin:0;padding:6px;width:100%"><div class="small">🎤 Ses kaydı ${esc(f.name || "")} <button class="btn small" data-rm="${i}">Sil</button></div><audio controls src="${URL.createObjectURL(f)}" style="width:100%"></audio></div>`
         : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
       .join("");
-    for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { files.splice(Number(b.dataset.rm), 1); showThumbs(); });
+    for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { filesGeneration++; filesPending=false; files.splice(Number(b.dataset.rm), 1); showThumbs(); });
   };
-  qs("[data-clearfiles]",root).onclick=()=>{files=[];attachmentError="";photosIn.value="";showThumbs();};
-  photosIn.addEventListener("change", () => {
+  qs("[data-clearfiles]",root).onclick=()=>{filesGeneration++;filesPending=false;files=[];attachmentError="";photosIn.value="";showThumbs();};
+  photosIn.addEventListener("change", async () => {
+    const generation = ++filesGeneration; filesPending=false;
     const next = [...files.filter((f) => f._rec), ...photosIn.files];
     if (next.length > attachmentLimit) { photosIn.value = ""; attachmentError = "En fazla 20 dosya seçin. Önceki ekler korunuyor; yeni seçim alınmadı. Yeniden seçin veya ekleri temizleyin."; showThumbs(); return toast(attachmentError, "err"); }
-    files = next; attachmentError = "";
+    filesPending=true;
+    try { const prepared = await Promise.all(next.map(prepareInput)); if(generation!==filesGeneration)return; files=prepared; attachmentError=""; }
+    catch (e) { if(generation===filesGeneration){attachmentError=e.message;photosIn.value="";showThumbs();toast(attachmentError,"err");}return; }
+    finally { if(generation===filesGeneration)filesPending=false; }
     showThumbs();
   });
   qs('[data-part-document]',root).onclick=async()=>{
-    if(asking)return;asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
+    if(asking)return;if(filesPending)return toast('Dosyalar doğrulanıyor; tamamlanmasını bekleyin','err');asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
     try{if(files.some(isTransfer))throw Error('Şoför aktarımı kendi akışından okunmalı. Parça belgesini ayrı seçin.');await stagePartDocuments(ctx,files,{message:msgEl.value});}
     catch(e){toast(e.message,'err');}finally{asking=false;if(b.isConnected)b.disabled=false;}
   };
@@ -208,21 +214,22 @@ export async function screen(ctx) {
   // WhatsApp'tan "Paylaş" ile gelen metin / fotoğraflar
   if (ctx.query?.shared && "caches" in self) {
     try {
-      const cache = await caches.open("sahapro-share");
+      const cache = await caches.open("sahapro-share"), incomingFiles = [];
       const t = await cache.match("./__share/text");
       if (t) msgEl.value = await t.text();
       for (let i = 0; i < attachmentLimit; i++) {
         const r = await cache.match(`./__share/file-${i}`);
         if (!r) break;
         const b = await r.blob();
-        files.push(new File([b], decodeURIComponent(r.headers.get("x-name") || "foto.jpg"), { type: b.type || r.headers.get("content-type") || "image/jpeg" }));
+        incomingFiles.push(new File([b], decodeURIComponent(r.headers.get("x-name") || "foto.jpg"), { type: b.type || r.headers.get("content-type") || "image/jpeg" }));
       }
       const incomingError = await cache.match("./__share/error");
       if (incomingError) attachmentError = await incomingError.text();
+      files = await Promise.all(incomingFiles.map(prepareInput));
       await caches.delete("sahapro-share");
       showThumbs();
       if (msgEl.value || files.length) toast("Paylaşılan içerik alındı", "ok");
-    } catch (e) {}
+    } catch (e) { attachmentError = "Paylaşılan dosya alınamadı; özgün paylaşım önbellekte korunuyor. " + e.message; toast(attachmentError,"err"); }
   }
   // Yarım kalan mesaj saklanır (internet yoksa veya ekran kapanırsa kaybolmaz)
   if (!msgEl.value) msgEl.value = (await db.metaGet("assistant_draft")) || "";
@@ -232,13 +239,15 @@ export async function screen(ctx) {
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
   qs("[data-ask]", root).addEventListener("click", async () => {
-    if(asking)return;asking=true;
+    if(asking)return;if(filesPending)return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin","err");asking=true;
     const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
     for(const el of locked)el.disabled=true;
     let chatTurn=null,chatFinished=false;
     const finishChat=async result=>{if(!chatTurn)return true;const ok=await conversation.finish(chatTurn,result);chatFinished=true;return ok;};
     try {
     if (attachmentError) return toast(attachmentError, "err");
+    try { files = await Promise.all(files.map(prepareInput)); }
+    catch (error) { attachmentError = error.message; return toast(attachmentError, "err"); }
     if(files.length&&!files.some(isTransfer)&&partDocumentIntent(qs('[data-msg]',root).value)){await stagePartDocuments(ctx,files,{message:qs('[data-msg]',root).value});return;}
     if(files.some(f=>!isTransfer(f)&&(/\.pdf$/i.test(f.name||'')||f.type==='application/pdf')))return toast("Bu normal PDF. Geçmiş işleri PDF’den aktar ekranını kullanın; şoför aktarımı için .sahapro.pdf iş özeti seçin", "err");
     if(files.some(f=>!isTransfer(f)&&(/\.(txt|zip)$/i.test(f.name||'')||f.type==='text/plain'||/zip/.test(f.type||''))))return toast("Bu dosya SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
@@ -666,7 +675,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       (v.restSkipped ? notice("warn", "Mesajdaki diğer yazı da işlenmedi (reddedilen şoför kaydı yazıdan geri gelmesin). Gerekliyse yalnız o yazıyı ayrıca yapıştırın.") : "") +
       (v.relink || []).map(([pid, n]) => `<button class="btn block" style="margin-top:6px" data-go="#/sofor-kur?pid=${esc(pid)}">🔗 ${esc(n)} için yeni imzalı bağlantı oluştur</button>`).join("") : "") +
     (v.driverSecWarn ? notice("warn", "🛡 " + v.driverSecWarn.map(esc).join(" · ")) : "") +
-    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + (v.driverPhotoReselect ? `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Paketin dosyalarını yeniden seç${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/*" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : v.driverPhotoClear ? '<button class="btn block" data-drvclear>Bu mesajın eklerini kaldır ve yeniden hazırla</button>' : "") : "") +
+    (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + (v.driverPhotoReselect ? `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Paketin dosyalarını yeniden seç${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/jpeg,image/png,image/webp" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : v.driverPhotoClear ? '<button class="btn block" data-drvclear>Bu mesajın eklerini kaldır ve yeniden hazırla</button>' : "") : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
     v.questions.map((q) => notice("info", "Soru: " + q)).join("") +

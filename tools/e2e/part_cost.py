@@ -30,7 +30,8 @@ with sync_playwright() as p:
  const state=async()=>JSON.stringify({d:await d.dumpAll(),a:await d.getAll('audit_log')});
  const reject=async run=>{try{await run();return null}catch(e){return e.message}};
  const f={vehicle_id:ids.v,date:C.todayStr(),description:'TEST Cost Guard',quantity:2,unit_price:100,cost_mode:'tracking'};
- const file=new File(['%PDF-1.4\\nTEST Warranty\\n%%EOF'],'TEST.pdf',{type:'application/pdf'});
+ const {pdfBytes}=await import('./tests/support/attachment-fixtures.mjs');
+ const file=new File([pdfBytes()],'TEST.pdf',{type:'application/pdf'});
  const r=await P.saveSparePart(f,[file],'TEST tracking');
  const atts=JSON.stringify(await d.getAll('attachments')),before=await state();
  const empty=await reject(()=>P.attachPartCost(r.id,{cost_mode:'new_expense',unit_price:''},r.updated_at,'TEST missing price'));

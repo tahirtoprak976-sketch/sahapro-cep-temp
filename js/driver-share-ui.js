@@ -1,3 +1,4 @@
+import { prepareAttachment } from "./attachment-safety.js";
 import {makeDriverPDF} from "./driver-pdf-transfer.js";
 import {makeDriverBundle} from "./driver-bundle.js";
 import {cleanDriverShare} from "./driver-transfer.js";
@@ -6,6 +7,7 @@ import {esc,downloadBlob} from './ui.js';
 import {todayStr} from './core.js';
 import {preparedPacketError} from './driver-delivery.js';
 export async function reviewDriverPacket({packet,cfg,entryLine,readEntries,readConfig,root}){
+ packet={...packet,files:await Promise.all(packet.files.map(f=>prepareAttachment(f,{imageOnly:true})))};
  // The default signed message needs no derived file or PDF rendering.
  let bundlePayload=null,pdfPayload=null,cleanPayload=null,downloadPayload=null;
  let bundleError='Önce dosya seçeneklerini hazırlayın.',pdfError=bundleError,cleanError=bundleError;

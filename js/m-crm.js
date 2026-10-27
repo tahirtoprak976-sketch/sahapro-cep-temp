@@ -1,3 +1,5 @@
+import { prepareAttachment } from "./attachment-safety.js";
+import { attachmentHTML } from "./attachment-ui.js";
 import { startActivity } from "./update-safety.js";
 // ============================================================
 // SAHAPRO SOLO — CRM & Sistem: Müşteriler · Şantiyeler · Belge Merkezi
@@ -583,7 +585,7 @@ async function docForm(ctx) {
       <div class="section-title">Fiziksel Arşiv (ops.)</div>
       <div class="formgrid2">${fText("Klasör", "archive_folder", "")}${fText("Raf", "archive_shelf", "")}</div>
       <div class="formgrid2">${fText("Koçan", "archive_kocan", "")}${fText("Dosya No", "archive_file_no", "")}</div>
-      <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/*"></div>
+      <div class="field"><label>Fotoğraf (ops.)</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
   qs("[data-save]", root).addEventListener("click", async () => {
@@ -689,25 +691,9 @@ async function docDetail(ctx, id) {
       <button class="btn" data-addphoto>📷 Foto Ekle</button>
       <button class="btn danger" data-del>🗑 Sil</button>
     </div>
-    <input type="file" accept="image/*" data-photoinput hidden>`;
+    <input type="file" accept="image/jpeg,image/png,image/webp" data-photoinput hidden>`;
   const attRoot = qs("[data-atts]", root);
-  for (const a of atts) {
-    if ((a.type || "").startsWith("image/")) {
-      const img = document.createElement("img");
-      img.src = URL.createObjectURL(a.blob);
-      img.style.cssText =
-        "width:84px;height:84px;object-fit:cover;border-radius:10px;border:1px solid var(--border);cursor:pointer";
-      img.title = a.name || "foto";
-      img.addEventListener("click", () => window.open(img.src, "_blank"));
-      attRoot.appendChild(img);
-    } else {
-      const b = document.createElement("button");
-      b.className = "btn sm";
-      b.textContent = "📎 " + (a.name || "dosya");
-      b.addEventListener("click", () => downloadBlob(a.blob, a.name || "ek"));
-      attRoot.appendChild(b);
-    }
-  }
+  for (const a of atts) attRoot.insertAdjacentHTML("beforeend", await attachmentHTML(a, {imageStyle:"width:84px;height:84px;object-fit:cover;border-radius:10px"}));
   const sug = qs("[data-suggest]", root);
   const cf = ocr.confirmed_fields || {};
   const mkSuggest = () => {
@@ -967,8 +953,8 @@ async function scan(ctx) {
       <button class="btn primary grow" data-cam>📷 Kamera</button>
       <button class="btn grow" data-gal>🖼 Galeri</button>
     </div>
-    <input type="file" accept="image/*" capture="environment" data-camin hidden>
-    <input type="file" accept="image/*" data-galin hidden multiple>
+    <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" data-camin hidden>
+    <input type="file" accept="image/jpeg,image/png,image/webp" data-galin hidden multiple>
     <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:12px" data-pages></div>
     <div class="card" style="margin-top:12px" data-ocrcard hidden>
       <div class="row between"><span class="section-title" style="margin:0">OCR</span><span data-confbadge></span></div>
@@ -1027,7 +1013,8 @@ async function scan(ctx) {
     qs("[data-ocrcard]", root).hidden = pages.length === 0;
   };
   const addFiles = async (files) => {
-    for (const f of files) {
+    for (const original of files) {
+      let f; try { f = await prepareAttachment(original, {imageOnly:true}); } catch (error) { toast(error.message,"err"); continue; }
       if (!(f.type || "").startsWith("image/")) {
         toast("Yalnız görsel dosyası (PDF OCR desteklenmez)", "err");
         continue;

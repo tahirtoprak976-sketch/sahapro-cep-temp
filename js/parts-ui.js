@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 import { startActivity } from "./update-safety.js";
 import { isActive, todayStr, uuid, fmtTL, trDate } from "./core.js";
 import * as ui from "./ui.js";
@@ -266,24 +267,7 @@ export async function screen(ctx) {
       }
     });
     observer.observe(document.body, { childList: true, subtree: true });
-    for (const a of atts) {
-      if (a.type?.startsWith("image/")) {
-        const img = document.createElement("img");
-        img.alt = a.name;
-        img.loading = "lazy";
-        img.decoding = "async";
-        img.style.cssText = "width:100%;max-height:240px;object-fit:contain";
-        const url = URL.createObjectURL(a.blob);
-        urls.push(url);
-        img.src = url;
-        holder.append(img);
-      }
-      const b = document.createElement("button");
-      b.className = "btn block";
-      b.textContent = "📎 " + a.name;
-      b.onclick = () => ui.downloadBlob(a.blob, a.name);
-      holder.append(b);
-    }
+    for (const a of atts) holder.insertAdjacentHTML("beforeend", await attachmentHTML(a));
     qs("[data-add-files]", root).onsubmit = async (e) => {
       e.preventDefault();
       const form = e.target,

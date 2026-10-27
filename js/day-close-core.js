@@ -5,6 +5,7 @@ import { isActive, addDays } from "./core.js";
 import { workAmount } from "./collect-core.js";
 import { isRoadVehicle } from "./maint-core.js";
 import { loadTon } from "./dump-fees.js";
+import { resolveWorkTonnage } from "./work-tonnage.js";
 import { invoiceQueue } from "./invoice-core.js";
 import { integrityCheck } from "./integrity-core.js";
 
@@ -39,8 +40,9 @@ export function dayCloseChecks(d, { date, attCount = {} } = {}) {
   // Tonaj: aracın taşıyabileceğinden fazla (yanlış fiş ya da aşırı yük) ve aynı fiş no iki kez
   for (const w of today.filter((w) => Number(w.tonnage) > 0)) {
     const v = live(d, "vehicles").find((x) => x.id === w.vehicle_id);
-    const cap = loadTon(v), trips = w.unit === "Sefer" ? Number(w.quantity) || 1 : 1;
-    if (cap > 0 && Number(w.tonnage) / trips > cap * 1.15) push("warn", "Bugün", `Tonaj yüksek: ${num(Number(w.tonnage) / trips)} ton/sefer`, `${v?.name || "Araç"} ~${cap} ton taşır — fiş yanlış okunmuş ya da aşırı yük olabilir`, "#/isler/" + w.id);
+    const cap = loadTon(v), weight = resolveWorkTonnage(w);
+    if (weight.uncertain) push("warn", "Bugün", weight.reason, "Kayıttaki tonaj kapsamını teyit edin; sefer başı yük çıkarılmadı", "#/isler/" + w.id);
+    if (cap > 0 && weight.perTripTon > cap * 1.15) push("warn", "Bugün", `Tonaj yüksek: ${num(weight.perTripTon)} ton/sefer`, `${v?.name || "Araç"} ~${cap} ton taşır — fiş yanlış okunmuş ya da aşırı yük olabilir`, "#/isler/" + w.id);
   }
   const slipKey = (w) => String(w.slip_no || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   for (const w of today.filter((w) => slipKey(w).length >= 3)) {

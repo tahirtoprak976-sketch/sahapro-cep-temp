@@ -1,3 +1,4 @@
+import { attachmentHTML } from "./attachment-ui.js";
 // Firma/saha ortak ön ödemeli hesap. Plakaya göre süzmek bakiyeyi değiştirmez.
 import * as ui from "./ui.js";
 import { isActive, todayStr, uuid, fmtTL, trDate } from "./core.js";
@@ -195,22 +196,7 @@ export async function screen(ctx) {
       ? ""
       : notice("info", "Bu işleme belge eklenmemiş.");
     const urls = [];
-    for (const a of atts) {
-      if (a.type?.startsWith("image/")) {
-        const img = document.createElement("img");
-        img.alt = a.name;
-        img.loading = "lazy";
-        img.style.cssText = "width:100%;max-height:260px;object-fit:contain";
-        img.src = URL.createObjectURL(a.blob);
-        urls.push(img.src);
-        holder.append(img);
-      }
-      const b = document.createElement("button");
-      b.className = "btn block";
-      b.textContent = a.name;
-      b.onclick = () => ui.downloadBlob(a.blob, a.name);
-      holder.append(b);
-    }
+    for (const a of atts) holder.insertAdjacentHTML("beforeend", await attachmentHTML(a));
     const observer = new MutationObserver(() => {
       if (!holder.isConnected) {
         urls.forEach((u) => URL.revokeObjectURL(u));

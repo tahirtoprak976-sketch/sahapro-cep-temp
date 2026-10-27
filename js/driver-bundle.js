@@ -1,3 +1,4 @@
+import { prepareAttachment } from "./attachment-safety.js";
 // Self-contained, bounded stored-ZIP transport. No decompression, filesystem writes or remote service.
 import {buildZip,crc32} from './core.js';
 import {listZip,readEntry} from './unzip.js';
@@ -11,7 +12,8 @@ export async function makeDriverBundle(packet){
  const legacy=cleanDriverShare(packet),transfer=legacy.files[0];
  const files=[{name:'transfer.sahapro.txt',data:new Uint8Array(await transfer.arrayBuffer())}],photos=[];
  let bytes=transfer.size;
- for(const [i,f] of packet.files.entries()){
+ for(const [i,original] of packet.files.entries()){
+  const f=await prepareAttachment(original,{imageOnly:true,maxBytes:DRIVER_BUNDLE_LIMIT});
   if(!MIME.has(f.type)||f.name.length>240)throw Error('Pakette desteklenmeyen fotoğraf var; yeniden hazırlayın');
   bytes+=f.size;if(bytes>DRIVER_BUNDLE_LIMIT)throw Error('Tek paket 20 MB sınırını aşıyor; daha az kayıt seçin');
   const path='photos/'+String(i).padStart(2,'0')+'-'+f.name.replace(/[^a-zA-Z0-9._-]/g,'_').slice(0,80);
@@ -45,7 +47,7 @@ export async function openDriverBundle(file){
   const seen=new Set(['index.json','transfer.sahapro.txt']),files=[];
   for(const p of index.photos){
    if(!p||typeof p.path!=='string'||!/^photos\/[a-zA-Z0-9._-]+$/.test(p.path)||seen.has(p.path)||typeof p.name!=='string'||p.name.length>240||/[\u0000-\u001f]/.test(p.name)||!MIME.has(p.type)||!Number.isInteger(p.size)||p.size<0||byName.get(p.path)?.size!==p.size)throw Error('Paket fotoğraf listesi geçersiz');
-   seen.add(p.path);files.push(new File([await read(p.path,DRIVER_BUNDLE_LIMIT)],p.name,{type:p.type,lastModified:0}));
+   seen.add(p.path);files.push(await prepareAttachment(new File([await read(p.path,DRIVER_BUNDLE_LIMIT)],p.name,{type:p.type,lastModified:0}),{imageOnly:true,maxBytes:DRIVER_BUNDLE_LIMIT}));
   }
   return {message,files};
  }catch(e){throw Error('SAHAPRO paketi açılamadı: '+(e.message||e)+'. Şoförden aynı kaydı yeniden paylaşmasını isteyin.');}

@@ -9,6 +9,7 @@ on:
       - dot/solo-finance-audit
       - dot/solo-dump-accounting
       - codex/historical-fuel-review
+      - fix/redteam-three-findings
 
 permissions:
   contents: read
@@ -21,7 +22,7 @@ jobs:
   synthetic-regression:
     runs-on: ubuntu-latest
     container: node:24-bookworm
-    timeout-minutes: 35
+    timeout-minutes: 50
     defaults:
       run:
         shell: bash
@@ -42,7 +43,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends chromium python3-venv fonts-liberation fonts-dejavu-core
           python3 -m venv /tmp/solo-e2e-venv
-          /tmp/solo-e2e-venv/bin/python -m pip install --disable-pip-version-check playwright==1.62.0 reportlab==4.4.9
+          /tmp/solo-e2e-venv/bin/python -m pip install --disable-pip-version-check playwright==1.62.0 reportlab==4.4.9 pypdf==6.10.0 Pillow==12.3.0
           node --version
           /usr/bin/chromium --version
           /tmp/solo-e2e-venv/bin/python -m pip show playwright
@@ -91,7 +92,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -189,6 +190,40 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 79b60e5111bbf9807e8e8f3618ff2e4f4ca8dccd
+
+      - name: Verify installed v3.9.74 schema7 to candidate preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 57da7b2a0a5372f74cbb486ffc88eb2a2ea76fcc
+
+      - name: Reproduce all three redteam findings on unchanged v3.9.74
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-redteam-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 57da7b2a0a5372f74cbb486ffc88eb2a2ea76fcc | tar -x -C "$baseline"
+          cp tests/tonnage-scope.test.mjs tests/redteam-incomplete-cost.test.mjs "$baseline/tests/"
+          BASELINE_PROOF=1 node "$baseline/tests/tonnage-scope.test.mjs"
+          BASELINE_PROOF=1 node "$baseline/tests/redteam-incomplete-cost.test.mjs"
+          python3 -m http.server 8846 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-redteam-baseline-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8846/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/attachment_safety.py http://localhost:8846/ --baseline-proof --artifacts /tmp/solo-attachment-baseline
+          /tmp/solo-e2e-venv/bin/python tools/e2e/redteam_finance.py http://localhost:8846/ --baseline-proof --artifacts /tmp/solo-redteam-baseline
 
       - name: Reproduce dump-cost defects on unchanged v3.9.72
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
@@ -289,6 +324,10 @@ jobs:
             /tmp/solo-finance-integrity/*
             /tmp/solo-dump-cost-reliability/*
             /tmp/solo-contract-extra-rates/*
+            /tmp/solo-attachment-safety/*
+            /tmp/solo-attachment-baseline/*
+            /tmp/solo-redteam-finance/*
+            /tmp/solo-redteam-baseline/*
             /tmp/solo-source.sha256
             /tmp/solo-tests.sha256
           if-no-files-found: warn

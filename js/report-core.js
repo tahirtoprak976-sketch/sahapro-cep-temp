@@ -1,3 +1,5 @@
+import {resolveWorkTonnage} from './work-tonnage.js';
+import {costCompleteness, dumpCostIncomplete} from './cost-completeness.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 // Detaylı kayıt raporları — SAF katman (DOM yok). Her "kalem" (döküm sahası, ocak, müşteri, şantiye, araç, personel,
 // esnaf, iş türü, malzeme, yakıt, gider, bakım, taşeron) için: kimlik bilgileri, özet rakamlar, ayrıntılı tablolar.
@@ -66,7 +68,7 @@ function ctx(d, from, to) {
 
 // Bir iş satırının tüm ayrıntısı
 function workInfo(d, w, nm, billed = false) {
-  const fee = dumpFee(d, w);
+  const fee = dumpFee(d, w), weight = resolveWorkTonnage(w);
   const rawPrice = w.price_snapshot?.unit_price;
   // Aynı açık-sıfır doğrulaması; boş/geçersiz birim fiyatı 0 diye göstermeyiz.
   const unitPrice = hasWorkPrice({ quantity: 1, price_snapshot: { unit_price: rawPrice } }) ? Number(rawPrice) : null;
@@ -74,10 +76,10 @@ function workInfo(d, w, nm, billed = false) {
     w, date: w.date, customer: nm("customers", w.customer_id), site: nm("sites", w.site_id), vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
     type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
     from: nm("quarries", w.quarry_id) || w.quarry || "", to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
-    ton: Number(w.tonnage) || 0, slip: [w.slip_no, w.digital_slip_no && w.digital_slip_no !== w.slip_no ? "dijital " + w.digital_slip_no : ""].filter(Boolean).join(" · "),
+    ton: weight.totalTon || 0, tonUncertain: weight.uncertain, enteredTon: weight.enteredTon, slip: [w.slip_no, w.digital_slip_no && w.digital_slip_no !== w.slip_no ? "dijital " + w.digital_slip_no : ""].filter(Boolean).join(" · "),
     unitPrice, amount: workAmount(w, d), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
     priced: hasWorkPrice(w), unpriced: missingCustomerWorkPrice(w, billed), billed,
-    dump: fee?.amount || 0, dumpEst: !!(fee?.estimated || fee?.provisional || fee?.unverified), dumpUnverified:!!fee?.unverified, dumpConfirmed:fee?.confirmed_amount||0, dumpRemaining:fee?.remaining_estimated_amount, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
+    dump: fee?.amount || 0, dumpEst: !!(fee?.estimated || fee?.provisional || fee?.unverified), dumpUnverified:dumpCostIncomplete(fee), dumpConfirmed:fee?.confirmed_amount||0, dumpRemaining:fee?.remaining_estimated_amount, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
   };
 }
 
@@ -94,7 +96,7 @@ const WCOLS = {
   route: ["Nereden → Nereye", 14, (x) => [x.from, x.to].filter(Boolean).join(" → ")],
   from: ["Alındığı yer", 9, (x) => x.from],
   to: ["Döküm yeri", 9, (x) => x.to],
-  ton: ["Ton", 5, (x) => (x.ton ? num(x.ton) : "")],
+  ton: ["Ton", 5, (x) => x.tonUncertain ? `${num(x.enteredTon)} (kapsam belirsiz)` : (x.ton ? num(x.ton) : "")],
   slip: ["Fiş No", 8, (x) => x.slip],
   price: ["Birim Fiyat", 8, (x) => (x.priced && x.unitPrice != null ? tl(x.unitPrice) : "")],
   amount: ["Tutar", 9, workAmountText],
@@ -114,21 +116,21 @@ function totalRow(cols, infos) {
   const units = {};
   for (const x of infos) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
   const s = (f) => r2(infos.reduce((n, x) => n + f(x), 0));
-  return cols.map((c, i) => (i === 0 ? "TOPLAM" : c === "qty" ? unitsText(units) : c === "ton" ? (s((x) => x.ton) ? num(s((x) => x.ton)) : "") : c === "amount" ? amountText(s((x) => x.amount), s((x) => x.fuelL)) : c === "dump" ? tl(s((x) => x.dump)) : ""));
+  return cols.map((c, i) => (i === 0 ? "TOPLAM" : c === "qty" ? unitsText(units) : c === "ton" ? (infos.some(x=>x.tonUncertain) ? `${num(s(x=>x.ton))} bilinen + belirsiz` : s((x) => x.ton) ? num(s((x) => x.ton)) : "") : c === "amount" ? amountText(s((x) => x.amount), s((x) => x.fuelL)) : c === "dump" ? tl(s((x) => x.dump)) : ""));
 }
 // Gruplama: ad → iş sayısı, miktar, ton, tutar, döküm maliyeti
 function groupTable(title, infos, keyFn, label, { dump = false } = {}) {
   const g = new Map();
   for (const x of infos) {
     const k = keyFn(x) || "—";
-    const o = g.get(k) || { n: 0, units: {}, ton: 0, amount: 0, dump: 0, fuelL: 0 };
-    o.n++; o.units[x.unit] = r2((o.units[x.unit] || 0) + x.qty); o.ton = r2(o.ton + x.ton); o.amount = r2(o.amount + x.amount); o.dump = r2(o.dump + x.dump); o.fuelL = r2(o.fuelL + x.fuelL);
+    const o = g.get(k) || { n: 0, units: {}, ton: 0, tonUncertain: 0, amount: 0, dump: 0, fuelL: 0 };
+    o.n++; o.units[x.unit] = r2((o.units[x.unit] || 0) + x.qty); o.ton = r2(o.ton + x.ton); o.tonUncertain += Number(x.tonUncertain); o.amount = r2(o.amount + x.amount); o.dump = r2(o.dump + x.dump); o.fuelL = r2(o.fuelL + x.fuelL);
     g.set(k, o);
   }
   const rows = [...g.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].n - a[1].n);
   return {
     title, headers: [label, "İş", "Miktar", "Ton", "Tutar", ...(dump ? ["Döküm Maliyeti"] : [])], widths: [30, 8, 22, 10, 15, ...(dump ? [15] : [])], internalCols: [false, false, false, false, false, ...(dump ? [true] : [])],
-    rows: rows.map(([k, o]) => [k, String(o.n), unitsText(o.units), o.ton ? num(o.ton) : "", o.amount || o.fuelL ? amountText(o.amount, o.fuelL) : "", ...(dump ? [o.dump ? tl(o.dump) : ""] : [])]),
+    rows: rows.map(([k, o]) => [k, String(o.n), unitsText(o.units), o.tonUncertain ? `${num(o.ton)} bilinen + belirsiz` : o.ton ? num(o.ton) : "", o.amount || o.fuelL ? amountText(o.amount, o.fuelL) : "", ...(dump ? [o.dump ? tl(o.dump) : ""] : [])]),
   };
 }
 const monthKey = (x) => monthName(String(x.date).slice(0, 7));
@@ -140,7 +142,8 @@ function workKpis(infos, { dump = true } = {}) {
   const unpriced = infos.filter((x) => x.unpriced).length, slips = infos.filter((x) => x.slip).length;
   return [
     ["İş sayısı", String(infos.length)], ["Miktar", unitsText(units)],
-    ...(ton ? [["Toplam ton (fiş)", num(ton) + " ton"]] : []),
+    ...(ton ? [[infos.some(x=>x.tonUncertain) ? "Bilinen ton ara toplamı" : "Toplam ton (kapsama göre)", num(ton) + " ton"]] : []),
+    ...(infos.some(x=>x.tonUncertain) ? [["Tonaj kapsamı doğrulanmayan iş", String(infos.filter(x=>x.tonUncertain).length)]] : []),
     ["İş tutarı", tl(amount)],
     ...(fuelL ? [["Mazot karşılığı", num(fuelL) + " L"]] : []),
     ...(dump && dumpT ? [["Döküm maliyeti", tl(dumpT), true]] : []),
@@ -156,12 +159,13 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
   const { nm, inR } = ctx(d, from, to);
   const works = live(d, "work_records").filter((w) => inR(w.date)).sort(byDate);
   const { billed } = workReviewContext(d);
-  const financialReview = new Set(), dumpUnverified = new Set();
+  const financialReview = new Set(), dumpUnverified = new Set(), tonnageUncertain = new Set();
   const dumpLinked = linkedDumpExpenseIds(d);
   const winfo = (ws) => ws.map((w) => {
     if (claimWorkResolution(d, w).issue) financialReview.add(w.id);
     const info=workInfo(d,w,nm,billed.has(w.id));
     if(info.dumpUnverified) dumpUnverified.add(w.id);
+    if(info.tonUncertain) tonnageUncertain.add(w.id);
     return info;
   });
   const card = K.store && id ? live(d, K.store).find((r) => r.id === id) : null;
@@ -257,13 +261,16 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     const custL = r2(fuel.filter((f) => f.fuel_source === "Müşteri Verdi").reduce((n, f) => n + (Number(f.liters) || 0), 0));
     const maintTL = r2(maint.reduce((n, m) => n + (Number(m.cost) || 0), 0)), expTL = r2(exps.reduce((n, e) => n + (Number(e.amount) || 0), 0));
     const dumpTL = r2(ws.reduce((n, x) => n + x.dump, 0));
+    const completeness = costCompleteness({ pendingFuel: pendingFuel.count, dumpUnknown: ws.filter(x => x.dumpUnverified).length });
+    Object.assign(R, completeness, { knownCostSubtotal: r2(fuelTL + maintTL + expTL + dumpTL) });
     const trips = r2(ws.filter((x) => x.unit === "Sefer").reduce((n, x) => n + x.qty, 0)), hours = r2(ws.filter((x) => x.unit === "Saat").reduce((n, x) => n + x.qty, 0));
     R.kpis = [...workKpis(ws, { dump: false }),
       ["Yakıt", `${num(fuelL)} L${custL ? ` (${num(custL)} L müşteriden)` : ""} · ${tl(fuelTL)}`, true],
       ...(!pendingFuel.count && trips && fuelL ? [["Sefer başı yakıt", num(r2(fuelL / trips)) + " L", true]] : []),
       ...(!pendingFuel.count && hours && fuelL && !trips ? [["Saat başı yakıt", num(r2(fuelL / hours)) + " L", true]] : []),
       ["Bakım / onarım", tl(maintTL), true], ["Diğer giderler", tl(expTL), true], ...(dumpTL ? [["Döküm maliyeti", tl(dumpTL), true]] : []),
-      ["Kalan (gelir − giderler)", pendingFuel.count?"Hesaplanamadı — yakıt mutabakat bekliyor":tl(r2(income - fuelTL - maintTL - expTL - dumpTL)), true]];
+      ["Kalan (gelir − giderler)", R.costIncomplete ? `Hesaplanamadı — ${R.costIncompleteReason}` : tl(r2(income - fuelTL - maintTL - expTL - dumpTL)), true]];
+    if (R.costIncomplete) R.kpis.push(["Bilinen gider ara toplamı (eksik)", tl(R.knownCostSubtotal), true]);
     R.notes.push("Kalan; personel maaşı, amortisman, sigorta ve vergi hariçtir. Müşterinin verdiği mazot gider sayılmaz.");
     R.tables.push(workTable("İş dökümü", ws, ["date", ...(id ? [] : ["vehicle"]), "personnel", "customer", "site", "type", "qty", "material", "route", "ton", "slip", "price", "amount", "dump"]));
     R.tables.push({ title: "Yakıt kayıtları", internal: true, headers: ["Tarih", ...(id ? [] : ["Araç"]), "Personel", "Litre", "Birim fiyat", "Tutar", "Kaynak", "Km", "Saat", "Not"], widths: [9, ...(id ? [] : [10]), 10, 7, 8, 10, 12, 8, 7, 18],
@@ -282,7 +289,8 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
           const inc = r2(w2.reduce((n, x) => n + x.amount, 0)), fT = r2(f2.filter((f) => f.fuel_source !== "Müşteri Verdi").reduce((n, f) => n + (Number(f.total) || 0), 0));
           const mT = r2(m2.reduce((n, m) => n + (Number(m.cost) || 0), 0)), eT = r2(e2.reduce((n, e) => n + (Number(e.amount) || 0), 0)), dT = r2(w2.reduce((n, x) => n + x.dump, 0));
           if (!w2.length && !f2.length && !m2.length && !e2.length) return null;
-          return [v.name, String(w2.length), tl(inc), num(f2.reduce((n, f) => n + (Number(f.liters) || 0), 0)), tl(fT), tl(mT), tl(eT), tl(dT), pendingFuel.rows.some(f=>f.vehicle_id===v.id)?"Hesaplanamadı — yakıt mutabakat bekliyor":tl(r2(inc - fT - mT - eT - dT))];
+          const c = costCompleteness({ pendingFuel: pendingFuel.rows.filter(f=>f.vehicle_id===v.id).length, dumpUnknown: w2.filter(x=>x.dumpUnverified).length });
+          return [v.name, String(w2.length), tl(inc), num(f2.reduce((n, f) => n + (Number(f.liters) || 0), 0)), tl(fT), tl(mT), tl(eT), tl(dT), c.costIncomplete ? `Hesaplanamadı — ${c.costIncompleteReason}` : tl(r2(inc - fT - mT - eT - dT))];
         }).filter(Boolean) });
     }
     R.tables.push(groupTable("Müşteriye göre", ws, (x) => x.customer, "Müşteri", { dump: true }));
@@ -394,6 +402,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.tables.push({title:"Geçmiş yakıt — mutabakat bekliyor (stok / maliyet değil)",internal:true,headers:["Tarih","Araç","Personel","Litre","Durum"],widths:[14,25,25,12,24],rows:pendingFuel.rows.map(f=>[trDate(f.date),nm("vehicles",f.vehicle_id),nm("personnel",f.personnel_id),num(f.liters),"Mutabakat bekliyor — maliyet bilinmiyor"])});
   }
   if (R.kpis.some(([label]) => label === "Fiyatı eksik iş")) R.notes.push("Fiyat eksik, bedelsiz demek değildir. Fiyatı girilmemiş işler TL toplamına katılmaz; açıkça kaydedilmiş sıfır fiyat 0,00 ₺ olarak gösterilir.");
+  if(tonnageUncertain.size) R.notes.push(`${tonnageUncertain.size} işte tonajın toplam mı sefer başı mı olduğu doğrulanmadı; girilen değerler korunuyor, ton toplamına katılmıyor.`);
   if(dumpUnverified.size) R.notes.push(`${dumpUnverified.size} işte döküm maliyeti dayanağı doğrulanmadı; bilinmeyen kısım sıfır değildir ve toplam eksik olabilir.`);
   R.tables = R.tables.filter((t) => t.rows.length);
   if (financialReview.size) R.notes.push(`${financialReview.size} işte hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; fatura öncesi Veri Sağlığı ve kaynak işi kontrol edin.`);
@@ -411,7 +420,7 @@ export function forAudience(R, audience = "internal") {
     const pick = (a) => a.filter((_, i) => keep[i]);
     return { ...t, headers: pick(t.headers), widths: pick(t.widths), internalCols: pick(t.internalCols), rows: t.rows.map(pick) };
   });
-  return { ...R, kpis: R.kpis.filter((x) => !x[2]), tables, notes: [...R.notes.filter((n) => !/maliyet|gider|maaş/i.test(n)),...(R.costIncomplete?["Yakıt geçmişinin bir kısmı mutabakat bekliyor; bu nüsha yalnız kesinleşen kayıtları gösterir."]:[])] };
+  return { ...R, kpis: R.kpis.filter((x) => !x[2]), tables, notes: [...R.notes.filter((n) => !/maliyet|gider|maaş/i.test(n)),...(R.costIncomplete && (!R.costIncompleteReasons || R.costIncompleteReasons.some(r=>r.code === "fuel_pending")) ? ["Yakıt geçmişinin bir kısmı mutabakat bekliyor; bu nüsha yalnız kesinleşen kayıtları gösterir."] : [])] };
 }
 
 // PDF tanımı (document-engine)
