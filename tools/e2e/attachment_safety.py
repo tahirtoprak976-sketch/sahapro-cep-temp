@@ -429,7 +429,8 @@ with sync_playwright() as playwright:
             legacy = page.evaluate(r"""async ({ids,svg,html})=>{
               const d=await import('./js/db.js'),C=await import('./js/core.js'),P=await import('./js/parts-db.js'),E=await import('./js/enterprise-db.js'),D=await import('./js/dump-ledger-db.js');
               const doc=await d.saveNew('documents',{category:'Sözleşme',owner_type:'customer',owner_id:ids.customer,customer_id:ids.customer,date:ids.date,title:'TEST legacy original'},'TEST'),
-                tank=await d.saveNew('fuel_tank_movements',{date:ids.date,move_type:'GİRİŞ',liters:10,total:500},'TEST'),
+                // Coherent price avoids the pre-existing tank screen's unrelated price repair.
+                tank=await d.saveNew('fuel_tank_movements',{date:ids.date,move_type:'GİRİŞ',liters:10,unit_price:50,total:500},'TEST'),
                 part=await P.saveSparePart({vehicle_id:ids.vehicle,date:ids.date,description:'TEST legacy warranty',quantity:1,unit_price:null,cost_mode:'tracking'},[],'TEST legacy part');
               const expense=await d.saveNew('expense_records',{date:ids.date,vehicle_id:ids.vehicle,category:'Diğer',amount:100,description:'TEST legacy expense'},'TEST');
               const supplier=await E.saveSupplier({name:'TEST Legacy Supplier',type:'Servis'},'TEST legacy supplier');
