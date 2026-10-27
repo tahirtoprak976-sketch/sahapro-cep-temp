@@ -66,9 +66,10 @@ export function morningBrief(d, { today = todayStr(), notes = {}, yard = null, f
   if (yard && yard.total >= (yard.alert || 15)) add("🏗", `Kendi depoda ~${fmt(yard.total)} kamyonet yükü birikti — döküm sahasına gönderme zamanı`, "#/kendi-depo", "warn");
   // 6) Bu ay
   const m = monthlySeries(d, { today, months: 1, fuelRefPrice })[0];
-  if (m.works || m.cost) add("📊", `Bu ay: iş değeri ${fmt(m.work)} ₺ · kayıtlı maliyet ${fmt(m.cost)} ₺ · fark ${fmt(m.profit)} ₺${m.fuelPayL ? ` · mazot karşılığı ${fmt(m.fuelPayL)} L` : ""}${m.unpriced ? ` · ${m.unpriced} iş fiyatsız` : ""}. KDV esasları farklı olabilir; bu fark kâr veya kasa bakiyesi değildir.`, "#/finans", m.profit < 0 ? "warn" : "");
+  const costUnknown=!!(m.dumpUnknown||m.dumpUnverified);
+  if (m.works || m.cost) add("📊", `Bu ay: iş değeri ${fmt(m.work)} ₺ · kayıtlı maliyet ${fmt(m.cost)} ₺ · ${costUnknown?"döküm maliyeti eksik, fark/kâr hesaplanmadı":"fark "+fmt(m.profit)+" ₺"}${m.fuelPayL ? ` · mazot karşılığı ${fmt(m.fuelPayL)} L` : ""}${m.unpriced ? ` · ${m.unpriced} iş fiyatsız` : ""}. KDV esasları farklı olabilir; bu fark kâr veya kasa bakiyesi değildir.`, "#/finans", costUnknown || m.profit < 0 ? "warn" : "");
   const text = lines.map((l) => (l.ic ? l.ic + " " : "   ") + l.text).join("\n");
-  return { date: today, lines, text, facts: { yesterday_works: yWorks.length, receivable: rec.total, overdue90: rec.buckets.b90, tank_days: tank.daysLeft, month_profit: m.profit } };
+  return { date: today, lines, text, facts: { yesterday_works: yWorks.length, receivable: rec.total, overdue90: rec.buckets.b90, tank_days: tank.daysLeft, cost_incomplete:costUnknown, month_profit:costUnknown?null:m.profit } };
 }
 
 // Sesli okuma: tarayıcının kendi Türkçe sesi (ücretsiz, internetsiz)

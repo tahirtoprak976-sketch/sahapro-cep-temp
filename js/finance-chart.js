@@ -4,7 +4,7 @@ import { claimWorkResolution } from './hakedis-finance.js';
 // Gelir = fiyatı girilmiş işlerin değeri (KDV durumu kayıttan bilinmediği için "iş değeri" denir),
 // tahsilat = "Müşteriden Para Alındı" kasa kayıtları. Fiyatsız işler ayrıca sayılır; gizlenmez.
 import { isActive, toKurus, fromKurus, todayStr, tankUnitCost } from "./core.js";
-import { dumpFeeRows } from "./dump-fees.js";
+import { costRows } from "./costs-core.js";
 
 // Mazotla ödenen işlerin ve müşterinin verdiği mazotun TL değeri: o tarihe kadarki depo alış ortalaması
 // (yoksa Ayarlar'daki referans litre fiyatı). Fiyat bilinmiyorsa 0 sayılır ve ayrıca işaretlenir.
@@ -50,44 +50,29 @@ export function monthlySeries(data, opts = {}) {
     const r = rows.get(monthKey(c.date));
     if (r) r.collected += toKurus(c.amount);
   }
-  for (const e of data.expense_records || []) {
-    if (!isActive(e) || e.dump_deposit) continue; // döküm hesabına yükleme: ön ödeme, maliyet dökümde yazılır
-    const r = rows.get(monthKey(e.date));
-    if (r) r.expense += toKurus(e.amount);
+  // Use the exact same recognized costs as Masraflar; receipt-linked expenses cannot recur.
+  const kinds = {gider:'expense',yakit:'fuel',bakim:'maint',esnaf:'esnaf',dokum:'dump',personel:'pay'};
+  for (const cost of costRows(data)) {
+    const r = rows.get(monthKey(cost.date));
+    if (!r) continue;
+    r[kinds[cost.kind]] += toKurus(cost.amount);
+    if (cost.kind === 'dokum') {
+      r.dumpConfirmed = (r.dumpConfirmed || 0) + toKurus(cost.confirmed_amount || 0);
+      r.dumpEstimated = (r.dumpEstimated || 0) + toKurus(cost.remaining_estimated_amount || 0);
+      if (cost.unverified) r.dumpUnverified = (r.dumpUnverified || 0) + 1;
+      if (cost.remaining_estimated_amount == null) r.dumpUnknown = (r.dumpUnknown || 0) + 1;
+    }
   }
   for (const f of data.fuel_records || []) {
-    if (!isActive(f)) continue;
-    const r = rows.get(monthKey(f.date));
-    if (!r) continue;
-    // Müşterinin verdiği mazot (tutarsız): para çıkmadı → masraf değil, yalnız litre
-    if (f.fuel_source === "Müşteri Verdi" && !(Number(f.total) > 0)) r.fuelGotL += Number(f.liters) || 0;
-    else r.fuel += toKurus(f.total);
-  }
-  // Bakım/arıza tutarı ve gidere/bakıma bağlı olmayan esnaf alışları da masraftır (Giderler ekranıyla aynı tanım)
-  for (const m of data.maintenance_records || []) {
-    if (!isActive(m) || !(Number(m.cost) > 0)) continue;
-    const r = rows.get(monthKey(m.date));
-    if (r) r.maint += toKurus(m.cost);
-  }
-  for (const b of data.payables || []) {
-    if (!isActive(b) || b.status === "İptal" || b.party_type !== "supplier") continue;
-    if (["expense_records", "maintenance_records", "fuel_tank_movements", "fuel_records"].includes(b.source_store)) continue;
-    const r = rows.get(monthKey(b.date));
-    if (r) r.esnaf += toKurus(Number(b.gross_total) || 0);
-  }
-  for (const p of data.payroll_entries || []) {
-    if (!isActive(p) || p.kind !== "Ücret Tahakkuku" || !(Number(p.amount) > 0)) continue;
-    const r = rows.get(monthKey(p.date));
-    if (r) r.pay += toKurus(p.amount);
-  }
-  for (const f of dumpFeeRows(data)) {
-    const r = rows.get(monthKey(f.w.date));
-    if (r && f.amount > 0) r.dump += toKurus(f.amount);
+    if (!isActive(f) || f.fuel_source !== 'Müşteri Verdi') continue;
+    const r = rows.get(monthKey(f.date)); if (r) r.fuelGotL += Number(f.liters) || 0;
   }
   return [...rows.values()].map((r) => ({
     ...r,
     work: fromKurus(r.work),
     dump: fromKurus(r.dump),
+    dumpConfirmed: fromKurus(r.dumpConfirmed || 0),
+    dumpEstimated: fromKurus(r.dumpEstimated || 0),
     pay: fromKurus(r.pay),
     maint: fromKurus(r.maint),
     esnaf: fromKurus(r.esnaf),

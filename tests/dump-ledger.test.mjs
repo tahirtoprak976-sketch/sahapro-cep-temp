@@ -1,3 +1,4 @@
+import { freezeDumpEstimate } from "../js/dump-estimate.js";
 import assert from "node:assert/strict";
 import {
   dumpEntryFields,
@@ -50,6 +51,8 @@ const date = "2026-10-20",
     documents: [],
     cari_movements: [],
   };
+// Preserve explicit legacy tonnage + recorded tariff basis; no inferred vehicle loads.
+for (const w of d.work_records) w.dump_tariff_snapshot = freezeDumpTariff(w,d.dump_sites[0]);
 const receipt = (work, amount, no) =>
   dumpEntryFields(d, {
     kind: "RECEIPT",
@@ -167,7 +170,7 @@ assert.equal(a.projected_balance, 13000);
 assert.equal(a.usedEst, 7000);
 const grouped = {
   ...d,
-  work_records: [{ ...d.work_records[0], quantity: 2 }],
+  work_records: [{ ...d.work_records[0], quantity: 2, tonnage_scope: "per_trip" }],
   dump_entries: [d.dump_entries[0]],
 };
 const groupedAccount = dumpAccounts(grouped, { today: date, siteId: "D" })[0];
@@ -175,8 +178,8 @@ assert.equal(groupedAccount.pending_count, 1);
 assert.equal(groupedAccount.pending[0].remaining_trips, 1);
 assert.equal(
   dumpFee(grouped, grouped.work_records[0]).amount,
-  3000,
-  "fişli kısım bir kez maliyet",
+  6000,
+  "3000 fişli kısım + 3000 kalan sefer tahmini; fiş yalnız kapsadığı tahmini değiştirir",
 );
 const unassigned = {
   ...d,

@@ -5,6 +5,7 @@
 import { isActive, todayStr, trDate } from "./core.js";
 import { workAmount, hasWorkPrice, missingCustomerWorkPrice, workReviewContext } from "./collect-core.js";
 import { dumpFee } from "./dump-fees.js";
+import { linkedDumpExpenseIds } from "./dump-ledger-core.js";
 import { customerMovementText } from "./statement.js";
 import { claimWorkResolution } from './hakedis-finance.js';
 
@@ -75,7 +76,7 @@ function workInfo(d, w, nm, billed = false) {
     ton: Number(w.tonnage) || 0, slip: [w.slip_no, w.digital_slip_no && w.digital_slip_no !== w.slip_no ? "dijital " + w.digital_slip_no : ""].filter(Boolean).join(" · "),
     unitPrice, amount: workAmount(w, d), fuelL: Number(w.customer_fuel_allowance_l) || 0, included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
     priced: hasWorkPrice(w), unpriced: missingCustomerWorkPrice(w, billed), billed,
-    dump: fee?.amount || 0, dumpEst: !!fee?.estimated, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
+    dump: fee?.amount || 0, dumpEst: !!(fee?.estimated || fee?.provisional || fee?.unverified), dumpUnverified:!!fee?.unverified, dumpConfirmed:fee?.confirmed_amount||0, dumpRemaining:fee?.remaining_estimated_amount, dumpTon: fee?.ton || 0, note: [w.description, w.customer_note].filter(Boolean).join(" · "),
   };
 }
 
@@ -96,7 +97,7 @@ const WCOLS = {
   slip: ["Fiş No", 8, (x) => x.slip],
   price: ["Birim Fiyat", 8, (x) => (x.priced && x.unitPrice != null ? tl(x.unitPrice) : "")],
   amount: ["Tutar", 9, workAmountText],
-  dump: ["Döküm Maliyeti", 9, (x) => (x.dump ? (x.dumpEst ? "~" : "") + tl(x.dump) : ""), true],
+  dump: ["Döküm Maliyeti", 9, (x) => x.dumpUnverified ? (x.dump ? tl(x.dump)+" + doğrulanmamış" : "Doğrulanmadı") : x.dump ? (x.dumpEst ? "~" : "") + tl(x.dump) : "", true],
   note: ["Not", 12, (x) => x.note],
 };
 function workTable(title, infos, cols) {
@@ -154,10 +155,13 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
   const { nm, inR } = ctx(d, from, to);
   const works = live(d, "work_records").filter((w) => inR(w.date)).sort(byDate);
   const { billed } = workReviewContext(d);
-  const financialReview = new Set();
+  const financialReview = new Set(), dumpUnverified = new Set();
+  const dumpLinked = linkedDumpExpenseIds(d);
   const winfo = (ws) => ws.map((w) => {
     if (claimWorkResolution(d, w).issue) financialReview.add(w.id);
-    return workInfo(d, w, nm, billed.has(w.id));
+    const info=workInfo(d,w,nm,billed.has(w.id));
+    if(info.dumpUnverified) dumpUnverified.add(w.id);
+    return info;
   });
   const card = K.store && id ? live(d, K.store).find((r) => r.id === id) : null;
   if (K.store && id && !card) throw Error("Kayıt bulunamadı");
@@ -173,7 +177,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     if (card) R.info = infoPairs(card, [["name", "Döküm sahası"], ["address", "Adres"], ["contact", "Yetkili"], ["phone", "Telefon"], ["fee", "Döküm ücreti", (r) => (Number(r.fee) > 0 ? `${tl(r.fee)} / ${String(r.fee_unit || "").toLocaleLowerCase("tr-TR")}` : "")], ["own_yard", "Tür", (r) => (r.own_yard ? "Kendi depo / stok sahası" : "")]]);
     R.kpis = workKpis(ws);
     const est = ws.filter((x) => x.dumpEst).length;
-    if (est) R.notes.push(`${est} işte ton fişi yok; döküm maliyeti aracın ortalama yüküyle tahmin edildi (~ işaretli).`);
+    if (est) R.notes.push(`${est} işte döküm maliyetinin bir kısmı tahmin veya doğrulama bekliyor (~ işaretli). Kesinleşen yalnız fişli kısmıdır; kalan tahmin ölçülmüş tonaj değildir.`);
     R.tables.push(workTable("İş dökümü", ws, ["date", "customer", "site", "vehicle", "personnel", "type", "qty", "material", ...(id ? [] : ["to"]), "ton", "slip", "price", "amount", "dump"]));
     if (!id) R.tables.push(groupTable("Döküm sahasına göre", ws, (x) => x.to, "Döküm sahası", { dump: true }));
     R.tables.push(groupTable("Müşteriye göre", ws, (x) => x.customer, "Müşteri", { dump: true }));
@@ -242,7 +246,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     const ws = winfo(works.filter(vsel));
     const fuel = live(d, "fuel_records").filter((f) => vsel(f) && inR(f.date)).sort(byDate);
     const maint = live(d, "maintenance_records").filter((m) => vsel(m) && inR(m.date)).sort(byDate);
-    const exps = live(d, "expense_records").filter((e) => vsel(e) && inR(e.date)).sort(byDate);
+    const exps = live(d, "expense_records").filter((e) => vsel(e) && inR(e.date) && !e.dump_deposit && !dumpLinked.has(e.id)).sort(byDate);
     if (card) R.info = infoPairs(card, [["name", "Araç / makine"], ["plate", "Plaka"], ["type", "Tür"], ["brand", "Marka"], ["model", "Model"], ["model_year", "Model yılı"], ["ownership", "Mülkiyet"], ["assignee_id", "Zimmetli", (r) => nm("personnel", r.assignee_id)], ["chassis_no", "Şasi no"], ["km", "Km (kart)", (r) => (r.km ? num(r.km) : "")], ["machine_hours", "Makine saati (kart)", (r) => (r.machine_hours ? num(r.machine_hours) : "")]]);
     const income = r2(ws.reduce((n, x) => n + x.amount, 0));
     const paidFuel = fuel.filter((f) => f.fuel_source !== "Müşteri Verdi");
@@ -382,6 +386,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.tables.push(grp((m) => m.service_company || nm("suppliers", m.supplier_id), "Servis / esnaf"));
   }
   if (R.kpis.some(([label]) => label === "Fiyatı eksik iş")) R.notes.push("Fiyat eksik, bedelsiz demek değildir. Fiyatı girilmemiş işler TL toplamına katılmaz; açıkça kaydedilmiş sıfır fiyat 0,00 ₺ olarak gösterilir.");
+  if(dumpUnverified.size) R.notes.push(`${dumpUnverified.size} işte döküm maliyeti dayanağı doğrulanmadı; bilinmeyen kısım sıfır değildir ve toplam eksik olabilir.`);
   R.tables = R.tables.filter((t) => t.rows.length);
   if (financialReview.size) R.notes.push(`${financialReview.size} işte hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; fatura öncesi Veri Sağlığı ve kaynak işi kontrol edin.`);
   return R;

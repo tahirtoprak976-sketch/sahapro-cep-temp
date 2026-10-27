@@ -1,3 +1,4 @@
+import { freezeDumpEstimate } from "../js/dump-estimate.js";
 import assert from "node:assert/strict";
 import { dumpFee, seedOfficialDumps } from "../js/dump-fees.js";
 import { costRows, costTotals } from "../js/costs-core.js";
@@ -17,6 +18,8 @@ const d = {
     { id: "W7", date: "2026-10-14", customer_id: "I", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "B", dump_cost: 3800, created_at: n },
   ],
 };
+// These fixtures model newly saved estimates; legacy unknowns have separate regression coverage.
+for (const w of d.work_records) w.dump_estimate_snapshot = freezeDumpEstimate(w, d.dump_sites.find(s=>s.id===w.dump_site_id), d.vehicles.find(v=>v.id===w.vehicle_id));
 assert.equal(dumpFee(d, d.work_records[0]).amount, 4355.2, "27,22 ton × 160");
 const f2 = dumpFee(d, d.work_records[1]); assert.equal(f2.amount, 8640); assert.equal(f2.estimated, true, "fiş yok: 2 × 27 ton tahmini");
 assert.equal(dumpFee(d, d.work_records[2]).amount, 3000, "sefer başı");

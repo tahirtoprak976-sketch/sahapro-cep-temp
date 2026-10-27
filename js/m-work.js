@@ -339,8 +339,8 @@ async function workForm(ctx, editId) {
         ${fText("Fiş No", "slip_no", v.slip_no || "")}
       </div>
       <div class="formgrid2">${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}${fNum("Döküm maliyeti (₺, elle — opsiyonel)", "dump_cost", v.dump_cost ?? "", { step: "any" })}</div>
-      ${fSelect("Tonajın kapsamı (toplu seferde)","tonnage_scope",[{v:"unknown",t:"Bilinmiyor — yalnız tahmin"},{v:"total",t:"Yazılan tonaj tüm seferlerin toplamı"},{v:"per_trip",t:"Yazılan tonaj bir sefer için"}],v.tonnage_scope||"unknown",{empty:false})}
-      <div class="muted tiny">Bu bilgiler maliyet tahminidir. Gerçek kesintiyi Ortak Döküm Hesabına fişle girin. Döküm dahil müşteri fiyatına ayrıca borç eklenmez.</div>
+      ${fSelect("Tonajın kapsamı (toplu seferde)","tonnage_scope",[{v:"unknown",t:"Bilinmiyor — tutar hesaplanamaz"},{v:"total",t:"Yazılan tonaj tüm seferlerin toplamı"},{v:"per_trip",t:"Yazılan tonaj bir sefer için"}],v.tonnage_scope||"unknown",{empty:false})}
+      <div class="muted tiny">Bu bilgiler yalnız maliyet tahminidir. Tonaj boşsa yeni işte aracın sefer başı tahmini yükü × sefer sayısı × tarife saklanır; araç kartı veya tarife değişince eski tahmin yenilenmez. Toplu seferde yazılan tonajın kapsamı bilinmiyorsa tahmin yapılmaz. Gerçek kesintiyi Ortak Döküm Hesabına fişle girin; yalnız fişin kapsadığı seferin tahmini kaldırılır. Döküm dahil müşteri fiyatına ayrıca borç eklenmez.</div>
       <section class="card" style="margin:8px 0" data-slip-ai>
         <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/*,application/pdf" multiple data-wfiles></div>
         <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>

@@ -1614,10 +1614,22 @@ export async function augment(ctx) {
     const w=await db.get("work_records",id);
     if(w?.dump_site_id){
       const data=await db.dumpAll(),{dumpFee}=await import("./dump-fees.js"),fee=dumpFee(data,w);
-      const customerPaid=w.dump_payer === "customer" || data.dump_entries.some(e=>isActive(e) && e.kind==="RECEIPT" && e.work_record_id===w.id && e.payer==="customer");
-      const label=fee?.confirmed?"Fişli gerçek maliyet":customerPaid?"Müşteri doğrudan ödedi":"Fiş kesintisi bekleyen tahmin";
-      const amount=fee?.amount!=null?money(fee.amount):customerPaid?"Şirket gideri yok":"Tutar bilinmiyor";
-      root.insertAdjacentHTML("beforeend",'<section class="card"><h3>Döküm Maliyeti / Ortak Hesap</h3>'+kv(label,amount)+'<p class="small">Döküm dahil anlaşmada müşteriye ayrıca borç eklenmez. Müşterinin doğrudan ödediği fişler şirket gideri değildir.</p>'+button("Ortak Döküm Hesabında Kontrol Et","#/dokum-hesap/"+w.dump_site_id+"?vehicle_id="+encodeURIComponent(w.vehicle_id||""))+'</section>');
+      const customerPaid=w.dump_payer === "customer" || data.dump_entries.some(e=>core.isActive(e) && e.kind==="RECEIPT" && e.work_record_id===w.id && e.payer==="customer");
+      const incomplete=!!fee && fee.remaining_estimated_amount==null;
+      const breakdown=fee
+        ? kv("Kesinleşen döküm maliyeti",money(fee.confirmed_amount||0))
+          +(fee.confirmed?kv("Fişlerde kayıtlı net ton",fee.actual_ton==null?"Belirtilmedi":fee.actual_ton+" ton (yalnız tonajı yazılı fişler)"):"")
+          +kv("Kalan tahmin",fee.remaining_estimated_amount==null?"Hesaplanamadı — doğrulama bekliyor":money(fee.remaining_estimated_amount))
+          +kv("Beklenen toplam"+(incomplete?" (eksik)":""),incomplete?"Kesinleşen tutar + bilinmeyen tahmin":money(fee.amount||0))
+          +kv("Fiş bekleyen sefer",fee.pending_trips==null?"Kapsam doğrulanamadı":fee.pending_trips)
+          +(fee.unverified||incomplete?ui.notice("warn","Döküm tahmininin dayanağı doğrulanamadı. "+(fee.missing_reason||"Eski kayıt için tonaj veya tarife varsayılmadı. Gerçek fiş ve sefer kapsamını kontrol edin.")):"")
+        : kv(customerPaid?"Müşteri doğrudan ödedi":"Döküm maliyeti",customerPaid?"Şirket gideri yok":"Tutar bilinmiyor");
+      // Only the persisted copy can be described as captured at save time.
+      // A read-only reconstruction from explicit legacy fields is not new evidence.
+      const snapshot=w.dump_estimate_snapshot;
+      const loadSource=snapshot?.load_source==="type_default_estimate"?"Araç türü varsayımı":snapshot?.load_source==="vehicle_estimate"?"Araç kartı tahmini":"Tahmini yük";
+      const basis=snapshot?'<p class="small" data-dump-estimate-source>Bu iş kaydedilirken alınan tahmin dayanağı korunur; araç kartı veya güncel tarife değişince yenilenmez. '+'İş tarihi: '+esc(snapshot.work_date||w.date)+' · Kayda alınma: '+esc(String(snapshot.captured_at||"").slice(0,10))+(snapshot.manual_amount!=null?' · Elle girilen tahmin: '+esc(money(snapshot.manual_amount)):snapshot.fee!=null?' · '+esc(money(snapshot.fee))+' / '+esc(snapshot.fee_unit||"birim belirsiz"):"")+(snapshot.load_ton!=null&&!snapshot.source_tonnage&&snapshot.work_unit==="Sefer"&&snapshot.fee_unit==="Ton"?' · '+esc(loadSource)+': '+esc(snapshot.load_ton)+' ton / sefer':"")+(snapshot.source_tonnage>0?' · Girilen tonaj: '+esc(snapshot.source_tonnage)+' ton ('+esc(({total:"tüm seferler",per_trip:"sefer başı"})[snapshot.tonnage_scope]||"kapsam bilinmiyor")+', tahmin dayanağı)':"")+'</p>':"";
+      root.insertAdjacentHTML("beforeend",'<section class="card" data-dump-cost-breakdown><h3>Döküm Maliyeti / Ortak Hesap</h3>'+breakdown+basis+'<p class="small">Kesinleşen tutar yalnız şirketin fişli kesintisidir. Her fiş yalnız kapsadığı seferin tahminini kaldırır. Kalan tahmin, kaydedilmiş toplamın fişsiz sefer payıdır; ölçülmüş kalan ton değildir ve ortak hesap bakiyesinden düşülmez. Döküm dahil anlaşmada müşteriye ayrıca borç eklenmez. Müşterinin doğrudan ödediği fişler şirket gideri değildir.</p>'+button("Ortak Döküm Hesabında Kontrol Et","#/dokum-hesap/"+w.dump_site_id+"?vehicle_id="+encodeURIComponent(w.vehicle_id||""))+'</section>');
     }
   }
   if(route==="gider"&&id&&id!=="new"){

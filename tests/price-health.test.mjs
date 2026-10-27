@@ -1,3 +1,4 @@
+import { freezeDumpEstimate } from "../js/dump-estimate.js";
 import assert from "node:assert/strict";
 import { priceHealth, fuelPriceAt } from "../js/price-health.js";
 const n = "x", today = "2026-10-16";
@@ -16,6 +17,8 @@ const d = {
   ],
   fuel_tank_movements: [],
 };
+// These fixtures model newly saved estimates; legacy unknowns have separate regression coverage.
+for (const w of d.work_records) w.dump_estimate_snapshot = freezeDumpEstimate(w, d.dump_sites.find(s=>s.id===w.dump_site_id), d.vehicles.find(v=>v.id===w.vehicle_id));
 function addD(k) { const t = new Date("2026-06-01T12:00:00Z"); t.setUTCDate(t.getUTCDate() + k); return t.toISOString().slice(0, 10); }
 assert.equal(Math.round(fuelPriceAt(d, "2026-05-20")), 40); assert.equal(Math.round(fuelPriceAt(d, today)), 50);
 const [r] = priceHealth(d, { today });

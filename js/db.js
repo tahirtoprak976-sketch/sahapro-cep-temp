@@ -2,6 +2,7 @@ import {recordsCommitted} from "./record-refresh.js";
 import {assertHakedisItems, assertHakedisDocument, captureHakedisSources, assertHakedisSources, hakedisWorkSnapshot} from './hakedis-validation.js';
 import {assertTankChange} from './tank-timeline.js';
 import {freezeDumpTariff, liveDumpEntries} from "./dump-ledger-core.js";
+import {freezeDumpEstimate} from "./dump-estimate.js";
 import { validDate } from "./driver-delivery.js";
 import {customerFuelFields, validateCustomerFuelLinks} from './customer-fuel.js';
 import { customerNameKey } from "./driver-customer.js";
@@ -134,7 +135,8 @@ function hasIdentityHistory(data, type, id) {
   return Object.entries(data).some(([store, rows]) => rows.some(row => !(store === own && row.id === id) && identityReference(row, type, id)));
 }
 const CLAIM_WORK_FIELDS = ['date', 'customer_id', 'site_id', 'vehicle_id', 'personnel_id', 'work_type', 'material',
-  'quantity', 'unit', 'price_snapshot', 'time_start', 'time_end', 'break_minutes', 'customer_fuel_allowance_l', 'customer_fuel_rule', 'deleted_at'];
+  'quantity', 'unit', 'price_snapshot', 'time_start', 'time_end', 'break_minutes', 'customer_fuel_allowance_l', 'customer_fuel_rule',
+  'dump_site_id', 'dump_cost', 'dump_tariff_snapshot', 'dump_estimate_snapshot', 'tonnage', 'tonnage_scope', 'dump_payer', 'deleted_at'];
 const CASH_MONEY_FIELDS = ['amount', 'date', 'customer_id', 'cash_type', 'payment_method', 'bank_account_id', 'bank_movement_id',
   'personnel_id', 'request_id', 'driver_entry_id', 'event_id', 'deleted_at'];
 function financeGuardStores(store, delta) {
@@ -1019,7 +1021,9 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   const current = await get(store, rec.id);
   if(store==='fuel_tank_movements'&&current?.fuel_record_id&&Object.keys(fields).some(k=>['date','liters','move_type','vehicle_id','fuel_record_id','event_id','deleted_at'].includes(k)&&(k==='liters'?Number(fields[k])!==Number(current[k]):JSON.stringify(fields[k]??null)!==JSON.stringify(current[k]??null))))throw Error('Yakıt kaydına bağlı depo hareketi tek başına değiştirilemez; yakıt kaydını kontrol edin.');
   if(store==='fuel_records'&&current?.tank_movement_id&&Object.keys(fields).some(k=>['date','liters','fuel_source','vehicle_id','tank_movement_id','event_id','deleted_at'].includes(k)&&(k==='liters'?Number(fields[k])!==Number(current[k]):JSON.stringify(fields[k]??null)!==JSON.stringify(current[k]??null))))throw Error('Depoya bağlı yakıtın tarihi, litresi veya kaynağı tek başına değiştirilemez; yanlışsa yakıt işlemini silip doğru bilgilerle yeniden girin.');
-  if(store==="work_records" && "dump_tariff_snapshot" in fields && JSON.stringify(fields.dump_tariff_snapshot)!==JSON.stringify(current?.dump_tariff_snapshot))throw Error("Döküm tarife kopyası doğrudan değiştirilemez");
+  if (store === "work_records") for (const key of ["dump_tariff_snapshot", "dump_estimate_snapshot"])
+    if (key in fields && JSON.stringify(fields[key]) !== JSON.stringify(current?.[key]))
+      throw Error("Döküm tarife / tahmin kopyası doğrudan değiştirilemez");
   if ((store === 'fuel_tank_movements' && (current?.delivery_kind === 'customer_fuel' || fields.delivery_kind === 'customer_fuel')) || (store === 'cari_movements' && (current?.type === 'MazotTeslimi' || fields.type === 'MazotTeslimi'))) throw Error('Müşteri mazotu tek başına değiştirilemez; Depo ekranından teslimi iptal edip doğru bilgilerle yeniden kaydedin');
   // Şoför kaydı kimliği sonradan eklenemez / değiştirilemez (doğrulanmamış kayıt "şoför kaydı" gibi gösterilmesin)
   if ("driver_entry_id" in fields && (fields.driver_entry_id || null) !== (current?.driver_entry_id || null)) throw Error("Şoför kaydı kimliği değiştirilemez");
@@ -1154,7 +1158,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
     const dumpCheck = t.objectStore("dump_entries").getAll();
     dumpCheck.onsuccess=()=>{
       const key={expense_records:"expense_id",work_records:"work_record_id"}[store];
-      const protectedKeys=store==="work_records"?["date","quantity","unit","vehicle_id","customer_id","site_id","dump_site_id","dump_cost","dump_tariff_snapshot","tonnage"]:["amount","date","vehicle_id","dump_site_id","dump_deposit","dump_entry_id","invoice_paid","deleted_at"];
+      const protectedKeys=store==="work_records"?["date","quantity","unit","vehicle_id","customer_id","site_id","dump_site_id","dump_cost","dump_tariff_snapshot","dump_estimate_snapshot","tonnage","tonnage_scope","dump_payer"]:["amount","date","vehicle_id","dump_site_id","dump_deposit","dump_entry_id","invoice_paid","deleted_at"];
       if(key&&Object.keys(delta).some(k=>protectedKeys.includes(k))&&dumpCheck.result.some(e=>isActive(e)&&e[key]===rec.id)){error=Error("Döküm fişine/yüklemesine bağlı kayıt burada değiştirilemez; önce ortak hesaptaki işlemi inceleyin");t.abort();}
       if(store==="dump_sites"&&delta.own_yard&&dumpCheck.result.some(e=>isActive(e)&&e.dump_site_id===rec.id)){error=Error("Hareketi olan saha iç depoya çevrilemez");t.abort();}
     };
@@ -1270,6 +1274,21 @@ function assertNumericFields(f) {
 async function validateFields(store, fields, previous = null) {
   assertNumericFields(fields);
   const f = { ...fields };
+  // Only new/explicitly changed estimate inputs are validated here. An ordinary
+  // note edit must not rewrite or reinterpret an old, unverified record.
+  const dumpNumbers = store === "work_records" ? ["tonnage", "dump_cost"] : store === "vehicles" ? ["load_ton"] : [];
+  for (const key of dumpNumbers) {
+    const value = f[key];
+    if (previous && JSON.stringify(value ?? null) === JSON.stringify(previous[key] ?? null)) continue;
+    if (value == null || value === "") continue;
+    if (!["string", "number"].includes(typeof value) || !String(value).trim() ||
+        !Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 1e12)
+      throw Error("Döküm tonajı / tahmin tutarı geçersiz: " + key);
+  }
+  if (store === "work_records" && f.tonnage_scope != null &&
+      (!previous || f.tonnage_scope !== previous.tonnage_scope) &&
+      !["unknown", "total", "per_trip"].includes(f.tonnage_scope))
+    throw Error("Tonajın kapsamı geçersiz; bilinmiyor, toplam veya sefer başı seçin");
   if(['fuel_records','fuel_tank_movements'].includes(store)&&typeof f.date==='string'&&f.date>todayStr())throw Error('Gerçek yakıt / depo tarihi gelecekte olamaz');
   if(store==='fuel_tank_movements'&&(!['GİRİŞ','ÇIKIŞ'].includes(f.move_type)||!(Number(f.liters)>0)))throw Error('Depo için GİRİŞ / ÇIKIŞ ve pozitif litre zorunlu');
   if (f.date) {
@@ -1346,8 +1365,17 @@ async function validateFields(store, fields, previous = null) {
       (f.type === "Duzeltme" && !f.reason?.trim()))
   )
     throw Error("Cari tutarı veya düzeltme nedeni geçersiz");
-  if (store === "work_records" && f.dump_site_id) {
-    f.dump_tariff_snapshot = freezeDumpTariff(f, await get("dump_sites",f.dump_site_id), previous);
+  if (store === "work_records" && (f.dump_site_id || Number(f.dump_cost) > 0 || f.dump_estimate_snapshot || f.dump_tariff_snapshot || previous?.dump_estimate_snapshot || previous?.dump_tariff_snapshot)) {
+    const dumpSite = f.dump_site_id ? await get("dump_sites", f.dump_site_id) : null;
+    // Never turn an unverified historical basis into a newly captured fact on edit.
+    if (!previous || previous.dump_tariff_snapshot) {
+      const tariff = freezeDumpTariff(f, dumpSite, previous);
+      if (tariff) f.dump_tariff_snapshot = tariff;
+      else delete f.dump_tariff_snapshot;
+    }
+    const estimate = freezeDumpEstimate(f, dumpSite, f.vehicle_id ? await get("vehicles", f.vehicle_id) : null, previous);
+    if (estimate) f.dump_estimate_snapshot = estimate;
+    else delete f.dump_estimate_snapshot;
   }
   if (store === "work_records") {
     if (f.time_start || f.time_end) {
@@ -2040,10 +2068,18 @@ export async function updateIf(store, id, pred, fields, auditReason) {
     q.onsuccess = () => {
       const cur = q.result;
       if (!cur || cur.deleted_at || !pred(cur)) return;
+      const changed = key => key in fields && JSON.stringify(fields[key] ?? null) !== JSON.stringify(cur[key] ?? null);
+      if (store === "work_records" && (
+        ["dump_tariff_snapshot", "dump_estimate_snapshot"].some(changed) ||
+        (cur.dump_estimate_snapshot && ["date", "quantity", "unit", "vehicle_id", "dump_site_id", "dump_cost", "tonnage", "tonnage_scope", "dump_payer"].some(changed))
+      )) {
+        error = Error("Döküm tahmininin dayanağı koşullu güncellemeyle değiştirilemez; iş düzenleme ekranını kullanın");
+        t.abort(); return;
+      }
       const linked = t.objectStore("dump_entries").getAll();
       linked.onsuccess = () => {
         const key={work_records:"work_record_id",expense_records:"expense_id"}[store];
-        const protectedKeys=store==="work_records"?["date","quantity","unit","vehicle_id","customer_id","site_id","dump_site_id","dump_cost","dump_tariff_snapshot","tonnage","deleted_at"]:["amount","date","vehicle_id","dump_site_id","dump_deposit","dump_entry_id","invoice_paid","deleted_at"];
+        const protectedKeys=store==="work_records"?["date","quantity","unit","vehicle_id","customer_id","site_id","dump_site_id","dump_cost","dump_tariff_snapshot","dump_estimate_snapshot","tonnage","tonnage_scope","dump_payer","deleted_at"]:["amount","date","vehicle_id","dump_site_id","dump_deposit","dump_entry_id","invoice_paid","deleted_at"];
         if(key && Object.keys(fields).some(k=>protectedKeys.includes(k)) && linked.result.some(e=>isActive(e)&&e[key]===id)){
           error=Error("Döküm fişine bağlı kayıt burada değiştirilemez; ortak hesap işlemini inceleyin");t.abort();return;
         }

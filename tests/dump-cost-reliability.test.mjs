@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import {dumpFee, calculatedDumpFee} from '../js/dump-fees.js';
+import {costRows,costTotals} from '../js/costs-core.js';
+import {monthlySeries} from '../js/finance-chart.js';
+import {costLedger,operatingResult} from '../js/enterprise-core.js';
+import {dumpAccounts} from '../js/dump-account.js';
+import {sharedDumpBalance, validateDumpData, dumpEntryFields} from '../js/dump-ledger-core.js';
+const date='2026-10-20';
+const snapshot={version:1,site_id:'D',vehicle_id:'V',work_date:date,work_unit:'Sefer',quantity:3,trips:3,fee:100,tariff_known:true,fee_unit:'Ton',effective_from:date,load_ton:20,load_source:'vehicle_estimate',source_tonnage:null,tonnage_scope:'unknown',total_ton:60,manual_amount:null,amount:6000,missing_reason:null,captured_at:'2026-10-20T10:00:00Z',provenance:'saved_estimate'};
+const fixture=()=>({dump_sites:[{id:'D',name:'TEST dump',fee:100,fee_unit:'Ton',fee_effective_from:date}],vehicles:[{id:'V',name:'TEST vehicle',load_ton:20,type:'Kamyon'}],customers:[{id:'C',name:'TEST customer'}],work_records:[{id:'W',date,quantity:3,unit:'Sefer',vehicle_id:'V',customer_id:'C',dump_site_id:'D',dump_estimate_snapshot:structuredClone(snapshot)}],dump_entries:[],expense_records:[]});
+const receipt=(id,trips,amount,payer='company_account')=>({id,kind:'RECEIPT',date,dump_site_id:'D',work_record_id:'W',customer_id:'C',site_id:null,vehicle_id:'V',trips,amount,payer,receipt_no:id});
+const total=d=>costTotals(costRows(d)).total;
+const chart=d=>monthlySeries(d,{today:date,months:1})[0];
+const ledger=d=>costLedger(d).reduce((n,r)=>n+r.gross,0);
+const check=(d,expected)=>{assert.equal(total(d),expected);assert.equal(chart(d).cost,expected);assert.equal(ledger(d),expected);};
+if(process.env.BASELINE_PROOF==='1') {
+  const d=fixture(); d.work_records[0].dump_estimate_snapshot=undefined;
+  assert.equal(total(d),6000);d.vehicles[0].load_ton=15;assert.equal(total(d),4500,'old history reprices');d.vehicles[0].load_ton=20;
+  d.dump_entries=[receipt('R',1,2500)];assert.equal(total(d),2500,'old first receipt deletes pending estimate');
+  d.expense_records=[{id:'E',date,amount:2500}];d.dump_entries[0].expense_id='E';assert.equal(chart(d).cost,5000,'old chart double counts linked expense');
+  d.expense_records=[];d.work_records=[];d.dump_entries[0].work_record_id=null;d.dump_entries[0].expense_id=null;assert.equal(total(d),2500);assert.equal(chart(d).cost,0,'old chart omits unlinked receipt');
+  console.log('BASELINE ONLY: four old defects reproduced; not candidate correctness');
+} else {
+  const {freezeDumpEstimate,validateDumpEstimate}=await import('../js/dump-estimate.js');
+  const d=fixture(),w=d.work_records[0];validateDumpEstimate(snapshot,w);check(d,6000);
+  assert.equal(dumpFee(d,w).confirmed_amount,0);assert.equal(dumpFee(d,w).remaining_estimated_amount,6000);
+  d.vehicles[0].load_ton=15;d.vehicles[0].type='Tır';d.dump_sites[0].fee=999;check(d,6000);
+  const edited={...w,description:'new description'};assert.deepEqual(freezeDumpEstimate(edited,d.dump_sites[0],d.vehicles[0],w),snapshot);
+  const more={...w,quantity:4};assert.equal(freezeDumpEstimate(more,d.dump_sites[0],d.vehicles[0],w).amount,8000,'explicit quantity correction retains saved pertrip basis');
+  const fresh={...w,id:'NEW'};delete fresh.dump_estimate_snapshot;assert.equal(freezeDumpEstimate(fresh,d.dump_sites[0],d.vehicles[0]).amount,44955,'new work uses new assumptions');
+  d.dump_entries=[receipt('R',1,2500)];check(d,6500);assert.equal(dumpFee(d,w).remaining_estimated_amount,4000);assert.equal(dumpFee(d,w).confirmed_amount,2500);assert.equal(chart(d).dumpConfirmed,2500);assert.equal(chart(d).dumpEstimated,4000);
+  assert.equal(dumpAccounts(d,{today:date})[0].usedEst,4000);
+  d.expense_records=[{id:'E',date,amount:2500}];d.dump_entries[0].expense_id='E';check(d,6500);
+  d.dump_entries.push(receipt('R2',1,2200,'customer'));check(d,4500);assert.equal(sharedDumpBalance(d,'D',{today:date}).used,2500);
+  d.dump_entries.push(receipt('R3',1,2100,'company_direct'));check(d,4600);assert.equal(sharedDumpBalance(d,'D',{today:date}).used,2500);assert.equal(dumpFee(d,w).remaining_estimated_amount,0);
+  d.dump_entries[2].deleted_at='x';check(d,4500);assert.equal(dumpFee(d,w).pending_trips,1);
+  d.dump_entries[1].deleted_at='x';check(d,6500);
+  d.expense_records.push({id:'TOP',date,amount:20000,dump_deposit:true,dump_site_id:'D'});check(d,6500);assert.equal(sharedDumpBalance(d,'D',{today:date}).balance,17500);
+  assert.equal(costLedger(d).find(r=>r.source_store==='work_records').known_tax,false);
+  for(const trips of [undefined,0,-1,0.5,4]){const malformed=fixture();malformed.dump_entries=[receipt('BAD',trips,2500)];const f=dumpFee(malformed,malformed.work_records[0]);assert.equal(f.confirmed_amount,2500);assert.equal(f.remaining_estimated_amount,null);assert.equal(f.coverage_unknown,true);assert.equal(f.unverified,true);}
+  assert.throws(()=>dumpEntryFields(fixture(),receipt('OVER',4,2500)),/aşıyor/);
+  const zero=fixture();zero.dump_entries=[receipt('ZERO',3,0)];assert.equal(dumpFee(zero,zero.work_records[0]).amount,0);assert.equal(dumpFee(zero,zero.work_records[0]).remaining_estimated_amount,0);
+  const old=fixture();delete old.work_records[0].dump_estimate_snapshot;const before=JSON.stringify(old);assert.equal(dumpFee(old,old.work_records[0]).amount,null);assert.equal(dumpFee(old,old.work_records[0]).unverified,true);assert.equal(costRows(old).length,1,'unknown cost visibly retained');assert.equal(freezeDumpEstimate({...old.work_records[0],description:'edited'},old.dump_sites[0],old.vehicles[0],old.work_records[0]),null);assert.equal(JSON.stringify(old),before,'reads never rewrite legacy');
+  old.dump_entries=[receipt('R',1,2500)];check(old,2500);assert.equal(dumpFee(old,old.work_records[0]).expected_total,null);assert.equal(dumpFee(old,old.work_records[0]).pending_trips,2);
+  const ambiguous={...w,tonnage:25,tonnage_scope:'unknown'};delete ambiguous.dump_estimate_snapshot;const ambiguousSnap=freezeDumpEstimate(ambiguous,d.dump_sites[0],d.vehicles[0]);assert.equal(ambiguousSnap.amount,null,'never infer ton scope by dividing with vehicle load');validateDumpEstimate(ambiguousSnap,ambiguous);
+  const scoped={...w,tonnage:50,tonnage_scope:'total'};scoped.dump_estimate_snapshot=freezeDumpEstimate(scoped,fixture().dump_sites[0],fixture().vehicles[0]);assert.equal(scoped.dump_estimate_snapshot.amount,5000);validateDumpEstimate(scoped.dump_estimate_snapshot,scoped);
+  const u=fixture();u.work_records=[];u.dump_entries=[{...receipt('U',1,2500),work_record_id:null,customer_id:null}];check(u,2500);
+  const cross=fixture();cross.dump_entries=[{...receipt('R',1,2500),date:'2026-09-30'}];check(cross,6500);assert.equal(chart(cross).dump,6500,'linked costs retain workdate attribution');
+  for(const patch of [{amount:999},{load_ton:-1},{tonnage_scope:'total'},{work_date:'2026-10-19'}])assert.throws(()=>validateDumpEstimate({...snapshot,...patch},w));
+  assert.equal(operatingResult(old).complete,false);
+  const missing=fixture(); missing.dump_sites=[{id:'D',name:'TEST unknown'}];missing.work_records[0].dump_estimate_snapshot=freezeDumpEstimate(missing.work_records[0],missing.dump_sites[0],missing.vehicles[0]);assert.equal(total(missing),0);assert.equal(costRows(missing).length,1);assert.equal(operatingResult(missing).complete,false);
+  const future=fixture();future.dump_sites[0].fee_effective_from='2026-10-21';future.work_records[0].dump_estimate_snapshot=freezeDumpEstimate(future.work_records[0],future.dump_sites[0],future.vehicles[0]);assert.equal(dumpFee(future,future.work_records[0]).remaining_estimated_amount,null);validateDumpEstimate(future.work_records[0].dump_estimate_snapshot,future.work_records[0]);
+  const billed=fixture();billed.dump_entries=[receipt('BR',1,2500)];billed.payables=[{id:'B',date,party_type:'dump_site',party_id:'D',gross_total:2500,items:[{work_record_id:'W',quantity:1,unit:'Sefer',gross:2500,net:2500,tax:0}]}];check(billed,2500);assert.equal(dumpFee(billed,billed.work_records[0]).unreconciled_estimate,4000);assert.equal(dumpFee(billed,billed.work_records[0]).expected_total,null);assert.equal(operatingResult(billed).complete,false);assert.equal(costRows(billed).filter(r=>r.unverified).length,1);billed.payables[0].date='2026-11-01';assert.equal(costRows(billed,{from:'2026-10-01',to:date}).length,1,'out-of-period bill must not hide unknown work coverage');
+  billed.dump_entries[0].trips=3;billed.dump_entries[0].amount=6500;assert.equal(dumpFee(billed,billed.work_records[0]).expected_total,null);assert.equal(operatingResult(billed).complete,false,'full receipt coverage does not prove an incompatible bill is reconciled');
+  validateDumpData(fixture());
+  console.log('dump-cost-reliability PASS: frozen assumptions, partial/complete/cancelled/mixed payer coverage, shared views, unknown legacy, malformed coverage, no cash/VAT mutation');
+}

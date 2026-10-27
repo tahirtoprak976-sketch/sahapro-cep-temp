@@ -1,3 +1,4 @@
+import { freezeDumpEstimate } from "../js/dump-estimate.js";
 import assert from "node:assert/strict";
 import { buildReport, forAudience, reportSpec, reportCsv, reportOptions, REPORT_KINDS } from "../js/report-core.js";
 const n = "x";
@@ -11,7 +12,7 @@ const d = {
   suppliers: [{ id: "E1", name: "Lastikçi Mesut", created_at: n }],
   contractors: [{ id: "T1", name: "Yılmaz Taşeron", created_at: n }],
   work_records: [
-    { id: "W1", date: "2026-10-02", customer_id: "C1", site_id: "S1", vehicle_id: "V1", personnel_id: "P1", work_type: "Hafriyat Nakliye", quantity: 2, unit: "Sefer", dump_site_id: "D1", tonnage: 50, slip_no: "A-1", material: "Hafriyat", price_snapshot: { unit_price: 4000, amount: 8000 }, created_at: n },
+    { id: "W1", date: "2026-10-02", customer_id: "C1", site_id: "S1", vehicle_id: "V1", personnel_id: "P1", work_type: "Hafriyat Nakliye", quantity: 2, unit: "Sefer", dump_site_id: "D1", tonnage: 50, tonnage_scope: "total", slip_no: "A-1", material: "Hafriyat", price_snapshot: { unit_price: 4000, amount: 8000 }, created_at: n },
     { id: "W2", date: "2026-10-05", customer_id: "C2", vehicle_id: "V1", work_type: "Hafriyat Nakliye", quantity: 1, unit: "Sefer", dump_area: "Cebeci", created_at: n },
     { id: "W3", date: "2026-10-06", customer_id: "C1", site_id: "S1", vehicle_id: "V2", work_type: "Makine Çalışması", quantity: 8, unit: "Saat", price_snapshot: { unit_price: 1500, amount: 12000 }, created_at: n },
     { id: "W4", date: "2026-10-07", customer_id: "C2", vehicle_id: "V1", work_type: "Malzeme", quantity: 1, unit: "Sefer", quarry_id: "Q1", material: "Mıcır", price_snapshot: { amount: 9000 }, created_at: n },
@@ -26,6 +27,8 @@ const d = {
   personnel_events: [{ id: "PE1", date: "2026-10-10", personnel_id: "P1", event_type: "Avans", amount: 2000, created_at: n }],
   payroll_entries: [], cari_movements: [{ id: "CM1", date: "2026-10-15", customer_id: "C1", type: "Tahsilat", amount: -5000, created_at: n }], documents: [], fuel_tank_movements: [],
 };
+// These fixtures model newly saved estimates; legacy unknowns have separate regression coverage.
+for (const w of d.work_records) w.dump_estimate_snapshot = freezeDumpEstimate(w, d.dump_sites.find(s=>s.id===w.dump_site_id), d.vehicles.find(v=>v.id===w.vehicle_id));
 const P = { from: "2026-10-01", to: "2026-10-31", today: "2026-10-16" };
 // Döküm sahası: Bolluca — W1 (dump_site_id), W5 dönem dışı, W6 silinmiş
 const R = buildReport(d, { k: "dokum", id: "D1", ...P });

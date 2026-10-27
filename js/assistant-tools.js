@@ -113,9 +113,14 @@ export async function askWithTools(db, q, {conversation = []} = {}) {
   return { ...res, bad: checkAnswer(res.answer, res.trace.map((t) => t.result)), metric: answerMetricIssues(res.answer, res.trace.map((t) => ({ [t.name]: t.result }))) };
 }
 const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı", yard_stock: "Depo stoku", receivables: "Alacaklar", vehicle_profit: "Araç kârlılığı", customer_profit: "Müşteri kârlılığı", price_check: "Fiyat kontrolü", business_review: "İşletme değerlendirmesi", quote_price: "Teklif hesabı", payroll_status: "Puantaj / maaş", maintenance_due: "Bakım takvimi" };
+function unverifiedCost(value) {
+  if(!value||typeof value!=="object")return false;
+  return !!(value.maliyet_dogrulanmadi||value.costIncomplete||value.dumpUnknown) || Object.values(value).some(unverifiedCost);
+}
 export function answerHtml(res) {
   const bad = res.bad || [];
   return `<div class="card"><div class="strong small">🤖 Cevap</div><div style="white-space:pre-wrap;margin-top:6px">${esc(res.answer || "Cevap alınamadı, soruyu farklı yazın.")}</div>
+    ${(res.trace||[]).some(t=>unverifiedCost(t.result))?notice("warn","Döküm maliyetinin bir kısmı doğrulanamadı. Bilinmeyen tutar sıfır değildir; kâr ve maliyete dayalı fiyat önerisi hesaplanamaz. Gösterilen maliyetler yalnız bilinen ara toplamdır."):""}
     ${bad.length ? notice("warn", "Bu sayılar hesaplanan sonuçlarda yok, güvenmeyin: " + bad.join(", ")) : (res.metric || []).length ? notice("warn", res.metric.map((x) => `${x.n.toLocaleString("tr-TR")} cevapta "${x.said}" diye yazılmış ama hesapta ${x.actual} rakamı`).join(" · ") + " — bu cevaba güvenmeyin.") : res.trace.length ? '<div class="muted tiny" style="margin-top:6px">Rakamlar telefonda hesaplandı (aşağıda "Yapılan hesaplar"). Rakamı cümleye Gemini yerleştirdi; önemli kararda hesabı açıp kontrol edin.</div>' : notice("warn", "Hiç hesap yapılmadı; cevaptaki rakamlara güvenmeyin.")}
     ${res.trace.length ? `<details style="margin-top:8px"><summary class="small">Yapılan hesaplar (${res.trace.length})</summary>${res.trace.map((t) => `<div class="tiny muted" style="margin-top:4px"><b>${esc(TOOL_TR[t.name] || t.name)}</b> ${esc(JSON.stringify(t.args))}<br>${esc(JSON.stringify(t.result).slice(0, 600))}</div>`).join("")}</details>` : ""}</div>`;
 }
@@ -139,7 +144,7 @@ async function advisor(ctx, g) {
     m3: ["Son 3 ay", addDays(today, -90), today],
   };
   let per = ctx.query?.p && PER[ctx.query.p] ? ctx.query.p : "month";
-  const tl = (n) => Math.round(Number(n) || 0).toLocaleString("tr-TR") + " ₺";
+  const tl = (n) => n==null?"Hesaplanamadı":Math.round(Number(n) || 0).toLocaleString("tr-TR") + " ₺";
   const draw = () => {
     const [label, from, to] = PER[per];
     const R = X.businessReview(d, { from, to, today, notes, fuelRefPrice });
@@ -149,21 +154,22 @@ async function advisor(ctx, g) {
       <div class="row" style="gap:6px;margin-bottom:8px">${Object.entries(PER).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-per="${k}">${t}</button>`).join("")}</div>
       <div class="statgrid" style="grid-template-columns:repeat(2,1fr)">
         <div class="stat accent"><div class="v">${tl(R.ozet.gelir_TL)}</div><div class="l">Gelir (araçlardan)</div></div>
-        <div class="stat warn"><div class="v">${tl(R.ozet.masraf_TL)}</div><div class="l">Masraf (yakıt, bakım, gider, döküm)</div></div>
-        <div class="stat ${R.ozet.kar_TL < 0 ? "danger" : "ok"}"><div class="v">${tl(R.ozet.kar_TL)}</div><div class="l">Araçların kârı</div></div>
+        <div class="stat warn"><div class="v">${tl(R.ozet.masraf_TL)}</div><div class="l">${R.ozet.maliyet_dogrulanmadi?"Bilinen masraf (eksik ara toplam)":"Masraf (yakıt, bakım, gider, döküm)"}</div></div>
+        <div class="stat ${R.ozet.kar_TL==null?"warn":R.ozet.kar_TL < 0 ? "danger" : "ok"}" data-advisor-profit><div class="v">${tl(R.ozet.kar_TL)}</div><div class="l">Araçların kârı</div></div>
         <div class="stat ${R.ozet.alacak_90_TL ? "danger" : ""}"><div class="v">${tl(R.ozet.toplam_alacak_TL)}</div><div class="l">Alacak · 90+ gün ${tl(R.ozet.alacak_90_TL)}</div></div>
       </div>
+      ${R.ozet.maliyet_dogrulanmadi?'<div data-advisor-cost-review>'+notice("warn","Döküm maliyetinin bir kısmı doğrulanamadı. Bilinmeyen tutar sıfır maliyet değildir; kâr hesaplanamadı. Masraf yalnız kesinleşen ve hesaplanabilen kalan tahminlerin bilinen ara toplamıdır.")+'</div>':""}
       <div class="section-title">🤖 Uzman yorumu</div>
       <div class="card"><div data-adv class="small muted">İşletmenin bu dönemki rakamlarına göre yönetim önerisi ister misiniz? (rakamlar telefonda hesaplandı; yapay zekâ yalnız yorumlar)</div>
         <button class="btn primary block" style="margin-top:8px" data-advgo ${g.ready ? "" : "disabled"}>🤖 Değerlendir ve öner</button></div>
       <div class="section-title">Dikkat edilecekler (${R.bulgular.length})</div>
       ${R.bulgular.length ? R.bulgular.map((b) => `<div class="small" style="margin:4px 2px">${icon[b.kind] || "•"} ${esc(b.text)}</div>`).join("") : '<div class="muted small">Belirgin bir sorun yok.</div>'}
       <div class="section-title">Araç karnesi</div>
-      ${R.araclar.map((v) => `<div class="card tap" data-go="#/filo/${esc(v.id)}"><div class="row between"><b>${esc(v.arac)}</b><span class="strong" style="color:${v.kar_TL < 0 ? "#d9534f" : "#2e9e6b"}">${tl(v.kar_TL)}</span></div>
-        <div class="tiny muted">${v.calisilan_gun}/${v.is_gunu} gün (%${v.doluluk_yuzde}) · ${Object.entries(v.birimler).map(([u, q]) => q + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "iş yok"} · gelir ${tl(v.gelir_TL)} · yakıt ${tl(v.yakit_TL)}${v.dokum_TL ? " · döküm " + tl(v.dokum_TL) : ""}${v.bakim_TL ? " · bakım " + tl(v.bakim_TL) : ""}${v.L_sefer ? " · " + v.L_sefer + " L/sefer" : ""}${v.L_saat ? " · " + v.L_saat + " L/saat" : ""}${v.bos_gun >= 3 ? ` · <b>${v.bos_gun} gündür boşta</b>` : ""}</div></div>`).join("") || '<div class="muted small">Araç verisi yok.</div>'}
+      ${R.araclar.map((v) => `<div class="card tap" data-go="#/filo/${esc(v.id)}"><div class="row between"><b>${esc(v.arac)}</b><span class="strong" style="color:${v.kar_TL==null?"#9aa4b2":v.kar_TL < 0 ? "#d9534f" : "#2e9e6b"}">${tl(v.kar_TL)}</span></div>
+        <div class="tiny muted">${v.calisilan_gun}/${v.is_gunu} gün (%${v.doluluk_yuzde}) · ${Object.entries(v.birimler).map(([u, q]) => q + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "iş yok"} · gelir ${tl(v.gelir_TL)} · yakıt ${tl(v.yakit_TL)}${v.dokum_TL ? " · bilinen döküm " + tl(v.dokum_TL) : ""}${v.bakim_TL ? " · bakım " + tl(v.bakim_TL) : ""}${v.L_sefer ? " · " + v.L_sefer + " L/sefer" : ""}${v.L_saat ? " · " + v.L_saat + " L/saat" : ""}${v.bos_gun >= 3 ? ` · <b>${v.bos_gun} gündür boşta</b>` : ""}</div>${v.maliyet_dogrulanmadi?notice("warn",`${v.dokum_bilinmeyen_is||1} işte döküm maliyeti doğrulanamadı; kâr hesaplanamadı.`):""}</div>`).join("") || '<div class="muted small">Araç verisi yok.</div>'}
       <div class="section-title">Müşteri karnesi</div>
       ${R.musteriler.slice(0, 15).map((c) => `<div class="card tap" data-go="#/musteriler/${esc(c.id)}"><div class="row between"><b>${esc(c.musteri)}</b><span>${tl(c.gelir_TL)}</span></div>
-        <div class="tiny muted">${c.is} iş${c.dokum_TL ? " · döküm sonrası " + tl(c.dokum_sonrasi_TL) : ""}${c.sefer_basi_net_TL ? " · sefer başı net " + tl(c.sefer_basi_net_TL) : ""} · tahsilat ${tl(c.tahsilat_TL)}${c.acik_alacak_TL ? ` · alacak ${tl(c.acik_alacak_TL)} (${c.en_eski_gun} gün)` : ""}${c.fiyatsiz_is ? ` · ${c.fiyatsiz_is} fiyatsız` : ""}${c.mazot_karsiligi_L ? ` · ⛽ ${c.mazot_karsiligi_L} L` : ""}</div></div>`).join("") || '<div class="muted small">Bu dönemde iş yok.</div>'}
+        <div class="tiny muted">${c.is} iş${c.dokum_TL||c.maliyet_dogrulanmadi ? " · döküm sonrası " + tl(c.dokum_sonrasi_TL) : ""}${c.sefer_basi_net_TL!=null||c.maliyet_dogrulanmadi ? " · sefer başı net " + tl(c.sefer_basi_net_TL) : ""} · tahsilat ${tl(c.tahsilat_TL)}${c.acik_alacak_TL ? ` · alacak ${tl(c.acik_alacak_TL)} (${c.en_eski_gun} gün)` : ""}${c.fiyatsiz_is ? ` · ${c.fiyatsiz_is} fiyatsız` : ""}${c.mazot_karsiligi_L ? ` · ⛽ ${c.mazot_karsiligi_L} L` : ""}</div>${c.maliyet_dogrulanmadi?notice("warn",`${c.dokum_bilinmeyen_is||1} işte döküm maliyeti doğrulanamadı. Döküm sonrası tutar ve sefer başı net hesaplanamadı.`):""}</div>`).join("") || '<div class="muted small">Bu dönemde iş yok.</div>'}
       <div class="section-title">Fiyat kontrolü</div>
       ${R.fiyat.map((p) => `<div class="card"><div class="row between"><b class="small">${esc(p.is_turu)}</b><span class="small">orta ${tl(p.orta_fiyat_TL)}</span></div><div class="tiny muted">${p.kayit} kayıt · en düşük ${tl(p.en_dusuk_TL)} · en yüksek ${tl(p.en_yuksek_TL)}${p.dusuk_kalan_musteriler.length ? " · ⚠ düşük: " + p.dusuk_kalan_musteriler.map((l) => esc(l.musteri) + " " + tl(l.ortalama_TL)).join(", ") : ""}</div></div>`).join("") || '<div class="muted small">Karşılaştırılacak kadar fiyatlı iş yok.</div>'}`;
     for (const b of root.querySelectorAll("[data-per]")) b.onclick = () => { per = b.dataset.per; draw(); };
