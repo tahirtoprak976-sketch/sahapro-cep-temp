@@ -289,7 +289,7 @@ async function dashboard(ctx) {
     <div class="section-title">Aylık Özet — son 6 ay</div>
     <div class="card" data-monthly-costs>${mChart}${months.some(m => m.financialReview) ? notice("warn", "Bazı işlerde hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; Veri Sağlığı ve kaynak işi kontrol edin.") : ""}${dumpReviewNotice(months)}
       <div class="row small" style="gap:12px;margin-top:4px"><span><b style="color:#f5a623">■</b> İş değeri</span><span><b style="color:#2e9e6b">■</b> Tahsilat</span><span><b style="color:#d9534f">■</b> Maliyet</span></div>
-      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay kayıtlı maliyet", fmtTL(cur.cost) + " ₺")}${kv("Tahmini kâr (iş değeri − maliyet)", fmtTL(cur.profit) + " ₺")}</div>
+      <div style="margin-top:8px">${kv("Bu ay iş değeri", fmtTL(cur.work) + " ₺")}${cur.fuelPayL || cur.fuelGotL ? kv("Mazot karşılığı işler (TL sayılmaz)", fmtNum(cur.fuelPayL) + " L hak edildi · " + fmtNum(cur.fuelGotL) + " L alındı") : ""}${kv("Bu ay tahsilat", fmtTL(cur.collected) + " ₺")}${kv("Bu ay kayıtlı maliyet", fmtTL(cur.cost) + " ₺")}<div data-home-profit>${kv("Tahmini kâr (iş değeri − maliyet)", cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit) + " ₺")}</div></div>
       ${cur.dump||cur.dumpUnknown||cur.dumpUnverified?'<div data-home-dump>'+kv("Döküm — kesinleşen",fmtTL(cur.dumpConfirmed)+" ₺")+kv("Döküm — kalan tahmin",fmtTL(cur.dumpEstimated)+" ₺"+(cur.dumpUnknown?" + bilinmeyen kısım":""))+'</div>':""}
       ${cur.unpriced ? `<div class="muted tiny" style="margin-top:6px">⚠ Bu ay ${cur.unpriced} işin fiyatı yok; iş değeri eksik hesaplanır.</div>` : ""}
     </div>
@@ -491,7 +491,7 @@ async function manager(ctx) {
       ${curM.dump ? kv("Döküm ücreti", fmtTL(curM.dump) + " ₺") : ""}
       ${curM.pay ? kv("Personel maaşı (kapatılan aylar)", fmtTL(curM.pay) + " ₺") : ""}
       <div class="divider"></div>
-      ${kv("TAHMİNİ SONUÇ", fmtTL(curM.profit) + " ₺")}
+      <div data-manager-profit>${kv("TAHMİNİ SONUÇ", curM.dumpUnknown||curM.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(curM.profit) + " ₺")}</div>
       ${curM.financialReview ? notice("warn", `${curM.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) : ""}
       ${dumpReviewNotice([curM])}
       ${curM.unpriced ? `<div class="muted tiny">⚠ ${curM.unpriced} işin fiyatı yok; sonuç eksik olabilir.</div>` : ""}

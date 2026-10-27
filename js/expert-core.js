@@ -54,6 +54,7 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
     const maint = live(d, "maintenance_records").filter((m) => m.vehicle_id === v.id && inR(m.date)).reduce((n, m) => n + (Number(m.cost) || 0), 0);
     const expense = live(d, "expense_records").filter((e) => e.vehicle_id === v.id && inR(e.date) && !e.dump_deposit && !dumpLinked.has(e.id)).reduce((n, e) => n + (Number(e.amount) || 0), 0);
     const dump = ws.reduce((n, w) => n + (dumpFee(d, w)?.amount || 0), 0) + unassignedDumpCosts(d,{from,to}).filter(e=>e.vehicle_id===v.id).reduce((n,e)=>n+e.amount,0);
+    const dumpUnknown=ws.filter(w=>{const f=dumpFee(d,w);return f?.unverified || f?.remaining_estimated_amount===null;}).length;
     const worked = new Set(ws.map((w) => w.date)).size;
     const u = {};
     for (const w of ws) u[w.unit || "?"] = r1((u[w.unit || "?"] || 0) + (Number(w.quantity) || 0));
@@ -61,12 +62,12 @@ export function vehicleKpis(d, { from, to = todayStr(), fuelRefPrice = null } = 
     const income = revenue, cost = fuelCost + maint + expense + dump;
     rows.push({
       id: v.id, arac: v.name, tur: v.type || "", is: ws.length, calisilan_gun: worked, is_gunu: days, doluluk_yuzde: days ? r0((worked / days) * 100) : 0,
-      birimler: u, gelir_TL: r0(income), yakit_TL: r0(fuelCost), bakim_TL: r0(maint), gider_TL: r0(expense), dokum_TL: r0(dump), kar_TL: r0(income - cost),
-      gunluk_getiri_TL: worked ? r0((income - cost) / worked) : 0, mazot_karsiligi_hak_L: r1(earnedL), musteriden_alinan_mazot_L: r1(gotL), litre: r1(liters), L_sefer: trips ? r1(liters / trips) : null, L_saat: hours ? r1(liters / hours) : null,
+      birimler: u, gelir_TL: r0(income), yakit_TL: r0(fuelCost), bakim_TL: r0(maint), gider_TL: r0(expense), dokum_TL: r0(dump), bilinen_masraf_TL:r0(cost), maliyet_dogrulanmadi:!!dumpUnknown,dokum_bilinmeyen_is:dumpUnknown, kar_TL:dumpUnknown?null:r0(income - cost),
+      gunluk_getiri_TL: dumpUnknown?null:worked ? r0((income - cost) / worked) : 0, mazot_karsiligi_hak_L: r1(earnedL), musteriden_alinan_mazot_L: r1(gotL), litre: r1(liters), L_sefer: trips ? r1(liters / trips) : null, L_saat: hours ? r1(liters / hours) : null,
       fiyatsiz_is: ws.filter((w) => !workAmount(w) && !w.customer_fuel_allowance_l).length, son_is: lastAll, bos_gun: lastAll ? Math.max(0, Math.round((new Date(to) - new Date(lastAll)) / 86400000)) : null,
     });
   }
-  return rows.sort((a, b) => b.kar_TL - a.kar_TL);
+  return rows.sort((a,b)=>Number(a.maliyet_dogrulanmadi)-Number(b.maliyet_dogrulanmadi)||(b.kar_TL||0)-(a.kar_TL||0));
 }
 
 export function customerKpis(d, { from, to = todayStr(), today = todayStr(), notes = {} } = {}) {
@@ -77,12 +78,13 @@ export function customerKpis(d, { from, to = todayStr(), today = todayStr(), not
     const ws = live(d, "work_records").filter((w) => w.customer_id === c.id && inR(w.date));
     if (!ws.length) continue;
     const revenue = ws.reduce((n, w) => n + workAmount(w), 0);
+    const dumpUnknown=ws.filter(w=>{const f=dumpFee(d,w);return f?.unverified || f?.remaining_estimated_amount===null;}).length;
     const dump = ws.reduce((n, w) => n + (dumpFee(d, w)?.amount || 0), 0);
     const collected = live(d, "cari_movements").filter((m) => m.customer_id === c.id && m.type === "Tahsilat" && inR(m.date)).reduce((n, m) => n - Number(m.amount), 0);
     const r = rec.rows.find((x) => x.id === c.id);
     const trips = ws.filter((w) => w.unit === "Sefer").reduce((n, w) => n + (Number(w.quantity) || 0), 0);
-    rows.push({ id: c.id, musteri: c.name, is: ws.length, gelir_TL: r0(revenue), dokum_TL: r0(dump), dokum_sonrasi_TL: r0(revenue - dump), tahsilat_TL: r0(collected),
-      acik_alacak_TL: r0(r?.total || 0), en_eski_gun: r?.oldest_days || 0, sefer: trips, sefer_basi_net_TL: trips ? r0((ws.filter((w) => w.unit === "Sefer").reduce((n, w) => n + workAmount(w) - (dumpFee(d, w)?.amount || 0), 0)) / trips) : null,
+    rows.push({ id: c.id, musteri: c.name, is: ws.length, gelir_TL: r0(revenue), dokum_TL: r0(dump), maliyet_dogrulanmadi:!!dumpUnknown,dokum_bilinmeyen_is:dumpUnknown,dokum_sonrasi_TL:dumpUnknown?null:r0(revenue - dump), tahsilat_TL: r0(collected),
+      acik_alacak_TL: r0(r?.total || 0), en_eski_gun: r?.oldest_days || 0, sefer: trips, sefer_basi_net_TL: !dumpUnknown && trips ? r0((ws.filter((w) => w.unit === "Sefer").reduce((n, w) => n + workAmount(w) - (dumpFee(d, w)?.amount || 0), 0)) / trips) : null,
       fiyatsiz_is: ws.filter((w) => !workAmount(w) && !w.customer_fuel_allowance_l).length, mazot_karsiligi_L: r1(ws.reduce((n, w) => n + (Number(w.customer_fuel_allowance_l) || 0), 0)) });
   }
   return rows.sort((a, b) => b.gelir_TL - a.gelir_TL);
@@ -119,11 +121,12 @@ export function businessReview(d, { from, to = todayStr(), today = todayStr(), n
   for (const v of veh) {
     if (v.bos_gun != null && v.bos_gun >= 7) findings.push({ kind: "bos", text: `${v.arac} ${v.bos_gun} gündür iş kaydı yok` });
     else if (v.is_gunu >= 6 && v.doluluk_yuzde < 50 && v.is) findings.push({ kind: "doluluk", text: `${v.arac} doluluğu %${v.doluluk_yuzde} (${v.calisilan_gun}/${v.is_gunu} gün)` });
+    if(v.maliyet_dogrulanmadi) findings.push({kind:"maliyet",text:`${v.arac}: ${v.dokum_bilinmeyen_is} işte döküm maliyeti doğrulanmadı; kâr hesaplanmadı.`});
     if (v.kar_TL < 0 && v.is) findings.push({ kind: "zarar", text: `${v.arac} bu dönemde ${v.kar_TL.toLocaleString("tr-TR")} ₺ (gelir ${v.gelir_TL.toLocaleString("tr-TR")} − masraf)${v.mazot_karsiligi_hak_L ? ` · ayrıca ${v.mazot_karsiligi_hak_L.toLocaleString("tr-TR")} L mazot karşılığı iş yaptı (TL sayılmaz)` : ""}` });
     if (v.fiyatsiz_is) findings.push({ kind: "fiyatsiz", text: `${v.arac}: ${v.fiyatsiz_is} iş fiyatsız` });
   }
   for (const p of price) for (const l of p.dusuk_kalan_musteriler) findings.push({ kind: "fiyat", text: `${l.musteri} — ${p.is_turu} ortalama ${l.ortalama_TL.toLocaleString("tr-TR")} ₺ (genel orta ${p.orta_fiyat_TL.toLocaleString("tr-TR")} ₺)` });
   for (const r of rec.rows.filter((r) => r.oldest_days > 60).slice(0, 5)) findings.push({ kind: "tahsilat", text: `${r.name}: ${Math.round(r.total).toLocaleString("tr-TR")} ₺ alacak, en eskisi ${r.oldest_days} gün` });
   const sum = (a, k) => a.reduce((n, x) => n + (x[k] || 0), 0);
-  return { from, to, ozet: { gelir_TL: sum(veh, "gelir_TL"), masraf_TL: sum(veh, "yakit_TL") + sum(veh, "bakim_TL") + sum(veh, "gider_TL") + sum(veh, "dokum_TL"), kar_TL: sum(veh, "kar_TL"), toplam_alacak_TL: r0(rec.total), alacak_90_TL: r0(rec.buckets.b90) }, araclar: veh, musteriler: cus, fiyat: price, bulgular: findings };
+  return { from, to, ozet: { gelir_TL: sum(veh, "gelir_TL"), masraf_TL: sum(veh, "yakit_TL") + sum(veh, "bakim_TL") + sum(veh, "gider_TL") + sum(veh, "dokum_TL"), maliyet_dogrulanmadi:veh.some(v=>v.maliyet_dogrulanmadi),kar_TL:veh.some(v=>v.maliyet_dogrulanmadi)?null:sum(veh, "kar_TL"), toplam_alacak_TL: r0(rec.total), alacak_90_TL: r0(rec.buckets.b90) }, araclar: veh, musteriler: cus, fiyat: price, bulgular: findings };
 }

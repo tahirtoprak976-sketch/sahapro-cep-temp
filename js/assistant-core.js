@@ -842,7 +842,7 @@ export async function businessFacts(d, today = todayStr()) {
   }).filter((x) => x.cari_bakiye_TL || x.bu_ay_is_sayisi);
   const esnaf = live(d, "suppliers").map((s) => ({ esnaf: s.name, kalan_borc_TL: ledgerOf(d, s.id).remaining / 100 })).filter((x) => x.kalan_borc_TL);
   const vehicles = vehicleSeries(d, { today, days: 30 }).map((v) => ({ arac: v.name, son30gun_is: v.works, son30gun_yakit_litre: v.liters, son30gun_maliyet_TL: v.cost }));
-  const months = monthlySeries(d, { today, months: 6 }).map((m) => ({ ay: m.label, is_degeri_TL: m.work, mazotla_odenen_is_hak_edilen_litre: m.fuelPayL, musteriden_alinan_mazot_litre: m.fuelGotL, tahsilat_TL: m.collected, gider_yakit_TL: m.cost, tahmini_kar_TL: m.profit, fiyatsiz_is: m.unpriced }));
+  const months = monthlySeries(d, { today, months: 6 }).map((m) => ({ ay: m.label, is_degeri_TL: m.work, mazotla_odenen_is_hak_edilen_litre: m.fuelPayL, musteriden_alinan_mazot_litre: m.fuelGotL, tahsilat_TL: m.collected, gider_yakit_TL: m.cost, maliyet_dogrulanmadi:!!(m.dumpUnknown||m.dumpUnverified), dokum_dogrulama_bekleyen:m.dumpUnverified||m.dumpUnknown||0, tahmini_kar_TL:(m.dumpUnknown||m.dumpUnverified)?null:m.profit, fiyatsiz_is: m.unpriced }));
   const openMaint = live(d, "maintenance_records").filter((m) => m.status !== "Tamamlandı").map((m) => ({ arac: name("vehicles", m.vehicle_id), tur: m.maint_type, durum: m.status, aciklama: m.description }));
   return { bugun: today, musteriler: customers, esnaf_borclari: esnaf, araclar_son30gun: vehicles, aylik: months, acik_arizalar: openMaint };
 }

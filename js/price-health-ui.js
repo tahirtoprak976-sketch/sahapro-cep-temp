@@ -1,7 +1,7 @@
 // Fiyat sağlığı ekranı (#/fiyat-saglik): hangi müşteride zarar / düşük kâr var, hangi fiyat eskidi, zam önerisi.
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, shareText } from "./ui.js";
 
-const tl = (n) => (Number(n) < 0 ? "−" : "") + Math.abs(Math.round(Number(n) || 0)).toLocaleString("tr-TR") + " ₺";
+const tl = (n) => n==null?"Hesaplanamadı":(Number(n) < 0 ? "−" : "") + Math.abs(Math.round(Number(n) || 0)).toLocaleString("tr-TR") + " ₺";
 const STATE = { zarar: ["🔴", "Zarar", "#d9534f"], düşük: ["🟠", "Kâr düşük", "#e0a030"], zam: ["🟡", "Zam zamanı", "#c9a227"], iyi: ["🟢", "İyi", "#2e9e6b"], "?": ["⚪", "Maliyet bilinmiyor", "#9aa4b2"] };
 
 export async function screen(ctx) {
@@ -17,18 +17,19 @@ export async function screen(ctx) {
   root.innerHTML = appbar("Fiyat Sağlığı", "Hangi işte ne kazanıyorum · zam önerisi") + `
     <div style="height:10px"></div>
     ${rows.length ? `<div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${["zarar", "düşük", "zam", "iyi", "?"].filter(cnt).map((s) => `<span class="badge">${STATE[s][0]} ${STATE[s][1]}: ${cnt(s)}</span>`).join("")}</div>` : notice("info", "Son 120 günde fiyatlı iş yok.")}
-    ${rows.map((r, i) => `<div class="card" style="border-left:4px solid ${STATE[r.state][2]}">
+    ${rows.map((r, i) => `<div class="card" data-price-health-row style="border-left:4px solid ${STATE[r.state][2]}">
       <div class="row between"><b>${esc(r.customer)}</b><span class="small">${STATE[r.state][0]} ${STATE[r.state][1]}</span></div>
       <div class="tiny muted">${esc(r.work_type || "İş")} · ${r.n} iş, ${r.qty.toLocaleString("tr-TR")} ${esc(u(r.unit))} · ${tl(r.revenue)} (son 120 gün)</div>
       <div class="formgrid2" style="margin-top:6px">
         <div class="small">Fiyat: <b>${tl(r.price)}</b> / ${esc(u(r.unit))}<br><span class="tiny muted">${trDate(r.since)}'den beri (${r.age} gün)</span></div>
-        <div class="small">Doğrudan maliyet: <b>${r.state === "?" ? "?" : tl(r.cost)}</b><br><span class="tiny muted">${r.fuelCost != null ? `mazot ${r.fuelL} L × ${r.fpNow} ₺ = ${tl(r.fuelCost)}` : "mazot bilinmiyor"}${r.dump ? ` · döküm ${tl(r.dump)}` : ""}</span></div>
+        <div class="small">Doğrudan maliyet: <b>${r.state === "?"||r.costIncomplete ? "Hesaplanamadı" : tl(r.cost)}</b><br><span class="tiny muted">${r.costIncomplete&&r.cost!=null?`Bilinen ara toplam ${tl(r.cost)} (eksik) · `:""}${r.fuelCost != null ? `mazot ${r.fuelL} L × ${r.fpNow} ₺ = ${tl(r.fuelCost)}` : "mazot bilinmiyor"}${r.dump ? ` · bilinen döküm ${tl(r.dump)}` : ""}</span></div>
       </div>
-      ${r.margin != null ? `<div class="small" style="margin-top:4px">Birim başı katkı: <b style="color:${r.contrib < 0 ? "#d9534f" : "inherit"}">${tl(r.contrib)}</b> (${r.margin < 0 ? "−" : ""}%${Math.abs(r.margin)})</div>` : ""}
-      ${r.suggest ? `<div class="notice warn" style="margin-top:6px"><b>Önerilen fiyat: ${tl(r.suggest)}</b> / ${esc(u(r.unit))}<br><span class="tiny">${esc(r.why)}</span></div>
+      ${r.margin != null&&!r.costIncomplete&&!r.dumpUnknown ? `<div class="small" style="margin-top:4px">Birim başı katkı: <b style="color:${r.contrib < 0 ? "#d9534f" : "inherit"}">${tl(r.contrib)}</b> (${r.margin < 0 ? "−" : ""}%${Math.abs(r.margin)})</div>` : ""}
+      ${r.costIncomplete||r.dumpUnknown?'<div data-price-cost-review>'+notice("warn",r.why||"Döküm maliyetinin bir kısmı doğrulanamadı. Bilinmeyen tutar sıfır değildir; katkı, kâr oranı ve fiyat önerisi hesaplanamadı.")+'</div>':""}
+      ${r.suggest&&!r.costIncomplete&&!r.dumpUnknown ? `<div class="notice warn" style="margin-top:6px"><b>Önerilen fiyat: ${tl(r.suggest)}</b> / ${esc(u(r.unit))}<br><span class="tiny">${esc(r.why)}</span></div>
         <div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-msg="${i}">💬 Müşteriye zam mesajı</button><button class="btn sm grow" data-go="#/teklif-hesap">🧮 Teklif asistanı</button></div>` : ""}
     </div>`).join("")}
-    <div class="tiny muted" style="margin:8px 4px 80px">Doğrudan maliyet = mazot (aracın son 90 gün sefer/saat başı yakıtı × güncel litre fiyatı) + döküm (kayıtlardaki gerçek döküm ücreti). Şoför maaşı, bakım, lastik, amortisman ve sigorta dahil değildir; gerçek kâr bundan düşüktür. Mazotla ödenen işler ve kendi depo işleri listede yok. Hedef katkı: %${margin} (Teklif Asistanı ayarı).</div>`;
+    <div class="tiny muted" style="margin:8px 4px 80px">Doğrudan maliyet = mazot (aracın son 90 gün sefer/saat başı yakıtı × güncel litre fiyatı) + döküm (kesinleşen fiş tutarı + kalan tahmin). Döküm dayanağı bilinmiyorsa kâr ve fiyat önerisi hesaplanmaz. Şoför maaşı, bakım, lastik, amortisman ve sigorta dahil değildir; gerçek kâr bundan düşüktür. Mazotla ödenen işler ve kendi depo işleri listede yok. Hedef katkı: %${margin} (Teklif Asistanı ayarı).</div>`;
   for (const b of qsa("[data-msg]", root))
     b.addEventListener("click", async () => {
       const r = rows[Number(b.dataset.msg)];

@@ -69,3 +69,14 @@ belgeyle örtüşmesi bilinmiyorsa kalan tahmin ve beklenen toplam **eksik / do�
 bekliyor** olur. Kayıtlı kalan tahmin ayrı kontrol ipucu olarak korunur; fatura miktarı
 ve fiş miktarı eşleşiyor diye örtüşme varsayılmaz. Belge başka ayda olsa da iş ayındaki
 kontrol satırı kaybolmaz. Belge/fiş/kasa kayıtları değişmez.
+
+### Eksik maliyet, fiyat/kâr önerisini iyileştirmez
+
+Döküm maliyeti doğrulanmamış işlerde Fiyat Sağlığı, Yönetim Danışmanı, aylık
+Finans/ana sayfa ve asistanın sayısal kaynakları kâr/katkı yüzdesi ya da fiyat
+önerisi üretmez. Bilinen maliyet alt toplamı korunur; kâr **hesaplanamadı** olarak
+gösterilir. `tests/dump-cost-advice.test.mjs` belirsiz eski kaydın yanlışlıkla
+“iyi” marj veya yüksek kâr yaratmasını ve salt okunur verinin değişmemesini sınar.
+İlk CI'daki yeni tarayıcı testi, döküm hareketi olan işin detayında mevcut bir
+`isActive` kapsam hatasını yakaladı; `core.isActive` ile düzeltildi. Eski tarayıcı
+paketleri, güncelleme/geri koruma ve baseline kanıtları değiştirilmedi.

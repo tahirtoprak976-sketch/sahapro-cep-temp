@@ -7,6 +7,7 @@ No provider calls, credentials, production URLs or historical data are used.
 import argparse
 import json
 import os
+import traceback
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse
@@ -100,11 +101,35 @@ with sync_playwright() as playwright:
         ids = page.evaluate(BOOTSTRAP)
         return context, page, database, ids
 
+    def stage(page, label):
+        page.dump_stage = label
+        print("STAGE " + label, flush=True)
+
     def visit(page, database, route):
+        stage(page, "visit " + route)
         page.goto(URL + "README.md?db=" + database)
         page.goto(URL + "index.html?db=" + database + route)
         page.wait_for_selector('#screen[data-view-ready="1"]')
-        assert "Ekran yüklenirken hata" not in page.locator("#screen").inner_text()
+        text = page.locator("#screen").inner_text()
+        assert "Ekran yüklenirken hata" not in text, {"route": route, "url": page.url, "screen": text}
+
+    def diagnose(page, ids, name):
+        # Capture the still-open synthetic profile before finally closes it.
+        evidence = {"stage": getattr(page, "dump_stage", "bootstrap"), "url": page.url, "ids": ids}
+        for key, collect in [
+            ("screen", lambda: page.locator("body").inner_text()),
+            ("state", lambda: page.evaluate(STATE, ids)),
+        ]:
+            try:
+                evidence[key] = collect()
+            except Exception as diagnostic_error:
+                evidence[key + "_error"] = str(diagnostic_error)
+        try:
+            page.screenshot(path=str(ARTIFACT / (name + "-failure.png")), full_page=True)
+        except Exception as diagnostic_error:
+            evidence["screenshot_error"] = str(diagnostic_error)
+        (ARTIFACT / (name + "-failure.json")).write_text(json.dumps(evidence, ensure_ascii=False, indent=2))
+        print("FAILURE EVIDENCE " + name + ": " + json.dumps(evidence, ensure_ascii=False), flush=True)
 
     def record(name, operation):
         try:
@@ -112,8 +137,32 @@ with sync_playwright() as playwright:
             results[name] = result
             print("PASS " + name + ": " + json.dumps(result, ensure_ascii=False), flush=True)
         except Exception as error:
-            failures.append({"name": name, "error": str(error)})
+            failure = {"name": name, "error": str(error), "traceback": traceback.format_exc()}
+            failures.append(failure)
+            traceback.print_exc()
             print("FAIL " + name + ": " + str(error), flush=True)
+
+    def assert_same_snapshot(actual, expected, label):
+        if actual == expected:
+            return
+        # Keep the exact JSON equality requirement; report changed keys instead of
+        # an empty AssertionError or thousands of identical synthetic records.
+        changes = []
+        def diff(a, e, path="$"):
+            if a == e or len(changes) >= 40:
+                return
+            if isinstance(a, dict) and isinstance(e, dict):
+                for key in sorted(set(a) | set(e)):
+                    diff(a.get(key, "<missing>"), e.get(key, "<missing>"), path + "." + key)
+            elif isinstance(a, list) and isinstance(e, list):
+                if len(a) != len(e):
+                    changes.append({"path": path + ".length", "actual": len(a), "expected": len(e)})
+                for index, (av, ev) in enumerate(zip(a, e)):
+                    diff(av, ev, path + "[" + str(index) + "]")
+            else:
+                changes.append({"path": path, "actual": a, "expected": e})
+        diff(json.loads(actual), json.loads(expected))
+        assert actual == expected, {"label": label, "changed_keys": changes, "exact_JSON_equality_required": True}
 
     def check_totals(state, actual, pending, total, balance):
         f = state["fee"]
@@ -150,29 +199,40 @@ with sync_playwright() as playwright:
                 page.fill('[name="quantity"]', "2")
                 page.fill('[name="manual_price"]', "5000")
                 page.fill('[name="manual_kdv"]', "0")
+                stage(page, "save first work through real form")
                 page.click('[data-save]')
-                page.wait_for_selector('[data-dump-cost-breakdown]')
+                # Customer-prefilled entry returns to that context, not necessarily work detail.
+                page.wait_for_function("()=>!location.hash.startsWith('#/isler/new')")
                 work = page.evaluate(r"""async()=>{
                   const db=await import('./js/db.js');return (await db.getAll('work_records')).find(w=>w.work_type==='Moloz Nakliye');
                 }""")
                 assert work and [work["dump_estimate_snapshot"]["load_ton"], work["dump_estimate_snapshot"]["amount"]] == [20, 4000], work
-                assert work["tonnage"] is None and work["dump_estimate_snapshot"]["provenance"] == "saved_estimate"
+                assert work["tonnage"] is None and work["dump_estimate_snapshot"]["provenance"] == "saved_estimate", work
+                visit(page, database, "#/isler/" + work["id"])
+                page.wait_for_selector('[data-dump-cost-breakdown]')
                 page.evaluate(r"""async ids=>{const db=await import('./js/db.js');await db.saveExisting('vehicles',await db.get('vehicles',ids.vehicle),{load_ton:10},'TEST new estimate for future work')}""", ids)
                 visit(page, database, "#/isler/new?repeat=" + work["id"])
                 page.wait_for_selector('[data-repeat-info]')
-                assert page.input_value('[name="quantity"]') == "" and page.input_value('[name="tonnage"]') == ""
+                repeat_values = {key: page.input_value('[name="' + key + '"]') for key in ["quantity", "tonnage"]}
+                assert repeat_values == {"quantity": "", "tonnage": ""}, repeat_values
                 page.fill('[name="quantity"]', "1")
                 page.fill('[name="manual_price"]', "5000")
                 page.fill('[name="manual_kdv"]', "0")
+                stage(page, "save repeated work through real form")
                 page.click('[data-save]')
-                page.wait_for_selector('[data-dump-cost-breakdown]')
+                page.wait_for_function("()=>!location.hash.startsWith('#/isler/new')")
                 saved = page.evaluate(r"""async id=>{
                   const db=await import('./js/db.js'),ws=await db.getAll('work_records');return {old:ws.find(w=>w.id===id),fresh:ws.find(w=>w.work_type==='Moloz Nakliye'&&w.id!==id)};
                 }""", work["id"])
                 assert saved["old"]["dump_estimate_snapshot"] == work["dump_estimate_snapshot"], saved
                 assert [saved["fresh"]["dump_estimate_snapshot"]["load_ton"], saved["fresh"]["dump_estimate_snapshot"]["amount"]] == [10, 1000], saved
+                visit(page, database, "#/isler/" + saved["fresh"]["id"])
+                page.wait_for_selector('[data-dump-cost-breakdown]')
                 page.screenshot(path=str(ARTIFACT / "new-repeat-estimate.png"), full_page=True)
                 return {"UIWorkEstimate": 4000, "repeatUsesNewLoad": 1000, "oldSnapshotPreserved": True}
+            except Exception:
+                diagnose(page, ids, "work-form")
+                raise
             finally:
                 context.close()
         record("real_work_form_and_repeat_capture_new_assumptions", work_form_and_repeat)
@@ -180,9 +240,11 @@ with sync_playwright() as playwright:
         def snapshot_and_partial_ui():
             context, page, database, ids = profile()
             try:
+                stage(page, "verify initial immutable estimate and cross-screen totals")
                 snapshot = ids["snapshot"]
                 assert snapshot and [snapshot["load_ton"], snapshot["fee"], snapshot["amount"]] == [20, 100, 6000], snapshot
                 check_totals(page.evaluate(STATE, ids), 0, 6000, 6000, 10000)
+                stage(page, "change vehicle load and tariff; harmless work note")
                 after = page.evaluate(r"""async ids=>{
                   const db=await import('./js/db.js');
                   await db.saveExisting('vehicles',await db.get('vehicles',ids.vehicle),{load_ton:15},'TEST later vehicle load');
@@ -199,13 +261,15 @@ with sync_playwright() as playwright:
                 page.fill('.sheet [name="amount"]', "2500")
                 page.fill('.sheet [name="receipt_no"]', "TEST-UI-PARTIAL")
                 page.fill('.sheet [name="tonnage"]', "25")
+                stage(page, "dismiss partial receipt without saving")
                 before_cancel = page.evaluate(READONLY)
                 page.click('.sheet [data-close]')
-                assert page.evaluate(READONLY) == before_cancel, "Dismissed receipt creates no records"
+                assert_same_snapshot(page.evaluate(READONLY), before_cancel, "Dismissed receipt creates no records")
                 page.click('[data-work-receipt="' + ids["work"] + '"]')
                 page.fill('.sheet [name="amount"]', "2500")
                 page.fill('.sheet [name="receipt_no"]', "TEST-UI-PARTIAL")
                 page.fill('.sheet [name="tonnage"]', "25")
+                stage(page, "submit partial receipt twice in one event turn")
                 page.check('.sheet [data-confirm]')
                 page.evaluate("""()=>{const f=document.querySelector('.sheet form');f.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));f.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));}""")
                 page.wait_for_function(r"""async id=>(await(await import('./js/db.js')).getAll('dump_entries')).filter(e=>!e.deleted_at&&e.kind==='RECEIPT'&&e.work_record_id===id).length===1""", arg=ids["work"])
@@ -232,8 +296,12 @@ with sync_playwright() as playwright:
                 page.click('.sheet [type="submit"]')
                 page.wait_for_function(r"""async id=>!!(await(await import('./js/db.js')).get('dump_entries',id)).deleted_at""", arg=state["receiptIds"][0])
                 check_totals(page.evaluate(STATE, ids), 0, 6000, 6000, 10000)
-                assert (page.evaluate(STATE, ids))["work"]["dump_estimate_snapshot"] == snapshot
+                canceled = page.evaluate(STATE, ids)
+                assert canceled["work"]["dump_estimate_snapshot"] == snapshot, {"expected": snapshot, "actual": canceled["work"]["dump_estimate_snapshot"]}
                 return {"newSnapshot": [20, 100, 6000], "partial": [2500, 4000, 6500], "cancelReturnsEstimate": 6000, "duplicateSubmitReceipts": 1, "fourScreens": True}
+            except Exception:
+                diagnose(page, ids, "partial-receipt")
+                raise
             finally:
                 context.close()
         record("immutable_snapshot_partial_receipt_UI_and_cancellation", snapshot_and_partial_ui)
@@ -258,6 +326,9 @@ with sync_playwright() as playwright:
                 assert "3.500,00" in text and "0,00" in text and "hesaplanamayan" not in text, text
                 page.screenshot(path=str(ARTIFACT / "receipt-deduplication.png"), full_page=True)
                 return {"costChartLedger": [3500, 3500, 3500], "linkedExpenseCountedOnce": True, "unassignedReceiptIncluded": 1300}
+            except Exception:
+                diagnose(page, ids, "linked-unassigned")
+                raise
             finally:
                 context.close()
         record("linked_expense_and_unassigned_receipt_once", linked_and_unassigned)
@@ -273,6 +344,9 @@ with sync_playwright() as playwright:
                 page.evaluate(r"""async id=>(await import('./js/dump-ledger-db.js')).cancelDumpEntry(id,'TEST cancel direct')""", direct["id"])
                 check_totals(page.evaluate(STATE, ids), 2100, 2000, 4100, 7900)
                 return {"mixedPayers": [2300, 2000, 4300], "allCovered": [4400, 0, 4400], "directCancellation": [2100, 2000, 4100]}
+            except Exception:
+                diagnose(page, ids, "payers")
+                raise
             finally:
                 context.close()
         record("customer_direct_payers_complete_and_cancel", payers_and_completion)
@@ -280,6 +354,7 @@ with sync_playwright() as playwright:
         def legacy_unknown():
             context, page, database, ids = profile()
             try:
+                stage(page, "prepare explicit legacy unknown source; no migration")
                 legacy = page.evaluate(r"""async ids=>{
                   const db=await import('./js/db.js'),w=await db.get('work_records',ids.work);
                   delete w.dump_estimate_snapshot;delete w.dump_tariff_snapshot;w.tonnage=24;w.tonnage_scope='unknown';
@@ -294,18 +369,35 @@ with sync_playwright() as playwright:
                     visit(page, database, route)
                     text = page.locator(selector).inner_text()
                     assert "2.500,00" in text and ("doğrula" in text or "doğrulan" in text) and ("eksik" in text or "bilinmeyen" in text), text
+                    if route == "#/finans":
+                        assert "Hesaplanamadı — döküm maliyeti eksik" in page.locator('[data-month-profit]').inner_text()
                 assert "Hesaplanamadı — kalan tahmin eksik" in page.locator('#screen').inner_text()
                 page.screenshot(path=str(ARTIFACT / "legacy-unverified.png"), full_page=True)
                 visit(page, database, "#/")
                 warning = page.locator('[data-dump-review]').inner_text()
                 assert "sıfır maliyet değildir" in warning and "tahmini kâr fazla" in warning, warning
                 assert "2.500,00" in page.locator('[data-home-dump]').inner_text()
+                assert "Hesaplanamadı — döküm maliyeti eksik" in page.locator('[data-home-profit]').inner_text()
                 visit(page, database, "#/yonetici")
                 assert "sıfır maliyet değildir" in page.locator('[data-dump-review]').inner_text()
-                assert page.evaluate(READONLY) == before, "Reads must not repair legacy fields, evidence, audit or notes"
+                assert "Hesaplanamadı — döküm maliyeti eksik" in page.locator('[data-manager-profit]').inner_text()
+                visit(page, database, "#/fiyat-saglik")
+                price = page.locator('[data-price-health-row]').inner_text()
+                assert "Hesaplanamadı" in price and "Maliyet bilinmiyor" in price, price
+                assert page.locator('[data-price-cost-review]').count() == 1
+                assert page.locator('[data-msg]').count() == 0 and "Önerilen fiyat:" not in price, price
+                visit(page, database, "#/akilli-asistan/danisman")
+                profit = page.locator('[data-advisor-profit]')
+                assert "Hesaplanamadı" in profit.inner_text() and "ok" not in profit.get_attribute('class')
+                assert "sıfır maliyet değildir" in page.locator('[data-advisor-cost-review]').inner_text()
+                assert "sefer başı net Hesaplanamadı" in page.locator('#screen').inner_text()
+                assert_same_snapshot(page.evaluate(READONLY), before, "Reads must not repair legacy fields, evidence, audit or notes")
                 saved = page.evaluate(r"""async ids=>(await import('./js/db.js')).get('work_records',ids.work)""", ids)
-                assert saved == legacy, "Legacy work remains byte-for-byte equivalent JSON"
-                return {"confirmedPreserved": 2500, "remainingUnknown": True, "sixScreensWarn": True, "legacyUnchanged": True}
+                assert saved == legacy, {"message": "Legacy work remains byte-for-byte equivalent JSON", "expected": legacy, "actual": saved}
+                return {"confirmedPreserved": 2500, "remainingUnknown": True, "eightScreensWarn": True, "legacyUnchanged": True}
+            except Exception:
+                diagnose(page, ids, "legacy-unknown")
+                raise
             finally:
                 context.close()
         record("legacy_unknown_provenance_visible_without_rewrite", legacy_unknown)

@@ -1614,7 +1614,7 @@ export async function augment(ctx) {
     const w=await db.get("work_records",id);
     if(w?.dump_site_id){
       const data=await db.dumpAll(),{dumpFee}=await import("./dump-fees.js"),fee=dumpFee(data,w);
-      const customerPaid=w.dump_payer === "customer" || data.dump_entries.some(e=>isActive(e) && e.kind==="RECEIPT" && e.work_record_id===w.id && e.payer==="customer");
+      const customerPaid=w.dump_payer === "customer" || data.dump_entries.some(e=>core.isActive(e) && e.kind==="RECEIPT" && e.work_record_id===w.id && e.payer==="customer");
       const incomplete=!!fee && fee.remaining_estimated_amount==null;
       const breakdown=fee
         ? kv("Kesinleşen döküm maliyeti",money(fee.confirmed_amount||0))

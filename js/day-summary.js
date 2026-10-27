@@ -255,7 +255,7 @@ export function runAskTool(d, name, args = {}, today = todayStr(), yardSettings 
   if (name === "price_check") return { from, to, gruplar: priceCheck(d, { from, to }).slice(0, 12) };
   if (name === "business_review") {
     const r = businessReview(d, { from, to, today, notes: extra.collectNotes || {}, fuelRefPrice: extra.fuelRefPrice });
-    return { from, to, ozet: r.ozet, bulgular: r.bulgular.slice(0, 15).map((b) => b.text), en_karli_araclar: r.araclar.slice(0, 3).map((x) => [x.arac, x.kar_TL]), en_buyuk_musteriler: r.musteriler.slice(0, 3).map((x) => [x.musteri, x.gelir_TL]) };
+    return { from, to, ozet: r.ozet, bulgular: r.bulgular.slice(0, 15).map((b) => b.text), en_karli_araclar: r.araclar.filter(x=>!x.maliyet_dogrulanmadi).slice(0, 3).map((x) => [x.arac, x.kar_TL]), en_buyuk_musteriler: r.musteriler.slice(0, 3).map((x) => [x.musteri, x.gelir_TL]) };
   }
   if (name === "quote_price") {
     const c = resolve(d, a, "customer", "customers", "customer");
