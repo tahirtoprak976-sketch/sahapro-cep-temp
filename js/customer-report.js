@@ -211,6 +211,12 @@ export function monthsSvg(months, options = MONEY_CHART) {
   }).join("");
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto" role="img" aria-label="Son 12 ay: ${html(workLabel)} ve ${html(collectedLabel)} (${html(unit)})"><text x="8" y="9" style="font-size:8px;fill:#53687b">${fmt(max)} ${html(unit)}</text>${bars}<line x1="8" y1="100" x2="${W - 4}" y2="100" stroke="#cfd8e0"/></svg><div class="row small" style="gap:12px;flex-wrap:wrap"><span><b style="color:#f5a623">■</b> ${html(workLabel)} (${html(unit)})</span><span><b style="color:#2e9e6b">■</b> ${html(collectedLabel)} (${html(unit)})</span></div>`;
 }
+export function customerChartSource(R, kind) {
+  const p = new URLSearchParams({ customer_id: R.customer.id });
+  if (R.from) p.set("from", R.from);
+  if (R.to) p.set("to", R.to);
+  return (kind === "fuel" ? "#/mazot-hesaplari" : "#/isler") + "?" + p.toString();
+}
 export function customerChartsHtml(R) {
   const series = [...(R.fuel ? [["fuel", R.fuelMonths, FUEL_CHART]] : []), ...(hasMoneyChart(R) ? [["money", R.months, MONEY_CHART]] : [])];
   return series.map(([kind, months, opt]) => {
@@ -218,6 +224,7 @@ export function customerChartsHtml(R) {
     return `<div data-customer-chart="${kind}" style="margin-top:14px"><div class="small strong">Son 12 ay · ${kind === "fuel" ? "Mazot (L)" : "Para (TL)"}</div>
       ${monthsSvg(months, opt)}
       <div class="small" style="margin-top:6px">${opt.workLabel}: <b>${fmt(total.work)} ${opt.unit}</b> · ${opt.collectedLabel}: <b>${fmt(total.collected)} ${opt.unit}</b></div>
+      <a class="btn sm" href="${html(customerChartSource(R, kind))}">${kind === "fuel" ? "Mazot" : "TL"} kaynaklarını aç</a>
       ${!total.work && !total.collected ? '<div class="muted small">Son 12 ayda kayıt yok.</div>' : kind === "fuel" && !total.collected ? '<div class="muted small">Son 12 ayda müşteriden mazot alımı kaydedilmemiş.</div>' : ""}
       <details style="margin-top:6px"><summary class="small">Aylık ${kind === "fuel" ? "mazot" : "TL"} dökümü</summary><div style="overflow-x:auto"><table class="small" style="width:100%"><thead><tr><th>Ay</th><th>${opt.workLabel} (${opt.unit})</th><th>${opt.collectedLabel} (${opt.unit})</th></tr></thead><tbody>${months.map((m) => `<tr><td>${m.key.slice(5)}.${m.key.slice(0, 4)}</td><td>${fmt(m.work)}</td><td>${fmt(m.collected)}</td></tr>`).join("")}</tbody></table></div></details>
       <div class="muted tiny">${months[0]?.key.slice(5)}.${months[0]?.key.slice(0, 4)} – ${months.at(-1)?.key.slice(5)}.${months.at(-1)?.key.slice(0, 4)} · Bugüne kadar; üstteki dönem seçiminden bağımsız.${kind === "fuel" ? " Alınan mazot: müşterinin araca veya depoya verdiği mazot. TL hesabına eklenmez." : ""}</div></div>`;

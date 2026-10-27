@@ -57,6 +57,7 @@ export async function screen(ctx) {
   if (sub === "musteriler") return customers(ctx);
   if (sub === "santiyeler") return sites(ctx);
   if (sub === "belgeler") return documents(ctx);
+  if (sub === "belge-bagla") return (await import("./document-link-ui.js")).screen(ctx);
   if (sub === "tara") return scan(ctx);
   if (sub === "ara") return globalSearch(ctx);
   if (sub === "ayarlar") return settings(ctx);
@@ -503,6 +504,7 @@ async function documents(ctx) {
     <div class="row" style="gap:8px;margin-bottom:10px">
       <button class="btn primary grow" data-go="#/tara">📷 Belge Tara (OCR)</button>
       <button class="btn grow" data-go="#/belgeler/new">+ Manuel Belge</button>
+      <button class="btn grow" data-go="#/belge-bagla">🔗 Kayda Bağla</button>
     </div>
     ${searchBar("Kategori, fiş no, firma, OCR metni…", q)}<div data-list></div>`;
   const listEl = qs("[data-list]", root);

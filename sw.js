@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-solo-v3-20261027-redteam-safety-75";
+const CACHE = "sahapro-solo-v3-20261027-workflow-reviewed-76";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
   "./js/attachment-safety.js",
@@ -36,6 +36,7 @@ const ASSETS = [
   "./js/assistant-workflow.js",
   "./js/assistant-agent-core.js",
   "./js/assistant-task.js",
+  "./js/assistant-task-center.js", "./js/assistant-task-center-ui.js", "./js/assistant-task-files.js", "./js/assistant-capabilities.js",
   "./js/customer-fuel.js",
   "./js/payment-agenda.js",
   "./js/payment-agenda-ui.js",
@@ -55,6 +56,10 @@ const ASSETS = [
   "./js/work-repeat.js",
   "./js/driver-share-ui.js",
   "./js/field-stream.js", "./js/field-stream-ui.js",
+  "./js/operation-core.js", "./js/operation-ui.js",
+  "./js/work-file-core.js", "./js/work-file-ui.js",
+  "./js/document-link-core.js", "./js/document-link-ui.js",
+  "./js/deal-chain-core.js", "./js/deal-chain-ui.js",
   "./",
   "./index.html",
   "./sofor.html",

@@ -235,12 +235,13 @@ def main():
                     history_source:{row_id:original.row_id,original_row:original,
                       imported_at:'2026-10-01T00:00:00Z',settlement_status:'unbilled_unpaid'}
                   },'TEST upgrade legacy fixture');
-                  await db.addAttachment('work',w.id,
-                    new File(['TEST original attachment bytes \\u0131\\n'],'TEST-source.txt',{type:'text/plain'}));
+                  const legacyText=new File(['TEST original attachment bytes \\u0131\\n'],'TEST-source.txt',{type:'text/plain'});
+                  await db.put('attachments',{id:'TEST-old-text',record_type:'work',record_id:w.id,name:legacyText.name,type:legacyText.type,size:legacyText.size,blob:legacyText,kind:'photo',created_at:'2026-10-01T00:00:00Z'});
                   // Keep an active-format legacy original, but never open it on the vulnerable baseline.
-                  await db.addAttachment('work',w.id,new File([
+                  const legacySvg=new File([
                     `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" onload="localStorage.setItem('TEST-upgrade-svg-executed','yes')"><rect width="8" height="8" fill="orange"/></svg>`
-                  ],'TEST-legacy.svg',{type:'image/svg+xml'}));
+                  ],'TEST-legacy.svg',{type:'image/svg+xml'});
+                  await db.put('attachments',{id:'TEST-old-svg',record_type:'work',record_id:w.id,name:legacySvg.name,type:legacySvg.type,size:legacySvg.size,blob:legacySvg,kind:'photo',created_at:'2026-10-01T00:00:00Z'});
                   const canvas=document.createElement('canvas');canvas.width=8;canvas.height=8;
                   const paint=canvas.getContext('2d');paint.fillStyle='orange';paint.fillRect(0,0,8,8);
                   for(const [mime,extension] of [['image/jpeg','jpg'],['image/png','png'],['image/webp','webp']]) {

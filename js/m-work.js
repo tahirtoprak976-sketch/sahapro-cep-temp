@@ -8,6 +8,7 @@ import {workReviewContext} from './collect-core.js';
 import {entryContext,entryContextHTML,entrySaveHash,entryRepeatHash} from './entry-context.js';
 import { latestWork, repeatWork } from "./work-repeat.js";
 import { hasWorkDraft, workEntryPlan, workSiteChoices } from "./work-entry.js";
+import { plannedWorkDraft } from "./operation-core.js";
 import { customerLabel } from "./driver-customer.js";
 import { exploreWorks, workURL, workFlags, workCSV } from "./work-explorer.js";
 import { workHours } from "./enterprise-core.js";
@@ -211,6 +212,12 @@ async function workForm(ctx, editId) {
     ]);
   if (location.hash !== formHash) return;
   let rec = editId ? await db.get("work_records", editId) : null;
+  let planSource = !editId && query.plan_id ? await db.get("shift_assignments", query.plan_id) : null;
+  if (query.plan_id && !editId) {
+    if (!planSource || !isActive(planSource)) { root.innerHTML = appbar("Planlı görev") + notice("warn", "Plan kaydı bulunamadı veya silinmiş. Yeni işi ayrıca açabilirsiniz."); return; }
+    if (planSource.work_record_id) { go("#/isler/" + encodeURIComponent(planSource.work_record_id)); return; }
+    if (planSource.status !== "Planlı") { root.innerHTML = appbar("Planlı görev") + notice("warn", "Bu plan artık açık değil; yeni iş üretilmedi. Plan kaydını vardiya listesinden inceleyin.") + '<a class="btn" href="#/vardiya/' + esc(planSource.id) + '">Planı aç</a>'; return; }
+  }
   const entry=!editId?entryContext(query,vehicles):null;
   if(entry?.error){root.innerHTML=appbar('+ İş Kaydı')+entryContextHTML(entry);return;}
 
@@ -265,7 +272,7 @@ async function workForm(ctx, editId) {
     if (window.__prefill === capturedPrefill) window.__prefill = null;
   }
   if (!editId && !prefill) {
-    const incoming = !entry ? window.__prefill : null;
+    const incoming = planSource ? plannedWorkDraft(planSource) : !entry ? window.__prefill : null;
     const draft = await db.draftGet("work");
     if (!current()) return;
     let plan = workEntryPlan({ draft, incoming, customerId: query.customer_id || '', entry });
@@ -293,6 +300,10 @@ async function workForm(ctx, editId) {
   if (!current()) return;
   const entryPreserved = startKind === 'draft' || startKind === 'repeat';
   const v = rec || prefill || {};
+  if (!editId && (planSource?.id || null) !== (v._plan_id || null)) {
+    planSource = v._plan_id ? await db.get('shift_assignments',v._plan_id) : null;
+    if (!current()) return;
+  }
 
   // Kendi depo iç müşterisi listede müşteri gibi görünmez; ayrı ve açık bir seçenek olarak en altta durur
   const custOpts = [...customers.filter((c) => !c.internal).map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
@@ -310,7 +321,7 @@ async function workForm(ctx, editId) {
     `
     ${entryContextHTML(entry,entryPreserved)}
     ${editId ? "" : notice("info", "Nakliyede döküm yerlerini + Satır ekle ile girin. Aynı fiyatlı seferler müşteriye tek satır görünür; döküm ayrıntıları içeride korunur.")}
-    ${repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : startKind === "draft" ? '<div class="notice info" data-work-start="draft">Yarım kalan iş taslağı yüklendi; önceki alanlar korundu.</div>' : startKind === "customer" ? '<div class="notice info" data-work-start="customer">Seçili müşteri için yeni iş. Miktarı ve diğer seçimleri girin.</div>' : startKind === "message" ? '<div class="notice info" data-work-start="message">Mesajdan yeni iş başlangıcı; kayıt henüz yapılmadı. Alanları kontrol edin.</div>' : ""}
+    ${planSource ? `<div class="notice info" data-plan-source="${esc(planSource.id)}"><b>Planlı görev taslağı:</b> ${esc(planSource.task || planSource.id)}<br>Miktar ve tarihi kontrol edin. Plan, kayıt öncesinde gelir veya gerçekleşen iş değildir; kayıt sonrası planla bu iş bağlanır.</div>` : repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : startKind === "draft" ? '<div class="notice info" data-work-start="draft">Yarım kalan iş taslağı yüklendi; önceki alanlar korundu.</div>' : startKind === "customer" ? '<div class="notice info" data-work-start="customer">Seçili müşteri için yeni iş. Miktarı ve diğer seçimleri girin.</div>' : startKind === "message" ? '<div class="notice info" data-work-start="message">Mesajdan yeni iş başlangıcı; kayıt henüz yapılmadı. Alanları kontrol edin.</div>' : ""}
     <form data-form novalidate>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
@@ -634,6 +645,7 @@ async function workForm(ctx, editId) {
             ...collectForm(form),
             _transport_rows: extraRows(),
             ...(repeatSource ? { _repeat_source: repeatSource.id } : {}),
+            ...(v._plan_id ? { _plan_id: v._plan_id } : {}),
           }).catch(e => { if (current()) toast("Taslak saklanamadı: " + (e.message || e) + ". Form açıkken kaydedin veya metni koruyun.", "err"); });
       }, 600);
     };
@@ -721,6 +733,7 @@ async function workForm(ctx, editId) {
         tonnage: Number(val.tonnage) > 0 ? Number(val.tonnage) : null,
         dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
         tonnage_scope: val.tonnage_scope || "unknown",
+        ...(v._plan_id ? { plan_assignment_id: v._plan_id } : {}),
       };
       Object.assign(fields,noteEditPatch(v,{description:fields.description,internal_note:fields.internal_note},names,'work'));
       const selectedCustomer=await db.get("customers",fields.customer_id);
@@ -792,6 +805,7 @@ async function workForm(ctx, editId) {
         }
       }
       const extras = batchActive() ? extraRows() : [];
+      if (v._plan_id && extras.length) throw Error("Planlı görev tek işe bağlanır. Ek nakliye satırlarını bu işi kaydettikten sonra ayrıca ekleyin");
       if (!editId && extras.length) {
         const { priceSnapshot } = await import("./business.js");
         const prices = await db.listActive("price_book");
@@ -913,10 +927,10 @@ async function workForm(ctx, editId) {
         toast("İş güncellendi", "ok");
         go("#/isler/" + editId);
       } else {
-        const created = await db.saveNew("work_records", fields);
+        const created = v._plan_id ? await db.savePlannedWork(planSource, fields) : await db.saveNew("work_records", fields);
         await attachFiles(created.id);
         await db.draftClear("work");
-        toast("İş kaydedildi", "ok");
+        toast(created._existing ? "Planla bağlı mevcut iş açıldı; ikinci kayıt oluşturulmadı" : v._plan_id ? "İş kaydedildi ve planla bağlandı" : "İş kaydedildi", "ok");
         afterSave(created.id);
       }
     } catch (e) {
@@ -995,6 +1009,7 @@ async function workDetail(ctx, id) {
       ${sst.kind === "legacy" || slipChanges.length ? `<button class="btn block" style="margin-top:8px" data-dslip-rev>📄 Revizyon fişi — güncel hâl (imzasız, yeniden imza için)</button>` : ""}</div>` : ""}
     <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-watt hidden></label></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${(await Promise.all(atts.map(a => attachmentHTML(a, {imageStyle:"width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"})))).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
+    <div data-work-file-mount></div>
     <a class="btn block" data-repeat-work href="#/isler/new?repeat=${esc(encodeURIComponent(w.id))}">＋ Benzer iş oluştur</a>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
     <div class="actionbar">
@@ -1002,6 +1017,17 @@ async function workDetail(ctx, id) {
       ${inHakedis ? "" : `<button class="btn" data-go="#/isler/${id}/edit">Düzenle</button>`}
       <button class="btn danger" data-del>Sil</button>
     </div>`;
+  {
+    const holder = qs("[data-work-file-mount]", root);
+    if (holder) {
+      try {
+        const [{ workFileModel }, { workFileHtml }] = await Promise.all([import("./work-file-core.js"), import("./work-file-ui.js")]);
+        const snapshot = await db.readSnapshot({attachments:true,meta:false});
+        const fileData = {...snapshot.data,attachments:snapshot.attachments};
+        holder.innerHTML = workFileHtml(workFileModel(fileData, id));
+      } catch (e) { holder.innerHTML = notice("warn", "İş dosyasının bağlantıları okunamadı: " + (e.message || e)); }
+    }
+  }
   qs("[data-dslip]", root)?.addEventListener("click", async (ev) => {
     const b = ev.currentTarget; b.disabled = true;
     try {
