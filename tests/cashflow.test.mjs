@@ -11,7 +11,7 @@ const d = {
   hakedis: [], cash_records: [],
   instruments: [{ id: "Q1", kind: "Çek", direction: "Alınan", party_type: "customer", party_id: "C1", amount: 30000, due_date: "2026-10-25", status: "Portföyde", created_at: n }],
   suppliers: [{ id: "E1", name: "Lastikçi", created_at: n }],
-  payables: [{ id: "B1", party_type: "supplier", party_id: "E1", gross_total: 20000, date: "2026-10-01", due_date: "2026-10-20", status: "Açık", created_at: n }],
+  payables: [{ id: "B1", party_type: "supplier", party_id: "E1", gross_total: 20000, date: "2026-10-01", due_date: "2026-10-20", status: "Onaylandı", created_at: n }],
   supplier_payments: [{ id: "SP", party_id: "E1", amount: 5000, date: "2026-10-05", created_at: n }],
   personnel: [{ id: "P1", name: "Soner", salary: 30000, created_at: n }, { id: "P2", name: "Bekir", daily_wage: 1500, pay_type: "Yevmiye", created_at: n }],
   payroll_entries: [{ id: "PE", date: "2026-10-10", period: "2026-10", personnel_id: "P2", kind: "Avans", amount: 1000, created_at: n }],
@@ -29,7 +29,8 @@ assert.equal(find(/Kaya — ödeme sözü/).amount, 40000); assert.ok(find(/Kaya
 assert.equal(find(/Kaya — alacak/).amount, 30000, "100.000 − 40.000 söz − 30.000 çek"); assert.ok(!find(/Kaya — alacak/).sure);
 assert.ok(find(/Kaya — alacak/).late, "25 Ağustos + 45 gün geçti");
 assert.equal(find(/Çek tahsili/).amount, 30000);
-assert.equal(find(/Lastikçi borcu/).amount, 15000); assert.equal(find(/Lastikçi borcu/).date, "2026-10-20");
+assert.equal(find(/Lastikçi borcu/).amount, 20000, 'Unlinked legacy payment is not assigned to a bill by guessing'); assert.equal(find(/Lastikçi borcu/).date, "2026-10-20");
+assert.ok(F.reviews.some(r=>r.label==='Belgeye bağlanmamış ödeme'));assert.equal(F.complete,false);
 assert.equal(find(/Leda — alacak/).date, "2026-10-25", "10 Ekim + 15 gün");
 assert.equal(find(/kartındaki ücret/).amount, 30000, "puantaj kullanmayan Soner");
 assert.equal(find(/Kasko yenileme/).amount, 25000);

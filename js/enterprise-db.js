@@ -32,6 +32,16 @@ const owners = [
 function active(rows) {
   return (rows || []).filter(isActive);
 }
+function paymentRetry(old, f, {batch=false}={}) {
+  const rows=Array.isArray(old)?old:[old];
+  if(rows.some(r=>!isActive(r)))throw Object.assign(Error('Bu ödeme geri alınmış; yeni bir işlem kimliğiyle kontrol ederek kaydedin.'),{code:'OP_REVERSED'});
+  const expectedBank=f.method==='Banka'?f.bank_account_id||null:null;
+  const matches=rows.every(r=>r.date===f.date&&r.method===f.method&&(r.bank_account_id||null)===expectedBank&&
+    (batch?r.party_type==='supplier'&&r.party_id===f.supplier_id:r.payable_id===f.payable_id));
+  if(!matches||rows.reduce((n,r)=>n+toKurus(r.amount),0)!==toKurus(money(f.amount)))
+    throw Object.assign(Error('Aynı işlem kimliği farklı bir ödeme için kullanılmış; hiçbir kayıt yazılmadı.'),{code:'OP_CONFLICT'});
+  return Array.isArray(old)?rows.map(r=>({...r,_existing:true})):{...old,_existing:true};
+}
 function owner(data, store, id) {
   const r = data[store]?.find((r) => r.id === id && isActive(r));
   if (!r) throw Error("İlgili " + store + " kaydı bulunamadı");
@@ -323,7 +333,7 @@ export async function paySupplier(f, key = uuid()) {
     ],
     (d, t) => {
       const old = d.supplier_payments.find((p) => p.request_id === key);
-      if (old) return old;
+      if (old) return paymentRetry(old,f);
       const b = owner(d, "payables", f.payable_id);
       if (b.status === "İptal") throw Error("Borç iptal edilmiş");
       validDate(f.date);
@@ -391,7 +401,7 @@ export async function customerBankReceipt(f, key = uuid()) {
       const old = d.cash_records.find((r) => !r.deleted_at && r.request_id === key);
       if (old) {
         // Aynı kaynak kimliği + farklı içerik: çakışma (müşteri / tutar / tarih / banka)
-        if (old.customer_id !== f.customer_id || Math.round(Number(old.amount) * 100) !== Math.round(Number(f.amount) * 100) || old.date !== f.date || old.bank_account_id !== f.bank_account_id)
+        if (old.cash_type!=='Müşteriden Para Alındı'||old.payment_method!=='Havale'||old.customer_id !== f.customer_id || Math.round(Number(old.amount) * 100) !== Math.round(Number(f.amount) * 100) || old.date !== f.date || old.bank_account_id !== f.bank_account_id)
           throw Object.assign(Error("Aynı kaynak kimliğiyle farklı tahsilat kayıtlı — yazılmadı"), { code: "OP_CONFLICT", old });
         return { ...old, _existing: true };
       }
@@ -978,8 +988,8 @@ export async function paySupplierAccount(f, key = uuid()) {
       "cash_records",
     ],
     (d, t) => {
-      const done = active(d.supplier_payments).filter((p) => p.batch_key === key);
-      if (done.length) return done;
+      const done = d.supplier_payments.filter((p) => p.batch_key === key);
+      if (done.length) return paymentRetry(done,f,{batch:true});
       party(d, "supplier", f.supplier_id);
       validDate(f.date);
       const amount = money(f.amount);

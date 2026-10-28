@@ -2038,7 +2038,7 @@ export async function signContract(id, blobs) {
 
 // Tahsilat içeriği (kaynak kimliği çakışma denetimi için): müşteri, tutar, tarih, ödeme şekli, banka
 export function sameCollection(a, b) {
-  const k = (f) => [f.customer_id || null, Math.round(Number(f.amount) * 100) / 100, f.date || null, f.payment_method || null, f.payment_method === "Havale" ? f.bank_account_id || null : null].join("|");
+  const k = (f) => [f.cash_type || null,f.customer_id || null,f.personnel_id || null,f.site_id || null,f.vehicle_id || null,f.work_record_id || null,Math.round(Number(f.amount) * 100) / 100, f.date || null, f.payment_method || null, f.payment_method === "Havale" ? f.bank_account_id || null : null].join("|");
   return k(a) === k(b);
 }
 // Tahsilat: (1) kaynak kimliği (request_id, PR #122) ve (2) kalıcı işlem kimliği (op, PR #121) AYNI transaction'da denetlenir.
@@ -2052,7 +2052,9 @@ export async function saveCashEvent(fields, { op = null } = {}) {
   const d = await openDB(),
     rec = newRecord(fields);
   return new Promise((res, rej) => {
-    const t = d.transaction([...new Set(["cash_records", "cari_movements", "audit_log", ...(op || fields.driver_entry_id ? ["meta"] : []), ...(fields.driver_entry_id ? ["personnel"] : [])])], "readwrite");
+    const referenceStores={customer_id:'customers',personnel_id:'personnel',vehicle_id:'vehicles',site_id:'sites',contractor_id:'contractors',quarry_id:'quarries',dump_site_id:'dump_sites'};
+    const references=Object.entries(referenceStores).filter(([key])=>fields[key]);
+    const t = d.transaction([...new Set(["cash_records", "cari_movements", "audit_log", ...references.map(([,store])=>store), ...(op || fields.driver_entry_id ? ["meta"] : [])])], "readwrite");
     let existing = null, error = null;
     const verified = fields.driver_entry_id ? driverProofRequests(t, fields.driver_entry_id, fields.personnel_id) : null;
     const allowed = () => { if (verified && !verified()) { error = unverifiedDriver(); t.abort(); return false; } return true; };
@@ -2082,7 +2084,7 @@ export async function saveCashEvent(fields, { op = null } = {}) {
         if (st === "new") write();
       };
     };
-    if (fields.request_id || fields.driver_entry_id) {
+    const begin=()=>{if (fields.request_id || fields.driver_entry_id) {
       const q = t.objectStore("cash_records").getAll();
       q.onsuccess = () => {
         if (!allowed()) return;
@@ -2091,7 +2093,19 @@ export async function saveCashEvent(fields, { op = null } = {}) {
         if (old) { existing = old; return; }
         viaOp();
       };
-    } else if (verified) { const ready = t.objectStore("meta").get(DRV_OK + fields.driver_entry_id); ready.onsuccess = viaOp; } else viaOp();
+    } else if (verified) { const ready = t.objectStore("meta").get(DRV_OK + fields.driver_entry_id); ready.onsuccess = viaOp; } else viaOp();};
+    let left=references.length;
+    if(!left)begin();
+    else for(const [key,store] of references){
+      const request=t.objectStore(store).get(fields[key]);
+      request.onsuccess=()=>{
+        const row=request.result;
+        if(!row||!isActive(row)||(key==='site_id'&&row.customer_id!==fields.customer_id)){
+          error=financeError('Tahsilat / kasa kaydının ilgili kartı değişmiş veya silinmiş: '+key,'FINANCE_REFERENCE');t.abort();return;
+        }
+        if(!--left)begin();
+      };
+    }
     t.oncomplete = () => {if(!existing)recordsCommitted(d.name,['cash_records','cari_movements']);res(existing ? { ...existing, _existing: true } : rec);};
     t.onerror = t.onabort = (event) => rej(error || transactionError(t, event));
   });
