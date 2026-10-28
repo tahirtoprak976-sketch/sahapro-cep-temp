@@ -8,7 +8,7 @@ Finans → Hakediş → **Hakediş hazırlığı**, veya müşteri kartındaki *
 - **Eksik bilgi:** Fiyatı, KDV bilgisi, aracı, miktarı veya gerekli fiş numaraları eksik işler. Eksik fiyat sıfır sayılmaz ve güncel fiyat listesi otomatik uygulanmaz; açıkça kayıtlı 0 fiyat geçerlidir.
 - **Kontrol gerekli:** Olası mükerrer iş/fiş, tarih veya şantiye bağlantısı, kilitli fakat hakedişsiz fiyat ya da kayıtlı tutar ile miktar/fiyat uyuşmazlığı. Benzer kayıt kesin mükerrer sayılmaz ve silinmez. Tarihi olmayan eski kayıtlar seçilen aya dahil varsayılmadan ayrıca belirtilir.
 - **Anlaşma kapsamı:** Mazot karşılığı, sözleşmeye dahil ve iç işler TL hazırlık toplamından ayrılır.
-- **Hakedişe bağlı:** Aktif taslak veya kesinleşmiş hakedişteki işler yeniden hazır listesine girmez. İptal edilmiş hakediş bağlantısı aktif rezervasyon sayılmaz; kayıtta kilit kalmışsa ayrıca kontrol gerekir.
+- **Hakedişe bağlı:** Aktif taslak veya kesinleşmiş hakedişteki işler yeniden hazır listesine girmez. Kaydedilmiş manuel/eskiden net tutarlı hakediş fiyatı yeni iş tarifesi gibi yeniden yorumlanmaz. İptal edilmiş hakediş bağlantısı aktif rezervasyon sayılmaz; kayıtta kilit kalmışsa ayrıca kontrol gerekir.
 
 Borçlu müşteri kimliği esas alınır; ana firma ile taşeron birleştirilmez. Aynı araç/gün tek başına çakışma sayılmaz; kullanıcı bir günde farklı müşterilere çalışabilir.
 

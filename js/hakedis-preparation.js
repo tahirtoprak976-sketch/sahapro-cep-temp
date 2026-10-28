@@ -62,7 +62,9 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
   if(w.price_snapshot?.locked&&!refs.length)issues.push('Fiyat kilitli, fakat aktif hakediş bağlantısı bulunamadı.');
   if(refs.length>1||refs.some(h=>h.customer_id!==customer_id))issues.push('Hakediş bağlantısı birden fazla veya başka müşteriye ait.');
   const agreement=nonTL.has(w.price_snapshot?.price_source)||customer.internal;
-  if(!agreement){
+  // Existing claims already freeze their own tariff (including manual/legacy net bases).
+  // Only unclaimed work is being proposed as a new TL claim here.
+  if(!agreement&&!refs.length){
    if(!w.price_snapshot)missing.push('İş fiyatı kayıtlı değil; fiyat listesi kendiliğinden uygulanmadı.');
    else {
     const priceIssues=hakedisItemIssues(item);missing.push(...priceIssues);
@@ -77,7 +79,7 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
   const expected=w.unit==='Sefer'&&num(w.quantity)>0?Number(w.quantity):null;
   if(ticketRequired&&(!numbers.size||(expected!=null&&numbers.size<expected)))missing.push(expected==null?'Döküm / kantar fişi numarası bekleniyor.':`${expected} sefer için ${numbers.size} fiş numarası kayıtlı; eksik fişleri kontrol edin.`);
   if(ticketRequired&&expected!=null&&(numbers.size>expected||!Number.isInteger(expected)))issues.push('Sefer miktarı ile kayıtlı fiş sayısı birlikte kontrol edilmeli.');
-  let status=refs.length?'claimed':issues.length?'review':missing.length?'missing':agreement?'agreement':'ready';
+  let status=issues.length?'review':refs.length?'claimed':missing.length?'missing':agreement?'agreement':'ready';
   const row={work:w,status,issues,missing,item,documents:linked,claims:refs,peerIds:peers,undated,ticketCount:numbers.size,expectedTickets:ticketRequired?expected:null};
   groups[status].push(row);
  }

@@ -38,6 +38,11 @@ const review=d=>hakedisPreparation(d,scope);
 }
 {
  const d=data();d.work_records=[work('W')];d.hakedis=[{id:'H',customer_id:'C',status:'Taslak',items:[{work_record_id:'W'}]}];assert.equal(review(d).counts.claimed,1);assert.equal(review(d).counts.ready,0);
+ d.work_records[0].price_snapshot={unit_price:1200,amount:1000,kdv_rate:20,kdv_included:true,locked:true};d.hakedis[0].status='Kesinleşti';
+ assert.equal(review(d).claimed[0].issues.length,0,'already claimed legacy net snapshot is not reinterpreted as an unclaimed input tariff');
+ d.work_records[0].price_snapshot=null;assert.equal(review(d).claimed[0].missing.some(x=>/fiyat/i.test(x)),false,'a frozen/manual claim can have an unpriced original work');
+ d.work_records[0].price_snapshot={...price};
+ d.hakedis.push({id:'BAD',customer_id:'O',status:'Taslak',items:[{work_record_id:'W'}]});assert.equal(review(d).counts.review,1,'conflicting claim ownership belongs in the review list');d.hakedis.pop();
  d.hakedis[0].status='İptal';assert.equal(review(d).counts.ready,1);d.work_records[0].price_snapshot.locked=true;assert.equal(review(d).counts.review,1,'orphan lock is not a free new claim');
 }
 {
