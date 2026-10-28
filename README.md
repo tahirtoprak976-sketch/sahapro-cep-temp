@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.81** — 28.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.82** — 28.10.2026
+
+Asistan: fiş numarasındaki tire/boşluk ve harf büyüklüğü farkı kayıt anındaki mükerrer kontrolünü aşamaz;
+yakıt taslağında “20 litre” / “20 lt” yanıtları doğru alana uygulanır.
+[Bağımsız inceleme ve onarım kapsamı](docs/ASSISTANT_REVIEW_v3982.md).
 
 Asistan ekleri: boş görev dosyası taslağı silinir; “Ekleri temizle” kalıcı bekleyen ekleri doğrudan temizler.
 Bağımsız incelemede doğrulanan kapsam: [ASSISTANT_FILES_v3981.md](docs/ASSISTANT_FILES_v3981.md).

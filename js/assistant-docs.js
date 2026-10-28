@@ -8,6 +8,8 @@ import { foldTr } from "./parser.js";
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const alnum = (s) => foldTr(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
+// Fiş numarası karşılaştırma anahtarı: önizleme ve kayıt aynı kuralı kullanır ("A-133427" = "A 133427").
+export const ticketKey = (s) => alnum(s);
 export const NO_EXPIRY = ["Ruhsat", "Kimlik / Kimlik Bilgisi", "SGK / İşe Giriş Evrakı", "Makine Tescil Belgesi", "Vergi Levhası", "Ticaret Sicil Gazetesi", "İmza Sirküleri", "SGK İşyeri Tescili", "Şirket Evrakı"];
 const MONTHS = ["ocak", "subat", "mart", "nisan", "mayis", "haziran", "temmuz", "agustos", "eylul", "ekim", "kasim", "aralik"];
 const pad = (n) => String(n).padStart(2, "0");

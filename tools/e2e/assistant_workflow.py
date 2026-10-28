@@ -49,7 +49,7 @@ with sync_playwright() as p:
  for text in ['Bugün','34ZZ9999','açıklama Hidrolik kaçak kontrolü']:send(text)
  pg.check('[data-kind=maintenance] [data-pick]');save();assert any(x.get('vehicle_id')==ids['v'] and 'Hidrolik' in x.get('description','') for x in state()['maintenance_records'])
  send('Yeni yakıt kaydı oluştur')
- for text in ['Bugün','34ZZ9999','litre 20','kaynak Depo Tankı']:send(text)
+ for text in ['Bugün','34ZZ9999','20 litre','kaynak Depo Tankı']:send(text)
  pg.check('[data-kind=fuel] [data-pick]');save();assert any(x.get('vehicle_id')==ids['v'] and x.get('liters')==20 for x in state()['fuel_records'])
  assert not calls
  print('PASS same offline engine completes real collection with required bank, expense description, maintenance and depot fuel; independent Save on each keeps roles distinct; zero model calls',flush=True)
