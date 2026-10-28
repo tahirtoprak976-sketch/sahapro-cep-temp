@@ -13,6 +13,7 @@ on:
       - fix/solo-workflow-76
       - fix/solo-cari-vat-78
       - fix/solo-finance-audit-79
+      - fix/solo-assistant-audit-80
 
 permissions:
   contents: read
@@ -95,7 +96,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -217,6 +218,36 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 6c75c4e5e99b2c75cd71653e01a6a0d7e88fa8c3
+
+      - name: Verify installed live v3.9.79 to assistant audit preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref c060530996e5162a07ed268944f30ab51df57ebc
+
+      - name: Reproduce assistant defects on unchanged live v3.9.79
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-assistant-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive c060530996e5162a07ed268944f30ab51df57ebc | tar -x -C "$baseline"
+          python3 -m http.server 8851 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-assistant-baseline-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8851/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/assistant_audit80.py http://localhost:8851/ --baseline-proof --artifacts /tmp/solo-assistant-audit80-baseline
 
       - name: Reproduce financial identity and race defects on unchanged v3.9.78
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}

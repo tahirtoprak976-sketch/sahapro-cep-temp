@@ -129,6 +129,10 @@ export function routeCommand(text, d, today, ctx = {}) {
   const priorities=localBusinessPriorityCommand(raw,d,today,ctx.priorityMeta);if(priorities)return priorities;
   const payments=localPaymentAgendaCommand(raw,d,today);if(payments)return payments;
   const overview=localOverviewCommand(raw,d,today);if(overview)return overview;
+  // Card/document field edits belong to the validated planner, not the work-search shortcut.
+  // Explicit work-record edits (including changing the recorded vehicle/plate) keep the local path.
+  if(EDIT.test(f)&&/telefon|ana firma|adres|plaka|muayene|sigorta|kasko|ehliyet|depo hacmi|tank kapasitesi|sonraki bakım|sonraki bakim/u.test(f)
+    &&!/(?<![\p{L}])(?:(?:iş|is)(?:inin|ini|in|indeki|te|i|ler(?:ini|in)?| kayd\p{L}*)?|kayd(?:ını|ini|ında|inda)|kayıt|kayit|sefer|saat)(?![\p{L}])/u.test(f))return null;
   // Miktarı belirsiz düzeltme komutu modelin yeniden yorumuna bırakılmaz.
   if (/\d.*(?:saat|sa|sefer|yevmiye|ton|adet|m³)\s+(?:yap|düzelt|duzelt|değiştir|degistir|güncelle|guncelle)[.!?]?$/u.test(f) && !parseWorkQuantityChange(raw))
     return { kind:'choose', label:'Miktar net değil. Tek pozitif sayı yazın; örneğin 1,5 saat yap. Bin için 1000 yazın.', items:[] };

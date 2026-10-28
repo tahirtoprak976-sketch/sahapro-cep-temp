@@ -99,17 +99,17 @@ async function ask(ctx, g) {
 }
 
 // Soruyu hesap araçlarıyla cevapla (Soru Sor ekranı ve Akıllı Asistan ortak kullanır)
-export async function askWithTools(db, q, {conversation = []} = {}) {
+export async function askWithTools(db, q, {conversation = [],scope} = {}) {
   const { ASK_TOOLS, ASK_SYSTEM, runAskTool } = await import("./day-summary.js");
   const { checkAnswer, answerMetricIssues } = await import("./assistant-core.js");
-  const { withModelFallback, geminiAsk } = await import("./ai-gemini.js");
+  const { withAssistantModelFallback, geminiAsk } = await import("./ai-gemini.js");
   const d = await db.dumpAll(), today = todayStr();
   const yardSettings = (await db.metaGet("yard_settings")) || {};
   const collectNotes = (await db.metaGet("collect_notes")) || {};
   const fuelRefPrice = await db.metaGet("fuel_ref_price");
   const quoteSettings = (await db.metaGet("quote_settings")) || {};
   const history=conversation.length ? '\nsohbet_baglami (yalnız hedef/atıf çöz; eski tutarları kullanma, güncel hesabı araçlarla yap):\n'+JSON.stringify(conversation).slice(0,8000) : '';
-  const res = await withModelFallback(db, (o) => geminiAsk(`Bugün: ${today}${history}\n<soru>${String(q).replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today, yardSettings, { collectNotes, fuelRefPrice, quoteSettings }) }));
+  const res = await withAssistantModelFallback(db, (o) => geminiAsk(`Bugün: ${today}${history}\n<soru>${String(q).replace(/<\/?soru>/gi, "")}</soru>`, { ...o, system: ASK_SYSTEM, tools: ASK_TOOLS, runTool: (n, a) => runAskTool(d, n, a, today, yardSettings, { collectNotes, fuelRefPrice, quoteSettings }) }),{scope});
   return { ...res, bad: checkAnswer(res.answer, res.trace.map((t) => t.result)), metric: answerMetricIssues(res.answer, res.trace.map((t) => ({ [t.name]: t.result }))) };
 }
 const TOOL_TR = { work_totals: "İş toplamı", customer_balance: "Müşteri bakiyesi", fuel_totals: "Yakıt toplamı", expense_totals: "Gider toplamı", collection_totals: "Tahsilat toplamı", esnaf_debt: "Esnaf borcu", tank_status: "Depo durumu", customer_fuel: "Mazot hesabı", yard_stock: "Depo stoku", receivables: "Alacaklar", vehicle_profit: "Araç kârlılığı", customer_profit: "Müşteri kârlılığı", price_check: "Fiyat kontrolü", business_review: "İşletme değerlendirmesi", quote_price: "Teklif hesabı", payroll_status: "Puantaj / maaş", maintenance_due: "Bakım takvimi" };

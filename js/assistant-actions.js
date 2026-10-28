@@ -10,6 +10,7 @@ import { writtenNumbers } from "./ai-assist.js";
 import { moneyInText } from "./assistant-core.js";
 import { FUEL_RULE_UNITS } from "./assistant-rules.js";
 import {customerNameKey} from './driver-customer.js';
+import {validDate as calendarDate} from './driver-delivery.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -88,7 +89,7 @@ function checkValue(kind, v, { message, d, nums, money }) {
   if (kind === "plate") return digits(v) && norm(message).replace(/ /g, "").includes(norm(v).replace(/ /g, "")) ? { ok: true, value: String(v).toUpperCase().trim() } : { ok: false, why: `Plaka ${v} mesajda yazmıyor` };
   if (kind === "num") { const n = Math.round(Number(v) * 100) / 100; return Number.isFinite(n) && n > 0 && (nums.has(n) || money.has(n)) ? { ok: true, value: n } : { ok: false, why: `${v} mesajda yazmıyor` }; }
   if (kind === "bool") return { ok: true, value: !!v && v !== "false" };
-  if (kind === "date") return /^\d{4}-\d{2}-\d{2}$/.test(String(v)) && Number.isFinite(new Date(v + "T12:00:00").getTime()) ? { ok: true, value: v } : { ok: false, why: `Tarih ${v} geçersiz` };
+  if (kind === "date") return calendarDate(v) ? { ok: true, value: v } : { ok: false, why: `Tarih ${v} geçersiz` };
   if (kind.startsWith("ref:")) { const s = kind.slice(4); const x = live(d, s).find((r) => r.id === v); return x ? { ok: true, value: x.id, label: x.name } : { ok: false, why: `${v} listede yok` }; }
   return { ok: false, why: "bilinmeyen alan" };
 }

@@ -3,6 +3,7 @@ const PENDING = "assistant-pending-files";
 const prefix = "assistant-task-files:";
 export async function savePendingFiles(db, files = []) {
   if (!Array.isArray(files) || files.length > 20) throw Error("En fazla 20 dosya saklanabilir.");
+  if(!files.length){await db.draftClear(PENDING);return;}
   await db.draftSave(PENDING, { files, updated_at: new Date().toISOString() });
 }
 export async function loadPendingFiles(db) {

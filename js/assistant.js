@@ -2,6 +2,7 @@ import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {readBatchPolicy,selectedFuelBudget,untrustedWorkPlan} from './assistant-batch.js';
+import {assertAssistantPlan} from './assistant-safety.js';
 import {bindBulkEntry,mountBulkResume} from './bulk-entry-ui.js';
 import {partDocumentIntent,assistantPartDocuments,separatePartDocumentPlan} from './part-document-core.js';
 import {stagePartDocuments} from './part-document-ui.js';
@@ -67,6 +68,7 @@ export async function screen(ctx) {
       <div data-turn-intent class="small" role="status" aria-live="polite" style="margin-top:8px">Yeni istek veya belge gönderebilirsiniz.</div>
       <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine><span><b>↻ Önceki sonucu düzelt</b><span style="display:block;margin-top:4px">“Müşteri Kaya olacak”, “2 sefer” gibi kısa düzeltmeler tanınır. Bu kutuyla seçimi değiştirebilirsiniz.</span><span class="muted tiny" style="display:block;margin-top:4px" data-refine-prev></span></span></label>
       <button class="btn primary block" style="margin-top:10px" data-ask disabled>🤖 Asistana Gönder</button>
+      <div data-read-status hidden role="status"><p class="small">İstek okunuyor. Kayıt yazılmıyor; mesaj ve dosyalar bu telefonda korunuyor.</p><button class="btn block" data-stop-reading>Okumayı durdur</button></div>
       <button class="btn block" style="margin-top:8px" data-part-document>Yedek parça / garanti belgesi oku</button>
     </div>
     <div data-lastundo></div>
@@ -113,8 +115,10 @@ export async function screen(ctx) {
       qs("[data-ctxclear]", box).onclick = () => { try { sessionStorage.removeItem("sp_asst_ctx"); } catch (e) {} box.remove(); };
     }
   }
-  let prev = null,manualRefine=null,asking=false; // pending result and explicit per-turn override
+  let prev = null,manualRefine=null,asking=false,requestScope=null; // pending result and explicit per-turn override
+  qs('[data-stop-reading]',root).onclick=()=>requestScope?.abort();
   const resolveTurn=(text,transfer=false)=>{
+    if(!qs('[data-chat-context]',root).checked)return {mode:'new',pending:0,reason:'Önceki sohbet ve açık taslak kullanılmayacak; yeni istek olarak okunacak.'};
     const base=assistantTurn({text,previous:prev,manual:manualRefine,transfer});
     if(base.mode==='new'&&!transfer&&manualRefine===null&&clarificationField(text,prev,prev?.d,todayStr()))return {...base,mode:'refine',reason:'Önceki isteğin eksik bilgisi tamamlanacak; henüz kayıt yapılmayacak.'};
     return base;
@@ -125,6 +129,7 @@ export async function screen(ctx) {
     qs('[data-turn-intent]',root).dataset.turnMode=turn.mode;
     if(manualRefine===null)qs('[data-refine]',root).checked=turn.mode==='refine';
   };
+  qs('[data-chat-context]',root).addEventListener('change',turnPreview);
   qs('[data-msg]',root).addEventListener('input',turnPreview);
   qs('[data-refine]',root).addEventListener('change',()=>{manualRefine=qs('[data-refine]',root).checked;turnPreview();});
   const photosIn = qs("[data-photos]", root), msgEl = qs("[data-msg]", root);
@@ -296,6 +301,17 @@ export async function screen(ctx) {
     if(bundled&&files.length!==1)return toast("Tek paketin fotoğrafları içindedir. Yanındaki diğer ekleri kaldırıp yalnız paketi seçin", "err");
     if(transferFiles.length){try{if(bundled){const opened=await (isDriverPDF(transferFiles[0])?openDriverPDF(transferFiles[0]):openDriverBundle(transferFiles[0]));typed=opened.message;bundleFiles=opened.files;}else typed=await readDriverTransfer(transferFiles[0]);}catch(e){return toast(e.message,"err");}}
     const turn=resolveTurn(typed,!!transferFiles.length);
+    if(!files.length&&qs('[data-chat-context]',root).checked&&prev&&!prev.v._done){
+      const edits=prev.v._workflow?.capture(prev.plan);
+      if(edits){
+        const source=prev.message+'\n[DÜZELTME] '+edits.note;
+        if(prev.v._agentTask){
+          activeTask=await saveTaskProposal(db,{epoch:prev.v._agentTask.chat_id,previous:prev.v._agentTask,result:{mode:'continue',task_id:prev.v._agentTask.id,goal:prev.v._agentTask.goal,plan:edits.plan},source});
+          prev.v._agentTask=activeTask;paintTask();
+        }
+        prev.plan=edits.plan;prev.message=source;edits.commit();
+      }
+    }
     const refine=turn.mode==='refine'&&qs('[data-chat-context]',root).checked?prev:null;
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
     const previousChat=conversation.previous();
@@ -314,7 +330,7 @@ export async function screen(ctx) {
         const reply=changed.length?`${changed.length} iş taslağı güncellendi. ${batchReply.date?'Tarih: '+trDate(batchReply.date)+'. ':''}${batchReply.hasPriceDirective?(batchReply.deferPrices?'Fiyatlar bekleyecek. ':'Fiyat önizlemesini kontrol edin. '):''}Kartları kontrol edip hazır işleri seçebilirsiniz; henüz kayıt yapılmadı.`:'Bu toplu talimat için uygun iş taslağı yok; şoför kayıtları tek tek kontrol edilir.';
         await finishChat({status:'draft',reply});msgEl.value='';turnPreview();return;
       }
-      const customerRequest=customerCreateRequest(typed,previousChat);
+      const customerRequest=customerCreateRequest(typed,qs('[data-chat-context]',root).checked?previousChat:null);
       if(customerRequest){
         const customers=await db.listActive('customers');
         const reply=customerRequest.kind==='ask'?'Yeni müşterinin adı ne olsun? Yalnız adını yazabilir veya aşağıdaki alana girebilirsiniz. Henüz kayıt açılmadı.':`“${customerRequest.name}” için müşteri kartı hazırladım. Aşağıdaki adı kontrol edip Müşteriyi oluştur düğmesine basın; henüz kayıt açılmadı.`;
@@ -354,7 +370,7 @@ export async function screen(ctx) {
         await finishChat({status:cc==='cancel'?'cancelled':'answer',reply});
         clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
       }
-      const workflow=manualRefine!==false&&!prev?.v._done?prev?.v._workflow:null;
+      const workflow=qs('[data-chat-context]',root).checked&&manualRefine!==false&&!prev?.v._done?prev?.v._workflow:null;
       const completion=workflow?.resolve(typed);
       if(completion){
         const clearInput=async()=>{clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');msgEl.value='';turnPreview();};
@@ -392,7 +408,7 @@ export async function screen(ctx) {
       try {
         const snapshot = isBusinessPriorityCommand(typed)||isPaymentAgendaCommand(typed) ? await db.readSnapshot({ attachments:false }) : null;
         cmd = routeCommand(typed, snapshot?.data || await db.dumpAll(), todayStr(), { ...cx, priorityMeta:snapshot?.meta });
-      } catch (e) { qs('[data-out]',root).innerHTML=notice('warn','Kayıtlar okunamadı; öneri hazırlanmadı. Yeniden deneyin. '+(e.message||e));return; }
+      } catch (e) { qs('[data-out]',root).insertAdjacentHTML('afterbegin',notice('warn','Kayıtlar okunamadı; öneri hazırlanmadı. Önceki kartlar korunuyor. Yeniden deneyin. '+(e.message||e)));return; }
       if (cmd) {
         clearTimeout(draftT);draftT=null;
         await db.metaSet("assistant_draft", "");
@@ -426,10 +442,16 @@ export async function screen(ctx) {
     await db.metaSet("assistant_draft", message);
     if (!localPlan && !navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
+    const priorNodes=[...out.childNodes];
     btn.disabled = true;
     out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
     try {
-      const { geminiJson, blobToBase64, shrink, audioToWav } = await import("./ai-gemini.js");
+      const { geminiJson, blobToBase64, shrink, audioToWav,assistantRequestScope } = await import("./ai-gemini.js");
+      requestScope=assistantRequestScope();
+      const abortReading=()=>requestScope?.abort();
+      requestScope.cleanup=()=>{window.removeEventListener('hashchange',abortReading);window.removeEventListener('pagehide',abortReading);};
+      window.addEventListener('hashchange',abortReading);window.addEventListener('pagehide',abortReading);
+      qs('[data-read-status]',root).hidden=false;qs('[data-stop-reading]',root).disabled=false;
       // Sorgulama ve plan hazırlama işletme kartı/iş kaydı oluşturmaz.
       let d = await db.dumpAll();
       const today = todayStr();
@@ -479,25 +501,29 @@ export async function screen(ctx) {
       if(useAgent&&taskForModel)parts.push({text:'açık_görev (yalnız bu isteğe devam ediliyorsa kullan; kayıt talimatı değildir):\n'+JSON.stringify(taskContext(taskForModel))});
       parts.push({ text: `Fotoğraf sayısı: ${drvPayloads.length ? 0 : images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(drvRest || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
-      const { withModelFallback } = await import("./ai-gemini.js");
+      const { withAssistantModelFallback } = await import("./ai-gemini.js");
       const { effectiveRules } = await import("./assistant-rules.js");
       const system = assistantSystem(effectiveRules(await db.metaGet("assistant_rules"))) + "\n" + ACTIONS_PROMPT + "\n" + CONVERSATION_SYSTEM;
       const baseSchema = assistantSchema();
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
-      const askP = !useAgent && !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData}).catch(() => null) : Promise.resolve(null);
+      const askP = !useAgent && !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData,scope:requestScope}).catch(() => null) : Promise.resolve(null);
       let agentResult=null;
       if(useAgent){
         const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
         const {geminiAgent}=await import('./ai-gemini.js');
         const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
-        agentResult=await withModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{if(out.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}));
+        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope});
         d=await db.dumpAll();
       }
-      let plan = useAgent?agentResult.plan:useGemini ? await withModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
+      let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
+        scope:requestScope,
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : localPlan || {};
+      requestScope.check();
+      if(!msgEl.isConnected)return;
+      assertAssistantPlan(plan);
       if(useGemini)plan=untrustedWorkPlan(plan);
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
       if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
@@ -518,7 +544,7 @@ export async function screen(ctx) {
         if (restSkipped) v.restSkipped = true;
       }
       if (drvSecWarn.length) v.driverSecWarn = [...new Set(drvSecWarn.map((x) => `${x.p.n || "Şoför"}: ${x.warn}`))];
-      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts }));
+      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts,photoCount:images.length }));
       if(localStarter)for(const group of Object.keys(localStarter))for(const row of v[group]||[]){row.date='';row.ok=false;}
       if (drvPlan) {
         const seen = drv.seenDriverIds(d);
@@ -572,7 +598,7 @@ export async function screen(ctx) {
       // İş ve fişi tek kartta: aynı işin fişi ayrı "döküm fişi" kartı olmaz, işin içine girer
       mergeTicketsIntoWorks(v, { photoCount: images.length, d, message: vmsg });
       // İşe eklenen fişin numarası / tonu okunamadıysa: fiş okuyucuyla (iş formundaki "Gemini ile fişi oku") ikinci kez okunur
-      try { await rereadSlips(db, v, imgParts, d, today); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
+      try { await rereadSlips(db, v, imgParts, d, today,{scope:requestScope}); } catch (e) { /* ikinci okuma başarısızsa ilk sonuç kalır */ }
       for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])]) if (w.driverDup) w.ok = false;
       // Mesajdaki şoför kodu REDDEDİLDİYSE (iptal / süresi dolmuş / imzası tutmayan): aynı mesajın yazısından Gemini'nin
       // çıkardığı kayıtlar da kendiliğinden işaretlenmez (reddedilen kaydın kopyası yazıdan geri gelmesin)
@@ -586,6 +612,8 @@ export async function screen(ctx) {
         for (const w of [...v.works, ...v.fuel, ...v.expenses, ...(v.maintenance || [])])
           if (w.driver_entry_id && unv.has(w.driver_entry_id) && !w.driverDup) { w.ok = false; w.unverified = true; (w.issues ||= []).push("Şoför kodunun imzası doğrulanamadı — bilgileri kontrol edip işaretleyin"); }
       }
+      requestScope.check();
+      if(!msgEl.isConnected)return;
       v.heard = heard;
       v.audioMissing = audios.length > 0 && !heard;
       v.answer = safeAssistantReply(plan.answer) || null;
@@ -621,11 +649,17 @@ export async function screen(ctx) {
       render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
       turnPreview();
     } catch (e) {
-      out.innerHTML = notice("warn", e.message || String(e));
+      if(msgEl.isConnected){
+        out.replaceChildren(...priorNodes);
+        out.insertAdjacentHTML('afterbegin',notice('warn',(e.message||String(e))+(priorNodes.length?' Önceki kontrol kartları aşağıda korunuyor.':'')));
+        await finishChat({status:'error',reply:e.message||String(e)});
+      }
     }
     } catch(error) {
-      if(msgEl.isConnected && qs('[data-out]',root))qs('[data-out]',root).innerHTML=notice('warn','İstek tamamlanamadı. Mesajınızı kontrol edip tekrar deneyin. '+(error.message||error));
+      if(msgEl.isConnected && qs('[data-out]',root))qs('[data-out]',root).insertAdjacentHTML('afterbegin',notice('warn','İstek tamamlanamadı. Mesaj ve önceki kartlar korunuyor. Kontrol edip tekrar deneyin. '+(error.message||error)));
     } finally {
+      requestScope?.cleanup?.();requestScope?.dispose();requestScope=null;
+      if(msgEl.isConnected)qs('[data-read-status]',root).hidden=true;
       if(chatTurn&&!chatFinished)await finishChat({status:'error',reply:qs('[data-out]',root)?.textContent?.slice(0,1200)||'İstek tamamlanamadı. Mesajı kontrol edip yeniden gönderin.'}).catch(()=>toast('Sohbet notu saklanamadı; mesajınız ekranda korunuyor.','err'));
       asking=false;
       for(const el of locked)if(el.isConnected)el.disabled=false;
@@ -1079,6 +1113,12 @@ async function save(ctx, out, v, d, { message, files }) {
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const workflowRows=v._workflow?.read().filter(r=>r.selected)||[];
   const preflightData=await db.dumpAll();
+  for(const card of cards){
+    const k=card.dataset.kind,r=k==='edit'?v.edits[Number(card.dataset.i)]:k==='action'?v.actions[Number(card.dataset.i)]:null;
+    if(!r?.rec)continue;
+    const current=(preflightData[r.store]||[]).find(x=>x.id===r.id);
+    if(!current||current.deleted_at||JSON.stringify(current)!==JSON.stringify(r.rec))return toast('Kayıt önizlemeden sonra değişti; yeniden isteyip güncel bilgileri kontrol edin. Hiçbir kart kaydedilmedi.','err');
+  }
   if(workflowRows.length){
     const problem=draftPreflight(workflowRows,preflightData);
     if(problem){const row=workflowRows.find(r=>r.key===problem.key),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);card.scrollIntoView({block:'center'});qs(`[name="${problem.field}"]`,card)?.focus({preventScroll:true});return toast(problem.message,'err');}
@@ -1089,7 +1129,7 @@ async function save(ctx, out, v, d, { message, files }) {
     const k = c.dataset.kind;
     const miss =
       k === "work" ? !val(c, "date") || !val(c, "customer") || !val(c, "vehicle") || !val(c, "work_type") || !(Number(val(c, "quantity")) > 0) || !val(c, "unit")
-      : k === "expense" ? !val(c, "date") || !(Number(val(c, "amount")) > 0)
+      : k === "expense" ? !val(c, "date") || !(Number(val(c, "amount")) > 0) || (!val(c,"supplier")&&!val(c,"pay"))
       : k === "fuelout" ? v.fuelOut[Number(c.dataset.i)].blocked || !val(c,'customer') || !val(c,'machine').trim() || !val(c,'date') || !(Number(val(c,'liters')) > 0) || !(Number(val(c,'unit_price')) > 0)
       : k === "fuel" ? !val(c, "date") || !val(c, "vehicle") || !(Number(val(c, "liters")) > 0) || (val(c, "source") === "Müşteri Verdi" && !val(c, "fuel_customer"))
       : k === "tank" ? !val(c, "date") || !(Number(val(c, "liters")) > 0) || (val(c, "supplier") && !(Number(val(c, "total")) > 0 || Number(val(c, "unit_price")) > 0))
@@ -1211,7 +1251,7 @@ async function save(ctx, out, v, d, { message, files }) {
           const cur = await db.get(r.store, r.id);
           if (!cur || cur.deleted_at) continue;
           if (r.op === "delete") await db.softDelete(r.store, r.id, why);
-          else await db.saveExisting(r.store, cur, r.changes, why);
+          else await db.saveExisting(r.store, r.rec, r.changes, why,0,{strict:true});
         }
         done.action++;
         continue;
@@ -1738,7 +1778,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const cost = Number(val(c, "cost")) || null;
         const mr = (v.maintenance || [])[Number(c.dataset.i)] || {};
         if (mr.driver_entry_id && (await db.dumpAll()).maintenance_records.some((x) => isActive(x) && x.driver_entry_id === mr.driver_entry_id)) { toast("Şoför arıza kaydı zaten alınmış, atlandı", "err"); continue; }
-        const files0 = mr.driver_entry_id ? null : files[0] && v.expenses.every((e) => e.photo !== 0) ? files[0] : null;
+        const files0 = mr.driver_entry_id ? null : mr.photo!=null ? files[mr.photo] : null;
         const cepM = mr.driver_pay === "cep" && cost;
         let mg = null;
         if (!mr.driver_entry_id) {
@@ -1782,7 +1822,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const cur = await db.get(r.store, r.id);
         if (!cur || cur.deleted_at) continue;
         if (r.remove) await db.softDelete(r.store, r.id, "Asistan: " + r.reason);
-        else await db.saveExisting(r.store, cur, r.changes, "Asistan düzeltmesi: " + message.slice(0, 200));
+        else await db.saveExisting(r.store, r.rec, r.changes, "Asistan düzeltmesi: " + message.slice(0, 200),0,{strict:true});
         done.edit++;
       } else if (k === 'fuelout') {
         const fields = customerFuelFields({date:val(c,'date'),customer_id:val(c,'customer'),machine:val(c,'machine'),liters:val(c,'liters'),unit_price:val(c,'unit_price'),note:message});
@@ -1939,18 +1979,21 @@ async function strokesPng(sv) {
 }
 
 // İşe bağlanan fiş fotoğrafının bilgileri (fiş no, net ton, tarih, malzeme) eksikse ayrı ve daha dikkatli bir okuma
-export async function rereadSlips(db, v, imgParts, d, today) {
+export async function rereadSlips(db, v, imgParts, d, today,{scope}={}) {
+  const check=()=>scope?.check();
   const need = (v.works || []).filter((w) => !w.driver_entry_id && (w.photos || []).length && (!w.slip_no || !w.tonnage));
   const tickets = (v.tickets || []).filter((t) => t.photo != null && (!t.ticket_no || !t.tonnage || !t.dateRead || t.unverified));
   const idx = [...new Set([...tickets.map((t) => t.photo), ...need.flatMap((w) => w.photos)])].filter((i) => imgParts[i]).slice(0, 6);
   if (!idx.length) return;
   const { SLIP_PROMPT, slipSchema, validateSlips } = await import("./slip-read.js");
-  const { geminiJson, withModelFallback } = await import("./ai-gemini.js");
+  const { geminiJson, withAssistantModelFallback } = await import("./ai-gemini.js");
   const res = { rows: [] };
   // Her istek yalnız bir fotoğraf içerir: modelin sıra değiştirmesi başka fişe veri taşıyamaz.
   for (const i of idx) {
+    check();
     try {
-      const raw = await withModelFallback(db, (o) => geminiJson([{ text: SLIP_PROMPT }, imgParts[i], { text: "Tek fotoğraf, photo: 0" }], { ...o, schema: slipSchema() }));
+      const raw = await withAssistantModelFallback(db, (o) => geminiJson([{ text: SLIP_PROMPT }, imgParts[i], { text: "Tek fotoğraf, photo: 0" }], { ...o, schema: slipSchema() }),{scope});
+      check();
       const rows = validateSlips(raw, { d, today, count: 1 }).rows;
       res.rows.push(...rows.map((r) => ({ ...r, photo: i })));
       applyTicketReread(v, raw, i, { d, today, photoCount: imgParts.length });

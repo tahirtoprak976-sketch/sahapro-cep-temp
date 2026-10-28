@@ -306,6 +306,35 @@ function parseJsonText(raw) {
     return null;
   }
 }
+function assertModelFinish(data){
+  const reason=data?.candidates?.[0]?.finishReason;
+  if(data?.promptFeedback?.blockReason||reason&&reason!=='STOP'&&reason!=='MAX_TOKENS')
+    throw Error('Gemini bu içeriği tamamlayamadı (güvenlik filtresi veya geçersiz yanıt: '+(reason||'BLOCKED')+'). Hiçbir işlem kaydedilmedi.');
+}
+
+// One deadline/cancellation signal for the entire assistant turn, including retries and body reads.
+export function assistantRequestScope({timeoutMs=90000,maxBytes=2*1024*1024,fetchImpl=fetch}={}){
+ const controller=new AbortController();let timedOut=false;
+ const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs);
+ const check=()=>{if(controller.signal.aborted)throw Object.assign(Error(timedOut?'Asistan okuması süresinde tamamlanamadı. Mesaj, dosyalar ve önceki taslak korunuyor.':'Asistan okuması durduruldu. Mesaj, dosyalar ve önceki taslak korunuyor.'),{name:'AbortError',code:'ASSISTANT_ABORT'});};
+ const fetchFn=async(url,init)=>{
+  check();
+  try{
+   const response=await fetchImpl(url,{...init,signal:controller.signal});check();
+   if(!response.body)return response;
+   const reader=response.body.getReader(),chunks=[];let size=0;
+   while(true){const {done,value}=await reader.read();check();if(done)break;size+=value.byteLength;if(size>maxBytes){await reader.cancel().catch(()=>{});throw Object.assign(Error('Asistan yanıtı çok büyük; mesajı daha küçük gruplara bölün. Dosyalar korunuyor.'),{code:'RESPONSE_LIMIT'});}chunks.push(value);}
+   return new Response(new Blob(chunks),{status:response.status,statusText:response.statusText,headers:response.headers});
+  }catch(e){check();throw e;}
+ };
+ return {fetchFn,check,abort:()=>controller.abort(),dispose:()=>clearTimeout(timer)};
+}
+export async function withAssistantModelFallback(db,run,{scope,...options}={}){
+ scope?.check();
+ const result=await withModelFallback(db,run,{...options,fetchFn:scope?.fetchFn});
+ scope?.check();return result;
+}
+
 export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens = 16384, schema = null } = {}) {
   const body = (withSchema, tokens, extra) => ({
     systemInstruction: system ? { parts: [{ text: system }] } : undefined,
@@ -336,7 +365,8 @@ export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens
   };
   const finish = (data) => data?.candidates?.[0]?.finishReason || "";
   let data = await send(null);
-  let obj = parseJsonText(text(data));
+  let obj = finish(data)==='MAX_TOKENS'?null:parseJsonText(text(data));
+  assertModelFinish(data);
   if (!obj) {
     const why = finish(data);
     if (why === "SAFETY" || why === "RECITATION" || why === "PROHIBITED_CONTENT" || data?.promptFeedback?.blockReason)
@@ -344,7 +374,8 @@ export async function geminiJson(parts, { key, model, system, fetchFn, maxTokens
     // Yarıda kesildi ya da bozuk JSON: daha geniş sınırla ve kısa yazma uyarısıyla bir kez daha
     tokens = Math.min(Math.max(tokens * 2, 16384), 65536);
     data = await send(SHORTER_HINT);
-    obj = parseJsonText(text(data));
+    assertModelFinish(data);
+    obj = finish(data)==='MAX_TOKENS'?null:parseJsonText(text(data));
     if (!obj)
       throw new Error(finish(data) === "MAX_TOKENS"
         ? "Gemini'nin yanıtı çok uzun olduğu için yarıda kesildi. Mesajı ve fotoğrafları ikiye bölüp (ör. 2'şer fotoğraf) tekrar gönderin."
@@ -373,6 +404,8 @@ export async function geminiAgent(parts,{key,model,system,tools,runTool,fetchFn,
       tools:[{functionDeclarations:tools}],toolConfig:{functionCallingConfig:{mode:'AUTO'}},
       generationConfig:{temperature:0,maxOutputTokens:16384},
     },fetchFn);
+    assertModelFinish(data);
+    if(data?.candidates?.[0]?.finishReason==='MAX_TOKENS')throw Error('Asistan yanıtı yarıda kesildi. Hiçbir araç uygulanmadı; mesajı daha küçük gruplara bölüp tekrar deneyin.');
     const content=data?.candidates?.[0]?.content,returned=content?.parts||[],calls=returned.filter(p=>p.functionCall);
     if(!calls.length){
       const reply=returned.map(p=>p.text||'').join('').trim();
@@ -417,6 +450,8 @@ export async function geminiAsk(question, { key, model, system, tools, runTool, 
   for (let round = 0; round <= maxRounds; round++) {
     const last = round === maxRounds;
     const data = await call(`/models/${encodeURIComponent(model)}:generateContent`, key, req(last ? "NONE" : "AUTO"), fetchFn);
+    assertModelFinish(data);
+    if(data?.candidates?.[0]?.finishReason==='MAX_TOKENS')throw Error('Asistanın hesap yanıtı yarıda kesildi; daha dar bir soruyla tekrar deneyin.');
     const content = data?.candidates?.[0]?.content;
     const parts = content?.parts || [];
     const calls = parts.filter((p) => p.functionCall);
