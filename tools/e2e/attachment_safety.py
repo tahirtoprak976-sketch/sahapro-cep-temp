@@ -237,8 +237,13 @@ with sync_playwright() as playwright:
             with context.expect_page() as opened:
                 page.locator('#screen a[href^="blob:"]').first.click()
             popup = opened.value
+            popup.on('pageerror', lambda error: errors.append('popup: '+str(error)))
+            popup.wait_for_url(lambda value: str(value).startswith('blob:'))
             popup.wait_for_load_state()
-            page.wait_for_function("([key,value])=>localStorage.getItem(key)===value", arg=[CANARY_KEY, CANARY_VALUE])
+            assert popup.evaluate('location.origin') == page.evaluate('location.origin'), 'Attack must execute in the application origin'
+            # Measure the marker in the executing document, independently of
+            # localStorage cache propagation back to the opener's renderer.
+            popup.wait_for_function("([key,value])=>localStorage.getItem(key)===value", arg=[CANARY_KEY, CANARY_VALUE])
             assert canary_requests == [CANARY_URL], canary_requests
             results["baseline_reproduction"] = {"ordinary_upload_accepted": True, "same_origin_canary_script_executed": True,
                 "synthetic_idb_marker_read": True, "external_script_downloaded": False}
@@ -508,8 +513,14 @@ with sync_playwright() as playwright:
         (ARTIFACT / ("baseline-proof.json" if args.baseline_proof else "candidate.json")).write_text(json.dumps(results, ensure_ascii=False, indent=2))
     except Exception:
         try:
+            popup_state=[]
+            for opened_page in context.pages:
+                if opened_page==page:continue
+                try:state=opened_page.evaluate("key=>({origin:location.origin,marker:localStorage.getItem(key)})",CANARY_KEY)
+                except Exception as error:state={'error':str(error)}
+                popup_state.append({'url':opened_page.url,**state})
             (ARTIFACT / "failure.json").write_text(json.dumps({"url": page.url, "screen": page.locator('body').inner_text(),
-                "page_errors": errors, "canary_requests": canary_requests, "blocked_external": blocked_external}, ensure_ascii=False, indent=2))
+                "page_errors": errors, "canary_requests": canary_requests, "blocked_external": blocked_external,"popups":popup_state}, ensure_ascii=False, indent=2))
             page.screenshot(path=str(ARTIFACT / "failure.png"), full_page=True)
         except Exception:
             pass

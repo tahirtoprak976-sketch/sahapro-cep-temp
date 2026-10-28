@@ -69,7 +69,7 @@ with sync_playwright() as pw:
   assert page.evaluate("async()=>(await(await import('./js/db.js')).metaGet('cash_on_hand')).amount")==1000.5
   page.click('[data-coh]');page.fill('.sheet [data-p]','');page.click('.sheet [data-x="1"]');page.wait_for_selector('.sheet',state='detached')
   assert page.evaluate("async()=>(await(await import('./js/db.js')).metaGet('cash_on_hand')).amount")==1000.5
-  page.click('[data-coh]');page.fill('.sheet [data-p]','1.23.4');page.click('.sheet [data-x="1"]');page.wait_for_selector('.toast')
+  page.click('[data-coh]');page.fill('.sheet [data-p]','1.23.4');page.click('.sheet [data-x="1"]');page.wait_for_selector('.toast');page.wait_for_selector('.sheet',state='detached')
   assert page.evaluate("async()=>(await(await import('./js/db.js')).metaGet('cash_on_hand')).amount")==1000.5
   # Future records cannot inflate this month's work, collection or costs.
   page.evaluate('''async i=>{

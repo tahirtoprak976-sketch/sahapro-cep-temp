@@ -32,3 +32,5 @@ Finans ana ekranında bu ayki müşteri tahsilatı **Personelde**, **Teslim bild
 ## Kanıt ve test planı
 
 `baseline-probe.mjs` ve yeni Chromium denemesi değişmemiş v3.9.78'de tutar, tarih ve işlem kimliği hatalarını yeniden üretti. `finance-audit79.test.mjs` saf hesapları; `finance_audit79.py` gerçek IndexedDB çatışmalarını, kart silme yarışını, ondalıklı formu, belirsiz borç ekranını ve tahsilatın konumunu sınar. Eski nakit testi artık gerçek kayıt durumu Onaylandı kullanır ve belgesiz ödemenin varsayımla borçtan düşülmediğini doğrular. Son PASS sayısı teslim commit'inin CI çıktısından alınır.
+
+İlk tam CI'da 153 dosya, 41 tarayıcı paketi ve 9 yükseltme geçti; eski v3.9.74'ün SVG saldırı kanıtı ana sayfadaki localStorage işaretini beklerken durdu. Kanıt artık blob sekmesinin uygulamayla aynı origin'de çalıştığını ve o sekmede test IndexedDB değerinin gerçekten okunup işarete yazıldığını doğrular; ana sayfanın localStorage önbelleğinin sekmeler arasında güncellenmesine dayanmaz. Aynı test verisi / betik / ağ engeli korunur; adayın SVG reddi ve karantina koşulları değişmez. Finans ekranı görüntüsü de kapanan modal kaldırıldıktan sonra alınır.
