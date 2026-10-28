@@ -1,21 +1,31 @@
-import { billBalance, PARTY_STORES } from "./enterprise-core.js";
+import {paymentAgenda} from './payment-agenda.js';
+import {realDate} from './work-explorer.js';
+import {parseTrNumber} from './money-roles.js';
 // Nakit tahmini (önümüzdeki 5 hafta) — SAF katman. "Param yetecek mi?" sorusunun cevabı.
-// KESİN: ödeme sözleri, çek/senet vadeleri, esnaf borçları, maaş kalanı, yenilenecek belge (eski tutarıyla).
+// KAYITLI VADE/SÖZ: ödeme sözleri, çek/senet vadeleri, esnaf borçları, maaş kalanı ve belge yenileme.
 // TAHMİNİ: sözü olmayan müşteri alacakları (ödeme alışkanlığına göre), mazot / gider / bakım (son günlerin ortalaması).
 // İki senaryo: normal (kesin + tahmini girişler) ve kötü (yalnız kesin girişler; çıkışların hepsi).
-import { isActive, todayStr, addDays } from "./core.js";
+import { isActive, todayStr, addDays, toKurus, fromKurus } from "./core.js";
 import { receivables } from "./collect-core.js";
 import { payrollFor } from "./payroll-core.js";
 
 const live = (d, s) => (d[s] || []).filter(isActive);
-const r0 = (n) => Math.round(Number(n) || 0);
+const r0 = (n) => fromKurus(toKurus(n));
 const days = (a, b) => Math.round((Date.parse(b + "T12:00:00Z") - Date.parse(a + "T12:00:00Z")) / 864e5);
 const sumBy = (xs, f) => xs.reduce((n, x) => n + (Number(f(x)) || 0), 0);
+const positive = n => n !== '' && n != null && ['string','number'].includes(typeof n) && Number.isFinite(Number(n)) && Number(n) >= .01 && Number.isSafeInteger(toKurus(n));
+export function cashAmountInput(raw) {
+  const s=String(raw??'').trim().replace(/−/g,'-');
+  if(!/^[+-]?(?:\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)$/.test(s))throw Error('Geçerli tutar yazın; en fazla iki ondalık basamak kullanın.');
+  const amount=parseTrNumber(s.replace(/^[+-]/,''))*(s.startsWith('-')?-1:1);
+  if(!Number.isFinite(amount)||Math.abs(amount)>1e12)throw Error('Nakit tutarı geçersiz veya sınırı aşıyor.');
+  return amount;
+}
 
 // Müşterinin ödeme alışkanlığı: tahsilat tarihlerinden önceki en eski açık işe kadar geçen günlerin ortalaması yerine
 // basit ve sağlam bir ölçü: son 6 ayda tahsilatlar arası ortalama gün (en az 15, en çok 90). Veri yoksa 45.
 export function payLag(d, customerId, today) {
-  const pays = live(d, "cari_movements").filter((m) => m.customer_id === customerId && m.type === "Tahsilat" && m.date >= addDays(today, -180)).map((m) => m.date).sort();
+  const pays = live(d, "cari_movements").filter((m) => m.customer_id === customerId && m.type === "Tahsilat" && m.date >= addDays(today, -180) && m.date <= today).map((m) => m.date).sort();
   if (pays.length < 2) return 45;
   const gaps = pays.slice(1).map((x, i) => days(pays[i], x)).filter((g) => g > 0);
   if (!gaps.length) return 45;
@@ -23,8 +33,10 @@ export function payLag(d, customerId, today) {
 }
 
 export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cashOnHand = null } = {}) {
+  if(!realDate(today)||!Number.isInteger(weeks)||weeks<1||weeks>52)throw Error('Nakit tahmini için geçerli gün ve 1–52 hafta gerekli.');
   const end = addDays(today, weeks * 7 - 1);
   const items = [];
+  const reviews = [];
   const add = (date, dir, sure, amount, label, sub = "", href = "") => {
     amount = r0(amount);
     if (!(amount > 0)) return;
@@ -33,39 +45,50 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
   const nm = (s, id) => live(d, s).find((r) => r.id === id)?.name || "";
 
   // ---- Girişler ----
-  const rec = receivables(d, { today, notes });
+  const asOf={...d,work_records:live(d,'work_records').filter(r=>r.date<=today),cari_movements:live(d,'cari_movements').filter(r=>r.date<=today),cash_records:live(d,'cash_records').filter(r=>r.date<=today)};
+  const rec = receivables(asOf, { today, notes });
+  for(const m of live(d,'cari_movements').filter(r=>r.date>today))reviews.push({label:'İleri tarihli cari kayıt',reason:'İleri tarihli cari hareket bugünkü alacak/tahsilata dahil edilmedi; kaynak işlemi kontrol edin.',href:'#/cari/'+encodeURIComponent(m.customer_id||'')});
   for (const r of rec.rows) {
-    let left = r.total;
+    const reserved=sumBy(rec.cheques.filter(q=>q.party_type==='customer'&&q.party_id===r.id&&q.direction==='Alınan'&&q.status!=='Karşılıksız'&&realDate(q.due_date)&&positive(q.amount)),q=>q.amount);
+    let left = Math.max(0,r0(r.total-reserved));
     if (r.promise) {
-      const a = Math.min(left, r.promise.amount || left);
-      add(r.promise.date, "in", true, a, `${r.name} — ödeme sözü`, r.promise.late ? "söz tarihi geçti" : "", "#/tahsilat/" + r.id);
-      left -= a;
+      if(!realDate(r.promise.date)||!Number.isFinite(Number(r.promise.amount))||Number(r.promise.amount)<0)reviews.push({label:r.name+' ödeme sözü',reason:'Söz tarihi veya tutarı kontrol edilmeli.',href:'#/tahsilat/'+r.id});
+      else {
+        const a = Math.min(left, r.promise.amount || left);
+        add(r.promise.date, "in", true, a, `${r.name} — ödeme sözü`, r.promise.late ? "söz tarihi geçti" : "", "#/tahsilat/" + r.id);
+        left = r0(left-a);
+      }
     }
-    // Müşterinin verdiği çekler ayrıca vade gününde sayılır; açık bakiyeden düşülür
-    left -= r.cheque_total;
+    // Reserve checks before a promise, so the same receivable is never promised twice.
     if (left > 0) {
       const lag = payLag(d, r.id, today);
       const exp = addDays(r.oldest_date, lag);
       add(exp, "in", false, left, `${r.name} — alacak`, `ödeme alışkanlığı ~${lag} gün · en eski ${r.oldest_days} günlük`, "#/tahsilat/" + r.id);
     }
   }
-  for (const q of rec.cheques.filter((q) => q.status !== "Karşılıksız" && q.due_date <= end)) {
+  for (const q of rec.cheques.filter((q) => q.status !== "Karşılıksız")) {
+    if(!realDate(q.due_date)||!positive(q.amount)||!['Alınan','Verilen'].includes(q.direction)){
+      reviews.push({label:q.document_no||'Çek / senet',reason:'Vade, yön veya tutar kontrol edilmeli.',href:'#/ceksenet/'+q.id});continue;
+    }
+    if(q.due_date>end)continue;
     const party = q.party_type === "customer" ? nm("customers", q.party_id) : nm("suppliers", q.party_id);
-    add(q.due_date, q.direction === "Alınan" ? "in" : "out", true, q.amount, `${q.kind || "Çek"} ${q.direction === "Alınan" ? "tahsili" : "ödemesi"} — ${party}`, `vade ${q.due_date}${q.document_no ? " · no " + q.document_no : ""}`);
+    add(q.due_date, q.direction === "Alınan" ? "in" : "out", true, q.amount, `${q.kind || "Çek"} ${q.direction === "Alınan" ? "tahsili" : "ödemesi"} — ${party}`, `vade ${q.due_date}${q.document_no ? " · no " + q.document_no : ""}`,'#/ceksenet/'+q.id);
   }
 
   // ---- Çıkışlar ----
   // Esnaf / tedarikçi borçları (vade yoksa belge tarihi + 30 gün)
-  const bills = live(d, "payables").filter(b => b.status !== "İptal" && b.date <= today && PARTY_STORES[b.party_type]);
-  const pays = live(d, "supplier_payments").filter(p => p.date <= today);
-  for (const b of bills) {
-    const remaining = billBalance(b, pays.filter(p => p.payable_id)).remaining;
-    // Eski, belge kimliği olmayan ödemeler yalnız tek açık belgeli tarafta kesin eşleşebilir.
-    const orphan = pays.filter(p => !p.payable_id && p.party_id === b.party_id && (!p.party_type || p.party_type === b.party_type));
-    const single = bills.filter(x => x.party_id === b.party_id && x.party_type === b.party_type).length === 1;
-    const amount = Math.max(0, remaining - (single ? sumBy(orphan, p => p.amount) : 0));
-    add(b.due_date || addDays(b.date, 30), "out", !!b.due_date, amount, `${nm(PARTY_STORES[b.party_type], b.party_id) || "İşletme"} borcu`, [b.cost_category || b.description, !b.due_date ? "vade bilinmiyor; +30 gün tahmini" : "", orphan.length && !single ? "belgesiz ödeme var; eşleştirme gerekli" : ""].filter(Boolean).join(" · "), "#/alislar/" + b.id);
+  const bills = new Map(live(d,'payables').map(b=>[b.id,b]));
+  for(const row of paymentAgenda(d,{today}).rows){
+    const b=bills.get(row.id);
+    if(row.issues.length)reviews.push({label:row.name+' · '+row.document,reason:row.issues.join(' '),href:row.hash});
+    if(row.remaining==null||!realDate(b.date))continue;
+    const due=realDate(b.due_date)&&b.due_date>=b.date?b.due_date:addDays(b.date,30);
+    add(due,'out',realDate(b.due_date)&&b.due_date>=b.date,row.remaining,row.name+' borcu',b.due_date===due?(b.cost_category||b.description||''):'Vade bilinmiyor; belge +30 gün tahmini',row.hash);
+    if(row.cheques.length)reviews.push({label:row.name,reason:'Aynı tarafta açık borç ve verilmiş çek/senet var. Aynı borç için olup olmadığını kontrol edin; tutarlar otomatik mahsup edilmedi.',href:row.hash});
   }
+  for(const p of live(d,'supplier_payments').filter(p=>!p.payable_id&&(!realDate(p.date)||p.date<=today)))reviews.push({label:'Belgeye bağlanmamış ödeme',reason:'Ödeme herhangi bir borç belgesinden varsayımla düşülmedi; eşleştirmeyi kontrol edin.',href:'#/odeme-takibi'});
+  for(const e of live(d,'expense_records').filter(e=>e.date<=today&&e.payment_method==='Personel Ödedi'&&e.reimbursement_status==='Bekliyor'))
+    add(today,'out',false,e.amount,'Personel masrafı geri ödeme',nm('personnel',e.personnel_id)+' · ödeme günü tahmini','#/gider/'+e.id);
   // Maaşlar: bu ay kalan (ay sonu + 1) + geçen ay ödenmemiş kalan (hemen)
   const per = today.slice(0, 7);
   const prevD = new Date(today.slice(0, 8) + "01T12:00:00"); prevD.setMonth(prevD.getMonth() - 1);
@@ -115,7 +138,8 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
       inSure: r0(sumBy(its.filter((i) => i.dir === "in" && i.sure), (i) => i.amount)), inEst: r0(sumBy(its.filter((i) => i.dir === "in" && !i.sure), (i) => i.amount)),
       outSure: r0(sumBy(its.filter((i) => i.dir === "out" && i.sure), (i) => i.amount)), outEst: r0(sumBy(its.filter((i) => i.dir === "out" && !i.sure), (i) => i.amount)) });
   }
-  const start = cashOnHand == null ? null : Number(cashOnHand) || 0;
+  const start = cashOnHand == null ? null : (cashOnHand!==''&&Number.isFinite(Number(cashOnHand))&&Number.isSafeInteger(toKurus(cashOnHand))?r0(cashOnHand):null);
+  if(cashOnHand!=null&&start==null)reviews.push({label:'Başlangıç nakdi',reason:'Kayıtlı nakit tutarı geçersiz; sıfır varsayılmadı.',href:'#/nakit'});
   let good = start ?? 0, bad = start ?? 0, lowGood = null, lowBad = null;
   for (const w of W) {
     good += w.inSure + w.inEst - w.outSure - w.outEst; bad += w.inSure - w.outSure - w.outEst;
@@ -124,7 +148,7 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
     if (!lowBad || w.bad < lowBad.amount) lowBad = { amount: w.bad, week: w };
   }
   const late = r0(sumBy(items.filter((i) => i.late && i.dir === "in"), (i) => i.amount));
-  return { today, end, start, weeks: W, lowGood, lowBad, lateIn: late, totals: {
+  return { today, end, start, weeks: W, lowGood, lowBad, lateIn: late, reviews, complete:!reviews.length, totals: {
     inSure: r0(sumBy(W, (w) => w.inSure)), inEst: r0(sumBy(W, (w) => w.inEst)), outSure: r0(sumBy(W, (w) => w.outSure)), outEst: r0(sumBy(W, (w) => w.outEst)) } };
 }
 
@@ -132,6 +156,8 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
 export function forecastSummary(F) {
   return {
     bugun: F.today, baslangic_nakit_TL: F.start,
+    kayitlar_tam:F.complete,kontrol_bekleyen:F.reviews.map(r=>r.label+': '+r.reason),
+    varsayim:'Vade ve ödeme sözleri gerçekleşmiş para değildir. Kötü senaryo da kayıtlı vade/söz tahsilatının gerçekleştiğini varsayar. Eksik kayıt varsa bütün nakit ihtiyacı hesaplanmış sayılmaz.',
     haftalar: F.weeks.map((w) => ({ hafta: `${w.from}..${w.to}`, giris_kesin: w.inSure, giris_tahmini: w.inEst, cikis_kesin: w.outSure, cikis_tahmini: w.outEst, bakiye_normal: w.good, bakiye_kotu: w.bad,
       kalemler: w.items.slice(0, 8).map((i) => `${i.dir === "in" ? "+" : "-"}${i.amount} ${i.label}${i.sure ? "" : " (tahmini)"}${i.late ? " (gecikmiş)" : ""}`) })),
     en_dusuk_normal: F.lowGood?.amount, en_dusuk_kotu: F.lowBad?.amount, gecikmis_beklenen_tahsilat: F.lateIn,

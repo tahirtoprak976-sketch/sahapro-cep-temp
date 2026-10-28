@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.78** — 28.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.79** — 28.10.2026
+
+Finans denetimi: ondalıklı nakit girişi, çek/söz çifte sayımı, borç doğrulaması,
+işlem kimliği çatışmaları, atomik tahsilat tarafları ve aylık tarih sınırı onarıldı.
+[İnceleme, kapsam ve korunan hesap politikaları](docs/FINANCE_AUDIT_v3979.md).
 
 Cari listesi ve müşteri cari kartında tahsilat öncesi ana para + KDV = toplam ayrı görünür.
 Tahsilat, devir/düzeltme ve mevcut kayıtlı bakiye korunur; tahsilatın ana para/KDV dağılımı varsayılmaz.

@@ -34,7 +34,7 @@ export function monthlySeries(data, opts = {}) {
   );
   const {internal,billed}=workReviewContext(data);
   for (const w of data.work_records || []) {
-    if (!isActive(w)) continue;
+    if (!isActive(w) || w.date > today) continue;
     const r = rows.get(monthKey(w.date));
     if (!r) continue;
     r.works++;
@@ -47,13 +47,13 @@ export function monthlySeries(data, opts = {}) {
     if (L > 0) r.fuelPayL += L;
   }
   for (const c of data.cash_records || []) {
-    if (!isActive(c) || c.cash_type !== "Müşteriden Para Alındı") continue;
+    if (!isActive(c) || c.date > today || c.cash_type !== "Müşteriden Para Alındı") continue;
     const r = rows.get(monthKey(c.date));
     if (r) r.collected += toKurus(c.amount);
   }
   // Use the exact same recognized costs as Masraflar; receipt-linked expenses cannot recur.
   const kinds = {gider:'expense',yakit:'fuel',bakim:'maint',esnaf:'esnaf',dokum:'dump',personel:'pay'};
-  for (const cost of costRows(data)) {
+  for (const cost of costRows(data,{to:today})) {
     const r = rows.get(monthKey(cost.date));
     if (!r) continue;
     r[kinds[cost.kind]] += toKurus(cost.amount);
@@ -65,10 +65,10 @@ export function monthlySeries(data, opts = {}) {
     }
   }
   for (const f of data.fuel_records || []) {
-    if (!isActive(f) || f.fuel_source !== 'Müşteri Verdi') continue;
+    if (!isActive(f) || f.date > today || f.fuel_source !== 'Müşteri Verdi') continue;
     const r = rows.get(monthKey(f.date)); if (r) r.fuelGotL += Number(f.liters) || 0;
   }
-  for (const f of pendingFuelSummary(data).rows) {
+  for (const f of pendingFuelSummary(data,{to:today}).rows) {
     const r=rows.get(monthKey(f.date)); if(!r)continue;
     r.fuelPending=(r.fuelPending||0)+1; r.fuelPendingLiters=(r.fuelPendingLiters||0)+(Number(f.liters)||0);
   }

@@ -104,6 +104,10 @@ async function hub(ctx) {
   const monthH = cur.work;
   const monthT = cur.collected;
   const monthG = cur.cost;
+  const receipts=(d.cash_records||[]).filter(c=>isActive(c)&&c.cash_type==='Müşteriden Para Alındı'&&c.date>=from&&c.date<=today);
+  const custody=groups=>Math.round(receipts.filter(c=>groups.includes(c.cash_status)).reduce((n,c)=>n+Number(c.amount||0),0)*100)/100;
+  const atPersonnel=custody(['PERSONELDE']),waitingHandover=custody(['TESLIM_BILDIRILDI']),atBank=custody(['BANKADA']),atCash=custody(['KASAYA_TESLIM_EDILDI','KASADA']);
+  const unknownCustody=receipts.filter(c=>!['PERSONELDE','TESLIM_BILDIRILDI','BANKADA','KASAYA_TESLIM_EDILDI','KASADA'].includes(c.cash_status)).length;
   const items = [
     ["#/sozlesmeler", "▤", "Sözleşme Belgeleri", "şablonlar + imzalar"],
     ["#/teklif-hesap", "🧮", "Teklif Asistanı", "Kaça vermeliyim? Maliyet + geçmiş fiyat"],
@@ -124,6 +128,11 @@ async function hub(ctx) {
       ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
+    <section class="card" data-finance-custody><h3>Bu ayki tahsilatın parası nerede?</h3>
+      ${kv('Personelde',fmtTL(atPersonnel)+' ₺')}${kv('Teslim bildirildi · onay bekliyor',fmtTL(waitingHandover)+' ₺')}${kv('Kasaya teslim edilmiş',fmtTL(atCash)+' ₺')}${kv('Banka kaydı',fmtTL(atBank)+' ₺')}
+      <p class="small muted">Bunlar bu ayın tahsilat kayıtlarıdır; toplam kasa / banka bakiyesi değildir. Personeldeki para ile kasaya teslim ayrı izlenir.</p>
+      ${unknownCustody?notice('warn',unknownCustody+' tahsilatta paranın bulunduğu durum kayıtlı değil; kasa/banka toplamına varsayımla eklenmedi.'):''}
+      <a class="btn sm" href="#/kasa">Tahsilat ve teslim kayıtlarını incele →</a></section>
     ${cur.financialReview ? notice("warn", `${cur.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) + '<a class="btn sm" href="#/veri-sagligi" data-go="#/veri-sagligi">Veri Sağlığı ›</a>' : ""}
     ${dumpCostBreakdown(monthCosts)}
     ${pendingFuelSummary(d,{from,to:today}).count?notice("warn",pendingFuelSummary(d,{from,to:today}).warning):""}

@@ -12,6 +12,7 @@ on:
       - fix/redteam-three-findings
       - fix/solo-workflow-76
       - fix/solo-cari-vat-78
+      - fix/solo-finance-audit-79
 
 permissions:
   contents: read
@@ -94,7 +95,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -210,6 +211,36 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 243e3050e09aff33d6e2b030d31b8bf13403effd
+
+      - name: Verify installed live v3.9.78 to finance audit release preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 6c75c4e5e99b2c75cd71653e01a6a0d7e88fa8c3
+
+      - name: Reproduce financial identity and race defects on unchanged v3.9.78
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-finance79-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 6c75c4e5e99b2c75cd71653e01a6a0d7e88fa8c3 | tar -x -C "$baseline"
+          python3 -m http.server 8850 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-finance79-baseline-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8850/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/finance_audit79.py http://localhost:8850/ --baseline-proof --artifacts /tmp/solo-finance79-baseline
 
       - name: Reproduce all three redteam findings on unchanged v3.9.74
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
@@ -337,6 +368,8 @@ jobs:
             /tmp/solo-work-entry/*.png
             /tmp/solo-finance-integrity/*
             /tmp/solo-cari-vat/*
+            /tmp/solo-finance-audit79/*
+            /tmp/solo-finance79-baseline/*
             /tmp/solo-dump-cost-reliability/*
             /tmp/solo-contract-extra-rates/*
             /tmp/solo-attachment-safety/*

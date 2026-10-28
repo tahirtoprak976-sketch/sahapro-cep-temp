@@ -1,7 +1,7 @@
 // Nakit tahmini ekranı (#/nakit): önümüzdeki 5 hafta para girişi / çıkışı, iki senaryo, en sıkışık hafta.
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, promptDialog } from "./ui.js";
 
-const tl = (n) => (Number(n) < 0 ? "−" : "") + Math.abs(Math.round(Number(n) || 0)).toLocaleString("tr-TR") + " ₺";
+const tl = (n) => (Number(n) < 0 ? "−" : "") + Math.abs(Number(n)||0).toLocaleString("tr-TR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " ₺";
 const SYSTEM = "Sen küçük bir hafriyat/nakliye işletmesinin mali danışmanısın. Sana önümüzdeki haftaların hesaplanmış nakit tahmini (JSON) verilecek. Türkçe, sade, en fazla 6 kısa cümle yaz: en sıkışık hafta hangisi ve neden, hangi tahsilata öncelik verilmeli, hangi ödeme ertelenebilir/konuşulmalı. YALNIZ verilen rakamları kullan, yeni rakam üretme, toplama/çıkarma yapma. Kesin olmayan (tahmini) kalemleri kesin gibi anlatma.";
 
 export async function screen(ctx) {
@@ -9,7 +9,7 @@ export async function screen(ctx) {
   const { root, db } = ctx;
   const today = todayStr();
   const d = await db.dumpAll();
-  const { cashForecast, forecastSummary } = await import("./cashflow-core.js");
+  const { cashForecast, forecastSummary, cashAmountInput } = await import("./cashflow-core.js");
   const coh = await db.metaGet("cash_on_hand"); // { amount, date }
   const F = cashForecast(d, { today, notes: (await db.metaGet("collect_notes")) || {}, cashOnHand: coh ? coh.amount : null });
   const color = (n) => (n < 0 ? "#d9534f" : "inherit");
@@ -31,9 +31,10 @@ export async function screen(ctx) {
       <div class="row between"><span>Şu an elimdeki para (kasa + banka)</span><button class="btn sm" data-coh>${coh ? tl(coh.amount) : "Yaz"}</button></div>
       ${coh ? `<div class="tiny muted">${trDate(coh.date)} tarihinde yazıldı${coh.date !== today ? " — güncellemeniz iyi olur" : ""}</div>` : '<div class="tiny muted">Yazarsanız haftalık kasa bakiyesi ve en sıkışık gün hesaplanır.</div>'}
     </div>
-    ${F.start != null && F.lowBad?.amount < 0 ? notice("err", `Kötü senaryoda (yalnız kesin tahsilatlar gelirse) ${trDate(F.lowBad.week.from)} haftasında kasa ${tl(F.lowBad.amount)} olur. Tahsilatları öne çekin ya da ödemeleri konuşun.`)
+    ${F.start != null && F.lowBad?.amount < 0 ? notice("warn", `Kayıtlı vade / söz tahsilatları varsayımında bile ${trDate(F.lowBad.week.from)} haftasında kasa ${tl(F.lowBad.amount)} görünüyor. Tahsilatları öne çekin ya da ödemeleri konuşun.`)
       : F.start != null && F.lowGood?.amount < 0 ? notice("warn", `Beklenen tahsilatlar gelse bile ${trDate(F.lowGood.week.from)} haftasında kasa ${tl(F.lowGood.amount)} olur.`)
-      : F.start != null ? notice("ok", `5 hafta boyunca kasa artıda görünüyor (en düşük: ${tl(F.lowBad.amount)}, kötü senaryo).`) : ""}
+      : F.start != null && F.complete ? notice("ok", `Kayıtlı vade / söz tahsilatları gerçekleşirse 5 haftalık bilinen kasa artıda görünüyor (en düşük: ${tl(F.lowBad.amount)}).`) : ""}
+    ${F.reviews.length?`<section class="card" data-cashflow-review>${notice('warn',F.reviews.length+' kayıt kontrol bekliyor. Eksik / çelişkili borçlar sıfır sayılmadı; aşağıdaki tahmin bütün nakit ihtiyacını kapsamıyor.')} ${F.reviews.map(r=>`<a class="btn block" href="${esc(r.href)}">${esc(r.label)} · ${esc(r.reason)} →</a>`).join('')}</section>`:''}
     ${F.lateIn ? notice("info", `${tl(F.lateIn)} tahsilat gecikmiş durumda; bu haftaya yazıldı ama gelmeyebilir.`) : ""}
     <div class="formgrid2">
       <div class="card" style="margin:0;padding:10px"><div class="tiny muted">5 haftada giriş</div><b>${tl(F.totals.inSure)}</b><div class="tiny muted">+ ${tl(F.totals.inEst)} tahmini</div></div>
@@ -42,13 +43,12 @@ export async function screen(ctx) {
     ${F.weeks.map(week).join("")}
     <button class="btn block" data-ai style="margin-top:6px">🤖 Danışman yorumu (Gemini)</button>
     <div data-aiout></div>
-    <div class="tiny muted" style="margin:8px 4px 80px">Kesin: ödeme sözleri, çek/senet vadeleri, esnaf borçları (vade yoksa belge + 30 gün), puantajdaki maaş kalanı, geçen seferki tutarıyla belge yenileme. Tahmini: sözü olmayan alacaklar (müşterinin ödeme aralığına göre), mazot / gider / bakım (son günlerin ortalaması). Vergi, SGK primi, kredi taksidi kayıtlı değilse hesapta yoktur.</div>`;
+    <div class="tiny muted" style="margin:8px 4px 80px">Kayıtlı vade / söz: ödeme sözleri, çek/senet vadeleri, esnaf borçları, puantajdaki maaş kalanı, geçen seferki tutarıyla belge yenileme. Bunlar gerçekleşmiş tahsilat veya ödeme garantisi değildir. Kötü senaryo da kayıtlı söz / vade tahsilatını varsayar. Tahmini: vadesiz borçlar (belge +30 gün), sözü olmayan alacaklar, personel masrafı geri ödemesi, mazot / gider / bakım ortalamaları. Vergi, SGK primi, kredi taksidi kayıtlı değilse hesapta yoktur.</div>`;
 
   qs("[data-coh]", root).addEventListener("click", async () => {
     const v = await promptDialog("Elimdeki para", "Kasa + banka toplamı (₺)", coh ? String(coh.amount) : "");
     if (v === null) return;
-    const n = Number(String(v).replace(/\./g, "").replace(",", "."));
-    if (!Number.isFinite(n)) return toast("Sayı yazın", "err");
+    let n;try{n=cashAmountInput(v);}catch(e){return toast(e.message,'err');}
     await db.metaSet("cash_on_hand", { amount: n, date: today });
     ctx.reload();
   });
