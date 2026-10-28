@@ -1170,6 +1170,25 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
   font-size: .875em;
   font-weight: 650;
 }
+.cari-customer-card { padding: 18px; }
+.cari-customer-head { display: flex; align-items: flex-start; gap: 12px; }
+.cari-card-title { margin: 0; flex: 1; min-width: 0; font-size: 1.05em; line-height: 1.45; overflow-wrap: anywhere; }
+.cari-customer-head>span { color: var(--muted); font-size: 22px; }
+.cari-money { min-width: 0; font-variant-numeric: tabular-nums; }
+.cari-money-caption { font-size: .75em; color: var(--muted); margin: 12px 0; }
+.cari-money-parts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 12px 0; }
+.cari-money-parts>div { min-width: 0; }
+.cari-money-parts span { display: block; font-size: .8em; color: var(--muted); margin-bottom: 5px; }
+.cari-money-parts strong { display: block; font-size: 1.1em; overflow-wrap: anywhere; }
+.cari-money-line,.cari-money-balance { display: flex; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin: 8px 0; font-size: .85em; }
+.cari-money-line { color: var(--muted); }
+.cari-money-line b { color: var(--text); }
+.cari-money-balance { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; align-items: baseline; }
+.cari-money-balance strong { font-size: 1.2em; }
+.cari-money-unknown { font-size: .85em; color: var(--warn); }
+.cari-money-note { font-size: .75em; color: var(--muted); line-height: 1.6; margin: 10px 0 0; overflow-wrap: anywhere; }
+.cari-money-note:empty { display: none; }
+.cari-money-note.warn { color: var(--warn); }
 [data-operation-summary] .work-explorer-metrics{margin:8px 0}[data-operation-summary] .work-explorer-metrics>div{padding:8px}[data-operation-summary] .work-explorer-metrics strong{font-size:22px}.operation-explanation{font-size:12px;color:var(--muted);margin-top:10px}.operation-explanation summary{cursor:pointer;min-height:30px;padding:4px 0}
 
 /* Assistant conversation: bounded local history, readable messages and explicit action status. */

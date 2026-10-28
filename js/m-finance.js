@@ -1139,40 +1139,55 @@ async function hakedisDetail(ctx, id) {
 }
 
 // ============ CARİ ============
+function cariMoneyHTML(m, summary = false) {
+  const amount = value => value == null ? '<span class="cari-money-unknown">Kontrol gerekli</span>' : `${fmtTL(value)} ₺`;
+  return `<div class="cari-money" data-cari-money>
+    <p class="cari-money-caption">${summary ? 'Alacağı olan müşteriler' : 'İş + hakediş'} · tahsilat öncesi</p>
+    <div class="cari-money-parts">
+      <div><span>Ana para</span><strong data-cari-net>${amount(m.net)}</strong></div>
+      <div><span>+ KDV</span><strong data-cari-vat>${amount(m.tax)}</strong></div>
+    </div>
+    <div class="cari-money-line"><span>Toplam (KDV dahil)</span><b data-cari-gross>${amount(m.gross)}</b></div>
+    ${m.receipts ? `<div class="cari-money-line"><span>Tahsilat</span><b data-cari-receipts>${fmtTL(m.receipts)} ₺</b></div>` : ''}
+    ${m.adjustments ? `<div class="cari-money-line"><span>Devir / düzeltme</span><b>${m.adjustments > 0 ? '+' : ''}${fmtTL(m.adjustments)} ₺</b></div>` : ''}
+    <div class="cari-money-balance"><span>Kayıtlı bakiye</span><strong data-cari-balance>${!summary && m.balance > 0 ? '+' : ''}${fmtTL(m.balance)} ₺</strong></div>
+    ${m.unpostedTax ? `<p class="cari-money-note">KDV hariç işlerin ${fmtTL(m.unpostedTax)} ₺ KDV’si kayıtlı bakiyeye henüz eklenmedi.</p>` : ''}
+    ${m.issues.length ? `<p class="cari-money-note warn">${m.issues.length} kayıtta ana para / KDV ayrımı kontrol edilmeli. Eksik bilgiye oran varsayılmadı; kayıtlı bakiye korundu.</p>` : ''}
+  </div>`;
+}
+
 async function cari(ctx) {
   const sub = ctx.parts[1];
   const { root, db, names } = ctx;
   if (sub) return cariDetail(ctx, sub);
   const d = await db.dumpAll();
   const customers = (d.customers || []).filter((c) => isActive(c) && !c.internal);
-  const { customerBalances, unpricedGroups } = await import("./collect-core.js");
+  const { unpricedGroups } = await import("./collect-core.js");
+  const { customerVatBreakdowns, receivableVatSummary } = await import("./vat-contract.js");
   const { customerFuelLedger, fuelRulesOf } = await import("./assistant-rules.js");
-  const { bal, unbilled } = customerBalances(d);
+  const money = customerVatBreakdowns(d), total = receivableVatSummary(money);
   const rows = customers.map((c) => {
     const fuel = fuelRulesOf(c).length ? customerFuelLedger(d, c.id) : null;
     const np = unpricedGroups(d, c.id).reduce((n, g) => n + g.works.length, 0);
-    return { c, b: bal[c.id] || 0, u: unbilled[c.id] || 0, fuel, np };
+    const m = money.get(c.id);
+    return { c, b:m.balance, u:m.unbilled, m, fuel, np };
   }).sort((a, b) => b.b - a.b || (b.fuel?.balance || 0) - (a.fuel?.balance || 0) || b.np - a.np || a.c.name.localeCompare(b.c.name, "tr"));
-  const total = rows.reduce((n, r) => n + Math.max(0, r.b), 0);
   root.innerHTML =
     appbar("Cari", "Müşteri bakiyeleri") +
     `
     <div style="height:10px"></div>
     <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
-    <div class="card tap" data-go="#/tahsilat"><div class="row between"><span class="muted small">Toplam alacak</span><span class="strong">${fmtTL(total)} ₺ ›</span></div>
+    <div class="card tap" data-go="#/tahsilat" data-cari-total><div class="row between"><h2 class="cari-card-title">Toplam alacak</h2><span aria-hidden="true">›</span></div>
+      ${cariMoneyHTML(total, true)}
       <div class="muted tiny">Bakiye = hakedişler + hakedişe girmemiş fiyatlı işler − tahsilatlar. Gün gün takip ve hatırlatma için dokunun.</div></div>
     <div data-list></div>`;
   qs("[data-list]", root).innerHTML = rows.length
     ? rows
-        .map(({ c, b, u, fuel, np }) =>
-          li({
-            ic: "🏢",
-            href: "#/cari/" + c.id,
-            t1: esc(customerLabel(c, customers)),
-            t2: esc([u > 0 ? `${fmtTL(u)} ₺ hakedişe girmemiş iş` : "", fuel && fuel.balance ? `⛽ ${fuel.balance > 0 ? fuel.balance + " L mazot alacağı" : -fuel.balance + " L fazla mazot alındı"}` : "", np ? `⚠ ${np} iş fiyatsız (bakiyeye girmedi)` : ""].filter(Boolean).join(" · ")),
-            end: `<span class="amt ${b > 0 ? "" : "muted"}">${b > 0 ? "+" : ""}${fmtTL(b)} ₺</span>`,
-          }),
-        )
+        .map(({ c, u, m, fuel, np }) => `<a class="card cari-customer-card" href="#/cari/${esc(encodeURIComponent(c.id))}" data-cari-customer="${esc(c.id)}">
+          <div class="cari-customer-head"><h2 class="cari-card-title">${esc(customerLabel(c, customers))}</h2><span aria-hidden="true">›</span></div>
+          ${cariMoneyHTML(m)}
+          <p class="cari-money-note">${esc([u > 0 ? `${fmtTL(u)} ₺ hakedişe girmemiş iş` : "", fuel && fuel.balance ? `⛽ ${fuel.balance > 0 ? fuel.balance + " L mazot alacağı" : -fuel.balance + " L fazla mazot alındı"}` : "", np ? `⚠ ${np} iş fiyatsız (bakiyeye girmedi)` : ""].filter(Boolean).join(" · "))}</p>
+        </a>`)
         .join("")
     : emptyState("🏢", "Müşteri yok");
 }
@@ -1197,14 +1212,16 @@ async function cariDetail(ctx, cid) {
     .filter((m) => m.type === "Tahsilat")
     .reduce((s, m) => s + (Number(m.amount) || 0), 0);
   const balance = Math.round(movements.reduce((s, m) => s + (Number(m.amount) || 0), 0) * 100) / 100;
+  const { customerVatBreakdowns } = await import("./vat-contract.js");
+  const money = customerVatBreakdowns(dAll).get(cid);
   root.innerHTML =
     appbar(c ? customerLabel(c, dAll.customers || []) : "Cari", "Müşteri cari kartı") +
     `
-    <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+    ${money ? `<section class="card" data-cari-detail-money>${cariMoneyHTML(money)}</section>` : `<div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${stat(fmtTL(hak), "İş + Hakediş ₺", "accent")}
       ${stat(fmtTL(tah), "Tahsilat ₺", "ok")}
       ${stat((balance > 0 ? "+" : "") + fmtTL(balance), "Bakiye ₺", balance > 0 ? "warn" : "")}
-    </div>
+    </div>`}
     ${fuel ? `<div class="card tap" data-go="#/musteriler/${esc(cid)}"><div class="row between"><span>⛽ <b>Mazot hesabı</b> (ücreti mazotla ödüyor)</span><span class="strong">${fuel.balance > 0 ? fuel.balance + " L alacak" : fuel.balance < 0 ? -fuel.balance + " L fazla" : "kapalı"}</span></div><div class="tiny muted">${fuel.earned} L hak edildi · ${fuel.received} L alındı${lp && fuel.balance > 0 ? ` · ≈ ${fmtTL(fuel.balance * lp)} ₺ değerinde` : ""}. Mazotla ödenen işler TL bakiyeye 0 yazar; alacak litre olarak izlenir.</div></div>` : ""}
     ${groups.length ? `<div class="section-title">⚠ Fiyatı girilmemiş işler (${groups.reduce((n, g) => n + g.works.length, 0)}) — bakiyeye girmedi</div>
     <div class="card"><div class="tiny muted" style="margin-bottom:6px">Birim fiyatı, KDV oranını ve dahil / hariç temelini kontrol edin. Onayladığınız aynı fiyat bu ekrandaki gruba ve seçerseniz gelecekteki fiyat kuralına birlikte yazılır. Eksik bilgi 0 sayılmaz; bedelsiz iş için açıkça 0 girin. Bir kayıt değişmişse hiçbirine fiyat yazılmaz.</div>

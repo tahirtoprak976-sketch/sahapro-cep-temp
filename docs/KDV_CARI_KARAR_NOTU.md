@@ -1,6 +1,10 @@
 # KDV ve cari için tutar sözleşmesi: karar notu
 
-Durum: **karar bekliyor**. Hiçbir hesap değiştirilmedi. Eski kayıtlar otomatik dönüştürülmüyor. Bu sürüm yalnız karışık ya da belirsiz veriyi **Veri Sağlığı**'nda işaretliyor (`vat-mixed`, `vat-ambiguous`) ve raporluyor (`js/vat-contract.js` → `workMoney`, `vatContractReport`).
+Durum: **cari hesabının net/brüt politikası için karar bekliyor**. Hiçbir hesap değiştirilmedi. Eski kayıtlar otomatik dönüştürülmüyor. Karışık ya da belirsiz veri **Veri Sağlığı**'nda işaretlenir (`vat-mixed`, `vat-ambiguous`) ve raporlanır (`js/vat-contract.js` → `workMoney`, `vatContractReport`).
+
+**v3.9.78 görünüm kararı:** Kullanıcının isteğiyle cari listesi ve müşteri cari kartına **tahsilat öncesi ana para + KDV = toplam** eklendi. Kesinleşen hakedişte kayıtlı net/KDV/brüt başlıkları, hakedişe girmeyen işte kendi fiyat snapshot'ı kullanılır. Tahsilat ve devir/düzeltme ayrı gösterilir; tahsilatın ana para/KDV dağılımı tahmin edilmez. Mevcut kayıtlı bakiye ve diğer ekran/ekstreler değişmez. KDV hariç işlerin cariye henüz eklenmemiş KDV'si açıkça belirtilir.
+
+Yeni cari görünümü oranı veya fiyat temeli eksik işte **%20 varsaymaz**; bilinen ana para korunur, KDV/brüt için kontrol ister. Eski `workMoney` raporunun aşağıda açıklanan varsayım davranışı yalnız eski denetim raporunda korunur. Yeni ayrım `customerVatBreakdowns` ve `receivableVatSummary` ile salt okunur olarak üretilir; belge durumu oranın yerine geçmez ve %0 geçerlidir.
 
 ## Ayrı tutulması gereken alanlar
 
