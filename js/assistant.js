@@ -23,7 +23,7 @@ import {guideHTML,bindGuide} from "./assistant-guide.js";
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog, repeatOrNewDialog, choiceDialog, fmtTL, fmtNum, todayStr, trDate } from "./ui.js";
 import { WORK_TYPES, EXPENSE_CATEGORIES, expenseCategoryNames, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, isActive } from "./core.js";
 import { documentOwner } from "./business.js";
-import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, applyTicketReread, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
+import { validateTickets, validateDocuments, heardText, ASSIST_DOC_TYPES, NO_EXPIRY, mergeTicketsIntoWorks, applyTicketReread, ticketKey, plateKey, VEHICLE_KINDS, VEHICLE_INFO_LABELS, PERSON_INFO_LABELS, COMPANY_INFO_LABELS, vehicleUpdate } from "./assistant-docs.js";
 import { occupationOnly } from "./assistant-core.js";
 import { priceDecision, priceSummary } from "./price-decision.js";
 import * as JOB from "./job-core.js";
@@ -1398,7 +1398,9 @@ async function save(ctx, out, v, d, { message, files }) {
         const file = files[r.photo];
         const date = val(c, "date"), vid = val(c, "vehicle"), no = val(c, "ticket_no").trim();
         const fresh = await db.dumpAll();
-        if ((fresh.documents || []).some((x) => isActive(x) && x.category === "Döküm Fişi" && String(x.doc_no).trim() === no)) {
+        // Önizlemedeki "zaten kayıtlı" kuralıyla aynı: tire/boşluk/büyük-küçük harf farkı ayrı fiş sayılmaz.
+        const noKey = ticketKey(no);
+        if ((fresh.documents || []).some((x) => isActive(x) && x.category === "Döküm Fişi" && (String(x.doc_no).trim() === no || (noKey.length >= 2 && ticketKey(x.doc_no) === noKey)))) {
           toast(`Fiş ${no} zaten kayıtlı, atlandı`, "err");
           continue;
         }

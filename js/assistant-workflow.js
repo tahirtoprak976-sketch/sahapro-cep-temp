@@ -79,7 +79,8 @@ export function resolveDraftReply(message,rows,today=todayStr()){
  if(field){
   if(field==='date'){value=dateValue(value,today);if(!value)return {type:'clarify',message:'Geçerli bir tarih yazın; örneğin 18.10.2026 veya dün.'};updates={date:value};}
   else if(field==='quantity'&&!updates){value=amount(value);if(!value)return {type:'clarify',message:'Miktarı pozitif sayı ve birimiyle yazın; örneğin 3 sefer veya 2 saat.'};updates={quantity:value};}
-  else if(['money','amount','total','unit_price','cost','liters'].includes(field)){
+  // "20 litre" yukarıda litre güncellemesi olarak çözüldüyse burada tutar gibi yeniden okunmaz.
+  else if(!updates&&['money','amount','total','unit_price','cost','liters'].includes(field)){
    const n=amount(value);if(!n)return {type:'clarify',message:'Tutar veya miktar pozitif bir sayı olmalı. Örneğin tutar 20.000 TL.'};
    const moneyField=r=>field==='money'||field==='amount'?r.kind==='collection'||r.kind==='expense'?'amount':r.kind==='maintenance'?'cost':null:field==='total'?r.kind==='fuel'?'total':null:field;
    possible=possible.map(r=>({...r,_field:moneyField(r)})).filter(r=>r._field&&Object.hasOwn(r.fields,r._field)&&(!(field==='money')||scoped.kind||!r.fields[r._field]));
