@@ -23,6 +23,7 @@ export async function loadTaskFiles(db, taskId) {
 }
 export async function saveTaskFiles(db, taskId, files = []) {
   if (!taskId || !Array.isArray(files) || files.length > 20) throw Error('Görev dosyaları geçersiz.');
+  if(!files.length){await db.draftClear(prefix + taskId);return;}
   await db.draftSave(prefix + taskId, {files,updated_at:new Date().toISOString()});
 }
 export async function clearPendingFiles(db) { await db.draftClear(PENDING); }

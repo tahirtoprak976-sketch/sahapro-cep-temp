@@ -195,7 +195,11 @@ export async function screen(ctx) {
     } catch (e) { switchingTask = false; throw e; }
     return () => { switchingTask = false; };
   };
-  qs("[data-clearfiles]",root).onclick=()=>{filesGeneration++;filesPending=false;files=[];attachmentError="";photosIn.value="";showThumbs();};
+  qs("[data-clearfiles]",root).onclick=async()=>{filesGeneration++;filesPending=false;files=[];attachmentError="";photosIn.value="";
+    try { const { clearPendingFiles } = await import("./assistant-task-files.js"); await clearPendingFiles(db); }
+    catch (e) { attachmentError = e.message || String(e); toast("Dosya taslağı temizlenemedi: " + attachmentError, "err"); }
+    showThumbs();
+  };
   photosIn.addEventListener("change", async () => {
     const generation = ++filesGeneration; filesPending=false;
     const next = [...files.filter((f) => f._rec), ...photosIn.files];
