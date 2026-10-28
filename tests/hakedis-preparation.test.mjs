@@ -54,6 +54,12 @@ const review=d=>hakedisPreparation(d,scope);
  d.fuel_records.push({id:'BAD',date:'',customer_id:'C',fuel_source:'Müşteri Verdi',liters:20});assert.equal(review(d).fuel.closing,null);assert.equal(review(d).fuel.incomplete,true);
 }
 {
+ const d=data();d.work_records=[work('F',{price_snapshot:{unit_price:0,amount:0,kdv_rate:0,price_source:'Mazot karşılığı'}})];
+ assert.equal(review(d).counts.review,1,'missing fuel entitlement is not a completed agreement');
+ assert.equal(review(d).fuel.hasRecords,true);assert.equal(review(d).fuel.opening,null);assert.equal(review(d).fuel.earned,null);assert.equal(review(d).fuel.received,null);assert.equal(review(d).fuel.closing,null,'unknown entitlement must not become zero or a false fuel advance');
+ d.work_records[0].customer_fuel_allowance_l=75;d.work_records[0].price_snapshot.amount=1000;assert.equal(review(d).counts.review,1,'non-TL label with a positive monetary charge needs review');
+}
+{
  const d=data();d.work_records=[work('W',{vehicle_id:'DELETED'})];assert.equal(review(d).counts.missing,1);
  d.work_records[0]=work('W',{quantity:2});assert.equal(review(d).counts.review,1,'stored amount mismatch is reviewed, not silently recomputed');
  d.work_records[0]=work('W',{site_id:'WRONG'});assert.equal(review(d).counts.review,1);

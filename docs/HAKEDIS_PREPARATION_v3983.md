@@ -14,7 +14,7 @@ Borçlu müşteri kimliği esas alınır; ana firma ile taşeron birleştirilmez
 
 ## Mazot ve fişler
 
-Mazot için dönem başı devir + dönemde hak edilen − alınan = dönem sonu litre farkı gösterilir. Hak, teslim ve TL tahsilatı ayrıdır; farkın sıfır olmaması hata değildir. Hesap müşterinin tüm şantiyelerini kapsar, teslimler işlere dağıtılmaz. Geçersiz tarih/litre varsa kesin kalan gösterilmez. Dönemden sonraki teslimler geçmiş hesaba düşülmez.
+Mazot için dönem başı devir + dönemde hak edilen − alınan = dönem sonu litre farkı gösterilir. Hak, teslim ve TL tahsilatı ayrıdır; farkın sıfır olmaması hata değildir. Hesap müşterinin tüm şantiyelerini kapsar, teslimler işlere dağıtılmaz. Geçersiz tarih/litre veya mazot karşılığı işte eksik hak litresi varsa hesap sıfıra tamamlanmaz; “Hesaplanamadı” gösterilir. Dönemden sonraki teslimler geçmiş hesaba düşülmez.
 
 Fiş sayımı işe kimlikle bağlı aktif Döküm Fişi belgeleri ve işin fiş numarası üzerinden yapılır; aynı numara iki kez sayılmaz. Fotoğraf/ham mesajın gerçek doğruluğunu veya WhatsApp'ta kalmış ama uygulamaya girilmemiş işleri bu ekran ölçmez. Saat/yevmiye işi sırf döküm fişi olmadığı için eksik sayılmaz.
 

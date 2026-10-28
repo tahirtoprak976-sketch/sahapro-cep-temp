@@ -63,7 +63,11 @@ with sync_playwright() as pw:
  assert len(result['claims'])==2 and any(set(h['ids'])=={ids['ready'],ids['zero'],ids['haul']} and h['total']==2400 and h['status']=='Taslak' for h in result['claims']),result
  assert result['cash']==0 and result['cari']==0 and result['unlocked'],result
  pg.goto(prep);pg.wait_for_selector('[data-preparation]');assert '(0)' in pg.locator('[data-prep-tab=ready]').inner_text() and '(4)' in pg.locator('[data-prep-tab=claimed]').inner_text()
+ # A legacy fuel-only job without recorded entitlement cannot invent zero liters / a false advance.
+ pg.evaluate("""async()=>{const db=await import('./js/db.js');const w=(await db.listActive('work_records')).find(w=>w.date==='2026-09-07'&&w.price_snapshot?.price_source==='Mazot karşılığı');await db.saveExisting('work_records',w,{customer_fuel_allowance_l:null},'TEST missing entitlement')}""")
+ pg.click('[data-prep-refresh]');pg.wait_for_function("()=>document.querySelector('[data-prep-fuel]')?.textContent.includes('Hesaplanamadı')")
+ assert pg.locator('[data-prep-fuel]').inner_text().count('Hesaplanamadı')==4
  ctx.set_offline(True);pg.reload(wait_until='domcontentloaded');pg.wait_for_selector('[data-preparation]');assert '(4)' in pg.locator('[data-prep-tab=claimed]').inner_text()
  assert not errors and not external,(errors,external)
- report={'local_synthetic_only':True,'counts_and_VAT':True,'parent_not_debtor':True,'period_fuel':True,'read_only_preview_and_cancel':True,'ready_only_handoff':True,'stale_ticket_rejected_before_write':True,'explicit_draft_only':True,'offline':True,'widths':[320,390,768],'page_errors':errors,'external_calls':external}
+ report={'local_synthetic_only':True,'counts_and_VAT':True,'parent_not_debtor':True,'period_fuel':True,'unknown_fuel_not_zero':True,'read_only_preview_and_cancel':True,'ready_only_handoff':True,'stale_ticket_rejected_before_write':True,'explicit_draft_only':True,'offline':True,'widths':[320,390,768],'page_errors':errors,'external_calls':external}
  (out/'result.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True);ctx.close();b.close()

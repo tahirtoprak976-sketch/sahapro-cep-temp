@@ -5,6 +5,7 @@ import {isActive} from './core.js';
 import {appbar,qs,qsa,esc,fSelect,fDate,stat,notice,kv,fmtTL,fmtNum,trDate,pagedRender} from './ui.js';
 
 const groups={ready:'Hazır',missing:'Eksik bilgi',review:'Kontrol gerekli',agreement:'Anlaşma kapsamı',claimed:'Hakedişe bağlı'};
+const liters=value=>value==null?'Hesaplanamadı':fmtNum(value)+' L';
 const monthRange=(month,today)=>{
  if(!/^\d{4}-\d{2}$/.test(month))return null;
  const from=month+'-01',m=Number(month.slice(5));
@@ -32,7 +33,7 @@ export async function screen(ctx){
   <p class="tiny muted">Bu tutar tahsilat veya cari bakiye değildir. İşler seçilip taslak oluşturulmadan ve ardından kesinleştirilmeden yeni borç oluşmaz.</p>
   ${c.ready?`<a class="btn primary block" data-prep-open-ready href="${esc(preparationURL('new',model.scope,{ready_only:'1'}))}">${c.ready} hazır işi hakedişte incele</a>`:''}
   <a class="btn block" href="${esc(preparationURL('new',model.scope))}" style="margin-top:8px">Tüm işleri normal hakediş formunda aç</a></div>
-  ${f.hasRecords?`<div class="card" data-prep-fuel><h3>Müşterinin mazot hesabı · litre</h3>${kv('Dönem başı devir',fmtNum(f.opening)+' L')}${kv('Bu dönemde hak edilen',fmtNum(f.earned)+' L')}${kv('Bu dönemde alınan',fmtNum(f.received)+' L')}${kv('Dönem sonu fark',f.closing==null?'Hesaplanamadı':fmtNum(f.closing)+' L')}
+  ${f.hasRecords?`<div class="card" data-prep-fuel><h3>Müşterinin mazot hesabı · litre</h3>${kv('Dönem başı devir',liters(f.opening))}${kv('Bu dönemde hak edilen',liters(f.earned))}${kv('Bu dönemde alınan',liters(f.received))}${kv('Dönem sonu fark',liters(f.closing))}
   <p class="tiny muted">Pozitif fark mazot alacağımız, negatif fark fazla alınan / avans mazottur. TL tahsilatı değildir; teslimler belirli işe dağıtılmaz. Müşterinin tüm şantiyelerini kapsar.</p>${f.incomplete?notice('warn',`${f.invalid} mazot kaydının tarih/litresi kontrol edilmeli. Kalan litre kesin gösterilmedi.`):''}</div>`:''}
   <div class="row" style="flex-wrap:wrap;gap:6px;margin:12px 0" data-prep-tabs>${Object.entries(groups).map(([key,label])=>`<button class="chip ${tab===key?'on':''}" data-prep-tab="${key}" aria-pressed="${tab===key}">${label} (${c[key]})</button>`).join('')}</div>
   <p class="tiny muted">Hazır: kayıtlı fiyat, miktar, müşteri/araç ve gerekiyorsa sefer/fiş kontrolleri tamam. Numara kaydı fotoğrafın okuma doğruluğunu ölçmez. Eksikler otomatik düzeltilmez.</p>

@@ -62,6 +62,8 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
   if(w.price_snapshot?.locked&&!refs.length)issues.push('Fiyat kilitli, fakat aktif hakediş bağlantısı bulunamadı.');
   if(refs.length>1||refs.some(h=>h.customer_id!==customer_id))issues.push('Hakediş bağlantısı birden fazla veya başka müşteriye ait.');
   const agreement=nonTL.has(w.price_snapshot?.price_source)||customer.internal;
+  if(w.price_snapshot?.price_source==='Mazot karşılığı'&&!(num(w.customer_fuel_allowance_l)>0))issues.push('Mazot karşılığı işin hak edilen litresi eksik veya geçersiz; anlaşmayı kontrol edin.');
+  if(!refs.length&&nonTL.has(w.price_snapshot?.price_source)&&(num(w.price_snapshot.amount)>0||num(w.price_snapshot.unit_price)>0))issues.push('Anlaşma kapsamı etiketi ile pozitif TL fiyatı birlikte kayıtlı; ödeme esasını kontrol edin.');
   // Existing claims already freeze their own tariff (including manual/legacy net bases).
   // Only unclaimed work is being proposed as a new TL claim here.
   if(!agreement&&!refs.length){
@@ -90,7 +92,9 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
  const fuelRows=live(d,'fuel_records').filter(f=>f.customer_id===customer_id&&f.fuel_source==='Müşteri Verdi');
  const tankRows=live(d,'fuel_tank_movements').filter(m=>m.customer_id===customer_id&&m.move_type==='GİRİŞ');
  const badFuel=[...fuelRows,...tankRows].filter(r=>!validDate(r.date)||(r.date<=to&&!(num(r.liters)>0))).length+
-  works.filter(w=>w.customer_id===customer_id&&w.customer_fuel_allowance_l!=null&&(!validDate(w.date)||w.date<=to)&&(num(w.customer_fuel_allowance_l)==null||Number(w.customer_fuel_allowance_l)<0||(!validDate(w.date)&&Number(w.customer_fuel_allowance_l)>0))).length;
+  works.filter(w=>w.customer_id===customer_id&&(!validDate(w.date)||w.date<=to)&&(
+   (w.price_snapshot?.price_source==='Mazot karşılığı'&&!(num(w.customer_fuel_allowance_l)>0))||
+   (w.customer_fuel_allowance_l!=null&&(num(w.customer_fuel_allowance_l)==null||Number(w.customer_fuel_allowance_l)<0||(!validDate(w.date)&&Number(w.customer_fuel_allowance_l)>0))))).length;
  const cleanFuel=fuelRows.filter(r=>validDate(r.date)&&r.date<=to&&num(r.liters)>0),cleanTank=tankRows.filter(r=>validDate(r.date)&&r.date<=to&&num(r.liters)>0);
  const fuelScope=predicate=>customerFuelLedger(d,customer_id,{works:fuelWorks.filter(predicate),fuel:cleanFuel.filter(predicate),tank:cleanTank.filter(predicate)});
  const opening=fuelScope(r=>r.date<from),period=fuelScope(inPeriod),closing=fuelScope(()=>true);
@@ -101,5 +105,5 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
  }
  return {scope:{customer_id,from,to,site_id},customer,...groups,counts:Object.fromEntries(Object.entries(groups).map(([k,v])=>[k,v.length])),
   totals,
-  fuel:{opening:opening.balance,earned:period.earned,received:period.received,closing:badFuel?null:closing.balance,incomplete:badFuel>0,invalid:badFuel,hasRecords:!!(fuelWorks.some(w=>Number(w.customer_fuel_allowance_l)>0)||fuelRows.length||tankRows.length)}};
+  fuel:{opening:badFuel?null:opening.balance,earned:badFuel?null:period.earned,received:badFuel?null:period.received,closing:badFuel?null:closing.balance,incomplete:badFuel>0,invalid:badFuel,hasRecords:!!(fuelWorks.some(w=>Number(w.customer_fuel_allowance_l)>0||w.price_snapshot?.price_source==='Mazot karşılığı')||fuelRows.length||tankRows.length)}};
 }
