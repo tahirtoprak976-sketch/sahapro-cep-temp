@@ -4,6 +4,7 @@ import {runInNewContext} from 'node:vm';
 import {hakedisNumber, hakedisItemIssues, assertHakedisItems, hakedisSourcePriceReview} from '../js/hakedis-validation.js';
 import {calcHakedisTotals} from '../js/core.js';
 import {customerLabel} from '../js/driver-customer.js';
+import {validDate} from '../js/driver-delivery.js';
 
 const line = extra => ({work_record_id:'TEST',quantity:3,unit:'Saat',unit_price:500,kdv_rate:20,kdv_included:false,...extra});
 const accepts = item => assert.doesNotThrow(() => assertHakedisItems([item]));
@@ -117,8 +118,8 @@ const newScreen = source.slice(source.indexOf('async function hakedisNew('),sour
 async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},snapshot={},sequence,save}={}) {
   const confirm=deferred(),root={innerHTML:'',isConnected:true},rows={innerHTML:''},total={innerHTML:''},error={hidden:true},rowError={hidden:true,textContent:''};
   const checkbox={checked:true,dataset:{chk:'W'}},buttons={},calls={saved:0,navigated:0,totals:null,fields:null};
-  for(const key of ['[data-fetch]','[data-create]','[name=customer_id]','[name=site_id]','[name=date_from]','[name=date_to]'])
-    buttons[key]={disabled:false,addEventListener(event,fn){this[event]=fn;}};
+  for(const key of ['[data-fetch]','[data-create]','[data-ready-only]','[data-ready-select]','[name=customer_id]','[name=site_id]','[name=date_from]','[name=date_to]'])
+    buttons[key]={disabled:false,checked:false,addEventListener(event,fn){this[event]=fn;}};
   const db={
     listActive:async store=>({customers:[{id:'C',name:'TEST'}],sites:[],vehicles:[{id:'V'}],price_book:[]}[store]),
     getAll:async store=>store==='work_records'?[{id:'W',date:'2026-10-25',customer_id:'C',vehicle_id:'V',work_type:'Vinç Çalışması',quantity:2,unit:'Saat',
@@ -126,9 +127,10 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
     metaGet:async key=>tariffs[key],nextSeq:sequence||(async()=>1),
     saveNew:async(_store,fields)=>{calls.saved++;calls.fields=fields;return save?save():{id:'H'};},
   };
+  db.dumpAll=async()=>({customers:await db.listActive('customers'),sites:await db.listActive('sites'),vehicles:await db.listActive('vehicles'),price_book:await db.listActive('price_book'),work_records:await db.getAll('work_records'),hakedis:await db.getAll('hakedis')});
   const noop=()=>'';
   const fn=runInNewContext(newScreen+'; hakedisNew;',{
-    structuredClone,customerLabel,hakedisNumber,hakedisItemIssues,assertHakedisItems,calcHakedisTotals:(items,crane)=>{calls.totals=calcHakedisTotals(items,crane);return calls.totals;},
+    structuredClone,customerLabel,validDate,hakedisNumber,hakedisItemIssues,assertHakedisItems,calcHakedisTotals:(items,crane)=>{calls.totals=calcHakedisTotals(items,crane);return calls.totals;},
     todayStr:()=> '2026-10-25',isActive:()=>true,appbar:noop,fSelect:noop,fDate:noop,emptyState:noop,trDate:noop,esc:x=>x,fmtNum:x=>x,fmtTL:x=>x,kv:noop,notice:(_kind,msg)=>msg,toast:noop,
     go:()=>{calls.navigated++;},confirmDialog:()=>confirm.promise,
     collectForm:()=>({customer_id:'C',site_id:'',date_from:'2026-10-01',date_to:'2026-10-25'}),
@@ -137,13 +139,13 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
   });
   await fn({root,db,names:{sites:{},vehicles:{},customers:{}}});
   return {root,calls,confirm,button:buttons['[data-create]'],rowError,
-    select(){buttons['[data-fetch]'].click();rows.onchange();},create:()=>buttons['[data-create]'].click()};
+    async select(){await buttons['[data-fetch]'].click();rows.onchange();},create:()=>buttons['[data-create]'].click()};
 }
 {
-  const tariffs={crane_first_hour:500,crane_next_hour:null},old=await newFixture({tariffs});old.select();
+  const tariffs={crane_first_hour:500,crane_next_hour:null},old=await newFixture({tariffs});await old.select();
   assert.equal(old.button.disabled,true);assert.match(old.rowError.textContent,/sonraki saat/);
-  tariffs.crane_next_hour=100;old.select();assert.equal(old.button.disabled,true,'same form retains captured settings');
-  const fresh=await newFixture({tariffs});fresh.select();assert.equal(fresh.button.disabled,false);assert.equal(fresh.rowError.hidden,true);
+  tariffs.crane_next_hour=100;await old.select();assert.equal(old.button.disabled,true,'same form retains captured settings');
+  const fresh=await newFixture({tariffs});await fresh.select();assert.equal(fresh.button.disabled,false);assert.equal(fresh.rowError.hidden,true);
   assert.equal(fresh.calls.totals.grand,720);assert.equal(fresh.calls.totals.lines[0].first_hour_price,500);assert.equal(fresh.calls.totals.lines[0].next_hour_price,100);
   const save=fresh.create();fresh.confirm.resolve(true);await save;
   assert.equal(fresh.calls.saved,1);assert.equal(fresh.calls.fields.items[0].first_hour_price,500);assert.equal(fresh.calls.fields.items[0].next_hour_price,100);assert.equal(fresh.calls.fields.grand_total,720);
@@ -151,15 +153,15 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
   assert.equal(fresh.calls.fields.items[0].source_price_snapshot.next_hour_price,null);
 }
 for(const [snapshot,grand] of [[{first_hour_price:0,next_hour_price:0},0],[{first_hour_price:200,next_hour_price:50},300]]) {
-  const f=await newFixture({snapshot});f.select();assert.equal(f.button.disabled,false);assert.equal(f.calls.totals.grand,grand,'explicit snapshot overrides globals, including zero');
+  const f=await newFixture({snapshot});await f.select();assert.equal(f.button.disabled,false);assert.equal(f.calls.totals.grand,grand,'explicit snapshot overrides globals, including zero');
 }
 {
-  const started=deferred(),seq=deferred(),f=await newFixture({sequence:()=>{started.resolve();return seq.promise;}});f.select();
+  const started=deferred(),seq=deferred(),f=await newFixture({sequence:()=>{started.resolve();return seq.promise;}});await f.select();
   const pending=f.create();f.confirm.resolve(true);await started.promise;f.root.isConnected=false;seq.resolve(1);await pending;
   assert.equal(f.calls.saved,0,'navigation during sequence read must prevent financial write');assert.equal(f.calls.navigated,0);
 }
 {
-  const started=deferred(),saved=deferred(),f=await newFixture({save:()=>{started.resolve();return saved.promise;}});f.select();
+  const started=deferred(),saved=deferred(),f=await newFixture({save:()=>{started.resolve();return saved.promise;}});await f.select();
   const pending=f.create();f.confirm.resolve(true);await started.promise;f.root.isConnected=false;saved.resolve({id:'H'});await pending;
   assert.equal(f.calls.saved,1);assert.equal(f.calls.navigated,0,'completed save must not navigate a departed view');
 }

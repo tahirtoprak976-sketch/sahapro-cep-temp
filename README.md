@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.82** — 28.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.83** — 28.10.2026
+
+Hakediş hazırlığı: müşteri ve dönem bazında hazır işler, eksik bilgiler, kontrol gerektiren kayıtlar,
+anlaşma kapsamındaki işler ve mevcut hakediş bağlantıları. Hazır işler mevcut hakediş formuna aktarılır;
+taslak ve kesinleştirme onayları ayrıdır. [Kullanım ve kapsam](docs/HAKEDIS_PREPARATION_v3983.md).
 
 Asistan: fiş numarasındaki tire/boşluk ve harf büyüklüğü farkı kayıt anındaki mükerrer kontrolünü aşamaz;
 yakıt taslağında “20 litre” / “20 lt” yanıtları doğru alana uygulanır.

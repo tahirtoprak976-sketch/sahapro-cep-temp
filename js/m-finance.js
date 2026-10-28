@@ -2,6 +2,8 @@ import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelSummary} from './historical-fuel.js';
 import { customerBankReceipt } from "./enterprise-db.js";
 import {hakedisNumber, hakedisItemIssues, assertHakedisItems, hakedisSourcePriceReview} from './hakedis-validation.js';
+import {hakedisPreparation} from './hakedis-preparation.js';
+import {validDate} from './driver-delivery.js';
 import {customerLabel} from './driver-customer.js';
 import {priceCompletionDefaults, preparePriceCompletion, completeCustomerPrices} from './price-completion-db.js';
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
@@ -736,6 +738,7 @@ async function priceForm(ctx, editId) {
 // ============ HAKEDİŞ ============
 async function hakedis(ctx) {
   const sub = ctx.parts[1];
+  if (sub === "hazirlik") return (await import('./hakedis-preparation-ui.js')).screen(ctx);
   if (sub === "new") return hakedisNew(ctx);
   if (sub) return hakedisDetail(ctx, sub);
   const { root, db, names } = ctx;
@@ -745,7 +748,7 @@ async function hakedis(ctx) {
   root.innerHTML =
     appbar("Hakediş", `${rows.length} kayıt`) +
     `
-    <div style="height:10px"></div><div data-list></div>
+    <div style="height:10px"></div><a class="card" style="display:block" href="#/hakedis/hazirlik" data-prep-entry><div class="strong">Hakediş hazırlığı ›</div><p class="small">Müşteri ve dönem seç · hazır işleri, eksikleri ve kontrol gerektiren kayıtları gör</p></a><div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/hakedis/new">+ Hakediş Oluştur</button></div>`;
   const listEl = qs("[data-list]", root);
   if (!rows.length)
@@ -769,15 +772,8 @@ async function hakedis(ctx) {
 
 async function hakedisNew(ctx) {
   const { root, db, names } = ctx;
-  const [customers, sites, works, pricebook, allHak, vehicles] =
-    await Promise.all([
-      db.listActive("customers"),
-      db.listActive("sites"),
-      db.getAll("work_records"),
-      db.listActive("price_book"),
-      db.getAll("hakedis"),
-      db.listActive("vehicles"),
-    ]);
+  let data = await db.dumpAll();
+  let customers=(data.customers||[]).filter(isActive),sites=(data.sites||[]).filter(isActive),works=data.work_records||[],pricebook=(data.price_book||[]).filter(isActive),allHak=data.hakedis||[],vehicles=(data.vehicles||[]).filter(isActive);
   const today = todayStr();
   const inActiveHak = new Set();
   for (const h of allHak.filter((h) => isActive(h) && h.status !== "İptal"))
@@ -786,7 +782,7 @@ async function hakedisNew(ctx) {
     first: await db.metaGet("crane_first_hour"),
     next: await db.metaGet("crane_next_hour"),
   };
-  let selected = new Map(), creating = false; // work_id → {unit_price, kdv_rate}
+  let selected = new Map(), creating = false, fetchVersion = 0; // work_id → {unit_price, kdv_rate}
 
   root.innerHTML =
     appbar("+ Hakediş", "İşleri seç · fiyatlar snapshot olarak kopyalanır") +
@@ -796,38 +792,48 @@ async function hakedisNew(ctx) {
         "Müşteri *",
         "customer_id",
         customers.map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
-        "",
+        ctx.query?.customer_id || "",
         { req: true },
       )}
       ${fSelect(
         "Şantiye",
         "site_id",
         sites.map((s) => ({ v: s.id, t: s.name })),
-        "",
+        ctx.query?.site_id || "",
       )}
       <div class="formgrid2">
-        ${fDate("Başlangıç", "date_from", today.slice(0, 8) + "01")}
-        ${fDate("Bitiş", "date_to", today)}
+        ${fDate("Başlangıç", "date_from", validDate(ctx.query?.date_from) ? ctx.query.date_from : today.slice(0, 8) + "01")}
+        ${fDate("Bitiş", "date_to", validDate(ctx.query?.date_to) ? ctx.query.date_to : today)}
       </div>
       <button class="btn block" data-fetch>İşleri Getir</button>
+      <label class="row small" style="margin-top:10px;gap:8px"><input type="checkbox" data-ready-only ${ctx.query?.ready_only==='1'?'checked':''}> Yalnız hazırlık kontrolleri tamam işleri getir</label>
+      <a class="btn sm" href="#/hakedis/hazirlik">Hazırlık ve eksik kontrolüne dön</a>
     </div>
+    <button class="btn block" data-ready-select hidden>Listelenen hazır işleri seç</button>
     <div data-rows></div>
     <div data-total></div>
     <p data-hakedis-error role="alert" hidden></p>
     <div class="actionbar"><button class="btn primary" data-create disabled>Hakediş Oluştur</button></div>`;
 
   const rowsEl = qs("[data-rows]", root);
-  for (const key of ["customer_id", "site_id", "date_from", "date_to"]) {
-    qs("[name=" + key + "]", root).addEventListener("change", () => {
+  const invalidate = () => {
+      fetchVersion++;
       selected.clear();
       rowsEl.innerHTML = "";
       qs("[data-total]", root).innerHTML = "";
       qs("[data-hakedis-error]", root).hidden = true;
       qs("[data-create]", root).disabled = true;
-    });
+      qs('[data-ready-select]',root).hidden=true;
+  };
+  for (const key of ["customer_id", "site_id", "date_from", "date_to"]) {
+    qs("[name=" + key + "]", root).addEventListener("change", invalidate);
   }
-  qs("[data-fetch]", root).addEventListener("click", () => {
+  qs('[data-ready-only]',root).onchange=invalidate;
+  qs('[data-ready-select]',root).onclick=()=>{for(const c of qsa('[data-chk]',rowsEl))c.checked=true;rowsEl.dispatchEvent(new Event('change',{bubbles:true}));};
+  qs("[data-fetch]", root).addEventListener("click", async () => {
+    const version=++fetchVersion;
     selected.clear();
+    rowsEl.innerHTML='';qs('[data-ready-select]',root).hidden=true;
     qs("[data-create]", root).disabled = true;
     qs("[data-total]", root).innerHTML = "";
     const val = collectForm(root);
@@ -835,6 +841,14 @@ async function hakedisNew(ctx) {
       toast("Müşteri seçin", "err");
       return;
     }
+    if(!validDate(val.date_from)||!validDate(val.date_to)||val.date_from>val.date_to){toast('Geçerli başlangıç ve bitiş tarihi seçin','err');return;}
+    try {
+    data=await db.dumpAll();
+    if(version!==fetchVersion||!root.isConnected)return;
+    works=data.work_records||[];pricebook=(data.price_book||[]).filter(isActive);allHak=data.hakedis||[];vehicles=(data.vehicles||[]).filter(isActive);
+    inActiveHak.clear();for(const h of allHak.filter(h=>isActive(h)&&h.status!=='İptal'))for(const item of h.items||[])inActiveHak.add(item.work_record_id);
+    const readyOnly=qs('[data-ready-only]',root).checked;
+    const readyIds=readyOnly?new Set(hakedisPreparation(data,{customer_id:val.customer_id,site_id:val.site_id||'',from:val.date_from,to:val.date_to,today}).ready.map(r=>r.work.id)):null;
     const list = works
       .filter(
         (w) =>
@@ -843,13 +857,13 @@ async function hakedisNew(ctx) {
           (!val.site_id || w.site_id === val.site_id) &&
           w.date >= val.date_from &&
           w.date <= val.date_to &&
-          !inActiveHak.has(w.id),
+          !inActiveHak.has(w.id) && (!readyIds || readyIds.has(w.id)),
       )
       .sort((a, b) => (a.date < b.date ? -1 : 1));
     if (!list.length) {
       rowsEl.innerHTML = emptyState(
         "⚒",
-        "Bu filtrede hakedişe girmemiş iş yok",
+        readyOnly ? "Bu filtrede hazırlık kontrolleri tamam iş yok; eksikleri hazırlık ekranında inceleyin" : "Bu filtrede hakedişe girmemiş iş yok",
       );
       return;
     }
@@ -979,6 +993,8 @@ async function hakedisNew(ctx) {
       const chk = qs(`[data-chk="${b.dataset.pickprice}"]`, rowsEl); if (chk) chk.checked = true;
       upd();
     };
+    qs('[data-ready-select]',root).hidden=!readyOnly;
+    }catch(e){if(version===fetchVersion&&root.isConnected)rowsEl.innerHTML=notice('warn',e.message||'İşler okunamadı. Tekrar deneyin.');}
   });
 
   qs("[data-create]", root).addEventListener("click", async () => {
@@ -998,6 +1014,11 @@ async function hakedisNew(ctx) {
       "Oluştur",
     );
     if (!ok || !root.isConnected) return;
+    if(qs('[data-ready-only]',root).checked){
+      const latest=await db.dumpAll();
+      const readyNow=new Set(hakedisPreparation(latest,{customer_id:val.customer_id,site_id:val.site_id||'',from:val.date_from,to:val.date_to,today}).ready.map(r=>r.work.id));
+      if(items.some(item=>!readyNow.has(item.work_record_id)))throw Error('Hazırlık durumu değişti. İşleri yeniden getirip eksikleri kontrol edin; hakediş oluşturulmadı.');
+    }
     const tot = calcHakedisTotals(items, crane);
     const no = await db.nextSeq("hakedis");
     if (!root.isConnected) return;
@@ -1029,6 +1050,7 @@ async function hakedisNew(ctx) {
       if (root.isConnected) qs('[data-create]', root).disabled = !selected.size || [...selected.values()].some(item => hakedisItemIssues(item).length);
     }
   });
+  if(ctx.query?.ready_only==='1'&&ctx.query?.customer_id)qs('[data-fetch]',root).click();
 }
 
 async function hakedisDetail(ctx, id) {
