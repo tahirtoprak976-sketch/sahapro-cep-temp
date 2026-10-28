@@ -45,7 +45,9 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
   const nm = (s, id) => live(d, s).find((r) => r.id === id)?.name || "";
 
   // ---- Girişler ----
-  const rec = receivables(d, { today, notes });
+  const asOf={...d,work_records:live(d,'work_records').filter(r=>r.date<=today),cari_movements:live(d,'cari_movements').filter(r=>r.date<=today),cash_records:live(d,'cash_records').filter(r=>r.date<=today)};
+  const rec = receivables(asOf, { today, notes });
+  for(const m of live(d,'cari_movements').filter(r=>r.date>today))reviews.push({label:'İleri tarihli cari kayıt',reason:'İleri tarihli cari hareket bugünkü alacak/tahsilata dahil edilmedi; kaynak işlemi kontrol edin.',href:'#/cari/'+encodeURIComponent(m.customer_id||'')});
   for (const r of rec.rows) {
     const reserved=sumBy(rec.cheques.filter(q=>q.party_type==='customer'&&q.party_id===r.id&&q.direction==='Alınan'&&q.status!=='Karşılıksız'&&realDate(q.due_date)&&positive(q.amount)),q=>q.amount);
     let left = Math.max(0,r0(r.total-reserved));

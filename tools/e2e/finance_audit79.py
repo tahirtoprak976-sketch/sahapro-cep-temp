@@ -89,6 +89,9 @@ with sync_playwright() as pw:
   assert '125,85' in page.locator('.finance-stat[href="#/kasa"] .v').inner_text()
   assert page.locator('.finance-stat[href="#/cari"] .v').inner_text()=='0,00'
   page.screenshot(path=str(out/'finance-custody-390.png'),full_page=True)
+  for width in (320,390,768):
+   page.set_viewport_size({'width':width,'height':850});page.wait_for_selector('[data-finance-custody]');assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),('finance',width)
+  page.set_viewport_size({'width':390,'height':850})
   page.goto(APP+'#/nakit');page.wait_for_selector('[data-cashflow-review]')
   assert 'taraf bilgisi' in page.locator('[data-cashflow-review]').inner_text()
   assert '5 haftalık bilinen kasa artıda' not in page.locator('#screen').inner_text()

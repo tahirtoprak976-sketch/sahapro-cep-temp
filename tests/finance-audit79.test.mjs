@@ -9,6 +9,8 @@ const base={customers:[{id:'C',name:'TEST'}],work_records:[{id:'W',customer_id:'
 const before=JSON.stringify(base),f=cashForecast(base,{today,notes:{C:{promise_date:today,promise_amount:100}},cashOnHand:1000.5});
 assert.equal(f.totals.inSure,100,'check is reserved before the promise');assert.equal(f.totals.inEst,0);assert.equal(f.start,1000.5);
 assert.equal(f.weeks[0].good,1100.5);assert.equal(JSON.stringify(base),before);
+const dated={customers:base.customers,work_records:[{...base.work_records[0],date:'2026-10-01'},{id:'FUTURE',customer_id:'C',date:'2026-10-29',quantity:1,price_snapshot:{amount:200}}],cari_movements:[{id:'R',customer_id:'C',date:'2026-10-29',type:'Tahsilat',amount:-90}]};
+const datedForecast=cashForecast(dated,{today});assert.equal(datedForecast.totals.inSure+datedForecast.totals.inEst,100,'future collection cannot settle today\'s receivable, and future work is not today\'s charge');assert.ok(datedForecast.reviews.some(r=>r.label==='İleri tarihli cari kayıt'));
 const bills={suppliers:[{id:'S',name:'TEST supplier'}],payables:[{id:'B',party_type:'supplier',party_id:'S',date:'2026-10-20',due_date:today,gross_total:100,status:'Onaylandı'}],supplier_payments:[{id:'P',payable_id:'B',party_id:'OTHER',party_type:'supplier',date:today,amount:40}]};
 const bad=cashForecast(bills,{today,cashOnHand:10000});assert.equal(bad.totals.outSure,0);assert.equal(bad.complete,false);assert.ok(bad.reviews.some(r=>/taraf/.test(r.reason)),'unknown debt is flagged, never declared zero or safe');
 const valid=structuredClone(bills);valid.supplier_payments[0].party_id='S';assert.equal(cashForecast(valid,{today}).totals.outSure,60);
