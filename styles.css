@@ -1196,3 +1196,6 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 
 /* Payment follow-up: recorded deadlines, source records, no payment initiation. */
 .payment-agenda-buckets{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.payment-agenda-bucket{margin:0;display:flex;flex-direction:column;gap:8px;text-align:left;min-width:0;overflow-wrap:anywhere;color:inherit}.payment-agenda-bucket strong{font-size:22px}.payment-agenda-bucket.selected{border:2px solid var(--accent)}.payment-agenda-bucket small{color:var(--muted)}.payment-agenda-intro>.row,.payment-agenda-record>.row{flex-wrap:wrap;gap:8px}.payment-agenda-record{overflow-wrap:anywhere}.payment-agenda-money{display:flex;flex-wrap:wrap;gap:10px;margin:12px 0}.payment-agenda-money>span{background:var(--bg2);border-radius:10px;padding:8px;flex:1 0 85px;font-size:12px}.payment-agenda-money b{display:block;font-size:16px;margin-top:4px}.payment-agenda-record>.btn{margin-top:8px}.payment-agenda-record .badge{white-space:normal}.payment-agenda-intro,.payment-agenda-intro p{overflow-wrap:anywhere}
+
+/* Customer-period readiness actions retain the application button appearance. */
+[data-preparation] a.btn { text-decoration: none; }

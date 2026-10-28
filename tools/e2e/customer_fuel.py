@@ -21,7 +21,7 @@ with sync_playwright() as p:
  def save():
   pg.evaluate("()=>{const b=document.querySelector('[data-save]');b.dispatchEvent(new MouseEvent('click',{bubbles:true}));b.dispatchEvent(new MouseEvent('click',{bubbles:true}))}")
   pg.locator('[data-out]').get_by_text('Kaydedildi:',exact=False).wait_for()
- before=state();pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_selector('[data-msg]')
+ before=state();pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_function("()=>document.querySelector('[data-new-chat]')&&!document.querySelector('[data-new-chat]').disabled")
  # Purely local and offline, no key, with the user's typo and unspecified past date.
  c.set_offline(True);ask("TEST Kaya'nın forkliftine 20 ltnmazot verilmişti")
  assert pg.input_value('[data-kind=fuelout] [name=customer]')==ids['customer']
@@ -60,7 +60,7 @@ with sync_playwright() as p:
  for m in state()['moves']:pg.evaluate("async id=>await (await import('./js/db.js')).cancelCustomerFuelDelivery(id,'TEST reset')",m['id'])
  assert state()['stock']==100 and state()['balance'].get(ids['customer'],0)==0
  print('PASS concurrent deliveries cannot oversell; paired cancellation restores all litres and debts',flush=True)
- pg.reload();pg.wait_for_selector('[data-msg]');ask("TEST Kaya'nın forkliftine 20 litre mazot verildi, litresi 45 TL")
+ pg.reload();pg.wait_for_function("()=>document.querySelector('[data-new-chat]')&&!document.querySelector('[data-new-chat]').disabled");ask("TEST Kaya'nın forkliftine 20 litre mazot verildi, litresi 45 TL")
  assert pg.locator('[data-kind=fuelout] [data-pick]').is_checked();save()
  s=state();mid=s['moves'][0]['id'];assert s['stock']==80 and s['balance'][ids['customer']]==900
  # Source-labelled statement + full backup/restore linkage checks.
