@@ -279,7 +279,11 @@ export async function screen(ctx) {
     catch (e) { attachmentError = "Dosya taslağı okunamadı: " + (e.message || e); showThumbs(false); }
   }
   // Yarım kalan mesaj saklanır (internet yoksa veya ekran kapanırsa kaybolmaz)
-  if (!msgEl.value) msgEl.value = (await db.metaGet("assistant_draft")) || "";
+  if (!msgEl.value) {
+    const savedDraft = await db.metaGet("assistant_draft");
+    // The user may have started typing while the saved draft was being read.
+    if (!msgEl.value) msgEl.value = savedDraft || "";
+  }
   let draftT = null;
   msgEl.addEventListener("input", () => {
     clearTimeout(draftT);
