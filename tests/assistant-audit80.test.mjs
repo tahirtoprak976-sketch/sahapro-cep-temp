@@ -3,8 +3,11 @@ import {assertAssistantPlan,PLAN_LIMITS,rowEvidence} from '../js/assistant-safet
 import {validatePlan,validateExtras} from '../js/assistant-core.js';
 import {cleanAgentPlan} from '../js/assistant-agent-core.js';
 import {validateActions} from '../js/assistant-actions.js';
+import {readRowPricePolicy} from '../js/assistant-batch.js';
 import {routeCommand} from '../js/command-router.js';
 import {geminiJson,geminiAgent,assistantRequestScope} from '../js/ai-gemini.js';
+import {createServer} from 'node:http';
+assert.equal(readRowPricePolicy('2. işin fiyatı beklesin',1),true);assert.equal(readRowPricePolicy('2. işin fiyatı beklesin',0),null);assert.equal(readRowPricePolicy('> 2. işin fiyatı beklesin',1),null);assert.equal(readRowPricePolicy('[28/10 19:00] TEST: \n2. işin fiyatı beklesin',1),null);
 const today='2026-10-28',d={vehicles:[{id:'V',name:'TEST JCB'}],customers:[{id:'C',name:'TEST Kaya'}],personnel:[{id:'P',name:'TEST Soner'}],fuel_tank_movements:[{id:'T',date:'2026-01-01',move_type:'GİRİŞ',liters:500}]};
 for(const text of ['TEST Kaya telefonu 05329999999 olarak güncelle','TEST JCB muayenesini 12.03.2027 olarak düzelt','TEST Kaya ana firmasını değiştir'])assert.equal(routeCommand(text,d,today),null,'card edits reach the planner');
 assert.equal(routeCommand('TEST JCB dünkü işinin plakasını değiştir',d,today)?.kind,'candidates','explicit work edit retains its local selection');
@@ -55,4 +58,9 @@ let scope=assistantRequestScope({timeoutMs:15,fetchImpl:hanging});await assert.r
 scope=assistantRequestScope({fetchImpl:hanging});const pending=scope.fetchFn('https://example.invalid',{});scope.abort();await assert.rejects(()=>pending,/durduruldu/);assert.throws(scope.check,/durduruldu/);scope.dispose();
 scope=assistantRequestScope({maxBytes:4,fetchImpl:async()=>new Response('12345')});await assert.rejects(()=>scope.fetchFn('https://example.invalid',{}),/çok büyük/);scope.dispose();
 scope=assistantRequestScope({fetchImpl:async()=>new Response('{"ok":true}')});assert.deepEqual(await(await scope.fetchFn('https://example.invalid',{})).json(),{ok:true});scope.dispose();
+let bodyStarted=false;const server=createServer((_req,res)=>{bodyStarted=true;res.writeHead(200,{'Content-Type':'application/json'});res.write('{"partial":');});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+scope=assistantRequestScope({timeoutMs:250});
+try{await assert.rejects(()=>scope.fetchFn('http://127.0.0.1:'+server.address().port,{}),/süresinde/);assert.equal(bodyStarted,true,'real fetch body is aborted after headers too');}
+finally{scope.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 console.log('assistant audit80: every batch bound, malformed plans, source/photo isolation, real/historical dates, payer/attachment ownership, truncated responses, cancellation, deadline and response limit PASS');

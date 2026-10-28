@@ -52,6 +52,17 @@ export function bulkWorkReady(row,data){
  const reviewed=data?.ok===true||data?._workflowWasReady===true||data?._workflowCompleted===true&&!data.issues?.length;
  return !!data&&reviewed&&!blocked.some(k=>data[k])&&(data.price_pending||!data.priceInfo?.ambiguous);
 }
+// Explicit per-card user choices survive a later model revision. Quoted/group messages cannot set them.
+export function readRowPricePolicy(message,index){
+ let result=null;
+ for(const segment of String(message||'').split(/\n\s*\[DÜZELTME\]\s*/u))for(const line of segment.split(/\r?\n/)){
+  if(CHAT.test(line))break;
+  if(/^\s*[>“"]/.test(line))continue;
+  const m=/^(\d{1,2})\.\s*isin fiyat(?:i beklesin|ini listeden uygula)[.!]?$/u.exec(fold(line));
+  if(m&&Number(m[1])===index+1)result=/beklesin/.test(fold(line));
+ }
+ return result;
+}
 // Only the verified SP1 decoder can supply trusted driver rows, after the model boundary.
 export function untrustedWorkPlan(plan){
  if(!Array.isArray(plan?.works))return plan;

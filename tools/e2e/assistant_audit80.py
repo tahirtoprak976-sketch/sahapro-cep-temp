@@ -69,11 +69,12 @@ with sync_playwright() as pw:
  # Typed field edits must be in the durable native task before a later model patch.
  native=True;reply=work();second=dict(reply['works'][0]);reply['works'][0]['quantity']=1;second['quantity']=2;reply['works'].append(second)
  send('TEST Audit Kaya TEST Audit JCB önce 1 saat sonra 2 saat çalıştı')
- pg.fill('[data-kind=work][data-i="0"] [name=unit_price]','1750');pg.fill('[data-kind=work][data-i="0"] [name=description]','TEST kart düzeltmesi')
+ pg.fill('[data-kind=work][data-i="0"] [name=unit_price]','1750');pg.fill('[data-kind=work][data-i="0"] [name=description]','TEST kart düzeltmesi');pg.check('[data-kind=work][data-i="1"] [name=price_pending]')
  patch=True;send('Lütfen diğer işin bilgilerini tekrar değerlendir');patch=False;native=False
  results['manualEditsSurviveModelPatch']=pg.input_value('[data-kind=work][data-i="0"] [name=unit_price]')=='1750' and pg.input_value('[data-kind=work][data-i="0"] [name=description]')=='TEST kart düzeltmesi' and pg.input_value('[data-kind=work][data-i="1"] [name=quantity]')=='4'
  assert results['manualEditsInActiveTask'] is (not a.baseline_proof),results
  assert results['manualEditsSurviveModelPatch'] is (not a.baseline_proof),results
+ results['rowPriceHoldSurvivesModelPatch']=pg.is_checked('[data-kind=work][data-i="1"] [name=price_pending]');assert results['rowPriceHoldSurvivesModelPatch'] is (not a.baseline_proof),results
  assert state()==before
  # An approved old action must not overwrite a newer edit made through another screen.
  reply={'actions':[{'op':'update','store':'customers','id':ids['c'],'fields':{'phone':'05329999999'}}]}

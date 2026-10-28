@@ -4,7 +4,7 @@ import {recordLocalText} from './record-notes.js';
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
 import {customerNameKey} from "./driver-customer.js";
-import {readBatchPolicy} from './assistant-batch.js';
+import {readBatchPolicy,readRowPricePolicy} from './assistant-batch.js';
 import {partDocumentProperties} from './part-document-core.js';
 import {customerFuelRows} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
@@ -421,7 +421,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const newNames = new Map(); // aynı yeni müşteri tek kart
   const hints = customerHints(d);
 
-  for (const original of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
+  for (const [workIndex,original] of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20).entries()) {
     const issues = [];
     const w=!original.from_driver&&batchPolicy.date?{...original,date:batchPolicy.date,date_source:'mesaj'}:original;
     // Şoför ekranından (SP1 kodu): müşteri/araç listeden kesin seçildi; metin tahmini kontrolleri uygulanmaz
@@ -430,7 +430,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200),
       description: String(w.description || w.note || "").slice(0, 300), material: String(w.material || "").slice(0, 60),
       dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, quarry_id: byId(live(d, "quarries"), w.quarry_id)?.id || null, new_quarry: null, new_dump_site: null, unit_price: null, dump_cost: null };
-    r.price_pending=!fromDriver&&batchPolicy.deferPrices;
+    r.price_pending=!fromDriver&&(readRowPricePolicy(message,workIndex)??batchPolicy.deferPrices);
     if(!fromDriver&&batchPolicy.date)r.date=batchPolicy.date;
     if(!fromDriver&&batchPolicy.dateIssue){r.date='';r.dateUnsure=true;issues.push(batchPolicy.dateIssue);}
     if (w.dump_cost != null && w.dump_cost !== "") {
