@@ -1,9 +1,10 @@
+import {assertAssistantPlan,rowEvidence} from './assistant-safety.js';
 import {recordLocalText} from './record-notes.js';
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
 // mesajda geçmeli, sayılar mesajda veya fiş metninde yazmalı; tutmayan satır işaretsiz gelir.
 import {customerNameKey} from "./driver-customer.js";
-import {readBatchPolicy} from './assistant-batch.js';
+import {readBatchPolicy,readRowPricePolicy} from './assistant-batch.js';
 import {partDocumentProperties} from './part-document-core.js';
 import {customerFuelRows} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
@@ -379,7 +380,14 @@ function validDate(s, today) {
   const dt = new Date(s + "T12:00:00");
   if (!Number.isFinite(dt.getTime()) || dt.getDate() !== Number(m[3])) return null;
   const diff = (dt - new Date(today + "T12:00:00")) / 86400000;
-  return diff > 1 || diff < -120 ? null : s;
+  return diff > 1 || Number(m[1]) < 1900 ? null : s;
+}
+
+function proposalDate(raw,today,issues){
+  if(raw==null||raw==='')return today;
+  const date=validDate(raw,today);
+  if(!date)issues.push('Tarih '+String(raw)+' doğrulanamadı; doğru tarihi seçin.');
+  return date||'';
 }
 
 // Yer adından ayrılma eki: "Öztaştan" → "Öztaş", "Binkılıç'a" → "Binkılıç" (yeni kart adı için)
@@ -394,6 +402,7 @@ export function quoteFound(quote, src) {
   return !!q && q.length >= 2 && (` ${t} `).includes(` ${q} `);
 }
 export function validatePlan(plan, { message = "", d, today = todayStr(), photoCount = 0, negatives = [] } = {}) {
+  assertAssistantPlan(plan ?? {});
   const out = { works: [], expenses: [], fuel: [], fuelOut: [], questions: [], newCustomers: [] };
   const batchPolicy=readBatchPolicy(message,today);
   out.batchPolicy=batchPolicy;
@@ -412,7 +421,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const newNames = new Map(); // aynı yeni müşteri tek kart
   const hints = customerHints(d);
 
-  for (const original of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20)) {
+  for (const [workIndex,original] of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20).entries()) {
     const issues = [];
     const w=!original.from_driver&&batchPolicy.date?{...original,date:batchPolicy.date,date_source:'mesaj'}:original;
     // Şoför ekranından (SP1 kodu): müşteri/araç listeden kesin seçildi; metin tahmini kontrolleri uygulanmaz
@@ -421,7 +430,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       vehicle_id: null, personnel_id: null, work_type: null, quantity: null, unit: null, note: String(w.note || "").slice(0, 200),
       description: String(w.description || w.note || "").slice(0, 300), material: String(w.material || "").slice(0, 60),
       dump_site_id: byId(live(d, "dump_sites"), w.dump_site_id)?.id || null, quarry_id: byId(live(d, "quarries"), w.quarry_id)?.id || null, new_quarry: null, new_dump_site: null, unit_price: null, dump_cost: null };
-    r.price_pending=!fromDriver&&batchPolicy.deferPrices;
+    r.price_pending=!fromDriver&&(readRowPricePolicy(message,workIndex)??batchPolicy.deferPrices);
     if(!fromDriver&&batchPolicy.date)r.date=batchPolicy.date;
     if(!fromDriver&&batchPolicy.dateIssue){r.date='';r.dateUnsure=true;issues.push(batchPolicy.dateIssue);}
     if (w.dump_cost != null && w.dump_cost !== "") {
@@ -685,28 +694,29 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
 
   for (const e of (Array.isArray(plan.expenses) ? plan.expenses : []).slice(0, 10)) {
     const issues = [];
-    const photo = Number.isInteger(e.photo) && e.photo >= 0 && e.photo < photoCount ? e.photo : (photoCount === 1 && (plan.expenses || []).length === 1 && !(plan.tank_in || []).length && !(plan.fuel || []).length && !(plan.works || []).length ? 0 : null);
-    const r = { source_quote: String(e.quote || "").slice(0, 8000), date: validDate(e.date, today) || today, amount: null, category: expenseCategoryNames(d).includes(e.category) ? e.category : "Diğer",
+    const evidence=rowEvidence(e,{message,photoTexts,photoCount,implicitPhoto:photoCount===1&&(plan.expenses||[]).length===1&&!(plan.tank_in||[]).length&&!(plan.fuel||[]).length&&!(plan.works||[]).length?0:null});
+    const photo=evidence.photo;issues.push(...evidence.issues);
+    const r = { source_quote: String(e.quote || "").slice(0, 8000), date: proposalDate(e.date, today, issues), amount: null, category: expenseCategoryNames(d).includes(e.category) ? e.category : "Diğer",
       company: String(e.company || "").slice(0, 80), vehicle_id: byId(vehicles, e.vehicle_id)?.id || null,
       supplier_id: byId(suppliers, e.supplier_id)?.id || null, credit: !!e.credit, photo, note: String(e.note || "").slice(0, 200),
       payment_method: ["Nakit", "Kart", "Havale", "Personel Ödedi"].includes(e.payment_method) ? e.payment_method : null,
       paid_by: byId(personnel, e.paid_by_personnel_id)?.id || null };
-    if (r.payment_method === "Personel Ödedi" && !r.paid_by) r.issues_pay = "Kim ödedi? Seçin";
+    if (r.payment_method === "Personel Ödedi" && !r.paid_by) {r.issues_pay = "Kim ödedi? Seçin";issues.push(r.issues_pay);}
     if (e.category && !expenseCategoryNames(d).includes(e.category)) issues.push("Kategori tanınmadı; Diğer seçildi, kontrol edin");
     const a = Number(e.amount);
     if (Number.isFinite(a) && a > 0) {
       const k = Math.round(a * 100) / 100;
-      const seen = msgAll.has(k) || (photo != null && photoNums[photo]?.has(k)) || photoNums.some((x) => x.has(k));
+      const seen = moneyInText(evidence.message).has(k) || numbersInText(evidence.text).has(k);
       if (seen) r.amount = k;
       else issues.push(`Tutar ${a} mesajda/fişte görünmüyor`);
     } else issues.push("Tutar yok");
     if (r.credit && !r.supplier_id) issues.push("Veresiye için esnaf seçilmeli");
     // Fatura / fiş ayrıntısı (kalemler, fatura no, ETTN, KDV) — fotoğrafın yazısıyla doğrulanır
-    r.detail = validateInvoiceDetail(e.invoice, photo != null ? photoTexts[photo] : photoTexts.join("\n"));
+    r.detail = validateInvoiceDetail(e.invoice, evidence.text);
     if (r.detail?.net != null && r.detail?.kdv != null && r.amount && Math.abs(r.detail.net + r.detail.kdv - r.amount) > 1 && !r.detail.issues.length) r.detail.issues.push("KDV hariç + KDV, tutarla tutmuyor");
     // Döküm faturası (İSTAÇ vb.): gider değil, döküm hesabına fatura olarak bağlanır (para yatırılırken ödendi)
     if (r.detail && r.amount) {
-      const ptext = photo != null ? photoTexts[photo] : photoTexts.join("\n");
+      const ptext = evidence.text;
       const m = dumpInvoiceMatch(d, { company: r.company, seller_tax_no: r.detail.seller_tax_no, text: ptext, items: r.detail.items });
       if (m) {
         const place = String(e.place || "").trim();
@@ -716,25 +726,25 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       }
     }
     r.issues = issues;
-    r.ok = !!(r.amount && (!r.credit || r.supplier_id)) && !issues.some((x) => x.includes("zaten kayıtlı"));
+    r.ok = !!(r.date && r.amount && (!r.credit || r.supplier_id)) && !issues.length && !issues.some((x) => x.includes("zaten kayıtlı"));
     out.expenses.push(r);
   }
 
-  const pool = [msgAll, ...photoNums];
-  const numOk = (n) => Number.isFinite(n) && n > 0 && pool.some((x) => x.has(Math.round(n * 100) / 100));
   // Depoya gelen yakıt (tank girişi) önce sayılır; araca verilen depo yakıtı bu stoktan düşer
   out.tankIn = [];
   for (const t of (Array.isArray(plan.tank_in) ? plan.tank_in : []).slice(0, 5)) {
+    const evidence=rowEvidence(t,{message,photoTexts,photoCount,implicitPhoto:photoCount===1&&(plan.tank_in||[]).length===1?0:null});
+    const issues=[...evidence.issues],pool=[moneyInText(evidence.message),numbersInText(evidence.text)];
+    const numOk=n=>Number.isFinite(n)&&n>0&&pool.some(x=>x.has(Math.round(n*100)/100));
     const liters = numOk(Number(t.liters)) ? Number(t.liters) : null;
-    const r = { source_quote: String(t.quote || "").slice(0, 8000), date: validDate(t.date, today) || today, liters, total: numOk(Number(t.total)) ? Number(t.total) : null, note: String(t.note || "").slice(0, 200),
+    const r = { source_quote: String(t.quote || "").slice(0, 8000), date: proposalDate(t.date, today, issues), liters, total: numOk(Number(t.total)) ? Number(t.total) : null, note: String(t.note || "").slice(0, 200),
       unit_price: numOk(Number(t.unit_price)) ? Number(t.unit_price) : null, supplier_id: byId(suppliers, t.supplier_id)?.id || null, credit: !!t.credit,
       customer_id: byId(customers, t.customer_id)?.id || null };
     if (r.customer_id) { r.credit = false; r.supplier_id = null; }
     // Fatura (fotoğraf): ayrıntı, irsaliye no, satıcı; satıcı kayıtlı değilse yeni petrolcü kartı önerilir
-    r.photo = Number.isInteger(t.photo) && t.photo >= 0 && t.photo < photoCount ? t.photo : null;
+    r.photo = evidence.photo;
     // Tek fotoğraf gönderildiyse ve Gemini sırasını yazmadıysa: fatura odur (yoksa fatura kayda eklenmiyordu)
-    if (r.photo == null && photoCount === 1 && (plan.tank_in || []).length === 1) r.photo = 0;
-    const ttext = r.photo != null ? photoTexts[r.photo] : photoTexts.join("\n");
+    const ttext = evidence.text;
     // Şablonu küçük tutmak için depo faturası düz alanlarla gelir (eski biçim t.invoice de kabul)
     const tinv = t.invoice || (t.invoice_no || t.ettn || t.seller_tax_no ? { no: t.invoice_no, ettn: t.ettn, seller_tax_no: t.seller_tax_no, net: t.net, kdv: t.kdv,
       kdv_rate: Number(t.net) > 0 && Number(t.kdv) > 0 ? Math.round((t.kdv / t.net) * 100) : null, items: Number(t.liters) > 0 ? [{ desc: "Motorin", qty: Number(t.liters), unit: "lt", amount: Number(t.net) || null }] : [] } : null);
@@ -752,7 +762,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if (liters && r.unit_price && !r.total) r.total = Math.round(liters * r.unit_price * 100) / 100;
     // Litre fiyatı = KDV dahil toplam ÷ litre (faturadaki birim fiyat KDV hariçtir; ör. 75,16 yerine 90,19)
     if (liters && r.total) r.unit_price = Math.round((r.total / liters) * 100) / 100;
-    r.issues = liters ? [] : ["Litre mesajda yok"];
+    r.issues = [...issues,...(liters ? [] : ["Litre mesajda yok"])];
     if (t.unit_price && !r.unit_price) r.issues.push(`Litre fiyatı ${t.unit_price} mesajda yok`);
     if (r.credit && !r.supplier_id && !r.newSupplier) r.issues.push("Veresiye için petrolcü seçilmeli");
     if (r.credit && !r.total) r.issues.push("Veresiye için tutar gerekli");
@@ -781,9 +791,12 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     // Aynı dış teslimat şirket aracına tüketim ya da müşteriden alınan mazot diye ikinci kez yazılmaz.
     if (out.fuelOut.some(r => r.quote === message || f.quote && f.quote === r.quote)) continue;
     const issues = [];
-    const photo = Number.isInteger(f.photo) && f.photo >= 0 && f.photo < photoCount ? f.photo : null;
-    const r = { source_quote: String(f.quote || "").slice(0, 8000), date: validDate(f.date, today) || today, vehicle_id: byId(vehicles, f.vehicle_id)?.id || null,
-      liters: numOk(Number(f.liters)) ? Number(f.liters) : null, total: numOk(Number(f.total)) ? Number(f.total) : null, photo };
+    const evidence=rowEvidence(f,{message,photoTexts,photoCount}),photo=evidence.photo;
+    issues.push(...evidence.issues);
+    const fuelNumbers=[moneyInText(evidence.message),numbersInText(evidence.text)];
+    const fuelNumOk=n=>Number.isFinite(n)&&n>0&&fuelNumbers.some(pool=>pool.has(Math.round(n*100)/100));
+    const r = { source_quote: String(f.quote || "").slice(0, 8000), date: proposalDate(f.date, today, issues), vehicle_id: byId(vehicles, f.vehicle_id)?.id || null,
+      liters: fuelNumOk(Number(f.liters)) ? Number(f.liters) : null, total: fuelNumOk(Number(f.total)) ? Number(f.total) : null, photo };
     // Kilometre / makine saati (bakım takvimi için): yalnız mesajda yazıyorsa
     const msgNums = numbersInText(message);
     for (const k of ["km", "machine_hours"]) { const x = Number(f[k]); r[k] = x > 0 && msgNums.has(x) ? x : null; if (x > 0 && !r[k]) issues.push(`${k === "km" ? "Km" : "Makine saati"} ${x} mesajda yazmıyor; alınmadı`); }
@@ -802,7 +815,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       else stock -= r.liters;
     }
     r.issues = issues;
-    r.ok = !!(r.vehicle_id && r.liters && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));
+    r.ok = !!(r.date && r.vehicle_id && r.liters && !issues.length && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));
     out.fuel.push(r);
   }
   out.questions = (Array.isArray(plan.questions) ? plan.questions : []).map(String).slice(0, 5);
@@ -919,7 +932,8 @@ const EDITABLE = {
   fuel_records: ["liters", "total", "date", "vehicle_id"],
   cash_records: ["amount", "date"],
 };
-export function validateExtras(plan, { message = "", d, today = todayStr(), photoTexts = [] } = {}) {
+export function validateExtras(plan, { message = "", d, today = todayStr(), photoTexts = [], photoCount = photoTexts.length } = {}) {
+  assertAssistantPlan(plan ?? {});
   const out = { collections: [], maintenance: [], personnel: [], edits: [] };
   const byId = (s, id) => (id ? live(d, s).find((x) => x.id === id) || null : null);
   const pools = [moneyInText(message), ...photoTexts.map(numbersInText)];
@@ -928,7 +942,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
 
   for (const c of (Array.isArray(plan.collections) ? plan.collections : []).slice(0, 10)) {
     const issues = [];
-    const r = { source_quote: String(c.quote || "").slice(0, 8000), date: validDate(c.date, today) || today, customer_id: byId("customers", c.customer_id)?.id || null, new_customer: null,
+    const r = { source_quote: String(c.quote || "").slice(0, 8000), date: proposalDate(c.date, today, issues), customer_id: byId("customers", c.customer_id)?.id || null, new_customer: null,
       amount: null, method: c.method === "Havale" ? "Havale" : "Nakit", bank_account_id: byId("bank_accounts", c.bank_account_id)?.id || null,
       personnel_id: byId("personnel", c.personnel_id)?.id || null, note: String(c.note || "").slice(0, 200) };
     if (!r.customer_id && c.new_customer) {
@@ -964,7 +978,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     if (!r.customer_id && !r.new_customer) issues.push("Müşteri seçilmeli");
     if (r.method === "Havale" && !r.bank_account_id) issues.push("Havale için banka hesabı seçilmeli");
     r.issues = issues;
-    r.okData = !!(r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id) && !r.notPayment && !r.ownerMismatch);
+    r.okData = !!(r.date && r.amount && (r.customer_id || r.new_customer) && (r.method !== "Havale" || r.bank_account_id) && !r.notPayment && !r.ownerMismatch);
     r.ok = false; // tahsilat kartı her zaman işaretsiz gelir: kullanıcı kontrol edip işaretler
     if (r.okData) issues.push("Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin");
     out.collections.push(r);
@@ -986,13 +1000,14 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
   }
 
   for (const m of (Array.isArray(plan.maintenance) ? plan.maintenance : []).slice(0, 10)) {
-    const issues = [];
-    const r = { source_quote: String(m.quote || "").slice(0, 8000), date: validDate(m.date, today) || today, vehicle_id: byId("vehicles", m.vehicle_id)?.id || null,
+    const evidence=rowEvidence(m,{message,photoTexts,photoCount,implicitPhoto:photoCount===1&&(plan.maintenance||[]).length===1&&!['works','fuel','expenses','tickets','documents','part_documents','tank_in'].some(k=>plan[k]?.length)?0:null});
+    const issues = [...evidence.issues];
+    const r = { source_quote: String(m.quote || "").slice(0, 8000), date: proposalDate(m.date, today, issues), vehicle_id: byId("vehicles", m.vehicle_id)?.id || null,
       maint_type: MAINT_TYPES.includes(m.maint_type) ? m.maint_type : "Arıza", status: MAINT_STATUS.includes(m.status) ? m.status : "Açık",
       description: String(m.description || "").slice(0, 300), cost: null, service_company: String(m.service_company || "").slice(0, 80),
-      supplier_id: byId("suppliers", m.supplier_id)?.id || null, credit: !!m.credit };
+      supplier_id: byId("suppliers", m.supplier_id)?.id || null, credit: !!m.credit, photo:evidence.photo };
     if (m.cost != null && m.cost !== "") {
-      const a = amountOk(m.cost, pools);
+      const a = amountOk(m.cost, [moneyInText(evidence.message),numbersInText(evidence.text)]);
       if (a) r.cost = a; else issues.push(`Tutar ${m.cost} mesajda/fişte yazmıyor`);
     }
     if (!r.vehicle_id) issues.push("Araç seçilmeli");
@@ -1000,13 +1015,13 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     if (r.credit && !r.supplier_id) issues.push("Veresiye için esnaf seçilmeli");
     if (r.credit && !r.cost) issues.push("Veresiye için tutar gerekli");
     r.issues = issues;
-    r.ok = !!(r.vehicle_id && r.description && (!r.credit || (r.supplier_id && r.cost)) && !issues.some((x) => /yazmıyor/.test(x)));
+    r.ok = !!(r.date && r.vehicle_id && r.description && !issues.length && (!r.credit || (r.supplier_id && r.cost)) && !issues.some((x) => /yazmıyor/.test(x)));
     out.maintenance.push(r);
   }
 
   for (const e of (Array.isArray(plan.personnel) ? plan.personnel : []).slice(0, 10)) {
     const issues = [];
-    const r = { source_quote: String(e.quote || "").slice(0, 8000), date: validDate(e.date, today) || today, personnel_id: byId("personnel", e.personnel_id)?.id || null,
+    const r = { source_quote: String(e.quote || "").slice(0, 8000), date: proposalDate(e.date, today, issues), personnel_id: byId("personnel", e.personnel_id)?.id || null,
       event_type: PERSONNEL_EVENT_TYPES.includes(e.event_type) ? e.event_type : "Diğer", amount: null, hours_days: null,
       note: String(e.note || "").slice(0, 200) };
     if (e.amount != null && e.amount !== "") {
@@ -1019,7 +1034,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     }
     if (!r.personnel_id) issues.push("Personel seçilmeli");
     r.issues = issues;
-    r.ok = !!(r.personnel_id && !issues.length);
+    r.ok = !!(r.date && r.personnel_id && !issues.length);
     out.personnel.push(r);
   }
 
@@ -1143,7 +1158,7 @@ export function assistantSchema() {
       tank_in: row({ date: NS, liters: NN, unit_price: NN, total: NN, supplier_id: NS, credit: NB, customer_id: NS, note: NS, photo: { type: ["integer", "null"] }, company: NS, irsaliye_no: NS,
         invoice_no: NS, ettn: NS, seller_tax_no: NS, net: NN, kdv: NN }),
       collections: row({ date: NS, customer_id: NS, new_customer: NS, amount: NN, method: NS, bank_account_id: NS, personnel_id: NS, note: NS }),
-      maintenance: row({ date: NS, vehicle_id: NS, maint_type: NS, status: NS, description: NS, cost: NN, service_company: NS, supplier_id: NS, credit: NB }),
+      maintenance: row({ photo: {type:["integer","null"]}, date: NS, vehicle_id: NS, maint_type: NS, status: NS, description: NS, cost: NN, service_company: NS, supplier_id: NS, credit: NB }),
       personnel: row({ date: NS, personnel_id: NS, event_type: NS, amount: NN, hours_days: NN, note: NS }),
       edits: { type: "array", items: { type: "object", properties: { store: NS, id: NS, delete: NB, reason: NS, changes: { type: "object" } } } },
       memory: { type: "array", items: { type: "object", properties: { alias: NS, target_type: NS, target_id: NS } } },

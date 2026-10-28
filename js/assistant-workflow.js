@@ -13,7 +13,7 @@ export const DRAFT_KINDS={
  fuel:{group:'fuel',label:'Yakıt',required:['date','vehicle','source','liters']},
  maintenance:{group:'maintenance',label:'Bakım',required:['date','vehicle','description']},
 };
-export const DRAFT_FIELDS={date:'Tarih',customer:'Müşteri',vehicle:'Araç',work_type:'İş türü',quantity:'Miktar',unit:'Birim',personnel:'Personel',site:'Şantiye',unit_price:'Birim fiyat',amount:'Tutar',method:'Ödeme şekli',bank:'Banka hesabı',category:'Kategori',pay:'Ödeme',supplier:'Tedarikçi',source:'Yakıt kaynağı',fuel_customer:'Mazotu veren müşteri',liters:'Litre',total:'Toplam tutar',description:'Açıklama',maint_type:'Bakım türü',status:'Durum',cost:'Bakım tutarı',material:'Malzeme'};
+export const DRAFT_FIELDS={date:'Tarih',customer:'Müşteri',vehicle:'Araç',work_type:'İş türü',quantity:'Miktar',unit:'Birim',personnel:'Personel',site:'Şantiye',unit_price:'Birim fiyat',price_pending:'Fiyatı sonra belirle',amount:'Tutar',method:'Ödeme şekli',bank:'Banka hesabı',category:'Kategori',pay:'Ödeme',supplier:'Tedarikçi',source:'Yakıt kaynağı',fuel_customer:'Mazotu veren müşteri',liters:'Litre',total:'Toplam tutar',description:'Açıklama',maint_type:'Bakım türü',status:'Durum',cost:'Bakım tutarı',material:'Malzeme'};
 const rawField={customer:'customer_id',vehicle:'vehicle_id',site:'site_id',personnel:'personnel_id',bank:'bank_account_id',supplier:'supplier_id',fuel_customer:'customer_id',pay:'payment_method'};
 const refs={customer:'customers',vehicle:'vehicles',site:'sites',personnel:'personnel',bank:'bank_accounts',supplier:'suppliers',fuel_customer:'customers'};
 const positive=new Set(['quantity','unit_price','amount','liters','total','cost']);
@@ -113,7 +113,7 @@ export function readDraftRows(out,v,d){
   const fields={},options={};
   for(const el of card.querySelectorAll('[name]')){
    if(!DRAFT_FIELDS[el.name]||el.dataset.draftEditable==='0')continue;
-   fields[el.name]=el.value;
+   fields[el.name]=el.type==='checkbox'?el.checked:el.value;
    if(el.tagName==='SELECT')options[el.name]=[...el.options].filter(o=>o.value).map(o=>({value:o.value,label:o.textContent,aliases:el.name==='vehicle'?[(d.vehicles||[]).find(x=>x.id===o.value)?.plate||'']:[]}));
   }
   return [{key:kind+':'+index,kind,index,label:def.label+' '+(index+1),fields,options,selected:!!qs('[data-pick]',card)?.checked,saved:card.dataset.saved==='1',disabled:!!qs('[data-pick]',card)?.disabled}];
@@ -123,7 +123,10 @@ export function applyDraftPlan(plan,row,updates){
  const group=DRAFT_KINDS[row.kind].group,next={...plan,[group]:[...(plan[group]||[])]},data={...(next[group][row.index]||{})};
  for(const [field,value] of Object.entries(updates)){
   if(field==='customer'){data.customer_id=String(value).startsWith('new:')?null:value;data.new_customer=String(value).startsWith('new:')?value.slice(4):null;if(data.customer_id)data.new_customer_parent_id=null;}
-  else data[rawField[field]||field]=positive.has(field)?Number(value):value;
+  else if(field==='site'){data.site_id=String(value).startsWith('new:')?null:value;data.new_site=String(value).startsWith('new:')?value.slice(4):null;}
+  else if(field==='pay'){data.payment_method=String(value).startsWith('p:')?'Personel Ödedi':value;data.paid_by_personnel_id=String(value).startsWith('p:')?value.slice(2):null;}
+  else data[rawField[field]||field]=positive.has(field)?value===''?null:Number(value):value;
+  if(field==='supplier')data.credit=!!value;
   if(field==='date')data.date_source='mesaj';
  }
  next[group][row.index]=data;return next;
@@ -137,6 +140,19 @@ export function bindDraftWorkflow(out,v,d){
  controls.innerHTML='<button class="btn small" data-batch-ready>Hazır iş kartlarını seç</button><button class="btn small" data-batch-prices>İşlerin fiyatını sonra belirle</button>';
  panel.innerHTML='<b>İşlem taslakları</b>';panel.append(controls,body);
  const read=()=>readDraftRows(out,v,d);
+ let observed=read().map(row=>({key:row.key,fields:{...row.fields}}));
+ const capture=plan=>{
+  const rows=read(),changes=[];let next=plan;
+  for(const row of rows){
+   const before=observed.find(x=>x.key===row.key)?.fields;if(!before)continue;
+   const updates=Object.fromEntries(Object.entries(row.fields).filter(([f,value])=>String(value)!==String(before[f])));
+   if(!Object.keys(updates).length)continue;
+   next=applyDraftPlan(next,row,updates);
+   changes.push(row.label+': '+Object.entries(updates).map(([f,value])=>DRAFT_FIELDS[f]+' '+(row.options[f]?.find(o=>o.value===value)?.label||value||'(boş bırakıldı)')+(['unit_price','amount','cost','total'].includes(f)&&value!==''?' TL':'')).join(' · '));
+   if(row.kind==='work'&&Object.hasOwn(updates,'price_pending'))changes.push((row.index+1)+'. işin fiyat'+(updates.price_pending?'ı beklesin':'ını listeden uygula'));
+  }
+  return changes.length?{plan:next,note:'Kartta kullanıcı tarafından değiştirildi: '+changes.join('\n'),commit:()=>{observed=rows.map(row=>({key:row.key,fields:{...row.fields}}));}}:null;
+ };
  const refresh=()=>{
   const rows=read(),missing=rows.filter(r=>draftMissing(r).length),quantities={};
   for(const r of rows.filter(r=>r.kind==='work'&&Number(r.fields.quantity)>0&&r.fields.unit))quantities[r.fields.unit]=(quantities[r.fields.unit]||0)+Number(r.fields.quantity);
@@ -197,5 +213,5 @@ export function bindDraftWorkflow(out,v,d){
   if(changed.length&&policy.hasPriceDirective)v._workflowReplies=[...(v._workflowReplies||[]),policy.deferPrices?'İşlerin fiyatları kullanıcı isteğiyle bekliyor.':'Kullanıcı fiyat önizlemesini yeniden açtı.'].slice(-20);
   refresh();return changed;
  };
- return {read,refresh,resolve:message=>resolveDraftReply(message,read()),apply,applyBatch,panel};
+ return {read,refresh,capture,resolve:message=>resolveDraftReply(message,read()),apply,applyBatch,panel};
 }

@@ -9,9 +9,12 @@ U=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8841/'
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
  c=b.new_context(viewport={'width':360,'height':850},service_workers='allow');c.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
- bodies=[];reply={};http_error=False
+ bodies=[];reply={};http_error=False;hold_reply=False;pending=[]
  def mock(route):
   bodies.append(json.loads(route.request.post_data or '{}'))
+  if hold_reply:pending.append(route);return
+  deliver(route)
+ def deliver(route):
   if http_error:route.fulfill(status=400,content_type='application/json',body=json.dumps({'error':{'message':'TEST request failure','status':'INVALID_ARGUMENT'}}));return
   route.fulfill(status=200,content_type='application/json',body=json.dumps({'candidates':[{'content':{'parts':[{'text':json.dumps(reply)}]},'finishReason':'STOP'}]}))
  c.route('https://generativelanguage.googleapis.com/**',mock)
@@ -25,13 +28,21 @@ with sync_playwright() as p:
  def message_part():return bodies[-1]['contents'][0]['parts'][-1]['text']
  def double():pg.evaluate("()=>{const b=document.querySelector('[data-ask]');b.dispatchEvent(new MouseEvent('click',{bubbles:true}));b.dispatchEvent(new MouseEvent('click',{bubbles:true}))}")
  def send(text,twice=False,model=True):
-  pg.fill('[data-msg]',text);n=len(bodies)
-  if twice:double()
+  global hold_reply
+  pg.fill('[data-msg]',text);n=len(bodies);hold_reply=model
+  if model:
+   with pg.expect_request('https://generativelanguage.googleapis.com/**'):
+    if twice:double()
+    else:pg.click('[data-ask]')
+   assert pg.locator('[data-ask]').is_disabled() and pg.locator('[data-msg]').is_disabled()
+   hold_reply=False
+   for route in pending:deliver(route)
+   pending.clear()
+  elif twice:double()
   else:pg.click('[data-ask]')
-  if model:assert pg.locator('[data-ask]').is_disabled() and pg.locator('[data-msg]').is_disabled()
   pg.wait_for_function("()=>!document.querySelector('[data-ask]').disabled&&document.querySelector('[data-msg]').value===''")
   assert len(bodies)==n+(1 if model else 0),(n,len(bodies))
- before=snapshot();pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_selector('[data-msg]')
+ before=snapshot();pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_function("()=>document.querySelector('[data-ask]')&&!document.querySelector('[data-ask]').disabled")
  reply=work(ids['c'],2);send('TEST Kaya TEST Makine 2 sefer moloz',twice=True)
  assert pg.locator('[data-out] [data-kind=work]').count()==1 and '[DÜZELTME]' not in message_part()
  assert not pg.locator('[data-refine]').is_checked()

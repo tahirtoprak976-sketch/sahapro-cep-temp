@@ -1,4 +1,5 @@
 import {recordNoteText} from './record-notes.js';
+import {assertAssistantPlan} from './assistant-safety.js';
 // Read-only business tools + explicit proposal terminals. No database writes and no arbitrary code execution.
 import {ASK_TOOLS,runAskTool} from './day-summary.js';
 import {assistantSchema} from './assistant-core.js';
@@ -50,7 +51,7 @@ export function cleanAgentPlan(value){
  for(const [k,v]of Object.entries(plan)){
   if(props[k].type==='array'&&(!Array.isArray(v)||v.length>30))throw Error('Plan satır sınırı aşıldı: '+k);
  }
- return plan;
+ return assertAssistantPlan(plan);
 }
 export function reviseAgentPlan(task,changes){
  if(!task||!['draft','clarify'].includes(task.status))throw Error('Açık, kaydedilmemiş görev yok.');
