@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.77** — 27.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.78** — 28.10.2026
+
+Cari listesi ve müşteri cari kartında tahsilat öncesi ana para + KDV = toplam ayrı görünür.
+Tahsilat, devir/düzeltme ve mevcut kayıtlı bakiye korunur; tahsilatın ana para/KDV dağılımı varsayılmaz.
+KDV hariç işlerin henüz cariye eklenmemiş KDV'si ve belirsiz eski kayıtlar açıkça belirtilir.
 
 Bağlantılı kartlar uygulamanın yazı rengini ve blok düzenini korur; ziyaret edilmiş kartlar morlaşmaz.
 Operasyon Masası'nın Bekleyenler görünümünde başlık, durum, açıklama ve kaynak işlemi ayrı gösterilir.
