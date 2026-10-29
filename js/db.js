@@ -2208,7 +2208,7 @@ export async function signSlip(id, file) {
         };
       }
     };
-    t.oncomplete = () => resolve(result);
+    t.oncomplete = () => {recordsCommitted(d.name,["slips"]);resolve(result);};
     t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }

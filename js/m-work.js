@@ -1,3 +1,5 @@
+import {slipWorkState,slipWorkCandidates} from './digital-slip-core.js';
+import {createDigitalSlip,updateDigitalSlipDraft} from './digital-slip-db.js';
 import { prepareAttachment } from "./attachment-safety.js";
 import { enteredTonnageText } from "./work-tonnage.js";
 import { attachmentHTML } from "./attachment-ui.js";
@@ -32,6 +34,7 @@ import {
   sheetClose,
   toast,
   confirmDialog,
+  choiceDialog,
   promptDialog,
   fText,
   fNum,
@@ -334,7 +337,7 @@ async function workForm(ctx, editId) {
         ${fSelect("Şoför / Operatör", "personnel_id", [...perOpts, { v: "__new__", t: "➕ Yeni…" }], v.personnel_id)}
       </div>
       <div data-jobbox></div>
-      ${fSelect("İş Türü", "work_type", WORK_TYPES, v.work_type || "")}
+      ${fSelect("İş Türü", "work_type", v.work_type&&!WORK_TYPES.includes(v.work_type)?[v.work_type,...WORK_TYPES]:WORK_TYPES, v.work_type || "")}
       <div class="formgrid2">
         ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
         ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
@@ -1080,6 +1083,7 @@ async function slips(ctx) {
   const sub = ctx.parts[1];
   if (sub === "new") return slipForm(ctx, null);
   if (sub && ctx.parts[2] === "imza") return slipSign(ctx, sub);
+  if (sub && ctx.parts[2] === "is-kaydi") return (await import("./digital-slip-ui.js")).linkScreen(ctx,sub);
   if (sub && ctx.parts[2] === "edit") return slipForm(ctx, sub);
   if (sub) return slipDetail(ctx, sub);
   return slipList(ctx);
@@ -1170,7 +1174,11 @@ async function slipForm(ctx, editId) {
       };
     }
   }
-  const vehName = (id) => (vehicles.find((x) => x.id === id) || {}).name || "";
+  const vehPlate = id => (vehicles.find(x=>x.id===id)||{}).plate||"";
+  const operationKey=ctx.core.uuid();
+  const linkedSource=v.work_record_id?await db.get('work_records',v.work_record_id):null;
+  const editableOwnDraft=!!rec&&rec.status==='Taslak'&&!rec.revision_of&&linkedSource?.digital_slip_source_id===(rec.revision_of||rec.id)&&linkedSource.price_snapshot==null&&linkedSource.customer_fuel_allowance_l==null;
+  const sourceLinked=!!v.work_record_id&&!v.revision_of&&!editableOwnDraft;
 
   root.innerHTML =
     appbar(
@@ -1181,6 +1189,7 @@ async function slipForm(ctx, editId) {
     ) +
     `
     <form class="slip-form" data-form novalidate>
+      ${notice("info", editId ? (editableOwnDraft?"Bu fişten açılan fiyatsız iş de taslakla birlikte güncellenir. Fiyatlı / hakedişe bağlı hizmet değiştirilmez.":v.revision_of?"Revizyon yeni iş oluşturmaz. Hizmet değişirse kaynak işi ayrıca kontrol edin.":"İşe bağlı hizmet alanları kaynak kayıttan gelir; teslim alan ve açıklamayı düzenleyebilirsiniz.") : query.work?"Mevcut işe fiş bağlanır; ikinci iş oluşturulmaz.":"Fiş ve iş birlikte kaydedilir. İş, müşterinin Yapılan işler listesinde görünür; fiyat sonradan belirlenir.")}
       <section class="slip-panel"><h2><span>01</span> Müşteri ve İş Yeri</h2><p class="slip-hint">Fişin teslim edileceği müşteri ve şantiye.</p>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
@@ -1206,7 +1215,7 @@ async function slipForm(ctx, editId) {
           vehicles.map((x) => ({ v: x.id, t: x.name })),
           v.vehicle_id,
         )}
-        ${fText("Plaka", "plate", v.plate || vehName(v.vehicle_id), {})}
+        ${fText("Plaka", "plate", v.plate || vehPlate(v.vehicle_id), {})}
       </div>
       ${fSelect(
         "Personel",
@@ -1226,7 +1235,7 @@ async function slipForm(ctx, editId) {
     <div class="actionbar"><button class="btn primary" data-save>${editId ? "Kaydet" : "Kaydet ve İmzaya Geç"}</button></div>`;
 
   const sourceBatch = (v.work_record_ids || []).length > 1;
-  if (sourceBatch) {
+  if (sourceBatch || sourceLinked) {
     for (const key of [
       "date",
       "customer_id",
@@ -1239,7 +1248,7 @@ async function slipForm(ctx, editId) {
       "unit",
     ])
       qs("[name=" + key + "]", root).disabled = true;
-    qs("[data-form]", root).insertAdjacentHTML(
+    if(sourceBatch)qs("[data-form]", root).insertAdjacentHTML(
       "afterbegin",
       `<div class="notice"><strong>Toplam ${fmtNum(v.quantity)} sefer</strong><p>Bağlı işlerden alınır; döküm yerleri müşteriye gösterilmez.</p>${customerWorkLines(
         v.customer_items,
@@ -1252,19 +1261,21 @@ async function slipForm(ctx, editId) {
     );
   }
   qs("select[name=vehicle_id]", root).addEventListener("change", (e) => {
-    qs("input[name=plate]", root).value = vehName(e.target.value);
+    qs("input[name=plate]", root).value = vehPlate(e.target.value);
   });
 
+  let saving=false;
   qs("[data-save]", root).addEventListener("click", async () => {
+    if(saving)return;
     const val = {
-      ...(sourceBatch
+      ...((sourceBatch || sourceLinked)
         ? {
             date: v.date,
             customer_id: v.customer_id,
             site_id: v.site_id,
             vehicle_id: v.vehicle_id,
             personnel_id: v.personnel_id,
-            plate: vehName(v.vehicle_id),
+            plate: v.plate || "",
             work_text: v.work_text,
             quantity: v.quantity,
             unit: v.unit,
@@ -1304,40 +1315,34 @@ async function slipForm(ctx, editId) {
           }
         : {}),
     };
-    if (editId) {
-      await db.saveExisting("slips", rec, fields, "Fiş düzenlendi");
-      toast("Fiş güncellendi", "ok");
-      go("#/fisler/" + editId);
-    } else {
-      const no = await db.nextSeq("slip");
-      const payload = {
-        ...fields,
-        slip_no: no,
-        status: "Taslak",
-        revision_no: 1,
-      };
+    const button=qs('[data-save]',root);saving=true;button.disabled=true;
+    try {
+      if(editId){
+        await updateDigitalSlipDraft(rec.id,rec,fields);toast('Fiş güncellendi','ok');go('#/fisler/'+editId);return;
+      }
       let created;
-      try {
-        created = sourceBatch
-          ? await db.saveWorkSlip(payload, v.work_record_ids)
-          : await db.saveNew("slips", payload);
-      } catch (e) {
-        toast(e.message, "err");
-        return;
+      if(sourceBatch){
+        const no=await db.nextSeq('slip');
+        created=await db.saveWorkSlip({...fields,slip_no:no,status:'Taslak',revision_no:1},v.work_record_ids);
+      }else{
+        let mode=v.work_record_id?'existing':'new',work_id=v.work_record_id||null,allow_separate=false;
+        if(mode==='new'){
+          if(!fields.vehicle_id){toast('İş kaydı için araç / makine seçin.','err');return;}
+          const data=await db.dumpAll(),matches=slipWorkCandidates(data,fields);
+          if(matches.length){
+            const choice=await choiceDialog('Benzer iş zaten kayıtlı','Aynı işi ikinci kez yazmamak için mevcut işi seçin. Bu ayrı bir hizmetse ayrıca onaylayabilirsiniz.',[
+              ...matches.map(w=>[w.slip_id?'open:'+w.slip_id:'work:'+w.id,`${w.slip_id?'Fişi olan işi incele':'Mevcut işe bağla'} · ${(vehicles.find(x=>x.id===w.vehicle_id)||{}).name||'Araç'} · ${w.quantity} ${w.unit} · ${w.work_type}`]),
+              ['new','Bu ayrı bir iş — yeni iş ve fiş oluştur']]);
+            if(!choice)return;
+            if(choice.startsWith('open:')){go('#/fisler/'+choice.slice(5));return;}
+            if(choice.startsWith('work:')){mode='existing';work_id=choice.slice(5);}else allow_separate=true;
+          }
+        }
+        created=(await createDigitalSlip(fields,{key:operationKey,mode,work_id,allow_separate})).slip;
       }
-      if (created.work_record_id && !sourceBatch) {
-        const w = await db.get("work_records", created.work_record_id);
-        if (w)
-          await db.saveExisting(
-            "work_records",
-            w,
-            { slip_id: created.id },
-            "Fiş bağlandı",
-          );
-      }
-      toast("Fiş #" + String(no).padStart(6, "0") + " oluşturuldu", "ok");
-      go("#/fisler/" + created.id + "/imza");
-    }
+      toast('Fiş '+slipSerial(created.slip_no)+' ve iş bağlantısı kaydedildi','ok');go('#/fisler/'+created.id+'/imza');
+    }catch(e){toast(e.message,'err');}finally{saving=false;button.disabled=false;}
+
   });
 }
 
@@ -1448,6 +1453,7 @@ async function slipDetail(ctx, id) {
     root.innerHTML = appbar("Fiş") + emptyState("🧾", "Fiş yok");
     return;
   }
+  const workLink=slipWorkState(await db.dumpAll(),s);
   const atts = await db.attachmentsFor("slip_signature", id);
   const sig = atts.find((a) => a.kind === "signature");
   const revisions = (await db.getAll("slips")).filter(
@@ -1476,6 +1482,10 @@ async function slipDetail(ctx, id) {
     <p class="slip-hint">${s.status === "İmzalandı" ? "İmzalı kayıt kilitlidir. Düzeltmeler yeni revizyon olarak saklanır." : s.status === "Revize" ? "Bu kayıt korunmuştur; güncel revizyonu kontrol edin." : s.status === "İptal" ? "Bu fiş iptal edilmiştir." : "Taslak fiş: teslim alan imzası henüz alınmadı."}</p></section>
     ${sig ? `<div class="section-title">İmza</div><div class="sigframe"><img data-sig alt="İmza"></div>` : ""}
     ${revisions.length ? `<div class="section-title">Revizyonlar</div>` + revisions.map((r) => li({ ic: "🧾", href: "#/fisler/" + r.id, t1: `#${String(r.slip_no).padStart(6, "0")} (v${r.revision_no})`, badgeHtml: statusBadge(r.status) })).join("") : ""}
+    <section class="card" data-slip-work-state>
+      <h2>İş kaydı bağlantısı</h2>
+      ${workLink.state==='linked'?`<p>Bu fiş kayıtlı işe bağlıdır; ikinci iş oluşturulmaz. Fişi iptal etmek bağlı işi silmez.</p>${workLink.mismatch?notice('warn','Fişin hizmet bilgileri bağlı işten farklı. Kaynak işi inceleyin; fiş revizyonu iş miktarını veya fiyatı otomatik değiştirmez.'):''}${workLink.works.map(w=>`<a class="btn block" data-slip-work href="#/isler/${esc(encodeURIComponent(w.id))}">Müşteri işindeki kaydı aç →</a>`).join('')}`:workLink.state==='missing'?notice('warn','Fişin bağlı işi silinmiş veya bulunamıyor. Yeni kayıt açmadan Çöp Kutusunu inceleyin.'):`${notice('warn','Bu fiş henüz bir iş kaydına bağlı değil. Bu nedenle müşterinin Yapılan işler listesinde ve hakedişte görünmez.')}${['Taslak','İmzalandı'].includes(s.status)?`<a class="btn primary block" data-slip-link-work href="#/fisler/${esc(encodeURIComponent(s.id))}/is-kaydi">Fişi müşteri işlerine bağla</a>`:''}`}
+    </section>
     <div class="actionbar slip-actions">
       ${s.status === "Taslak" ? `<button class="btn ok" data-go="#/fisler/${id}/imza">İmzala</button><button class="btn" data-go="#/fisler/${id}/edit">Düzenle</button>` : ""}
       ${s.status === "İmzalandı" ? `<button class="btn" data-revize>Revizyon</button>` : ""}
