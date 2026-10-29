@@ -1114,7 +1114,9 @@ function render(ctx, out, v, d, { message, files, ms }) {
 }
 
 async function save(ctx, out, v, d, { message, files }) {
-  const { db } = ctx;
+  const originalDb=ctx.db;
+  const undo=await import("./undo.js"),snap0=undo.beginUndo(originalDb),db=snap0.db;
+  ctx={...ctx,db};
   const cards = qsa(".card[data-kind]", out)
     .filter((c) => qs("[data-pick]", c).checked)
     .sort((a, b) => (["card", "memory", "tank", "price", "action", "setting"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price", "action", "setting"].includes(b.dataset.kind) ? 0 : 1));
@@ -1166,10 +1168,9 @@ async function save(ctx, out, v, d, { message, files }) {
   const btn = qs("[data-save]", out);
   btn.disabled = true;
   const batchWorks = {};
-  const undo = await import("./undo.js");
-  const snap0 = await undo.snapshot(db);
   const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
   const done = { already: 0, conflict: 0, action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, fuelOut: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
+  const trackedCredit=(create,...args)=>create(...args.slice(0,4),{...(args[4]||{}),onSaved:rec=>snap0.track(rec)});
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
@@ -1180,7 +1181,7 @@ async function save(ctx, out, v, d, { message, files }) {
     if (occupationOnly(alias)) return;
     try {
       const before = (await db.getAll("aliases")).filter((a) => !a.deleted_at && a.active !== false).length;
-      await saveMessageMemory({ alias, target_type, target_id, confirmed: true });
+      snap0.track(await saveMessageMemory({ alias, target_type, target_id, confirmed: true }));
       const after = (await db.getAll("aliases")).filter((a) => !a.deleted_at && a.active !== false).length;
       if (after > before) done.learned++;
     } catch (e) {
@@ -1335,7 +1336,7 @@ async function save(ctx, out, v, d, { message, files }) {
           done.cards++;
         } else if (r.kind === "suppliers") {
           const edb = await import("./enterprise-db.js");
-          await edb.saveSupplier({ name, type: r.data.type, phone: val(c, "phone") });
+          snap0.track(await edb.saveSupplier({ name, type: r.data.type, phone: val(c, "phone") }));
           done.cards++;
         }
         continue;
@@ -1351,7 +1352,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (supId === "new" && rT.newSupplier) {
           const ex = (await db.listActive("suppliers")).find((s) => rT.newSupplier.tax_no && String(s.tax_no || "").replace(/\D/g, "") === rT.newSupplier.tax_no);
           const byName = (await db.listActive("suppliers")).find((s) => s.name.trim().toLocaleLowerCase("tr") === rT.newSupplier.name.trim().toLocaleLowerCase("tr"));
-          supId = ex ? ex.id : byName ? byName.id : (await (await import("./enterprise-db.js")).saveSupplier({ name: rT.newSupplier.name, type: "Petrolcü", tax_no: rT.newSupplier.tax_no || "", note: "Faturadan otomatik açıldı" })).id;
+          supId = ex ? ex.id : byName ? byName.id : snap0.track(await (await import("./enterprise-db.js")).saveSupplier({ name: rT.newSupplier.name, type: "Petrolcü", tax_no: rT.newSupplier.tax_no || "", note: "Faturadan otomatik açıldı" })).id;
           if (!ex && !byName) done.cards++;
         }
         const D = rT.detail;
@@ -1373,7 +1374,7 @@ async function save(ctx, out, v, d, { message, files }) {
               if (total && Math.abs(Number(bill.gross_total) - total) > 1) toast(`Dikkat: petrolcü borcu ${Number(bill.gross_total).toLocaleString("tr-TR")} ₺, fatura ${total.toLocaleString("tr-TR")} ₺ — Esnaf ekranından düzeltin`, "err");
             } else if (supId && total && val(c, "tank_pay") !== "paid") {
               const { createCreditBill } = await import("./esnaf.js");
-              await createCreditBill(ctx, fresh0, fresh0.suppliers.find((x) => x.id === supId),
+              await trackedCredit(createCreditBill,ctx, fresh0, fresh0.suppliers.find((x) => x.id === supId),
                 { date: cur.date, amount: total, description: `Depoya yakıt ${liters} L${D?.no ? " · fatura " + D.no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
                 { source: { store: "fuel_tank_movements", id: cur.id } });
             }
@@ -1390,7 +1391,7 @@ async function save(ctx, out, v, d, { message, files }) {
         if (supId && total && val(c, "tank_pay") !== "paid") {
           const { createCreditBill } = await import("./esnaf.js");
           const fresh = await db.dumpAll();
-          await createCreditBill(ctx, fresh, fresh.suppliers.find((x) => x.id === supId),
+          await trackedCredit(createCreditBill,ctx, fresh, fresh.suppliers.find((x) => x.id === supId),
             { date: mv.date, amount: total, description: `Depoya yakıt ${liters} L${D?.no ? " · fatura " + D.no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
             { source: { store: "fuel_tank_movements", id: mv.id } });
         }
@@ -1411,31 +1412,28 @@ async function save(ctx, out, v, d, { message, files }) {
         let workId = val(c, "link");
         if (!workId) { toast(`Fiş ${no}: hangi işe bağlanacağını seçin — fiş kaydedilmedi`, "err"); continue; }
         const veh = vehicles.find((x) => x.id === vid);
-        if (workId.startsWith("batch:")) {
-          const w = batchWorks[workId.slice(6)];
-          if (!w) { toast(`Fiş ${no}: bağlanacak iş kartı işaretli değil — fiş kaydedilmedi`, "err"); continue; }
-          workId = w.id;
-          const tn = Number(val(c, "tonnage")) || null;
-          const patch = { ...(!w.slip_no ? { slip_no: no } : {}), ...(tn && !w.tonnage ? { tonnage: tn } : {}), slip_status: w.slip_status || "Fiş Var" };
-          try { await db.saveExisting("work_records", await db.get("work_records", w.id), patch, "Asistan: fiş işe eklendi"); } catch (e) { /* iş kilitliyse yalnız belge bağlanır */ }
+        let patch=null,newWork=null;
+        if(workId.startsWith('batch:')){
+          const w=batchWorks[workId.slice(6)];
+          if(!w){toast(`Fiş ${no}: bağlanacak iş kartı işaretli değil — fiş kaydedilmedi`,'err');continue;}
+          workId=w.id;patch={tonnage:Number(val(c,'tonnage'))||null};
         }
-        if (workId === "new") {
-          const f = noteFor('work',r,{
-            date, customer_id: val(c, "customer"), site_id: null, vehicle_id: vid, personnel_id: null, vehicle_type: veh.type || null,
-            contractor_id: veh.contractor_id || null, work_type: val(c, "work_type"), description: `Döküm fişi ${no}` + (val(c, "tonnage") ? ` · ${val(c, "tonnage")} ton` : ""),
-            internal_note: "", material: r.material || "", quantity: 1, unit: "Sefer",
-            dump_site_id: val(c, "dump_site") || null, quarry_id: null, dump_area: (d.dump_sites || []).find((x) => x.id === val(c, "dump_site"))?.name || r.dump_site_name || "",
-            quarry: "", slip_status: null, slip_no: no, customer_note: "", distance_km: null, source: "asistan",
+        if(workId==='new'){
+          const f=noteFor('work',r,{
+            date,customer_id:val(c,'customer'),site_id:null,vehicle_id:vid,personnel_id:null,vehicle_type:veh.type||null,
+            contractor_id:veh.contractor_id||null,work_type:val(c,'work_type'),description:`Döküm fişi ${no}`+(val(c,'tonnage')?` · ${val(c,'tonnage')} ton`:''),
+            internal_note:'',material:r.material||'',quantity:1,unit:'Sefer',dump_site_id:val(c,'dump_site')||null,quarry_id:null,
+            dump_area:(d.dump_sites||[]).find(x=>x.id===val(c,'dump_site'))?.name||r.dump_site_name||'',quarry:'',slip_status:null,slip_no:no,customer_note:'',distance_km:null,source:'asistan'
           },['internal_note']);
-          f.price_snapshot = priceSnapshot(f, prices, crane);
-          Object.assign(f, JOB.applyJob(await db.dumpAll(), f));
-          workId = (await db.saveNew("work_records", f, "Asistan: döküm fişi")).id;
-          done.work++;
+          f.price_snapshot=priceSnapshot(f,prices,crane);Object.assign(f,JOB.applyJob(await db.dumpAll(),f));newWork=f;
         }
-        const docFields = { category: "Döküm Fişi", owner_type: "work", owner_id: workId, date, doc_no: no, title: "Döküm fişi " + no,
-          note: [val(c, "tonnage") ? val(c, "tonnage") + " ton" : "", r.dump_site_name].filter(Boolean).join(" · "),
-          ticket_vehicle_id: vid, ticket_tonnage: Number(val(c, "tonnage")) || null, ticket_dump_site_id: val(c, "dump_site") || null };
-        await (file ? db.saveDocument(docFields, file) : db.saveNew("documents", docFields, "Asistan: döküm fişi"));
+        const docFields={category:'Döküm Fişi',date,doc_no:no,title:'Döküm fişi '+no,
+          note:[val(c,'tonnage')?val(c,'tonnage')+' ton':'',r.dump_site_name].filter(Boolean).join(' · '),
+          ticket_vehicle_id:vid,ticket_tonnage:Number(val(c,'tonnage'))||null,ticket_dump_site_id:val(c,'dump_site')||null};
+        const saved=await db.saveTicketEvent({document:docFields,work:newWork,work_id:newWork?null:workId,patch},file);
+        if(saved._existing){done.already++;continue;}
+        if(saved.created_work)done.work++;
+        if(patch&&!saved.work_updated)toast('Fiş belgesi bağlandı; hakedişe bağlı işin fiş/ton alanları değiştirilmedi.','warn');
         done.ticket++;
         continue;
       }
@@ -1681,8 +1679,8 @@ async function save(ctx, out, v, d, { message, files }) {
           const s = fresh.suppliers.find((x) => x.id === supId);
           // Esnaf borcunun istek anahtarı kalıcı işlem kimliğinden: aynı satır yeniden kaydedilince ikinci borç yazılmaz
           const key = "op-" + (await db.opHash({ msgKey, kind: "credit-bill", row: rowKey("expense", Number(c.dataset.i)), date: f.date }));
-          const res = await createCreditBill(ctx, fresh, s, f, { key });
-          if (res) { for (const pi of (r.photos || [])) if (pi !== r.photo && files[pi]) await db.addAttachment("payable", res.rec.id, files[pi]); done.expense++; }
+          const res = await trackedCredit(createCreditBill,ctx, fresh, s, f, { key });
+          if (res) { snap0.track(res.rec); for (const pi of (r.photos || [])) if (pi !== r.photo && files[pi]) await db.addAttachment("payable", res.rec.id, files[pi]); done.expense++; }
         } else {
           const { findDuplicates } = await import("./esnaf.js");
           const dup = findDuplicates(fresh, { date: f.date, amount: f.amount });
@@ -1707,7 +1705,7 @@ async function save(ctx, out, v, d, { message, files }) {
             if (!eg) continue;
             if (eg.existing) { for (const image of (r.photos?.length ? r.photos.map(pi=>files[pi]).filter(Boolean) : file ? [file] : [])) await db.addAttachment("expense", eg.existing.id, image); continue; }
           }
-          const rec = dsite && !r.driver_entry_id ? await (async()=>{const {saveDumpEntry}=await import("./dump-ledger-db.js");const entry=await saveDumpEntry({kind:"TOPUP",date:f.date,dump_site_id:dsite.id,amount:f.amount,payment_method:payer?"Personel Ödedi":pay,personnel_id:payer||null,note:expenseNote.description,assistant_origin:expenseNote.assistant_origin},r.photos?.length?r.photos.map(pi=>files[pi]).filter(Boolean):file?[file]:[],eg?.op?.id||ctx.core.uuid());const expense=await db.get("expense_records",entry.expense_id);return {...expense,_existing:!!entry._existing};})() : await skipDup(db.saveNew("expense_records", {
+          const rec = dsite && !r.driver_entry_id ? await (async()=>{const {saveDumpEntry}=await import("./dump-ledger-db.js");const entry=snap0.track(await saveDumpEntry({kind:"TOPUP",date:f.date,dump_site_id:dsite.id,amount:f.amount,payment_method:payer?"Personel Ödedi":pay,personnel_id:payer||null,note:expenseNote.description,assistant_origin:expenseNote.assistant_origin},r.photos?.length?r.photos.map(pi=>files[pi]).filter(Boolean):file?[file]:[],eg?.op?.id||ctx.core.uuid()));const expense=await db.get("expense_records",entry.expense_id);return {...expense,_existing:!!entry._existing};})() : await skipDup(db.saveNew("expense_records", {
             ...expenseNote,
             ...(D ? { invoice_no: D.no || null, ettn: D.ettn || null, seller_tax_no: D.seller_tax_no || null, net_amount: D.net, kdv_amount: D.kdv, kdv_rate: D.kdv_rate, items: D.items.length ? D.items : null } : {}),
             ...(dsite ? { dump_site_id: dsite.id, dump_deposit: true } : {}),
@@ -1769,7 +1767,7 @@ async function save(ctx, out, v, d, { message, files }) {
         try {
           if (method === "Havale") {
             const { customerBankReceipt } = await import("./enterprise-db.js");
-            const r0 = await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: paymentNote.description, extra: srcInfo }, reqId);
+            const r0 = snap0.track(await customerBankReceipt({ date, customer_id: customer, bank_account_id: val(c, "bank"), amount, note: paymentNote.description, extra: srcInfo }, reqId));
             if (r0?._existing) { toast("Bu tahsilat zaten kaydedilmiş (başka sekme ya da tekrar) — ikinci kez yazılmadı", "err"); done.already++; continue; }
           } else {
             const pid = val(c, "personnel") || null;
@@ -1813,7 +1811,7 @@ async function save(ctx, out, v, d, { message, files }) {
           const { createCreditBill } = await import("./esnaf.js");
           const fresh = await db.dumpAll();
           const s = fresh.suppliers.find((x) => x.id === supId);
-          await createCreditBill(ctx, fresh, s, { date: rec.date, amount: cost, description: val(c, "description"), category: "Bakım / Onarım", vehicle_id: rec.vehicle_id, kdv_rate: null }, { source: { store: "maintenance_records", id: rec.id } });
+          await trackedCredit(createCreditBill,ctx, fresh, s, { date: rec.date, amount: cost, description: val(c, "description"), category: "Bakım / Onarım", vehicle_id: rec.vehicle_id, kdv_rate: null }, { source: { store: "maintenance_records", id: rec.id } });
         }
         done.maintenance++;
       } else if (k === "personnel") {
@@ -1868,6 +1866,7 @@ async function save(ctx, out, v, d, { message, files }) {
     }
     const parts = [[done.already, "kayıt bu mesajdan zaten yazılmıştı (yeniden yazılmadı)"], [done.conflict, "satır daha önce farklı bilgilerle kaydedildiği için atlandı"], [done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.fuelOut, "müşteriye mazot teslimi (depodan düştü, TL borç yazıldı)"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
+    if(snap0.unsafe)parts.push("Güvenli geri alma kapsamı doğrulanamadı; bu işlem için kayıtları tek tek inceleyin");
     v._done = true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır
     let waNext = "";

@@ -996,25 +996,8 @@ async function contractors(ctx) {
 }
 
 // Mükerrer depo girişi: faturalı kaydın bilgisi/fotoğrafı elle girilen kayda geçer, faturalı kayıt silinir, borç tek kalır
-async function mergeTankDup(db, ctx, { keep, drop }) {
-  const { invoiceFieldsOf } = await import("./tank-match.js");
-  const edb = await import("./enterprise-db.js");
-  const d = await db.dumpAll();
-  const billOf = (id) => (d.payables || []).find((b) => !b.deleted_at && b.status !== "İptal" && b.source_store === "fuel_tank_movements" && b.source_id === id);
-  const bKeep = billOf(keep.id), bDrop = billOf(drop.id);
-  if (bDrop) await edb.cancelPayable(bDrop.id, "Mükerrer depo girişi: elle girilen girişle birleştirildi");
-  const f = invoiceFieldsOf(drop);
-  if (bKeep) delete f.supplier_id;
-  await db.saveExisting("fuel_tank_movements", await db.get("fuel_tank_movements", keep.id), f, "Faturalı girişle birleştirildi");
-  for (const a of await db.attachmentsFor("tank", drop.id)) await db.addAttachment("tank", keep.id, a.blob, { kind: a.kind || "invoice" });
-  await db.deleteTankIn(drop.id, "Mükerrer depo girişi (birleştirildi)");
-  if (bDrop && !bKeep) {
-    const { createCreditBill } = await import("./esnaf.js");
-    const fresh = await db.dumpAll();
-    await createCreditBill(ctx, fresh, fresh.suppliers.find((x) => x.id === bDrop.party_id),
-      { date: keep.date, amount: Number(bDrop.gross_total), description: `Depoya yakıt ${keep.liters} L${drop.invoice_no ? " · fatura " + drop.invoice_no : ""}`, category: "Yakıt", vehicle_id: null, kdv_rate: null },
-      { source: { store: "fuel_tank_movements", id: keep.id } });
-  }
+async function mergeTankDup(db, ctx, pair) {
+  return (await import('./tank-merge-db.js')).mergeTankIntakes(pair);
 }
 
 // Depo girişi ayrıntısı: fatura bilgisi + fatura fotoğrafı/PDF (aç, ekle)

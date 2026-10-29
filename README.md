@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.83** — 28.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.84** — 29.10.2026
+
+Kayıt bütünlüğü: işleme ait güvenli geri alma, atomik fiş ve depo birleştirme, güncel kart/hakediş bağlantısı denetimleri. [Onarım ve doğrulama kapsamı](docs/INTEGRITY_RELEASE_v3984.md).
 
 Hakediş hazırlığı: müşteri ve dönem bazında hazır işler, eksik bilgiler, kontrol gerektiren kayıtlar,
 anlaşma kapsamındaki işler ve mevcut hakediş bağlantıları. Hazır işler mevcut hakediş formuna aktarılır;

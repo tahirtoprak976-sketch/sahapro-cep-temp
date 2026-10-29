@@ -76,7 +76,7 @@ export function planMerge(d, srcIds, targetId, { asSite = false } = {}) {
       aliases.push(asSite
         ? { alias: s.name, target_type: "site", target_ref: siteFor.get(s.id) }
         : { alias: s.name, target_type: "customer", target_ref: targetId });
-  return { target, sources, updates, counts, newSites, aliases };
+  return { target, sources, updates, counts, newSites, aliases, asSite };
 }
 
 // Benzer görünen müşteri adları: biri ötekinin başında/içinde kelime olarak geçiyor ya da 1–2 harf farkı
