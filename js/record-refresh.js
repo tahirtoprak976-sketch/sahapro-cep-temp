@@ -9,6 +9,7 @@ const relevant = new Set([
   "hakedis",
   "bank_movements",
   "work_records",
+  "slips",
   "fuel_records",
   "pending_fuel_records",
   "fuel_tank_movements",
@@ -52,7 +53,7 @@ export function watchRecords(fn) {
 export function fuelReadView(parts) {
   return (
     (!parts[0]) ||
-    (['isler','yakit','bakim'].includes(parts[0]) && !parts[1]) ||
+    (['isler','yakit','bakim','fisler'].includes(parts[0]) && !parts[1]) ||
     (parts[0] === "musteriler" &&
       !parts.includes("new") &&
       !parts.includes("edit")) ||
