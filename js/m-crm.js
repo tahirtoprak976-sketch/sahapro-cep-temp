@@ -1902,7 +1902,7 @@ async function trash(ctx) {
                           r.id.slice(0, 8),
                       ),
                       t2: `${trDate(r.date || r.created_at)} · silindi: ${new Date(r.deleted_at).toLocaleString("tr-TR")}${r.delete_reason ? " · " + esc(r.delete_reason) : ""}`,
-                      end: `<button class="btn sm" data-res="${g.store}|${r.id}">Geri Yükle</button>`,
+                      end: `<button class="btn sm" data-restore-store="${esc(g.store)}" data-res="${esc(r.id)}">Geri Yükle</button>`,
                     }),
                   )
                   .join(""),
@@ -1913,7 +1913,7 @@ async function trash(ctx) {
   root.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-res]");
     if (!b) return;
-    const [store, id] = b.dataset.res.split("|");
+    const store=b.dataset.restoreStore,id=b.dataset.res;
     await db.restore(store, id);
     toast("Geri yüklendi", "ok");
     ctx.reload();

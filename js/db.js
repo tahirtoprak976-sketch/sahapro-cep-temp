@@ -1,3 +1,4 @@
+import {journalTransaction,rememberWrites,transactionWrites} from './write-receipt.js';
 import { prepareAttachment, prepareInvoiceOriginal } from "./attachment-safety.js";
 import {historicalFuelIdentity} from './historical-fuel.js';
 import {recordsCommitted} from "./record-refresh.js";
@@ -303,7 +304,7 @@ export async function softDelete(store, id, reason) {
   const connection = await openDB();
   await new Promise((resolve, reject) => {
     const historyStores = store === 'customers' ? HISTORY_STORES : store === 'work_records' ? ['hakedis'] : ['vehicles','personnel'].includes(store)?['pending_fuel_records']:[];
-    const t = connection.transaction([...new Set([store, "maintenance_parts", "dump_entries", "audit_log", ...historyStores, ...(store==="dump_sites"?["expense_records","work_records"]:[])])], "readwrite"); let error;
+    const t = journalTransaction(connection.transaction([...new Set([store, "maintenance_parts", "dump_entries", "audit_log", ...historyStores, ...(store==="dump_sites"?["expense_records","work_records"]:[])])], "readwrite")); let error;
     if(store==="dump_sites")for(const s of ["expense_records","work_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===id)){error=Error("Eski döküm geçmişine bağlı saha silinemez");t.abort();}};}
     const dumpCheck=t.objectStore("dump_entries").getAll();
     dumpCheck.onsuccess=()=>{const key={expense_records:"expense_id",work_records:"work_record_id",dump_sites:"dump_site_id",vehicles:"vehicle_id",customers:"customer_id",sites:"site_id"}[store];if(key&&dumpCheck.result.some(e=>isActive(e)&&e[key]===id)){error=Error("Ortak döküm hesabına bağlı kayıt silinemez; döküm işlemini inceleyin");t.abort();}};
@@ -329,22 +330,28 @@ export async function softDelete(store, id, reason) {
         });
       };
     };
-    t.oncomplete = resolve; t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
+    t.oncomplete = () => {rememberWrites(upd,t);resolve();}; t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
   recordsCommitted(connection.name,[store]);
   return upd;
 }
 // Mükerrer depo GİRİŞİ silme (birleştirme sonrası). Sayım/çıkış hareketi ve borca bağlı giriş silinmez.
 export async function deleteTankIn(id, reason) {
-  const rec = await get("fuel_tank_movements", id);
-  if (!rec || rec.deleted_at) return null;
-  if (rec.move_type !== "GİRİŞ" || rec.count_id || rec.fuel_record_id) throw Error("Yalnız depo girişi silinebilir");
-  if ((await getAll("payables")).some((b) => isActive(b) && b.status !== "İptal" && b.source_store === "fuel_tank_movements" && b.source_id === id)) throw Error("Borca bağlı giriş silinemez");
-  const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
-  await put("fuel_tank_movements", upd);
-  await audit("fuel_tank_movements", id, "soft_delete", { deleted_at: null }, { deleted_at: upd.deleted_at }, reason || "");
-  return upd;
+  const connection=await openDB();
+  return new Promise((resolve,reject)=>{
+    const t=connection.transaction(['fuel_tank_movements','payables','audit_log'],'readwrite');let result,error;
+    readTransactionRows(t,['fuel_tank_movements','payables'],data=>{try{
+      const rec=data.fuel_tank_movements.find(x=>x.id===id);if(!rec||rec.deleted_at){result=null;return;}
+      if(rec.move_type!=='GİRİŞ'||rec.count_id||rec.fuel_record_id)throw Error('Yalnız bağımsız depo girişi silinebilir.');
+      if(data.payables.some(x=>isActive(x)&&x.status!=='İptal'&&x.source_store==='fuel_tank_movements'&&x.source_id===id))throw Error('Borca bağlı giriş silinemez.');
+      result={...rec,deleted_at:nowISO(),updated_at:increasingStamp(rec)};
+      assertTankChange(data.fuel_tank_movements,data.fuel_tank_movements.map(x=>x.id===id?result:x));
+      t.objectStore('fuel_tank_movements').put(result);t.objectStore('audit_log').put({id:uuid(),entity:'fuel_tank_movements',entity_id:id,action:'soft_delete',old:rec,new:result,reason:reason||'',at:nowISO()});
+    }catch(e){error=e;t.abort();}});
+    t.oncomplete=()=>{if(result)recordsCommitted(connection.name,['fuel_tank_movements']);resolve(result);};t.onerror=t.onabort=e=>reject(error||transactionError(t,e));
+  });
 }
+
 // Veri Sağlığı düzeltmeleri (yalnız denetimin bulduğu kesin durumlar için)
 // Yakıt kaydı silinmiş ama depo çıkışı kalmış: çıkış da silinir (stok doğru görünür)
 export async function removeOrphanTankOut(id) {
@@ -375,11 +382,17 @@ export async function restore(store, id) {
   if(store==='fuel_tank_movements'){const move=await get(store,id);if(move?.fuel_record_id)return restoreFuelEvent(move.fuel_record_id);throw Error('Bağlı stok hareketi tek başına geri yüklenemez; ilgili yakıt / teslim işlemini inceleyin.');}
   if(['cash_records','cari_movements'].includes(store))throw Error('Bağlı finans hareketi tek başına geri yüklenemez; işlemin tamamını Geri Al veya tam yedekten geri yükleme ile inceleyin.');
   const connection=await openDB();return new Promise((resolve,reject)=>{
-    const t=connection.transaction([...new Set([store,'audit_log'])],'readwrite');let result,error,changed=false;
+    const guardStores=store==='hakedis'?['hakedis','work_records','customers','sites','cari_movements']:[];
+    const t=connection.transaction([...new Set([store,'audit_log',...guardStores])],'readwrite');let result,error,changed=false;
     const q=t.objectStore(store).get(id);q.onsuccess=()=>{try{
       const rec=q.result;if(!rec||!rec.deleted_at){result=rec||null;return;}
-      result={...rec,deleted_at:null,updated_at:new Date(Math.max(Date.now(),(Date.parse(rec.updated_at)||0)+1)).toISOString()};t.objectStore(store).put(result);
-      t.objectStore('audit_log').put({id:uuid(),entity:store,entity_id:id,action:'restore',old:{deleted_at:rec.deleted_at},new:{deleted_at:null},reason:'',at:nowISO()});changed=true;
+      result={...rec,deleted_at:null,updated_at:new Date(Math.max(Date.now(),(Date.parse(rec.updated_at)||0)+1)).toISOString()};
+      const write=()=>{t.objectStore(store).put(result);
+        t.objectStore('audit_log').put({id:uuid(),entity:store,entity_id:id,action:'restore',old:{deleted_at:rec.deleted_at},new:{deleted_at:null},reason:'',at:nowISO()});changed=true;};
+      if(store==='hakedis')readTransactionRows(t,guardStores,data=>{try{
+        if(result.status!=='İptal'){assertHakedisDocument(result);assertHakedisSources(result,data);if(data.cari_movements.some(x=>isActive(x)&&x.ref_id===id))throw Error('Cariye bağlı hakediş tek başına geri yüklenemez.');}
+        write();
+      }catch(e){error=e;t.abort();}});else write();
     }catch(e){error=e;t.abort();}};
     t.oncomplete=()=>{if(changed)recordsCommitted(connection.name,[store]);resolve(result);};t.onerror=t.onabort=event=>reject(error||transactionError(t,event));
   });
@@ -391,9 +404,14 @@ export async function metaGet(key) {
   const row = await wrap(tx(db, "meta", "readonly").get(key));
   return row ? row.value : null;
 }
-export async function metaSet(key, value) {
+export async function metaSet(key, value, onWrite = null) {
   const db = await openDB();
-  return wrap(tx(db, "meta", "readwrite").put({ key, value }));
+  return new Promise((resolve,reject)=>{
+    const t=journalTransaction(db.transaction('meta','readwrite'));
+    t.objectStore('meta').put({key,value});
+    t.oncomplete=()=>{onWrite?.(transactionWrites(t));resolve(key);};
+    t.onerror=t.onabort=event=>reject(transactionError(t,event));
+  });
 }
 
 // Meta değerini tek transaction'da oku-değiştir-yaz (iki sekme aynı anda artırsa da kayıp olmaz)
@@ -470,7 +488,7 @@ export async function ensureCustomerCard(name, parent = null, options = {}) {
   for (const key of ['phone','note']) if (options.fields?.[key] != null) fields[key] = String(options.fields[key]).trim().slice(0,key==='phone'?40:300);
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction(["customers", "audit_log", ...(options.conversation?['meta']:[])], "readwrite"), store = t.objectStore("customers");
+    const t = journalTransaction(d.transaction(["customers", "audit_log", ...(options.conversation?['meta']:[])], "readwrite")), store = t.objectStore("customers");
     let result, error;
     if(options.conversation){
       const chat=t.objectStore('meta').get('assistant_conversation_v1');
@@ -494,7 +512,7 @@ export async function ensureCustomerCard(name, parent = null, options = {}) {
         t.objectStore("audit_log").put({ id: uuid(), entity: "customers", entity_id: result.id, action: "create", old: null, new: result, reason: String(options.reason||"Asistan: yeni müşteri").slice(0,300), at: nowISO() });
       } catch(e) { error=e; try{t.abort();}catch{} }
     };
-    t.oncomplete = () => resolve(result);
+    t.oncomplete = () => resolve(rememberWrites(result,t));
     t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
   });
 }
@@ -539,7 +557,7 @@ export async function addAttachment(recordType, recordId, file, extra = {}) {
   if (!src_sha256) { await put("attachments", rec); return rec; }
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction("attachments", "readwrite");
+    const t = journalTransaction(d.transaction("attachments", "readwrite"));
     let out = rec;
     const q = t.objectStore("attachments").getAll();
     q.onsuccess = () => {
@@ -547,7 +565,7 @@ export async function addAttachment(recordType, recordId, file, extra = {}) {
       if (same) out = { ...same, _existing: true };
       else t.objectStore("attachments").put(rec);
     };
-    t.oncomplete = () => resolve(out);
+    t.oncomplete = () => resolve(rememberWrites(out,t));
     t.onabort = t.onerror = (event) => reject(transactionError(t, event));
   });
 }
@@ -771,7 +789,7 @@ const opPut = (t, op, store, recordId) => op && t.objectStore("meta").put({ key:
 async function putPlainOp(store, fields, auditReason, op) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction([store, "audit_log", "meta"], "readwrite");
+    const t = journalTransaction(d.transaction([store, "audit_log", "meta"], "readwrite"));
     let rec = null, existing = null, error = null;
     const g = t.objectStore("meta").get(OP + op.id);
     g.onsuccess = () => {
@@ -786,7 +804,7 @@ async function putPlainOp(store, fields, auditReason, op) {
         t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
       }
     };
-    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,[store]);resolve(existing ? { ...existing, _existing: true } : rec);};
+    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,[store]);resolve(rememberWrites(existing ? { ...existing, _existing: true } : rec,t));};
     t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
 }
@@ -816,10 +834,10 @@ export async function saveNew(store, fields, auditReason, { op = null } = {}) {
   const rec = newRecord(fields);
   const connection=await openDB();
   await new Promise((resolve,reject)=>{
-    const t=connection.transaction([...new Set([store,'audit_log'])],'readwrite');let error;
+    const t=journalTransaction(connection.transaction([...new Set([store,'audit_log'])],'readwrite'));let error;
     const write=()=>{try{t.objectStore(store).put(rec);t.objectStore('audit_log').put({id:uuid(),entity:store,entity_id:rec.id,action:'create',old:null,new:fields,reason:auditReason||'',at:nowISO()});}catch(e){error=e;t.abort();}};
     if(store==='fuel_tank_movements'){const all=t.objectStore(store).getAll();all.onsuccess=()=>{try{assertTankChange(all.result,[...all.result,rec]);write();}catch(e){error=e;t.abort();}};}else write();
-    t.oncomplete=()=>resolve();t.onerror=t.onabort=event=>reject(error||transactionError(t,event));
+    t.oncomplete=()=>{rememberWrites(rec,t);resolve();};t.onerror=t.onabort=event=>reject(error||transactionError(t,event));
   });
   recordsCommitted(connection.name,[store]);
   return rec;
@@ -915,7 +933,7 @@ const unverifiedDriver = () => Object.assign(Error("Şoför kaydı doğrulanmam�
 async function putUniqueDriver(store, fields, auditReason) {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction([store, "audit_log", "meta", "personnel"], "readwrite");
+    const t = journalTransaction(d.transaction([store, "audit_log", "meta", "personnel"], "readwrite"));
     let rec = null, error = null;
     const verified = driverProofRequests(t,fields.driver_entry_id);
     const q = t.objectStore(store).getAll();
@@ -926,7 +944,7 @@ async function putUniqueDriver(store, fields, auditReason) {
       t.objectStore(store).put(rec);
       t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "create", old: null, new: fields, reason: auditReason || "", at: nowISO() });
     };
-    t.oncomplete = () => {recordsCommitted(d.name,[store]);resolve(rec);};
+    t.oncomplete = () => {recordsCommitted(d.name,[store]);resolve(rememberWrites(rec,t));};
     t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   });
 }
@@ -1222,7 +1240,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
   const d = await openDB();
   const wrote = await new Promise((resolve, reject) => {
     const guardStores = financeGuardStores(store, delta);
-    const t = d.transaction([...new Set([store, "audit_log", "maintenance_parts", "dump_entries", ...guardStores, ...(store==="dump_sites"&&delta.own_yard?["work_records","expense_records"]:[])])], "readwrite");
+    const t = journalTransaction(d.transaction([...new Set([store, "audit_log", "maintenance_parts", "dump_entries", ...guardStores, ...(store==="dump_sites"&&delta.own_yard?["work_records","expense_records"]:[])])], "readwrite"));
     let error = null;
     if(store==='fuel_tank_movements'){const all=t.objectStore(store).getAll();all.onsuccess=()=>{try{assertTankChange(all.result,all.result.map(m=>m.id===upd.id?upd:m));}catch(e){error=e;t.abort();}};}
     if(store==="dump_sites"&&delta.own_yard)for(const s of ["work_records","expense_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===rec.id)){error=Error("Geçmişi olan döküm sahası iç depoya çevrilemez");t.abort();}};}
@@ -1270,7 +1288,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
       t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: rec.id, action: "update", old: rec ?? null, new: fields ?? null, reason: auditReason || "", at: nowISO() });
       });
     };
-    t.oncomplete = resolve;
+    t.oncomplete = () => {rememberWrites(upd,t);resolve();};
     t.onabort = t.onerror = (event) => reject(error || transactionError(t, event));
   }).catch((e) => { if (e?.code === "REBASE") return e; throw e; });
   if (wrote?.code === "REBASE") return saveExisting(store, wrote.current, delta, auditReason, _retry + 1);
@@ -1528,7 +1546,7 @@ export async function saveCustomerFuelDelivery(fields, reason = 'Müşteriye maz
   const f = customerFuelFields(fields);
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction(['customers','fuel_tank_movements','cari_movements','meta','audit_log'], 'readwrite');
+    const t = journalTransaction(d.transaction(['customers','fuel_tank_movements','cari_movements','meta','audit_log'], 'readwrite'));
     let result, error;
     const customer = t.objectStore('customers').get(f.customer_id);
     const prior = op ? t.objectStore('meta').get(OP + op.id) : null;
@@ -1568,7 +1586,7 @@ export async function saveCustomerFuelDelivery(fields, reason = 'Müşteriye maz
         };
       } else write();
     };
-    t.oncomplete = () => {if(!result?._existing)recordsCommitted(d.name,['fuel_tank_movements','cari_movements']);resolve(result);};
+    t.oncomplete = () => {if(!result?._existing)recordsCommitted(d.name,['fuel_tank_movements','cari_movements']);resolve(rememberWrites(result,t));};
     t.onabort = t.onerror = () => reject(error || t.error || Error('Mazot teslimi iptal edildi'));
   });
 }
@@ -1610,7 +1628,7 @@ export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {
   const d = await openDB();
   return new Promise((resolve, reject) => {
     const stores = ["fuel_records", "fuel_tank_movements", "pending_fuel_records", "audit_log", ...(fields.driver_entry_id || op ? ["meta"] : []), ...(fields.driver_entry_id ? ["personnel"] : [])];
-    const t = d.transaction(stores, "readwrite");
+    const t = journalTransaction(d.transaction(stores, "readwrite"));
     let result, error, existing = null;
     const verified = fields.driver_entry_id ? driverProofRequests(t,fields.driver_entry_id) : null;
     const opReq = op ? t.objectStore("meta").get(OP + op.id) : null;
@@ -1684,7 +1702,7 @@ export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {
         at: nowISO(),
       });
     };
-    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,["fuel_records","fuel_tank_movements"]);resolve(existing ? { ...existing, _existing: true } : result);};
+    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,["fuel_records","fuel_tank_movements"]);resolve(rememberWrites(existing ? { ...existing, _existing: true } : result,t));};
     t.onabort = t.onerror = () =>
       reject(error || t.error || Error("Yakıt işlemi iptal edildi"));
   });
@@ -1949,6 +1967,44 @@ export async function saveDocument(fields, file) {
   file = await prepareAttachment(file);
   return persistDocument(fields,file);
 }
+
+// A ticket's optional new job, document, original and receipt commit together.
+// Canonical-number deduplication holds the same lock as the first job write.
+export async function saveTicketEvent({document:input,work:nullOrWork=null,work_id=null,patch=null}, file=null) {
+  const {ticketKey}=await import('./assistant-docs.js');
+  const {normalizedDocument}=await import('./business.js');
+  const number=String(input.doc_no||'').trim(),key=ticketKey(number);
+  if(!number||!validDate(input.date)||!input.ticket_vehicle_id)throw Error('Fiş numarası, gerçek tarih ve araç zorunlu.');
+  assertNumericFields(input);
+  const work=nullOrWork?await validateFields('work_records',nullOrWork):null;
+  let original=null;
+  if(file)original=await(await import('./image-shrink.js')).shrinkImage(await prepareAttachment(file),{maxEdge:2000,quality:0.85});
+  const connection=await openDB();
+  return new Promise((resolve,reject)=>{
+    const stores=['work_records','documents','attachments','customers','sites','vehicles','hakedis','audit_log'];
+    const t=journalTransaction(connection.transaction(stores,'readwrite'));let result,error;
+    readTransactionRows(t,stores.filter(s=>!['audit_log','attachments'].includes(s)),d=>{try{
+      const existing=d.documents.find(x=>isActive(x)&&x.category==='Döküm Fişi'&&(String(x.doc_no).trim()===number||key.length>=2&&ticketKey(x.doc_no)===key));
+      if(existing){result={id:existing.id,work_record_id:existing.owner_id,_existing:true};return;}
+      const vehicle=d.vehicles.find(x=>x.id===input.ticket_vehicle_id&&isActive(x));if(!vehicle)throw Error('Fişin aracı değişmiş veya silinmiş.');
+      let row=work?newRecord(work):d.work_records.find(x=>x.id===work_id&&isActive(x));
+      if(!row||row.date!==input.date||row.vehicle_id!==vehicle.id)throw Error('Fiş ile kaynak işin tarihi / aracı uyuşmuyor; yeniden seçin.');
+      if(!d.customers.some(x=>x.id===row.customer_id&&isActive(x))||row.site_id&&!d.sites.some(x=>x.id===row.site_id&&x.customer_id===row.customer_id&&isActive(x)))throw Error('Fişin müşteri / şantiye bağlantısı değişmiş.');
+      let updated=false;
+      if(work){t.objectStore('work_records').put(row);updated=true;}
+      else if(patch){
+        const linked=row.price_snapshot?.locked||d.hakedis.some(h=>isActive(h)&&h.status!=='İptal'&&(h.items||[]).some(i=>i.work_record_id===row.id));
+        if(!linked){row={...row,...(!row.slip_no?{slip_no:number}:{}),...(!row.tonnage&&Number(patch.tonnage)>0?{tonnage:Number(patch.tonnage)}:{}),slip_status:row.slip_status||'Fiş Var',updated_at:increasingStamp(row)};t.objectStore('work_records').put(row);updated=true;}
+      }
+      const doc=newRecord(normalizedDocument({...input,category:'Döküm Fişi',owner_type:'work',owner_id:row.id,doc_no:number}));
+      t.objectStore('documents').put(doc);
+      if(original)t.objectStore('attachments').put({id:uuid(),record_type:'document',record_id:doc.id,name:file.name||'Fiş',type:original.type,size:original.size,blob:original,kind:'scan_original',created_at:nowISO()});
+      for(const [store,record] of [['documents',doc],...(updated?[['work_records',row]]:[])])t.objectStore('audit_log').put({id:uuid(),entity:store,entity_id:record.id,action:store==='documents'||work?'create':'update',new:record,reason:'Asistan: atomik döküm fişi',at:nowISO()});
+      result={id:doc.id,work_record_id:row.id,created_work:!!work,work_updated:updated};
+    }catch(e){error=e;t.abort();}});
+    t.oncomplete=()=>{if(!result?._existing)recordsCommitted(connection.name,['work_records','documents','attachments']);resolve(rememberWrites(result,t));};t.onerror=t.onabort=e=>reject(error||transactionError(t,e));
+  });
+}
 // Only the already-parsed invoice importer uses this inert archival path.
 // Every viewer still validates actual bytes; no stored flag grants navigation.
 export async function saveInvoiceSourceDocument(fields,file) {
@@ -1980,10 +2036,10 @@ async function persistDocument(fields,file) {
     };
   const d = await openDB();
   await new Promise((resolve, reject) => {
-    const t = d.transaction(["documents", "attachments"], "readwrite");
+    const t = journalTransaction(d.transaction(["documents", "attachments"], "readwrite"));
     t.objectStore("documents").put(rec);
     t.objectStore("attachments").put(attachment);
-    t.oncomplete = resolve;
+    t.oncomplete = () => {rememberWrites(rec,t);resolve();};
     t.onerror = t.onabort = (event) => reject(transactionError(t, event));
   });
   return rec;
@@ -2054,7 +2110,7 @@ export async function saveCashEvent(fields, { op = null } = {}) {
   return new Promise((res, rej) => {
     const referenceStores={customer_id:'customers',personnel_id:'personnel',vehicle_id:'vehicles',site_id:'sites',contractor_id:'contractors',quarry_id:'quarries',dump_site_id:'dump_sites'};
     const references=Object.entries(referenceStores).filter(([key])=>fields[key]);
-    const t = d.transaction([...new Set(["cash_records", "cari_movements", "audit_log", ...references.map(([,store])=>store), ...(op || fields.driver_entry_id ? ["meta"] : [])])], "readwrite");
+    const t = journalTransaction(d.transaction([...new Set(["cash_records", "cari_movements", "audit_log", ...references.map(([,store])=>store), ...(op || fields.driver_entry_id ? ["meta"] : [])])], "readwrite"));
     let existing = null, error = null;
     const verified = fields.driver_entry_id ? driverProofRequests(t, fields.driver_entry_id, fields.personnel_id) : null;
     const allowed = () => { if (verified && !verified()) { error = unverifiedDriver(); t.abort(); return false; } return true; };
@@ -2106,7 +2162,7 @@ export async function saveCashEvent(fields, { op = null } = {}) {
         if(!--left)begin();
       };
     }
-    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,['cash_records','cari_movements']);res(existing ? { ...existing, _existing: true } : rec);};
+    t.oncomplete = () => {if(!existing)recordsCommitted(d.name,['cash_records','cari_movements']);res(rememberWrites(existing ? { ...existing, _existing: true } : rec,t));};
     t.onerror = t.onabort = (event) => rej(error || transactionError(t, event));
   });
 }

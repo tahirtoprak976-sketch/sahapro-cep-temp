@@ -338,6 +338,7 @@ export async function createCreditBill(ctx, d, s, f, opts = {}) {
     },
     opts.key,
   );
+  opts.onSaved?.(rec);
   if (f.file) await ctx.db.addAttachment("payable", rec.id, f.file);
   return { rec, linked: !!expense };
 }

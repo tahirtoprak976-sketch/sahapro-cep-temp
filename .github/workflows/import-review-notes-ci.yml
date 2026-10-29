@@ -17,6 +17,7 @@ on:
       - fix/solo-assistant-files-81
       - fix/solo-assistant-review-82
       - feat/solo-hakedis-preparation-83
+      - fix/solo-integrity-84
 
 permissions:
   contents: read
@@ -99,7 +100,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -245,6 +246,38 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref f6c060ae2868d97bddc30ec2ac990f317aee1849
+
+      - name: Verify installed live v3.9.83 to integrity release preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref a68a655a668f397c55000235e45b23e31cff1b75
+
+      - name: Reproduce the integrity findings on unchanged live v3.9.83
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-integrity83-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive a68a655a668f397c55000235e45b23e31cff1b75 | tar -x -C "$baseline"
+          python3 -m http.server 8854 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-integrity83-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8854/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/integrity_release84.py http://localhost:8854/ --baseline-proof --artifacts /tmp/solo-integrity84-baseline
+          /tmp/solo-e2e-venv/bin/python tools/e2e/ticket_atomic84.py http://localhost:8854/ --baseline-proof --artifacts /tmp/solo-ticket84-baseline
+          /tmp/solo-e2e-venv/bin/python tools/e2e/tank_atomic84.py http://localhost:8854/ --baseline-proof --artifacts /tmp/solo-tank84-baseline
 
       - name: Reproduce assistant defects on unchanged live v3.9.79
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}

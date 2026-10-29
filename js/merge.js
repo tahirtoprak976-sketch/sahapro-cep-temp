@@ -1,7 +1,7 @@
 // "Müşteri Kartlarını Birleştir" ekranı: aynı firmanın farklı yazılmış kartlarını tek karta toplar,
 // istenirse eski adları hedef müşterinin şantiyesi yapar. Önizleme → onay → tek işlem (ya hep ya hiç).
 import { qs, qsa, esc, appbar, toast, notice, confirmDialog } from "./ui.js";
-import { newRecord, nowISO, isActive } from "./core.js";
+import { newRecord, nowISO, isActive, ENTITY_STORES, stableStringify } from "./core.js";
 import { planMerge, planMergeCards, suggestCardGroups, CARD_KINDS } from "./merge-core.js";
 
 const LABEL = {
@@ -91,8 +91,14 @@ export async function screen(ctx) {
 export async function applyMerge(plan) {
   const { transaction } = await import("./enterprise-db.js");
   const own = plan.store || "customers";
-  const stores = [...new Set([own, "customers", "sites", "aliases", "pending_fuel_records", ...plan.updates.map((u) => u.store)])];
+  const stores = ENTITY_STORES.filter(s=>s!=="audit_log");
   return transaction(stores, (data, t) => {
+    const current=own==='customers'
+      ? {store:own,...planMerge(data,plan.sources.map(s=>s.id),plan.target.id,{asSite:plan.asSite===true})}
+      : planMergeCards(data,own,plan.sources.map(s=>s.id),plan.target.id);
+    const expected={...plan,store:own};
+    if(stableStringify(current)!==stableStringify(expected))throw Error('Kartlar veya bağlı kayıtlar önizlemeden sonra değişti; hiçbir şey birleştirilmedi. Yeniden önizleyin.');
+
     if(['vehicles','personnel'].includes(own)){const key=own==='vehicles'?'vehicle_id':'personnel_id';if((data.pending_fuel_records||[]).some(r=>r.reconciliation_status!=='cancelled'&&plan.sources.some(s=>s.id===r[key])))throw Error('Geçmiş yakıt mutabakatına bağlı kart birleştirilemez; kaynak korunuyor.');}
     const ids = new Map();
     for (const s of plan.newSites) {

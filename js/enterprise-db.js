@@ -1,3 +1,4 @@
+import {journalTransaction,rememberWrites} from './write-receipt.js';
 import {recordsCommitted} from "./record-refresh.js";
 import * as db from "./db.js";
 import {
@@ -84,7 +85,7 @@ export async function transaction(stores, fn) {
   const connection = await db.openDB();
   stores = [...new Set([...stores, "audit_log"])];
   return new Promise((resolve, reject) => {
-    const t = connection.transaction(stores, "readwrite"),
+    const t = journalTransaction(connection.transaction(stores, "readwrite")),
       data = {};
     let left = stores.filter((s) => s !== "audit_log").length,
       result,
@@ -112,7 +113,7 @@ export async function transaction(stores, fn) {
         }
       };
     }
-    t.oncomplete = () => {recordsCommitted(connection.name,stores);resolve(result);};
+    t.oncomplete = () => {recordsCommitted(connection.name,stores);resolve(rememberWrites(result,t));};
     t.onerror = t.onabort = () =>
       reject(error || t.error || Error("İşlem tamamlanamadı"));
   });

@@ -32,7 +32,7 @@ function fixture(seed,hooks={}) {
     function request(fn){pending++;const result={};queueMicrotask(()=>{if(!aborted){result.result=fn();result.onsuccess?.();}pending--;schedule();});return result;}
     schedule();return transaction;
   }};
-  const context={...core,...validation,core,structuredClone,ENTERPRISE_STORES,workHours,
+  const context={journalTransaction:t=>t,rememberWrites:r=>r,...core,...validation,core,structuredClone,ENTERPRISE_STORES,workHours,
     openDB:async()=>{if(hooks.beforeOpen)await hooks.beforeOpen();return db;},
     get:async(store,id)=>read(store,id),getAll:async store=>structuredClone(data[store]||[]),
     listActive:async store=>(data[store]||[]).filter(core.isActive),recordsCommitted(){},transactionError:()=>Error('abort'),
