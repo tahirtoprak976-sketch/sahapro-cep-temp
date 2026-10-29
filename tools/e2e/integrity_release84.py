@@ -74,5 +74,13 @@ with sync_playwright() as pw:
   def restore_control(c,p,url):
    result=p.evaluate("""async()=>{const db=await import('./js/db.js'),w=await newWork(),h=await makeClaim(w.id);await db.softDelete('hakedis',h.id,'TEST');await db.restore('hakedis',h.id);await db.finalizeHakedis(h.id);return (await db.get('hakedis',h.id)).status;}""");assert result=='Kesinleşti';return {'protection_verified':True,'valid_restored_draft_finalizes':True}
   run('VALID-CLAIM-RESTORE',restore_control)
+  def stock_undo(c,p,url):
+   result=p.evaluate("""async()=>{const db=await import('./js/db.js'),U=await import('./js/undo.js'),scope=U.beginUndo(db);await scope.db.saveNew('fuel_tank_movements',{date:'2026-09-07',move_type:'GİRİŞ',liters:100},'TEST');await U.saveUndo(db,scope,'TEST intake');await db.saveFuelEvent({date:'2026-09-07',vehicle_id:fixture.v,fuel_source:'Depo Tankı',liters:80},'TEST later consumption');let blocked=false;try{await U.applyUndo(db)}catch(e){blocked=e.code==='TANK_HISTORY';}return {blocked,remaining:(await db.listActive('fuel_tank_movements')).reduce((n,m)=>n+(m.move_type==='GİRİŞ'?1:-1)*m.liters,0)};}""")
+   assert result=={'blocked':True,'remaining':20},result;return {'protection_verified':True,**result}
+  run('UNDO-INTAKE-AFTER-CONSUMPTION',stock_undo)
+  def unrelated_legacy_stock(c,p,url):
+   result=p.evaluate("""async()=>{const db=await import('./js/db.js'),U=await import('./js/undo.js'),C=await import('./js/core.js');await db.put('fuel_tank_movements',C.newRecord({date:'bad-legacy-date',move_type:'GİRİŞ',liters:100}));const scope=U.beginUndo(db),w=await scope.db.saveNew('work_records',{date:'2026-09-07',vehicle_id:fixture.v,customer_id:fixture.c,work_type:'Makine Çalışması',quantity:1,unit:'Saat'},'TEST');await U.saveUndo(db,scope,'TEST unrelated work');await U.applyUndo(db);return {work_removed:!(await db.get('work_records',w.id)),legacy_evidence_preserved:(await db.getAll('fuel_tank_movements')).some(m=>m.date==='bad-legacy-date')};}""")
+   assert all(result.values()),result;return {'protection_verified':True,**result}
+  run('NON-STOCK-UNDO-PRESERVES-LEGACY-EVIDENCE',unrelated_legacy_stock)
  b.close()
 assert all(r['completed'] for r in reports),reports
