@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.85** — 29.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.86** — 29.10.2026
+
+Kartları Birleştir ekranında Döküm sahası seçilebilir. Bağlı işler, döküm hareketleri ve belgeler
+tutarları korunarak taşınır; çift açılış ve mükerrer fiş gibi hesap çakışmaları engellenir.
+[Kullanım ve kapsam](docs/DUMP_CARD_MERGE_v3986.md).
 
 Dijital fiş ve iş birlikte kaydedilir. Eski bağsız fişler, imza ve müşteri belgesi korunarak
 mevcut işe bağlanabilir veya onayla yeni fiyatsız iş açabilir; otomatik toplu aktarım yapılmaz.

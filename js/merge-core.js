@@ -3,6 +3,7 @@
 // Kayıt silinmez: kaynak kart "birleştirildi" notuyla çöp kutusuna gider, eski ad hafızaya (takma ad) yazılır.
 import { isActive, ENTITY_STORES } from "./core.js";
 import { foldTr } from "./parser.js";
+import { finishDumpMerge } from './dump-merge.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const norm = (s) => foldTr(s).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -124,6 +125,7 @@ export const CARD_KINDS = {
   vehicles: { label: "Araç / makine", key: "vehicle_id", alias: "vehicle", fill: ["plate", "type", "tank_capacity", "ownership", "contractor_id", "next_maintenance_date"] },
   personnel: { label: "Personel", key: "personnel_id", alias: "personnel", fill: ["phone", "role", "vehicle_id"] },
   sites: { label: "Şantiye", key: "site_id", alias: "site", fill: ["address", "location", "contact", "phone"] },
+  dump_sites: { label: "Döküm sahası", key: "dump_site_id", alias: "dump_site", fill: ["address", "location", "contact", "phone"] },
 };
 const plateKey = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
 
@@ -152,6 +154,9 @@ export function planMergeCards(d, store, srcIds, targetId) {
     const out = { ...o };
     for (const k of KEYS) if (typeof out[k] === "string" && from.has(out[k])) { out[k] = targetId; changed = true; }
     if (store === "sites" && out.price_snapshot && from.has(out.price_snapshot.job_site_id)) { out.price_snapshot = { ...out.price_snapshot, job_site_id: targetId }; changed = true; }
+    if(store==='dump_sites')for(const key of ['dump_tariff_snapshot','dump_estimate_snapshot']){
+      if(out[key]&&from.has(out[key].site_id)){out[key]={...out[key],site_id:targetId};changed=true;}
+    }
     return { out, changed };
   };
   for (const s of ENTITY_STORES) {
@@ -175,7 +180,8 @@ export function planMergeCards(d, store, srcIds, targetId) {
   for (const f of K.fill || []) if (target[f] == null || target[f] === "") { const v = sources.map((x) => x[f]).find((x) => x != null && x !== ""); if (v != null) patch[f] = v; }
   if (Object.keys(patch).length) updates.push({ store, before: target, after: { ...target, ...patch } });
   for (const s of sources) if (norm(s.name) !== norm(target.name)) aliases.push({ alias: s.name, target_type: K.alias, target_ref: targetId });
-  return { store, target, sources, updates, counts, newSites: [], aliases, patch };
+  const plan={ store, target, sources, updates, counts, newSites: [], aliases, patch };
+  return store==='dump_sites'?finishDumpMerge(d,plan):plan;
 }
 
 export function suggestCardGroups(d, store) {
@@ -185,6 +191,7 @@ export function suggestCardGroups(d, store) {
   const keyOf = (c) => {
     if (store === "vehicles") { const p = plateKey(c.plate) || plateKey(c.name); return /^\d{2}[A-Z]{1,3}\d{2,4}$/.test(p) ? p : "n:" + norm(c.name); }
     if (store === "sites") return (c.customer_id || "-") + ":" + norm(c.name).split(" ")[0];
+    if(store==='dump_sites')return (c.own_yard?'own:':'paid:')+norm(c.name);
     return "n:" + norm(c.name).split(" ")[0];
   };
   const by = new Map();

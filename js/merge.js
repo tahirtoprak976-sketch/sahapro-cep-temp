@@ -11,12 +11,13 @@ const LABEL = {
   fuel_records: "Yakıt", fuel_tank_movements: "Depo hareketi", maintenance_records: "Bakım/arıza", expense_records: "Gider",
   personnel: "Personel kartı", vehicles: "Araç kartı", personnel_events: "Personel hareketi", meter_readings: "Saat/km okuma", custody_records: "Zimmet",
   bank_movements: "Banka hareketi", activities: "Takip", shift_assignments: "Görev", cost_allocations: "Maliyet dağıtımı",
+  dump_entries: "Döküm hesap hareketi", dump_sites: "Döküm sahası",
 };
 
 export async function screen(ctx) {
   if (ctx.parts[0] !== "kart-birlestir") return false;
   const { root, db } = ctx;
-  const store = { arac: "vehicles", personel: "personnel", santiye: "sites" }[ctx.query?.tur] || "customers";
+  const store = { arac: "vehicles", personel: "personnel", santiye: "sites", dokum: "dump_sites" }[ctx.query?.tur] || "customers";
   const K = CARD_KINDS[store];
   const isCust = store === "customers";
   const d = await db.dumpAll();
@@ -30,8 +31,8 @@ export async function screen(ctx) {
   root.innerHTML =
     appbar("Kartları Birleştir", `${customers.length} ${K.label.toLocaleLowerCase("tr-TR")} kartı`) +
     `<div style="height:10px"></div>
-    <div class="row" style="gap:6px;margin-bottom:8px">${tab("musteri", "customers", "Müşteri")}${tab("arac", "vehicles", "Araç / makine")}${tab("personel", "personnel", "Personel")}${tab("santiye", "sites", "Şantiye")}</div>
-    ${notice("info", store === "sites" ? "Aynı şantiye iki kart olarak açıldıysa (ör. “Kadıköy” ve “Kadıköy Yıkım”) tek karta toplayın: işler, fiyatlar, belgeler kalan şantiyeye geçer; adres, telefon gibi boş bilgiler tamamlanır. Yalnız aynı müşterinin şantiyeleri birleşir; iş sözleşmesi olan şantiye kalacak kart olmalıdır. Eski ad hafızaya yazılır. Önce yedek almanız önerilir." : isCust ? "Aynı firma birden çok kart olarak açıldıysa tek karta toplayın. Şantiyesi ayrı müşteri gibi açılmışsa \"şantiye olarak ekle\"yi işaretleyin. Kayıtlar silinmez; eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir." : "Aynı plaka / aynı kişi iki kart olarak açıldıysa tek karta toplayın: işler, yakıt, belgeler, bakım hepsi kalan karta geçer; kalan kartta boş olan plaka, tür, telefon gibi bilgiler tamamlanır. Eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir.")}
+    <div class="row" style="gap:6px;margin-bottom:8px;flex-wrap:wrap">${tab("musteri", "customers", "Müşteri")}${tab("arac", "vehicles", "Araç / makine")}${tab("personel", "personnel", "Personel")}${tab("santiye", "sites", "Şantiye")}${tab("dokum", "dump_sites", "Döküm sahası")}</div>
+    ${notice("info", store === "dump_sites" ? "Aynı gerçek döküm sahasının mükerrer kartlarını birleştirin. İşler, ön ödemeler, döküm kesintileri, borçlar ve belgeler kalan sahaya geçer. Eski kayıtlı ücretler değişmez; yeni işler kalacak sahanın tarifesini kullanır. Farklı gerçek hesapları birleştirmeyin. Önce yedek almanız önerilir." : store === "sites" ? "Aynı şantiye iki kart olarak açıldıysa (ör. “Kadıköy” ve “Kadıköy Yıkım”) tek karta toplayın: işler, fiyatlar, belgeler kalan şantiyeye geçer; adres, telefon gibi boş bilgiler tamamlanır. Yalnız aynı müşterinin şantiyeleri birleşir; iş sözleşmesi olan şantiye kalacak kart olmalıdır. Eski ad hafızaya yazılır. Önce yedek almanız önerilir." : isCust ? "Aynı firma birden çok kart olarak açıldıysa tek karta toplayın. Şantiyesi ayrı müşteri gibi açılmışsa \"şantiye olarak ekle\"yi işaretleyin. Kayıtlar silinmez; eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir." : "Aynı plaka / aynı kişi iki kart olarak açıldıysa tek karta toplayın: işler, yakıt, belgeler, bakım hepsi kalan karta geçer; kalan kartta boş olan plaka, tür, telefon gibi bilgiler tamamlanır. Eski kart çöp kutusuna gider, eski ad hafızaya yazılır. Önce yedek almanız önerilir.")}
     ${groups.length ? `<div class="section-title">Benzer görünenler (${groups.length})</div>` + groups.map((g, i) => `<div class="card tap" data-group="${i}"><div class="small">${g.level === "güçlü" ? "🔴" : "🟡"} ${g.customers.map((c) => `<b>${esc(c.name)}</b> <span class="muted">(${c.works} iş)</span>`).join(" · ")}</div><div class="muted tiny" style="margin-top:4px">Dokunun → aşağıda seçilsin</div></div>`).join("") : ""}
     ${isCust ? '<button class="btn block" data-go="#/kime-kontrol">🔎 Benzer adlı ama farklı müşteriler: işleri tek tek kontrol et</button>' : ""}
     <div class="section-title">Birleştirme</div>
@@ -67,7 +68,8 @@ export async function screen(ctx) {
     }
     out.innerHTML = `<div class="card">
       <div class="strong">${plan.sources.map((s) => esc(show(s))).join(", ")} → <span style="color:var(--accent,#f5a623)">${esc(show(plan.target))}</span></div>
-      ${plan.patch && Object.keys(plan.patch).length ? `<div class="small" style="margin-top:4px">Kalan karta eklenecek: ${Object.entries(plan.patch).map(([k, v]) => esc(({ address: "Adres", location: "Konum", contact: "Yetkili", plate: "Plaka", type: "Tür", tank_capacity: "Depo hacmi", ownership: "Sahiplik", contractor_id: "Taşeron", next_maintenance_date: "Sonraki bakım", phone: "Telefon", role: "Görev", vehicle_id: "Zimmetli araç" }[k] || k) + ": " + v)).join(" · ")}</div>` : ""}
+      ${plan.patch && Object.keys(plan.patch).some(k=>!['merge_reports','account_reported'].includes(k)) ? `<div class="small" style="margin-top:4px">Kalan karta eklenecek: ${Object.entries(plan.patch).filter(([k])=>!['merge_reports','account_reported'].includes(k)).map(([k, v]) => esc(({ address: "Adres", location: "Konum", contact: "Yetkili", plate: "Plaka", type: "Tür", tank_capacity: "Depo hacmi", ownership: "Sahiplik", contractor_id: "Taşeron", next_maintenance_date: "Sonraki bakım", phone: "Telefon", role: "Görev", vehicle_id: "Zimmetli araç" }[k] || k) + ": " + v)).join(" · ")}</div>` : ""}
+      ${store==='dump_sites'?notice('info','İşler, hesap hareketleri ve bağlı belgeler taşınır. Eski ücret/tahmin tutarları korunur; yeni işler kalacak sahanın tarifesini kullanır. Kayıtlı ortak bakiye: '+ctx.core.fmtNum(plan.dumpBalance)+' ₺.')+(plan.patch?.merge_reports?notice('warn','Önceki saha bakiyesi karşılaştırmaları tarihçede korunur. Birleşen hesabın güncel bakiyesini yeniden karşılaştırın.'):''):''}
       <div class="small" style="margin-top:6px">${Object.entries(plan.counts).map(([k, n]) => `${esc(LABEL[k] || k)}: <b>${n}</b>`).join(" · ") || "Taşınacak kayıt yok"}</div>
       ${plan.newSites.length ? `<div class="small" style="margin-top:6px">Yeni şantiye: ${plan.newSites.map((s) => esc(s.name)).join(", ")}</div>` : ""}
       <div class="muted tiny" style="margin-top:6px">Eski adlar hafızaya yazılır; mesajda geçince doğru karta gider.</div>
