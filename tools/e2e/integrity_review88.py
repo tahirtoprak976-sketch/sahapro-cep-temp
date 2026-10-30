@@ -80,6 +80,10 @@ with sync_playwright() as pw:
   if not baseline:assert state['signature_id']==signed['signature_attachment_id']
   return {**r,**state,'instrumentation':'One final readonly reference callback delayed; actual signing committed in another page before final write'}
  run('CANCEL-AFTER-OTHER-PAGE-SIGNATURE',signing_race)
+ def restore_protected_sources(ctx,p,url):
+  r=p.evaluate(r"""async()=>{const db=await import('./js/db.js'),B=await import('./js/backup.js'),w=await work(),h=await claim(w);await db.finalizeHakedis(h.id);const obj=await B.fullBackup(db,{encrypted:false,attachments:'none'});obj.data.work_records.find(x=>x.id===w.id).quantity=2;let before=await snapshot(),claim_blocked=false;try{await B.restoreBackup(db,obj,true)}catch(e){claim_blocked=true}const claim_unchanged=before===await snapshot(),pair=await signedSlip(),other=await B.fullBackup(db,{encrypted:false,attachments:'none'});other.data.work_records.find(x=>x.id===pair.w.id).quantity=2;before=await snapshot();let slip_blocked=false;try{await B.restoreBackup(db,other,true)}catch(e){slip_blocked=true}return {claim_blocked,claim_unchanged,work_quantity:(await db.get('work_records',w.id)).quantity,claim_quantity:(await db.get('hakedis',h.id)).items[0].quantity,slip_blocked,slip_unchanged:before===await snapshot(),slip_work_quantity:(await db.get('work_records',pair.w.id)).quantity,slip_quantity:(await db.get('slips',pair.s.id)).quantity};}""")
+  assert r=={'claim_blocked':not baseline,'claim_unchanged':not baseline,'work_quantity':2 if baseline else 1,'claim_quantity':1,'slip_blocked':not baseline,'slip_unchanged':not baseline,'slip_work_quantity':2 if baseline else 1,'slip_quantity':1},r;return r
+ run('RESTORE-PROTECTED-FINANCIAL-SOURCES',restore_protected_sources)
  if not baseline:
   def price_note_ui(ctx,p,url):
    ids=p.evaluate(r"""async()=>{const {s,w}=await signedSlip();window.signedBefore=JSON.stringify(s);return {s:s.id,w:w.id}}""")

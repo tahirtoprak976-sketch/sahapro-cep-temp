@@ -1,4 +1,5 @@
 import {validatePendingFuelData} from './historical-fuel.js';
+import {assertRecordEdit} from './db.js';
 import {validateDumpData} from "./dump-ledger-core.js";
 import { startActivity } from "./update-safety.js";
 import {validateCustomerFuelLinks} from './customer-fuel.js';
@@ -341,9 +342,18 @@ export function assertRestoreBasis(basis, current, obj, preview, replace, drop) 
   if(stableStringify(freshDeviceDrops(current,obj))!==stableStringify(drop))stale();
   for(const store of ENTITY_STORES){
     const before=new Map((basis[store]||[]).map(r=>[r.id,r])),now=new Map((current[store]||[]).map(r=>[r.id,r]));
-    const ids=new Set([...(preview.stores[store]?.new||[]),...(replace?preview.stores[store]?.conflict||[]:[])].map(r=>r.id));
+    const writes=new Map([...(preview.stores[store]?.new||[]),...(replace?preview.stores[store]?.conflict||[]:[])].map(r=>[r.id,r]));
+    const ids=new Set(writes.keys());
     for(const id of drop[store]||[])ids.add(id);
-    for(const id of ids)if(stableStringify(before.get(id)??null)!==stableStringify(now.get(id)??null))stale();
+    for(const id of ids){
+      const row=now.get(id),next=writes.get(id);
+      if(stableStringify(before.get(id)??null)!==stableStringify(row??null))stale();
+      if(row&&!row.deleted_at&&next){
+        const delta=Object.fromEntries([...new Set([...Object.keys(row),...Object.keys(next)])]
+          .filter(key=>stableStringify(row[key]??null)!==stableStringify(next[key]??null)).map(key=>[key,next[key]]));
+        assertRecordEdit(store,row,next,delta,current);
+      }
+    }
   }
 }
 // Kullanıcıya gösterilecek durum: tamamlandı mı, eksik parçalar, eki beklenen kayıt sayısı

@@ -31,6 +31,15 @@ for(const mutate of [d=>d.work_records[0].description='TEST later edit',d=>d.wor
  assert.doesNotThrow(()=>assertRestoreBasis(before,structuredClone(before),backup,p,false,drops));
 }
 assert.equal(stableStringify(basis),source,'decision layer cannot mutate the snapshot');
+for(const relation of ['draft','finalized','slip']){
+ const before=fixture();Object.assign(before.work_records[0],{date:'2026-09-07',customer_id:'C',unit:'Saat'});
+ if(relation==='slip')before.slips=[{id:'S',status:'İmzalandı',work_record_id:'W'}];
+ else before.hakedis=[{id:'H',status:relation==='draft'?'Taslak':'Kesinleşti',items:[{work_record_id:'W'}]}];
+ const backup={data:structuredClone(before)};backup.data.work_records[0].quantity=2;
+ assert.throws(()=>assertRestoreBasis(before,structuredClone(before),backup,plan(before,backup),true,{}),{code:relation==='slip'?'SLIP_WORK_LINKED':'HAKEDIS_LOCKED'});
+ backup.data.work_records[0].quantity=1;backup.data.work_records[0].description='TEST review note';
+ assert.doesNotThrow(()=>assertRestoreBasis(before,structuredClone(before),backup,plan(before,backup),true,{}),'source note stays editable');
+}
 
 // A draft claim protects its sources too; absent document number is not "unlinked".
 const d={customers:[{id:'C',name:'TEST',fuel_rules:[{id:'R',per:75,unit:'Sefer',only_pay:true}]}],

@@ -281,7 +281,7 @@ jobs:
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 66da1caaed0437c1e0673ac96c17b5b00efbaaf8
 
-      - name: Reproduce seven write-boundary findings on unchanged live v3.9.87
+      - name: Reproduce eight write-boundary findings on unchanged live v3.9.87
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
         run: |
           set -euo pipefail

@@ -2374,3 +2374,6 @@ export async function storePdfHistoryFile(hash,file) {
     t.oncomplete=()=>resolve(true);t.onabort=t.onerror=(event) => reject(error || transactionError(t, event));
   });
 }
+
+// Restore uses the same pure, transaction-time guards as ordinary editing.
+export { assertFinancialEdit as assertRecordEdit };

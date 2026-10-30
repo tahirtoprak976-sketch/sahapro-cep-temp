@@ -3,7 +3,7 @@
 Taban: canlı v3.9.87, `66da1caaed0437c1e0673ac96c17b5b00efbaaf8`.
 Şema 7 kalır. YZ2 ayrı kalır. Telefonun mevcut işletme kayıtlarına toplu dönüşüm uygulanmaz.
 
-## Doğrulanmış yedi bulgu
+## Doğrulanmış sekiz bulgu
 
 Her satır `tools/e2e/integrity_review88.py --baseline-proof` ile değişmemiş v3.9.87 üzerinde yeniden üretilmiştir. Varsayılan test modu aynı hataların engellenmesini bekler; taban kanıtı yayın testi sayılmaz. Veriler geçici Chromium profillerinde oluşturulan TEST verileridir.
 
@@ -16,24 +16,25 @@ Her satır `tools/e2e/integrity_review88.py --baseline-proof` ile değişmemiş 
 | Eski revizyon durumundaki imzalı fiş yedekle değişebiliyor | İmzalı eski fişin miktarı 1 → 9 yapılabiliyor | İmza tarihi/eki olan fiş durum etiketinden bağımsız korunur. İmzalı sözleşmenin imza tarihi/snapshot'ı da korunur. |
 | Yeni telefon geri yüklemesi eşzamanlı bakımın aracını silebiliyor | Yeni bakım duruyor, başlangıç kartı sanılan araç siliniyor | Başlangıç kartlarını ayıklama kararı güncel işlem geçmişiyle transaction içinde yeniden doğrulanır. Yeni bakım varsa tüm geri yükleme durur; araç ve bakım korunur. |
 | Eski sekmenin iptal işlemi yeni imzayı silebiliyor | Bir sekme fişi imzaladıktan sonra diğer sekmenin eski iptali imza bağlantısını düşürüyor | İmza kilidi son yazma anında da denetlenir. Fiş/sözleşme imzalama ve eski fişi revizyon durumuna geçirme sürüm damgasını kesin artırır. |
+| Yedek genel düzenleme kilitlerini aşabiliyor | Kesinleşmiş hakediş / imzalı fiş 1 saat kalırken kaynak iş 2 saat oluyor | Geri yükleme de aynı saf düzenleme korumalarını transaction içindeki güncel ilişki kümesiyle uygular. Kaynak hizmet / finans alanları korunur; not tamamlama ve yeni telefona bütün kayıtları yükleme korunur. |
 
 ## Normal kullanım
 
 - Fişe bağlı işin fiyatı ve iç notu iş düzenleme ekranından tamamlanabilir. Hizmet alanlarının korunması ekranda açıklanır.
 - İmzasız, henüz fiyatlanmamış yeni fişin hizmet düzeltmesi fiş ekranında iş ile birlikte yapılabilir. İmzalı içerik eski imzayla değiştirilmez.
 - Mazot ve sözleşme bağlantısı toplu işleminde sonradan kilitlenen satır varsa değişmeyen/atlanan sayısı ve ilk hata açıklanır; başarı gösterilip geçilmez.
-- Eskiyen yedek işlemi herhangi bir satırı değiştirmeden reddedilir. Kullanıcı güncel durumu yeniden önizler. Birleştirme sırasında ilgisiz yeni kayıtlar korunur.
+- Eskiyen yedek işlemi herhangi bir satırı değiştirmeden reddedilir. Kullanıcı güncel durumu yeniden önizler. Mevcut hakediş / fiş / finans kaydının kilidi yedekteki eski kaynak satırıyla aşılamaz. Birleştirme sırasında ilgisiz yeni kayıtlar korunur.
 - Silme engeli veri kaybını önler. Eski tutarsız fiş/iş kayıtları otomatik eşitlenmez; gerçek hizmeti değiştiren düzeltme ayrıca incelenmelidir.
 
 ## Kontrol kapsamı
 
 Kaynak incelemesi kayıt oluşturma/düzenleme/silme sınırları, koşullu güncellemeler, imza ve fiş ilişkileri, hakediş kesinleştirme, nakit/banka/cari ilişkileri, yakıt-tank ve döküm hareketleri, kart birleştirme, parça-garanti maliyet bağlantıları, asistan onayı/tekrar koruması, dosya güvenliği, yedek ve çevrimdışı güncelleme yollarına odaklanır. Mevcut regresyon testleri bu alanlarda genişletilmeden korunur.
 
-Yeni tarayıcı suiti yedi hata senaryosuna ek olarak dört kontrol içerir: gerçek iş formunda fiyat/not tamamlama ve imzayı koruma; koşullu işlemin bir kez yazması ve korunan hakedişin kesinleşebilmesi; gerçek IndexedDB istek hatasında tam geri dönüş ve güvenli yeniden deneme; iki imzalı sözleşmenin korunması ve iptal/silinmiş taslağın imzalanmaması. İki sekmeli yarışlarda yalnız bekletme noktası ölçüm için araçlandırılır; imzalama, düzenleme ve yazma gerçek üretim fonksiyonlarıyla yapılır. 320/390/768 px görünüm kontrol edilir.
+Yeni tarayıcı suiti sekiz hata senaryosuna ek olarak dört kontrol içerir: gerçek iş formunda fiyat/not tamamlama ve imzayı koruma; koşullu işlemin bir kez yazması ve korunan hakedişin kesinleşebilmesi; gerçek IndexedDB istek hatasında tam geri dönüş ve güvenli yeniden deneme; iki imzalı sözleşmenin korunması ve iptal/silinmiş taslağın imzalanmaması. İki sekmeli yarışlarda yalnız bekletme noktası ölçüm için araçlandırılır; imzalama, düzenleme ve yazma gerçek üretim fonksiyonlarıyla yapılır. 320/390/768 px görünüm kontrol edilir.
 
 `tests/integrity-review88.test.mjs`, geri yükleme karar katmanını yeni kimlik çakışması, değişmiş/silinmiş kayıt, yeni bakım, ilgisiz kayıt, değiştirilmemiş girdi ve taslak hakedişli mazot incelemesiyle sınar.
 
-CI bütün Node dosyalarını, 62 tarayıcı suitini, v3.9.87 dahil 18 kurulu sürüm yükseltmesini ve değişmemiş tabandaki yedi hatanın yeniden üretimini çalıştırır. Sonuçlar ilgili commit'in Actions kaydından değerlendirilir; pipeline tanımı tek başına PASS kanıtı değildir.
+CI bütün Node dosyalarını, 62 tarayıcı suitini, v3.9.87 dahil 18 kurulu sürüm yükseltmesini ve değişmemiş tabandaki sekiz hatanın yeniden üretimini çalıştırır. Sonuçlar ilgili commit'in Actions kaydından değerlendirilir; pipeline tanımı tek başına PASS kanıtı değildir.
 
 ## Sınırlar
 
