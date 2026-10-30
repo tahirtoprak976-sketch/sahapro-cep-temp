@@ -2,6 +2,7 @@ import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
 import {tankTimeline} from './tank-timeline.js';
 import {recordNoteHTML} from './record-notes-ui.js';
+import {vehicleDocumentStatus} from './business.js';
 import {fleetDocumentModel,nearestVehicleDocument} from './fleet-document-core.js';
 import {watchFleetDocuments,fleetDocumentBadge,fleetDocumentHome} from './fleet-document-ui.js';
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
@@ -425,13 +426,14 @@ async function fleet(ctx) {
           isActive(m) && m.vehicle_id === v.id && m.status !== "Tamamlandı",
       ).length;
       const deadline = nearestVehicleDocument(model,v.id);
+      const compliance=vehicleDocumentStatus(v,data.documents);
       return li({
         ic: v.ownership === "Taşeron" ? "🤝" : "🚜",
         href: "#/filo/" + v.id,
         t1: esc(v.name),
         t2: `${esc(v.type || "")} · ${esc(v.ownership || "")}${v.assignee_id ? " · zimmet: " + esc(names.personnel[v.assignee_id] || "") : ""}`,
         badgeHtml:
-          fleetDocumentBadge(deadline) + (open ? badge(open + " açık", "danger") : ""),
+          badge(compliance.status,compliance.status==='BELGELER TAM'?'ok':compliance.status==='SÜRESİ GEÇMİŞ'?'danger':'warn') + fleetDocumentBadge(deadline) + (open ? badge(open + " açık", "danger") : ""),
       });
     })
     .join("");

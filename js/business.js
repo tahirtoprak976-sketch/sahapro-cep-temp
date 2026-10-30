@@ -365,6 +365,9 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
   const docs = documents.filter(
     (d) =>
       isActive(d) &&
+      d.status !== 'İptal' &&
+      (!d.owner_type || d.owner_type === 'vehicle') &&
+      !(d.owner_type === 'vehicle' && d.owner_id && d.vehicle_id && d.owner_id !== d.vehicle_id) &&
       (d.vehicle_id === vehicle.id ||
         (d.owner_type === "vehicle" && d.owner_id === vehicle.id)),
   );
@@ -379,12 +382,13 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
       : ["Makine Tescil Belgesi", "Periyodik Kontrol"]);
   const validTypes = new Set(
     docs
-      .filter((d) => ['Geçerli','7 Gün İçinde','30 Gün İçinde'].includes(expiryState(d, today)))
+      .filter((d) => validDate(d.date) && ['Geçerli','7 Gün İçinde','30 Gün İçinde'].includes(expiryState(d, today)))
       .map((d) => aliases[d.category] || d.category),
   );
   const missing = required.filter((t) => !validTypes.has(t));
   const latest = new Map();
   for (const d of docs) {
+    if(!validDate(d.date)||!['Geçerli','7 Gün İçinde','30 Gün İçinde','Süresi Geçmiş'].includes(expiryState(d,today)))continue;
     const category = aliases[d.category] || d.category;
     if (
       !latest.has(category) ||

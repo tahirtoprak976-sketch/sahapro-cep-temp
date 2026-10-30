@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {documentCountdown as countdown,documentVehicle,fleetDocumentModel as model,nearestVehicleDocument} from '../js/fleet-document-core.js';
-import {expiryState,normalizedDocument} from '../js/business.js';
+import {expiryState,normalizedDocument,vehicleDocumentStatus} from '../js/business.js';
 const today='2026-10-30';
 const doc=(id,extra={})=>({id,category:'Muayene Belgesi',doc_no:id,owner_type:'vehicle',owner_id:'V',vehicle_id:'V',date:'2026-01-01',expiry_date:'2026-11-06',...extra});
 assert.equal(countdown(doc('A'),today).label,'7 gün kaldı');
@@ -49,4 +49,9 @@ const bad=model({...data,documents:[doc('MISMATCH',{owner_id:'V',vehicle_id:'OTH
 assert.equal(bad.counts.review,2);assert.equal(bad.rows.length,2,'a mismatched owner is one review item, never two assigned documents');
 assert.equal(model({...data,documents:bad.rows.map(r=>r.doc)},{today,vehicle_id:'V'}).selected.length,1);
 assert.equal(JSON.stringify(data),before,'every counter/filter is read-only');
+const v={id:'V',name:'34 TEST 89',type:'Kamyon',required_document_types:['Muayene Belgesi']};
+assert.equal(vehicleDocumentStatus(v,[],today).status,'EKSİK','adding counters preserves missing-document warning');
+const expired=doc('EXPIRED',{expiry_date:'2026-10-29'}),renewal=doc('RENEWAL',{valid_from:'2026-10-31',expiry_date:'2027-10-31'});
+assert.equal(vehicleDocumentStatus(v,[expired,renewal],today).status,'SÜRESİ GEÇMİŞ','future renewal cannot hide current expiry in fleet compliance badge');
+for(const extra of [{status:'İptal'},{owner_type:'personnel'},{owner_id:'OTHER'},{expiry_date:null},{date:'2026-02-30'}])assert.equal(vehicleDocumentStatus(v,[doc('BAD',extra)],today).status,'EKSİK');
 console.log('fleet-document-countdown PASS: exact days/boundaries/DST, future renewals, alias history, absent/invalid dates, ownership and inactive scope, immutable records');
