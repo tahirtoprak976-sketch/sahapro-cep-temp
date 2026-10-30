@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.87** — 30.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.88** — 30.10.2026
+
+İmzalı fişin kaynak işi, hakedişe bağlı mazot düzeltmesi ve eşzamanlı yedek geri yükleme için
+kayıt korumaları güçlendirildi. Fiyat ve not tamamlama korunur; şema 7 kalır.
+[İnceleme, kanıtlar ve sınırlar](docs/INTEGRITY_REVIEW_v3988.md).
 
 İş Kayıtları → Günü kontrol et: personel altında kısa iş/yakıt listesi, kayıtlı işten ayrı fiyat bekleme,
 kaynak mesajı ve WhatsApp metniyle salt-okunur karşılaştırma. Benzerlik kayıt kanıtı sayılmaz;

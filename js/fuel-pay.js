@@ -77,7 +77,7 @@ async function auditScreen(ctx, id) {
       <button class="btn primary block" data-fixgo disabled style="margin-top:6px">Onayla ve uygula</button></div>` : ""}
     ${a.tlWorks.filter((w) => !w.wouldMatch).length ? `<div class="card"><b>2. Bugünkü kurala uymayan TL işler</b><div class="muted tiny">Yalnız bilgi. Kural kelimesi / birimi / tarihi tutmuyor. Bu işler gerçekten mazot karşılığıysa önce anlaşmayı doğrulayın; kuralı bakiyeyi düşürmek için genişletmeyin.</div>
       ${a.tlWorks.filter((w) => !w.wouldMatch).map((w) => row(w)).join("")}</div>` : ""}
-    ${a.lockedTl.length ? `<div class="card"><b>3. Kesinleşmiş hakedişteki TL işler</b><div class="muted tiny">Yalnız bilgi. Hakedişe girmiş iş buradan değiştirilmez.</div>
+    ${a.lockedTl.length ? `<div class="card"><b>3. Hakedişe bağlı TL işler</b><div class="muted tiny">Yalnız bilgi. Taslak veya kesinleşmiş hakedişe bağlı iş buradan değiştirilmez.</div>
       ${a.lockedTl.map((w) => row(w, `Hakediş ${esc(w.hakedis)} · `)).join("")}</div>` : ""}
     ${a.mixed.length ? `<div class="card"><b>4. Hem litre hem TL yazılmış işler</b><div class="muted tiny">Yalnız bilgi. Kural "ücret yalnız mazot" ama işte TL tutar da var; anlaşma karma olabilir.</div>
       ${a.mixed.map((w) => row({ ...w, label: "+" + w.liters + " L" })).join("")}</div>` : ""}
@@ -108,8 +108,9 @@ async function auditScreen(ctx, id) {
     const sel = picks();
     if (!sel.length || !qs("[data-agree]", root).checked) return;
     if (!(await confirmDialog("Onaylıyor musunuz?", `${sel.length} işe litre kuralı uygulanacak (önizlemedeki değişiklikler). Her değişiklik geçmişe (audit) işlem kimliğiyle yazılır; aynı düzeltme ikinci kez uygulanmaz.`, "Uygula"))) return;
-    let n = 0, skip = 0;
+    let n = 0, skip = 0;const failures=[];
     for (const wid of sel) {
+      try {
       const cur = await db.get("work_records", wid);
       if (!cur) { skip++; continue; }
       const f = applyFuelPay(await db.dumpAll(), cur, "");
@@ -122,8 +123,9 @@ async function auditScreen(ctx, id) {
         { customer_fuel_allowance_l: f.customer_fuel_allowance_l, fuel_rule_id: f.fuel_rule_id || null, price_snapshot: f.price_snapshot, fuel_fix_op: op, fuel_fix_note: "Kullanıcı anlaşmayı doğruladı" },
         `Mazot incelemesi: kural uygulandı (${op}; önceki ${tl(cur.price_snapshot?.amount)} ₺; kullanıcı anlaşmayı doğruladı)`);
       if (r.skipped) skip++; else n++;
+      } catch(e) {skip++;failures.push(e.message || 'Kayıt değiştirilemedi.');}
     }
-    toast(`${n} iş güncellendi${skip ? `, ${skip} iş atlandı (zaten uygulanmış ya da kilitli)` : ""}`, n ? "ok" : "err");
+    toast(`${n} iş güncellendi${skip ? `, ${skip} iş atlandı (zaten uygulanmış ya da kilitli)` : ""}${failures.length?' · '+failures[0]:''}`, failures.length||!n ? "err" : "ok");
     ctx.reload();
   });
   root.querySelectorAll("[data-link]").forEach((b) => b.addEventListener("click", async () => {
