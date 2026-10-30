@@ -676,6 +676,18 @@ export async function screen(ctx) {
   // The visible button must not accept a click before async setup binds its handler.
   qs('[data-ask]',root).disabled = false;
   // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)
+  if(ctx.query?.gun_kontrol==='1'){
+    const {reviewHandoffKey,dayReviewURL}=await import('./work-day-review.js'),{realDate}=await import('./work-explorer.js');
+    const database=(await db.openDB()).name,key=reviewHandoffKey(database);let hand=null;
+    try{hand=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
+    if(hand?.database===database&&realDate(hand.date)&&typeof hand.text==='string'&&hand.text.length<=20000){
+      const use=!msgEl.value.trim()||msgEl.value===hand.text||await confirmDialog('Asistandaki mesaj değişsin mi?','Gün kontrolünden seçtiğiniz satır mesaj kutusuna gelecek. Mevcut mesajın yerini almasını onaylıyor musunuz?','Seçili satırı aç');
+      if(use){manualRefine=false;msgEl.value=hand.text;msgEl.dispatchEvent(new Event('input',{bubbles:true}));msgEl.focus();
+        msgEl.closest('.card').insertAdjacentHTML('beforebegin',`<p class="notice info" data-day-handoff>Gün kontrolünden geldi. Henüz gönderilmedi veya kaydedilmedi. Tarih ve bilgileri kontrol edip Asistana Gönder’e basın. <a href="${dayReviewURL(hand.date)}">Gün kontrolüne dön</a></p>`);
+      }
+    }
+    try{sessionStorage.removeItem(key);}catch{}
+  }
   if (ctx.query?.hazir) {
     let t = "";
     try { t = sessionStorage.getItem("sp_hero_msg") || ""; sessionStorage.removeItem("sp_hero_msg"); } catch (e) {}

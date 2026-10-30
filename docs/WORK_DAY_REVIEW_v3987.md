@@ -1,0 +1,15 @@
+# Günlük iş kontrolü — v3.9.87
+
+İş Kayıtları → **Günü kontrol et**. Gerçek iş günü seçilir. Mevcut kayıtlar atanmış personele göre kısa satırlarda gösterilir; personelsiz kayıt ayrı gruptadır. Gönderen kişi operatör sayılmaz. Birimler ayrı toplanır. Gerçek yakıt ve geçmiş mutabakat bekleyen yakıt ayrı sayılır; bekleyen litre stok/gerçekleşen yakıt veya maliyet değildir.
+
+Fiyat bekleyen iş kayıtlıdır. İç iş, mazot karşılığı, açık sıfır fiyat ve kesinleşmiş hakedişe alınmış iş mevcut fiyat kontrolü politikasını kullanır. Eksik müşteri/araç/personel veya miktar ayrıca belirtilir. **Eksik bilgiyi tamamla** mevcut işin formunu açar; gün kontrolüne dönüş bağlantısı kalır. **Bu güne iş ekle** seçili tarihi yeni form için önerir; önceki açık taslağı değiştirme kararı mevcut formun taslak korumasından geçer.
+
+**Kaynak mesajı** yalnız kullanıcı açınca gösterilir. Kısa iş açıklaması listede tek satırdır. Kaydı olmayan personel listesi kontrol yardımıdır; izinli/çalışmamış kişi olabilir. Kesin eksik iş veya gün tamamlandı kararı verilmez.
+
+WhatsApp karşılaştırmasına tarih ve gönderen başlıklı mesajlar yapıştırılır. Kopyalanmış kısa başlıkta yıl seçili iş gününden gelir; başlığın gün/ayı korunur. Farklı tarihteki işler ayrı belirtilir; tarih sessizce seçili güne/bugüne çevrilmez. Başlıksız metin seçili güne göre incelenir ve açık uyarı taşır. En fazla 20.000 karakter, 150 mesaj, 200 okunan iş/yakıt bildirimi; sınırda metin kesilmez.
+
+Yerel mesaj motoru kullanılır; model/ağ çağrısı yoktur. Yalnız yapıştırılan ve okunabilen bildirimler karşılaştırılır. Kapsam dışında veya okunamayan ifade, ödeme/arıza/düzeltme ve çelişki ayrıca gösterilir; bütün grubun işlendiği onayı verilmez. Satırın miktar, birim, gün ve bilinen kartları karşılaştırılır. Bir kaydın doğrulanmış özgün kaynak parçası ve mesajın tarih/saat/gönderen başlığı da tekil eşleşirse **kaynak mesajına bağlı kayıt var** denir. Yalnız aynı müşteri/araç/miktar varsa **benzer kayıt** denir. Aynı kayıt iki ayrı bildirimi otomatik karşılamaz. Kaynak mevcut fakat miktar/tarih gibi bilgiler değişmişse kaynak iş incelemeye açılır; yeni eksik iş sayılmaz. Ayrı bekleyen yakıt gerçek yakıtla karıştırılmaz.
+
+Metin, tarih ve filtreler yalnız sekmenin veritabanına özel sessionStorage alanında korunur. Önizleme/kaynak açma iş, para, depo veya audit kaydı yazmaz. **Asistanda incele** seçili ifadeyi mesaj kutusuna hazırlar; mevcut asistan mesajının üzerine yazmadan önce onay ister. Kendiliğinden Gemini çağırmaz, kart kaydetmez, önceki taslağı onaysız değiştirmez. Karşılaştırma metni gün kontrolüne dönünce ve çevrimdışı yeniden açınca korunur; Yenile güncel kayıtları tekrar okur. Şema 7 değişmez.
+
+Doğrulama: saf karşılaştırma testleri; gerçek Chromium/IndexedDB ile personel/tarih grubu, fiyat/gerçek yakıt/bekleyen yakıt ayrımı, aynı miktarda farklı işler, kaynak parçası ve başlık, mevcut işe fiyat tamamlama, asistan taslağını koruma, otomatik gönderim olmaması, dar ekran, kaynak HTML kaçışı ve çevrimdışı salt-okuma. Gerçek telefon ve WhatsApp otomatik okuma testi değildir.

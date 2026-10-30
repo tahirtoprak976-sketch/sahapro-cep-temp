@@ -161,6 +161,9 @@ function contextBind(root, d) {
   sync();
 }
 export async function screen(ctx) {
+  if(ctx.parts[0]==='isler'&&ctx.parts[1]==='kontrol'){
+    await (await import('./work-day-ui.js')).workDayScreen(ctx);return true;
+  }
   const route = ctx.parts[0];
   if (!MODULES[route] && !extra.includes(route)) return false;
   const d = await ctx.db.dumpAll();
@@ -1412,6 +1415,7 @@ async function customerPack(ctx, d) {
   };
 }
 export async function augment(ctx) {
+  if(ctx.parts[0]==='isler'&&ctx.parts[1]==='kontrol')return;
   const { root, parts, db } = ctx,
     route = parts[0],
     id = parts[1];

@@ -54,6 +54,7 @@ export function fuelReadView(parts) {
   return (
     (!parts[0]) ||
     (['isler','yakit','bakim','fisler'].includes(parts[0]) && !parts[1]) ||
+    (parts[0]==='isler'&&parts[1]==='kontrol') ||
     (parts[0] === "musteriler" &&
       !parts.includes("new") &&
       !parts.includes("edit")) ||
