@@ -12,7 +12,7 @@ import { latestWork, repeatWork } from "./work-repeat.js";
 import { hasWorkDraft, workEntryPlan, workSiteChoices } from "./work-entry.js";
 import { plannedWorkDraft } from "./operation-core.js";
 import { customerLabel } from "./driver-customer.js";
-import { exploreWorks, workURL, workFlags, workCSV } from "./work-explorer.js";
+import { exploreWorks, workURL, workFlags, workCSV, realDate } from "./work-explorer.js";
 import { workHours } from "./enterprise-core.js";
 import { kdvRateOf } from "./core.js";
 // SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
@@ -111,6 +111,7 @@ async function workList(ctx) {
       right: '<button class="iconbtn" data-go="#/whatsapp">💬</button>',
     }) +
     `
+    <nav class="work-day-nav"><span class="badge info">İş listesi</span><a class="btn primary" data-work-day-entry href="#/isler/kontrol">Günü kontrol et</a></nav>
     <div class="history-tools"><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div style="height:10px"></div>
     <div class="work-explorer-summary card" data-work-summary>
       <div class="row between"><b>İş özeti</b><span class="tiny muted">${esc(scope)}</span></div>
@@ -323,6 +324,7 @@ async function workForm(ctx, editId) {
     ) +
     `
     ${entryContextHTML(entry,entryPreserved)}
+    ${realDate(query.review_date)?`<p class="notice info" data-work-day-return>Gün kontrolünden açıldı. <a href="#/isler/kontrol?date=${esc(query.review_date)}">Gün kontrolüne dön</a></p>`:''}
     ${editId ? "" : notice("info", "Nakliyede döküm yerlerini + Satır ekle ile girin. Aynı fiyatlı seferler müşteriye tek satır görünür; döküm ayrıntıları içeride korunur.")}
     ${planSource ? `<div class="notice info" data-plan-source="${esc(planSource.id)}"><b>Planlı görev taslağı:</b> ${esc(planSource.task || planSource.id)}<br>Miktar ve tarihi kontrol edin. Plan, kayıt öncesinde gelir veya gerçekleşen iş değildir; kayıt sonrası planla bu iş bağlanır.</div>` : repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : startKind === "draft" ? '<div class="notice info" data-work-start="draft">Yarım kalan iş taslağı yüklendi; önceki alanlar korundu.</div>' : startKind === "customer" ? '<div class="notice info" data-work-start="customer">Seçili müşteri için yeni iş. Miktarı ve diğer seçimleri girin.</div>' : startKind === "message" ? '<div class="notice info" data-work-start="message">Mesajdan yeni iş başlangıcı; kayıt henüz yapılmadı. Alanları kontrol edin.</div>' : ""}
     <form data-form novalidate>

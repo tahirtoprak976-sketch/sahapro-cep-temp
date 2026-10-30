@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.86** — 29.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.87** — 30.10.2026
+
+İş Kayıtları → Günü kontrol et: personel altında kısa iş/yakıt listesi, kayıtlı işten ayrı fiyat bekleme,
+kaynak mesajı ve WhatsApp metniyle salt-okunur karşılaştırma. Benzerlik kayıt kanıtı sayılmaz;
+eksik satır asistana otomatik gönderilmeden hazırlanabilir. [Kullanım ve sınırlar](docs/WORK_DAY_REVIEW_v3987.md).
 
 Kartları Birleştir ekranında Döküm sahası seçilebilir. Bağlı işler, döküm hareketleri ve belgeler
 tutarları korunarak taşınır; çift açılış ve mükerrer fiş gibi hesap çakışmaları engellenir.
