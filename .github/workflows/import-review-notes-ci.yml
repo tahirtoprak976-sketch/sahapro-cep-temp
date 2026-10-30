@@ -21,6 +21,7 @@ on:
       - fix/solo-digital-slip-work-85
       - fix/solo-dump-card-merge-86
       - feat/solo-work-day-review-87
+      - fix/solo-integrity-review-88
 
 permissions:
   contents: read
@@ -103,7 +104,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -273,6 +274,36 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 08885e449df2f7e038f27f169e9403bb2e5a41aa
+
+      - name: Verify installed live v3.9.87 to integrity review preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 66da1caaed0437c1e0673ac96c17b5b00efbaaf8
+
+      - name: Reproduce eight write-boundary findings on unchanged live v3.9.87
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-integrity87-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 66da1caaed0437c1e0673ac96c17b5b00efbaaf8 | tar -x -C "$baseline"
+          python3 -m http.server 8856 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-integrity87-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8856/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/integrity_review88.py http://localhost:8856/ --baseline-proof --artifacts /tmp/solo-integrity88-baseline
 
       - name: Reproduce standalone signed slip missing from customer jobs on unchanged v3.9.84
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
@@ -496,6 +527,8 @@ jobs:
             /tmp/solo-report-clarity/*.pdf
             /tmp/solo-report-clarity/*.csv
             /tmp/solo-work-entry/*.png
+            /tmp/solo-integrity88/*
+            /tmp/solo-integrity88-baseline/*
             /tmp/solo-finance-integrity/*
             /tmp/solo-cari-vat/*
             /tmp/solo-finance-audit79/*

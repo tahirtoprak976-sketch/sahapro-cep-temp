@@ -142,9 +142,14 @@ const CLAIM_WORK_FIELDS = ['date', 'customer_id', 'site_id', 'vehicle_id', 'pers
   'dump_site_id', 'dump_cost', 'dump_tariff_snapshot', 'dump_estimate_snapshot', 'tonnage', 'tonnage_scope', 'dump_payer', 'deleted_at'];
 const CASH_MONEY_FIELDS = ['amount', 'date', 'customer_id', 'cash_type', 'payment_method', 'bank_account_id', 'bank_movement_id',
   'personnel_id', 'request_id', 'driver_entry_id', 'event_id', 'deleted_at'];
+const SLIP_WORK_FIELDS = ['date','customer_id','site_id','vehicle_id','personnel_id','work_type','quantity','unit','slip_id','digital_slip_source_id','deleted_at'];
+function linkedWorkSlip(data, work) {
+  return (data.slips || []).find(s => isActive(s) && (s.status !== 'İptal' || s.signed_at) &&
+    (s.id === work.slip_id || s.id === work.digital_slip_source_id || s.work_record_id === work.id || (s.work_record_ids || []).includes(work.id)));
+}
 function financeGuardStores(store, delta) {
   if (store === 'sites' && 'customer_id' in delta) return HISTORY_STORES;
-  if (store === 'work_records') return ['hakedis'];
+  if (store === 'work_records') return ['hakedis', 'slips'];
   if (store === 'fuel_tank_movements') return ['pending_fuel_records'];
   if (store === 'hakedis') return ['cari_movements'];
   if (store === 'cash_records') return ['cari_movements', 'bank_movements', 'settlement_allocations'];
@@ -153,6 +158,13 @@ function financeGuardStores(store, delta) {
 function assertFinancialEdit(store, current, next, delta, data) {
   if (!current || current.deleted_at) throw financeError('Kayıt değişmiş veya silinmiş; yeniden açın.', 'STALE');
   const changes = keys => keys.some(key => key in delta && changedField(current, next, key));
+  if (store === 'contracts' && (current.status === 'İmzalandı' || current.signed_at || current.signed_snapshot))
+    throw financeError('Sözleşme imzalanmış; eski ekran imzalı kaydı değiştiremez. Güncel sözleşmeyi açın.', 'SIGNED_LOCKED');
+  if (store === 'slips' && (current.status === 'İmzalandı' || current.signed_at || current.signature_attachment_id) &&
+      !(delta.status === 'Revize' && Object.keys(delta).length === 1))
+    throw financeError('Fiş imzalanmış; eski ekran imzayı veya hizmeti değiştiremez. Güncel fişi açın.', 'SIGNED_LOCKED');
+  if (store === 'work_records' && changes(SLIP_WORK_FIELDS) && linkedWorkSlip(data, current))
+    throw financeError('Dijital fişe bağlı işin hizmet bilgileri burada değiştirilemez. Fiş ve kaynak işi birlikte inceleyin; imzasız yeni fişin düzeltmesini fiş ekranından yapın. Fiyat ve notlar ayrıca tamamlanabilir.', 'SLIP_WORK_LINKED');
   if(store==='fuel_tank_movements'&&(data.pending_fuel_records||[]).some(r=>[current.fuel_record_id,next.fuel_record_id].includes(r.id))&&changes(['date','liters','move_type','vehicle_id','personnel_id','fuel_record_id','event_id','deleted_at']))throw Error('Mutabakatı tamamlanan yakıtın depo eş kaydı tek başına değiştirilemez.');
   if(store==='fuel_records'&&changes(['historical_pending_id']))throw Error('Mutabakat kaynak bağlantısı yalnız açık onaylı kesinleştirmede oluşturulabilir.');
   if(store==='fuel_records'&&current.historical_pending_id&&changes(['historical_pending_id','date','liters','fuel_source','vehicle_id','personnel_id','total','unit_price','cost_source','tank_movement_id','event_id','deleted_at']))throw Error('Mutabakatı tamamlanmış geçmiş yakıtın kaynak ve maliyeti tek başına değiştirilemez.');
@@ -303,7 +315,7 @@ export async function softDelete(store, id, reason) {
   const upd = { ...rec, deleted_at: nowISO(), updated_at: nowISO() };
   const connection = await openDB();
   await new Promise((resolve, reject) => {
-    const historyStores = store === 'customers' ? HISTORY_STORES : store === 'work_records' ? ['hakedis'] : ['vehicles','personnel'].includes(store)?['pending_fuel_records']:[];
+    const historyStores = store === 'customers' ? HISTORY_STORES : store === 'work_records' ? ['hakedis','slips'] : ['vehicles','personnel'].includes(store)?['pending_fuel_records']:[];
     const t = journalTransaction(connection.transaction([...new Set([store, "maintenance_parts", "dump_entries", "audit_log", ...historyStores, ...(store==="dump_sites"?["expense_records","work_records"]:[])])], "readwrite")); let error;
     if(store==="dump_sites")for(const s of ["expense_records","work_records"]){const q=t.objectStore(s).getAll();q.onsuccess=()=>{if(q.result.some(r=>isActive(r)&&r.dump_site_id===id)){error=Error("Eski döküm geçmişine bağlı saha silinemez");t.abort();}};}
     const dumpCheck=t.objectStore("dump_entries").getAll();
@@ -321,6 +333,9 @@ export async function softDelete(store, id, reason) {
           }
           if (store === 'work_records' && (history.hakedis || []).some(claim => isActive(claim) && claim.status !== 'İptal' && (claim.items || []).some(item => item.work_record_id === id))) {
             error = financeError('Hakedişe bağlı iş silinemez; önce ilgili taslağı inceleyin.', 'HAKEDIS_LOCKED'); t.abort(); return;
+          }
+          if (store === 'work_records' && linkedWorkSlip(history, get.result)) {
+            error = financeError('Dijital fişe bağlı iş silinemez; fiş ve kaynak işi birlikte inceleyin. İmzalı hizmetin kaydı müşteri işlerinde korunuyor.', 'SLIP_WORK_LINKED'); t.abort(); return;
           }
           if (store === 'hakedis' && get.result?.status === 'Kesinleşti') {
             error = financeError('Kesinleşmiş hakediş silinemez.', 'HAKEDIS_LOCKED'); t.abort(); return;
@@ -2054,8 +2069,8 @@ export async function signContract(id, blobs) {
     r.onsuccess = () => {
       const c = r.result;
       if (
-        !c ||
-        c.status === "İmzalandı" ||
+        !c || !isActive(c) ||
+        c.status !== "Taslak" ||
         blobs.length !== 2 ||
         blobs.some((b) => !b?.size)
       ) {
@@ -2083,6 +2098,7 @@ export async function signContract(id, blobs) {
         ...c,
         status: "İmzalandı",
         signed_at: nowISO(),
+        updated_at: increasingStamp(c),
         signature_ids: ids,
         signed_snapshot: structuredClone(c),
       });
@@ -2176,7 +2192,7 @@ export async function signSlip(id, file) {
     const req = t.objectStore("slips").get(id);
     req.onsuccess = () => {
       const s = req.result;
-      if (!s || s.status !== "Taslak" || !file?.size) {
+      if (!s || !isActive(s) || s.status !== "Taslak" || !file?.size) {
         error = Error("Fiş taslak olmalı; imza zorunlu");
         t.abort();
         return;
@@ -2196,6 +2212,7 @@ export async function signSlip(id, file) {
         ...s,
         status: "İmzalandı",
         signed_at: nowISO(),
+        updated_at: increasingStamp(s),
         signature_attachment_id: att.id,
       };
       t.objectStore("attachments").put(att);
@@ -2204,7 +2221,7 @@ export async function signSlip(id, file) {
         const r = t.objectStore("slips").get(s.revision_of);
         r.onsuccess = () => {
           if (r.result?.status === "İmzalandı")
-            t.objectStore("slips").put({ ...r.result, status: "Revize" });
+            t.objectStore("slips").put({ ...r.result, status: "Revize", updated_at: increasingStamp(r.result) });
         };
       }
     };
@@ -2220,12 +2237,16 @@ export async function updateIf(store, id, pred, fields, auditReason) {
   if(store === "dump_entries") throw Error("Döküm işlemi ortak hesap ekranından yapılmalı");
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction([...new Set([store, "audit_log", "dump_entries", ...(store==='fuel_tank_movements'?['pending_fuel_records']:[])])], "readwrite");
+    const guardStores = financeGuardStores(store, fields);
+    const t = d.transaction([...new Set([store, "audit_log", "dump_entries", ...guardStores])], "readwrite");
     let out = { skipped: true }, error;
     const q = t.objectStore(store).get(id);
     q.onsuccess = () => {
       const cur = q.result;
       if (!cur || cur.deleted_at || !pred(cur)) return;
+      readTransactionRows(t, guardStores, guardData => {
+      try { assertFinancialEdit(store, cur, {...cur,...fields}, fields, guardData); }
+      catch(e) { error=e;t.abort();return; }
       if(store==='fuel_records'&&(cur.historical_pending_id||fields.historical_pending_id!=null)){error=Error('Mutabakatı tamamlanan geçmiş yakıt koşullu düzenlemeyle değiştirilemez.');t.abort();return;}
       const changed = key => key in fields && JSON.stringify(fields[key] ?? null) !== JSON.stringify(cur[key] ?? null);
       if (store === "work_records" && (
@@ -2248,6 +2269,7 @@ export async function updateIf(store, id, pred, fields, auditReason) {
         t.objectStore("audit_log").put({ id: uuid(), entity: store, entity_id: id, action: "update", old: Object.fromEntries(Object.keys(fields).map((k) => [k, cur[k] ?? null])), new: fields, reason: auditReason || "", at: nowISO() });
         out = rec;
       };
+      });
     };
     t.oncomplete = () => {if(!out.skipped)recordsCommitted(d.name,[store]);resolve(out);};
     t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
@@ -2352,3 +2374,6 @@ export async function storePdfHistoryFile(hash,file) {
     t.oncomplete=()=>resolve(true);t.onabort=t.onerror=(event) => reject(error || transactionError(t, event));
   });
 }
+
+// Restore uses the same pure, transaction-time guards as ordinary editing.
+export { assertFinancialEdit as assertRecordEdit };

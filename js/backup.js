@@ -1,4 +1,5 @@
 import {validatePendingFuelData} from './historical-fuel.js';
+import {assertRecordEdit} from './db.js';
 import {validateDumpData} from "./dump-ledger-core.js";
 import { startActivity } from "./update-safety.js";
 import {validateCustomerFuelLinks} from './customer-fuel.js';
@@ -15,6 +16,7 @@ import {
   APP_VERSION,
   mergePreview,
   isValidBackup,
+  stableStringify,
 } from "./core.js";
 const SECRET_META = ["gemini_key", "backup_pw", "sec_lock", "sec_fail", "pin_hash"];
 // Şoför bağlantılarının imza anahtarları ve çıkış kodları: yalnız ŞİFRELİ yedeğe yazılır. Şifresiz yedeği ele geçiren
@@ -140,10 +142,10 @@ function checkPart(obj, state) {
   }
 
 }
-export async function previewBackup(db, obj) {
+export async function previewBackup(db, obj, basis = null) {
   if (!isValidBackup(obj) || obj.schema_version > SCHEMA_VERSION)
     throw Error("Desteklenmeyen yedek / şema");
-  const local = await db.dumpAll(),
+  const local = basis || await db.dumpAll(),
     stores = {};
   let added = 0,
     same = 0,
@@ -200,11 +202,16 @@ export function freshDeviceDrops(local, obj) {
 export async function restoreBackup(db, obj, replace = false) {
   const release = startActivity("restore");
   try {
+  if (!obj || typeof obj !== 'object')
+    throw Error("Desteklenmeyen yedek / şema");
   const state0 = obj.part ? await db.metaGet(RESTORE_SET + obj.part.set) : null;
   checkPart(obj, state0);
+  if (!isValidBackup(obj) || obj.schema_version > SCHEMA_VERSION)
+    throw Error("Desteklenmeyen yedek / şema");
   if (obj.part && state0?.done?.includes(obj.part.no))
     return { ...(await previewBackup(db, obj)), part: obj.part, already: true, set: state0 }; // aynı parça ikinci kez: hiçbir şey yazılmaz
-  const preview = await previewBackup(db, obj);
+  const basis = await db.dumpAll();
+  const preview = await previewBackup(db, obj, basis);
   // Telefon içi kurtarma kopyası: ekler Blob olarak (base64 kopyası yok — bellek iki katına çıkmaz)
   await saveRecovery(db, await fullBackup(db, { attachments: "blob" }));
   try { validateRestoreLinks(await db.dumpAll(), obj, preview, replace); }
@@ -224,7 +231,7 @@ export async function restoreBackup(db, obj, replace = false) {
   }
   // Yeni telefon (henüz işletme kaydı yok): ilk açılışta oluşturulan başlangıç kartları, yedekteki aynı adlı kartların
   // yerine geçer. Yoksa araç / personel / döküm sahası / eşleştirme / fiyat ikişer olur.
-  const drop = freshDeviceDrops(await db.dumpAll(), obj);
+  const drop = freshDeviceDrops(basis, obj);
   const connection = await db.openDB(),
     stores = [...ENTITY_STORES, "attachments", "meta"];
   return await new Promise((resolve, reject) => {
@@ -232,7 +239,10 @@ export async function restoreBackup(db, obj, replace = false) {
     let error;
     // Recheck isolated historical evidence against a coherent, serialized snapshot.
     const fresh={};let reads=ENTITY_STORES.length;
-    for(const s of ENTITY_STORES){const q=t.objectStore(s).getAll();q.onsuccess=()=>{fresh[s]=q.result;if(!--reads)try{validateRestoreLinks(fresh,obj,preview,replace);}catch(e){error=e;t.abort();}};}
+    for(const s of ENTITY_STORES){const q=t.objectStore(s).getAll();q.onsuccess=()=>{fresh[s]=q.result;if(!--reads)try{
+      assertRestoreBasis(basis,fresh,obj,preview,replace,drop);
+      validateRestoreLinks(fresh,obj,preview,replace);
+    }catch(e){error=e;t.abort();}};}
     for (const [s, ids] of Object.entries(drop)) for (const id of ids) t.objectStore(s).delete(id);
     for (const s of ENTITY_STORES) {
       const rows = [
@@ -250,9 +260,9 @@ export async function restoreBackup(db, obj, replace = false) {
             existing &&
             (ENTERPRISE_STORES.includes(s) ||
               SOLO_STORES.includes(s) ||
-              (s === "contracts" && existing.status === "İmzalandı") ||
+              (s === "contracts" && (existing.status === "İmzalandı" || existing.signed_at || existing.signed_snapshot)) ||
               (s === "hakedis" && existing.status === "Kesinleşti") ||
-              (s === "slips" && existing.status === "İmzalandı"))
+              (s === "slips" && (existing.status === "İmzalandı" || existing.signed_at || existing.signature_attachment_id)))
           ) {
             error = Error("İmzalı/kesinleşmiş kayıt yedekle değiştirilemez");
             t.abort();
@@ -324,6 +334,27 @@ export async function restoreBackup(db, obj, replace = false) {
       reject(error || t.error || Error("Geri yükleme iptal edildi"));
   });
   } finally { release(); }
+}
+// Compare only records this restore will write/delete. Unrelated new records
+// remain mergeable. Both the check and the writes share the IDB write lock.
+export function assertRestoreBasis(basis, current, obj, preview, replace, drop) {
+  const stale = () => {throw Object.assign(Error('Kayıtlar yedek önizlemesinden sonra başka ekranda değişti. Hiçbir kayıt değiştirilmedi; güncel durumu yeniden önizleyin.'),{code:'RESTORE_STALE'});};
+  if(stableStringify(freshDeviceDrops(current,obj))!==stableStringify(drop))stale();
+  for(const store of ENTITY_STORES){
+    const before=new Map((basis[store]||[]).map(r=>[r.id,r])),now=new Map((current[store]||[]).map(r=>[r.id,r]));
+    const writes=new Map([...(preview.stores[store]?.new||[]),...(replace?preview.stores[store]?.conflict||[]:[])].map(r=>[r.id,r]));
+    const ids=new Set(writes.keys());
+    for(const id of drop[store]||[])ids.add(id);
+    for(const id of ids){
+      const row=now.get(id),next=writes.get(id);
+      if(stableStringify(before.get(id)??null)!==stableStringify(row??null))stale();
+      if(row&&!row.deleted_at&&next){
+        const delta=Object.fromEntries([...new Set([...Object.keys(row),...Object.keys(next)])]
+          .filter(key=>stableStringify(row[key]??null)!==stableStringify(next[key]??null)).map(key=>[key,next[key]]));
+        assertRecordEdit(store,row,next,delta,current);
+      }
+    }
+  }
 }
 // Kullanıcıya gösterilecek durum: tamamlandı mı, eksik parçalar, eki beklenen kayıt sayısı
 export function setStatusText(st) {

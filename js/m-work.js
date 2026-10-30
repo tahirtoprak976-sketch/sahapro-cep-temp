@@ -216,6 +216,7 @@ async function workForm(ctx, editId) {
     ]);
   if (location.hash !== formHash) return;
   let rec = editId ? await db.get("work_records", editId) : null;
+  const linkedSlip = rec?.slip_id ? await db.get('slips',rec.slip_id) : null;
   let planSource = !editId && query.plan_id ? await db.get("shift_assignments", query.plan_id) : null;
   if (query.plan_id && !editId) {
     if (!planSource || !isActive(planSource)) { root.innerHTML = appbar("Planlı görev") + notice("warn", "Plan kaydı bulunamadı veya silinmiş. Yeni işi ayrıca açabilirsiniz."); return; }
@@ -324,6 +325,7 @@ async function workForm(ctx, editId) {
     ) +
     `
     ${entryContextHTML(entry,entryPreserved)}
+    ${linkedSlip && isActive(linkedSlip) && (linkedSlip.status !== 'İptal' || linkedSlip.signed_at) ? `<div class="notice info" data-work-slip-protection>Bu iş dijital fişe bağlı. Hizmet bilgileri ve iş kaydı korunur; fiyatı ve notları tamamlayabilirsiniz. İmzasız yeni fişin hizmet düzeltmesini <a href="#/fisler/${esc(encodeURIComponent(linkedSlip.id))}">fiş ekranından</a> yapın.</div>` : ''}
     ${realDate(query.review_date)?`<p class="notice info" data-work-day-return>Gün kontrolünden açıldı. <a href="#/isler/kontrol?date=${esc(query.review_date)}">Gün kontrolüne dön</a></p>`:''}
     ${editId ? "" : notice("info", "Nakliyede döküm yerlerini + Satır ekle ile girin. Aynı fiyatlı seferler müşteriye tek satır görünür; döküm ayrıntıları içeride korunur.")}
     ${planSource ? `<div class="notice info" data-plan-source="${esc(planSource.id)}"><b>Planlı görev taslağı:</b> ${esc(planSource.task || planSource.id)}<br>Miktar ve tarihi kontrol edin. Plan, kayıt öncesinde gelir veya gerçekleşen iş değildir; kayıt sonrası planla bu iş bağlanır.</div>` : repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : startKind === "draft" ? '<div class="notice info" data-work-start="draft">Yarım kalan iş taslağı yüklendi; önceki alanlar korundu.</div>' : startKind === "customer" ? '<div class="notice info" data-work-start="customer">Seçili müşteri için yeni iş. Miktarı ve diğer seçimleri girin.</div>' : startKind === "message" ? '<div class="notice info" data-work-start="message">Mesajdan yeni iş başlangıcı; kayıt henüz yapılmadı. Alanları kontrol edin.</div>' : ""}
@@ -972,6 +974,7 @@ async function workDetail(ctx, id) {
         .sort((a, b) => a.batch_row - b.batch_row)
     : [];
   const slip = w.slip_id ? await db.get("slips", w.slip_id) : null;
+  const slipProtected = slip && isActive(slip) && (slip.status !== 'İptal' || slip.signed_at);
   const atts = await db.attachmentsFor("work", id);
   const sst = w.digital_slip_no ? (await import("./driver-core.js")).slipState(w, atts, names) : { kind: "none", changes: [], original: null };
   const slipChanges = sst.changes;
@@ -1015,12 +1018,13 @@ async function workDetail(ctx, id) {
     <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-watt hidden></label></div>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${(await Promise.all(atts.map(a => attachmentHTML(a, {imageStyle:"width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"})))).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
     <div data-work-file-mount></div>
+    ${slipProtected ? notice('info','Dijital fişe bağlı hizmet bilgileri ve iş kaydı korunuyor. Fiyat ve notları tamamlayabilirsiniz; hizmet düzeltmesi için fişi inceleyin.') : ''}
     <a class="btn block" data-repeat-work href="#/isler/new?repeat=${esc(encodeURIComponent(w.id))}">＋ Benzer iş oluştur</a>
     ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
     <div class="actionbar">
       ${slip ? `<button class="btn" data-go="#/fisler/${slip.id}">🧾 Fiş</button>` : `<button class="btn" data-mkslip>🧾 ${siblings.length ? "Toplam Sefer Fişi" : "Fiş Oluştur"}</button>`}
       ${inHakedis ? "" : `<button class="btn" data-go="#/isler/${id}/edit">Düzenle</button>`}
-      <button class="btn danger" data-del>Sil</button>
+      <button class="btn danger" data-del ${slipProtected?'disabled title="Dijital fişe bağlı iş korunuyor"':''}>Sil</button>
     </div>`;
   {
     const holder = qs("[data-work-file-mount]", root);
@@ -1074,7 +1078,8 @@ async function workDetail(ctx, id) {
       "Silme nedeni (çöp kutusuna taşınır)",
     );
     if (reason === null) return;
-    await db.softDelete("work_records", id, reason);
+    try { await db.softDelete("work_records", id, reason); }
+    catch(e) {toast(e.message || 'İş silinemedi; kayıt korunuyor.','err');return;}
     toast("Çöp kutusuna taşındı", "ok");
     go("#/isler");
   });

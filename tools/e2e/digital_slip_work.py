@@ -23,7 +23,9 @@ with sync_playwright() as pw:
  pad=p.locator('[data-pad]');pad.scroll_into_view_if_needed();box=pad.bounding_box();p.mouse.move(box['x']+25,box['y']+30);p.mouse.down();p.mouse.move(box['x']+90,box['y']+65,steps=8);p.mouse.move(box['x']+140,box['y']+25,steps=8);p.mouse.up();p.click('[data-sign]');p.wait_for_selector('[data-pdf]')
  fresh=p.evaluate("""async customer=>{const db=await import('./js/db.js');return {works:(await db.listActive('work_records')).filter(w=>w.customer_id===customer).length,slips:(await db.listActive('slips')).filter(s=>s.customer_id===customer).map(s=>({id:s.id,status:s.status,work:s.work_record_id}))}}""",ids['customer']);assert fresh['works']==(6 if args.baseline_proof else 7) and len(fresh['slips'])==1 and fresh['slips'][0]['status']=='İmzalandı',fresh
  view('#/musteriler/'+ids['customer']);p.wait_for_selector('[data-custworks]');body=p.locator('[data-custworks]').inner_text();assert ('6 iş' if args.baseline_proof else '7 iş') in body
- p.locator('[data-custworks]').screenshot(path=str(OUT/'customer-after-new-slip.png'))
+ # Record-refresh can replace the panel while Chromium scrolls it for capture.
+ # Capture the document; all customer/job assertions remain independent below.
+ p.screenshot(path=str(OUT/'customer-after-new-slip.png'),full_page=True)
  if args.baseline_proof:
   assert '29.10.2026' not in body;print('BASELINE PROOF: signed manual FS exists, customer still has6 works and no29.10 job');b.close();raise SystemExit(0)
  assert '29.10.2026' in body and '11,5 saat' in body and '7.750' in body and '5 fiyatsız' in body,body

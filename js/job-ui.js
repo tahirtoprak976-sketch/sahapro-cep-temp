@@ -454,12 +454,14 @@ async function link(ctx, id) {
       const delta = plan.reduce((s, p) => s + p.after - p.before, 0), unpriced = plan.filter((p) => !p.after && act !== "dahil").length;
       const txt = `${plan.length} iş ${act === "dahil" ? "sözleşmeye DAHİL edilecek" : "EKSTRA olarak işaretlenecek"}. Müşteri carisi ${delta === 0 ? "değişmez" : (delta > 0 ? "+" : "−") + fmtTL(Math.abs(delta)) + " ₺ değişir"}.${unpriced ? ` ${unpriced} işin fiyatı yok (fiyat listesinde kural yok) — fiyatsız olarak işaretlenir.` : ""}`;
       if (!(await confirmDialog("Değişiklik onayı", txt, "Uygula"))) return;
-      let done = 0, skipped = 0;
+      let done = 0, skipped = 0;const failures=[];
       for (const p of plan) {
+        try {
         const r = await db.updateIf("work_records", p.w.id, (cur) => cur.updated_at === p.w.updated_at && !cur.price_snapshot?.locked, p.fields, act === "dahil" ? "İş sözleşmesine dahil edildi" : "İş sözleşmesinde ekstra işaretlendi");
         if (r?.skipped) skipped++; else done++;
+        } catch(e) {skipped++;failures.push(e.message || 'Kayıt değiştirilemedi.');}
       }
-      toast(`${done} iş güncellendi${skipped ? `, ${skipped} iş başka yerde değiştiği için atlandı` : ""}`, skipped ? "err" : "ok");
+      toast(`${done} iş güncellendi${skipped ? `, ${skipped} iş değişmiş veya bağlı olduğu için atlandı` : ""}${failures.length?' · '+failures[0]:''}`, skipped ? "err" : "ok");
       ctx.reload();
     });
   return true;

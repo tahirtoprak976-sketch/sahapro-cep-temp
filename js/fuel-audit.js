@@ -42,7 +42,7 @@ export function fuelAudit(d, customerId) {
   const c = live(d, "customers").find((x) => x.id === customerId);
   const rules = fuelRulesOf(c);
   const billed = new Map();
-  for (const h of live(d, "hakedis").filter((h) => h.status === "Kesinleşti")) for (const i of h.items || []) billed.set(i.work_record_id, h);
+  for (const h of live(d, "hakedis").filter((h) => h.status !== "İptal")) for (const i of h.items || []) billed.set(i.work_record_id, h);
   const works = live(d, "work_records").filter((w) => w.customer_id === customerId);
   const tlWorks = [], lockedTl = [], mixed = [];
   for (const w of works) {
@@ -51,7 +51,7 @@ export function fuelAudit(d, customerId) {
     const onlyPay = now.price_snapshot?.price_source === "Mazot karşılığı";
     if (amt > 0 && !L) {
       const row = { id: w.id, date: w.date, quantity: w.quantity, unit: w.unit, label: [w.material, w.work_type].filter(Boolean).join(" · "), amount: amt,
-        why: whyNoRule(d, w, c), wouldMatch: !!now.customer_fuel_allowance_l, liters: now.customer_fuel_allowance_l || 0, onlyPay, hakedis: billed.get(w.id)?.hakedis_no || null };
+        why: whyNoRule(d, w, c), wouldMatch: !!now.customer_fuel_allowance_l, liters: now.customer_fuel_allowance_l || 0, onlyPay, hakedis: billed.has(w.id) ? billed.get(w.id).hakedis_no || billed.get(w.id).id : null };
       (row.hakedis ? lockedTl : tlWorks).push(row);
     } else if (amt > 0 && L && rules.some((r) => r.id === w.fuel_rule_id && r.only_pay !== false))
       mixed.push({ id: w.id, date: w.date, quantity: w.quantity, unit: w.unit, amount: amt, liters: L });
