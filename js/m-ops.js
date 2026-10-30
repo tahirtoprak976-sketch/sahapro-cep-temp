@@ -433,7 +433,7 @@ async function fleet(ctx) {
         t1: esc(v.name),
         t2: `${esc(v.type || "")} · ${esc(v.ownership || "")}${v.assignee_id ? " · zimmet: " + esc(names.personnel[v.assignee_id] || "") : ""}`,
         badgeHtml:
-          badge(compliance.status,compliance.status==='BELGELER TAM'?'ok':compliance.status==='SÜRESİ GEÇMİŞ'?'danger':'warn') + fleetDocumentBadge(deadline) + (open ? badge(open + " açık", "danger") : ""),
+          '<div class="fleet-doc-badges">'+badge(compliance.status,compliance.status==='BELGELER TAM'?'ok':compliance.status==='SÜRESİ GEÇMİŞ'?'danger':'warn') + fleetDocumentBadge(deadline) + (open ? badge(open + " açık", "danger") : "")+'</div>',
       });
     })
     .join("");

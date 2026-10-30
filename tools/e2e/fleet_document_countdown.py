@@ -13,6 +13,7 @@ SNAP="""async()=>{const s=await(await import('./js/db.js')).readSnapshot({attach
 SETUP=r"""async()=>{
  const db=await import('./js/db.js'),C=await import('./js/core.js'),P=await import('./tests/support/attachment-fixtures.mjs');
  const v=await db.saveNew('vehicles',{name:'TEST 34 ABC 089',type:'Kamyon',km:100},'TEST'),j=await db.saveNew('vehicles',{name:'TEST JCB89',type:'İş Makinesi'},'TEST'),p=await db.saveNew('vehicles',{name:'TEST Passive89',active:false},'TEST');
+ await db.saveNew('maintenance_records',{date:'2026-10-30',vehicle_id:v.id,status:'Açık',type:'Bakım'},'TEST');
  const add=(id,category,date,end,vehicle=v.id)=>db.saveNew('documents',{category,doc_no:'TEST-'+id,date,valid_from:date,expiry_date:end,vehicle_id:vehicle},'TEST');
  const old=await add('OLD','Muayene Belgesi','2025-10-20','2026-10-20'),current=await add('CURRENT','TÜVTÜRK / Periyodik Muayene','2026-10-21','2026-11-17');
  await db.addAttachment('document',current.id,new File([P.PNG],'TEST-original.png',{type:'image/png'}));
@@ -49,6 +50,7 @@ with sync_playwright() as pw:
  assert p.evaluate(SNAP)==before,'views and filters write no business/meta/file records'
  # Filo and actual vehicle card reuse the same counters.
  view('#/filo');p.wait_for_selector('[data-fleet-document-home]');assert 'Belge' in p.locator('[data-fleet-document-home]').inner_text() or 'belge' in p.locator('[data-fleet-document-home]').inner_text()
+ p.set_viewport_size({'width':320,'height':850});assert p.locator('[data-fleet-list] .li>.grow').evaluate_all('es=>es.length>0&&es.every(e=>e.getBoundingClientRect().width>=100)');assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1');assert 'EKSİK' in p.locator('[data-fleet-list]').inner_text() and '1 açık' in p.locator('[data-fleet-list]').inner_text();p.screenshot(path=str(OUT/'fleet-list-320.png'),full_page=True);p.set_viewport_size({'width':390,'height':850})
  view('#/filo/'+ids['v']);p.wait_for_selector('[data-vehicle-documents] [data-fleet-doc-row]');assert '18 gün kaldı' in p.locator('[data-vehicle-documents]').inner_text()
  p.click('[data-tab=fuel_records]');p.wait_for_selector('[data-related]',state='attached');peer=ctx.new_page();peer.goto(app+'#/daha');peer.wait_for_selector('#screen[data-view-ready="1"]')
  peer.evaluate("""async id=>{const db=await import('./js/db.js'),d=await db.get('documents',id);await db.saveExisting('documents',d,{expiry_date:'2026-11-18'},'TEST another page expiry correction');}""",ids['current'])
