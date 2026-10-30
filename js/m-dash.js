@@ -1,4 +1,5 @@
 import {pendingFuelSummary} from './historical-fuel.js';
+import {mountFleetHome} from './fleet-document-ui.js';
 // SAHAPRO SOLO — Dashboard · Gün Sonu · Yönetici · Raporlar · Daha Fazla
 import { todayBoard } from "./today.js";
 import { monthlySeries, vehicleSeries } from "./finance-chart.js";
@@ -212,6 +213,7 @@ async function dashboard(ctx) {
     <div data-brief style="margin-top:12px"></div>
     <div data-operation-desk-mount style="margin-top:12px"></div>
     <div data-yonetim></div>
+    <div data-fleet-home-mount></div>
     ${board.items.length ? `<div class="section-title" style="margin-top:12px">Bugün Dikkat <span class="muted small">${board.alerts ? board.alerts + " acil" : ""}</span></div>` + board.items.slice(0, 6).map((i) => li({ ic: i.ic, href: i.href, t1: esc(i.text), t2: esc(i.sub || ""), end: i.amount ? `<div class="amt">${fmtTL(i.amount)} ₺</div>` : "", badgeHtml: i.kind === "alert" ? '<span class="badge danger">Acil</span>' : "" })).join("") + (board.items.length > 6 ? `<div class="card tap" data-board-all><div class="row between"><span class="small">+${board.items.length - 6} madde daha</span><span class="muted small">tümü ›</span></div></div>` : "") : ""}
     ${alerts.length ? `<div class="card tap" data-alerts><div class="row between"><div class="row"><span style="font-size:18px">⚠</span><span class="strong">${alerts.length} uyarı</span></div><span class="muted small">göster ›</span></div></div>` : ""}
 
@@ -305,6 +307,7 @@ async function dashboard(ctx) {
       <button class="btn grow" data-go="#/yonetici">📊 Yönetici</button>
     </div>`;
 
+  await mountFleetHome(ctx);
   {
     const holder = qs("[data-operation-desk-mount]", root);
     if (holder) {

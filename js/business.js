@@ -1,3 +1,4 @@
+import {validDate} from './driver-delivery.js';
 import {
   isActive,
   todayStr,
@@ -197,8 +198,11 @@ export function normalizedDocument(fields) {
     out[owner + "_id"] = id;
   if (owner === "customer") out.site_id = fields.site_id || null;
   if (!fields.date) throw Error("Belge tarihi zorunlu");
+  if(['expiry_date','reminder_date','valid_from'].some(key=>fields[key]!=null&&fields[key]!==''&&!validDate(fields[key])))
+    throw Error('Belgenin başlangıç, bitiş ve hatırlatma tarihleri geçerli olmalı');
   if (fields.expiry_date && fields.expiry_date < fields.date)
     throw Error("Bitiş tarihi başlangıçtan önce olamaz");
+  if(fields.valid_from&&fields.expiry_date&&fields.valid_from>fields.expiry_date)throw Error('Geçerlilik başlangıcı bitişten sonra olamaz');
   if (
     fields.reminder_date &&
     fields.expiry_date &&
@@ -224,7 +228,10 @@ export function normalizedDocument(fields) {
   return out;
 }
 export function expiryState(d, today = todayStr()) {
-  if (!d.expiry_date) return "Geçerli";
+  if(d.date&&!validDate(d.date)||['expiry_date','valid_from'].some(key=>d[key]!=null&&d[key]!==''&&!validDate(d[key])))return 'Tarih Kontrolü';
+  if(d.expiry_date&&(d.date&&d.expiry_date<d.date||d.valid_from&&d.expiry_date<d.valid_from))return 'Tarih Kontrolü';
+  if((d.valid_from||d.date)>today)return 'Henüz Başlamadı';
+  if (!d.expiry_date) return [...VEHICLE_DOCS,...PERSONNEL_DOCS].includes(d.category)&&!['Ruhsat','Makine Tescil Belgesi','Kimlik / Kimlik Bilgisi','SGK / İşe Giriş Evrakı'].includes(d.category)?'Bitiş Tarihi Eksik':"Geçerli";
   if (d.expiry_date < today) return "Süresi Geçmiş";
   if (d.expiry_date <= addDays(today, 7)) return "7 Gün İçinde";
   if (d.expiry_date <= addDays(today, 30)) return "30 Gün İçinde";
@@ -372,7 +379,7 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
       : ["Makine Tescil Belgesi", "Periyodik Kontrol"]);
   const validTypes = new Set(
     docs
-      .filter((d) => expiryState(d, today) !== "Süresi Geçmiş")
+      .filter((d) => ['Geçerli','7 Gün İçinde','30 Gün İçinde'].includes(expiryState(d, today)))
       .map((d) => aliases[d.category] || d.category),
   );
   const missing = required.filter((t) => !validTypes.has(t));

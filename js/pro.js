@@ -4,6 +4,7 @@ import {pendingFuelSummary} from './historical-fuel.js';
 import {recordNoteText} from './record-notes.js';
 import {recordSourceHTML} from './record-notes-ui.js';
 import {driverCashContextHTML} from "./driver-cash-context.js";
+import {documentDetailCountdown,mountDocumentCountdown,mountVehicleDocuments} from './fleet-document-ui.js';
 import {
   workFinancials,
   operatingResult,
@@ -472,7 +473,7 @@ async function documentScreen(ctx) {
         Object.entries(OWNER_LABELS).map(([v, t]) => ({ v, t })),
         query.owner_type || "vehicle",
         { empty: false },
-      )}<div data-owner></div><div class="formgrid2">${fText("Belge No", "doc_no", "", { req: true })}${fText("Kurum", "institution", "")}</div><div class="formgrid2">${fDate("Belge tarihi", "date")}${fDate("Geçerlilik bitişi", "expiry_date", "", false)}</div>${fDate("Hatırlatma tarihi", "reminder_date", "", false)}${fNum("Tutar (opsiyonel)", "amount", "", { step: "any" })}${fArea("Açıklama", "description")}<div class="field"><label>Dosya / fotoğraf / PDF *</label><input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div><button type="button" class="btn" data-ocr>OCR Çalıştır</button><div data-ocr-status class="notice"></div></form><div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+      )}<div data-owner></div><div class="formgrid2">${fText("Belge No", "doc_no", "", { req: true })}${fText("Kurum", "institution", "")}</div><div class="formgrid2">${fDate("Belge tarihi", "date")}${fDate("Geçerlilik bitişi", "expiry_date", "", false)}</div>${fDate("Geçerlilik başlangıcı (varsa)", "valid_from", "", false)}${fDate("Hatırlatma tarihi", "reminder_date", "", false)}${fNum("Tutar (opsiyonel)", "amount", "", { step: "any" })}${fArea("Açıklama", "description")}<div class="field"><label>Dosya / fotoğraf / PDF *</label><input name="attachment" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required></div><button type="button" class="btn" data-ocr>OCR Çalıştır</button><div data-ocr-status class="notice"></div></form><div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
     let ocr = { status: "YOK" };
     const form = qs("[data-form]", root);
     async function owner() {
@@ -597,6 +598,7 @@ async function documentScreen(ctx) {
     root.innerHTML =
       appbar(d.category, d.doc_no || "Belge") +
       exportBar() +
+      '<div data-document-countdown-mount>'+documentDetailCountdown(d)+'</div>'+
       '<div class="card">' +
       spec.sections[0].pairs.map((p) => kv(...p)).join("") +
       '</div><div class="section-title">Orijinal Dosyalar</div><div data-files></div>' +
@@ -614,6 +616,7 @@ async function documentScreen(ctx) {
       () => spec,
       () => recordCsv(d, names),
     );
+    if(documentDetailCountdown(d))await mountDocumentCountdown(ctx,d.id);
     return true;
   }
   const rows = filterRecords(await db.listActive("documents"), query);
@@ -1099,6 +1102,10 @@ async function card(ctx) {
     (store === "sites" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmesi/${encodeURIComponent(id)}">📐 ${r.deal ? "İş sözleşmesi — " + esc(r.deal.basis === "m³" ? "metreküp" : "sefer") + " · " + esc(r.deal.status || "") : "İş sözleşmesi aç (sefer / m³)"}</button>` : "") +
     (store === "customers" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmeleri?customer_id=${encodeURIComponent(id)}">📐 İş sözleşmeleri (sefer / m³)</button>` : "") +
     `<div class="row"><button class="btn" data-go="#/${parts[0]}/${id}/edit">Kartı Düzenle</button>${["vehicles", "personnel", "customers"].includes(store) ? `<button class="btn" data-go="#/belgeler/new?owner_type=${store === "vehicles" ? "vehicle" : store === "personnel" ? "personnel" : "customer"}&owner_id=${id}&category=${encodeURIComponent(store === "vehicles" ? "Muayene Belgesi" : store === "personnel" ? "SRC" : "Sözleşme")}">Belge Ekle</button>` : ""}</div><div class="tabs" data-tabs><button class="chip on" data-tab="general">GENEL</button>${relations.map((s) => `<button class="chip" data-tab="${s}">${LABELS[s]}</button>`).join("")}${store === "vehicles" ? '<button class="chip" data-tab="cost">MALİYET</button>' : ""}<button class="chip" data-tab="report">RAPOR</button></div><div data-card-content></div>`;
+  if(store === 'vehicles'){
+    qs('[data-tabs]',root).insertAdjacentHTML('beforebegin','<section><h2 class="section-title">Belgeler ve Kalan Süreler</h2><div data-vehicle-documents></div></section>');
+    await mountVehicleDocuments(ctx,id);
+  }
   async function tab(s) {
     const el = qs("[data-card-content]", root);
     if (s === "cost") {

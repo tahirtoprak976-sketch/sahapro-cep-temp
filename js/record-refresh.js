@@ -3,6 +3,8 @@
 import { updateRisk } from "./update-safety.js";
 const eventName = "sp-records-committed";
 const relevant = new Set([
+  "documents",
+  "vehicles",
   "customers",
   "cash_records",
   "cari_movements",

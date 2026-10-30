@@ -2,7 +2,8 @@ import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
 import {tankTimeline} from './tank-timeline.js';
 import {recordNoteHTML} from './record-notes-ui.js';
-import { vehicleDocumentStatus } from "./business.js";
+import {fleetDocumentModel,nearestVehicleDocument} from './fleet-document-core.js';
+import {watchFleetDocuments,fleetDocumentBadge,fleetDocumentHome} from './fleet-document-ui.js';
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
 import {bindSafeFormSave} from './safe-form-save.js';
 // SAHAPRO SOLO — Operasyon: Yakıt · Depo Tankı · Filo · Bakım · Personel · Taşeron
@@ -406,39 +407,35 @@ async function fleet(ctx) {
   const sub = ctx.parts[1];
   const { root, db, names } = ctx;
   if (sub) return vehicleDetail(ctx, sub);
-  const rows = (await db.getAll("vehicles")).filter(isActive);
   root.innerHTML =
-    appbar("Filo", `${rows.length} araç/makine`) +
+    appbar("Filo", "Araçlar / makineler ve belge süreleri") +
     `
     <div style="height:10px"></div>
-    <div data-list></div>
+    <div data-fleet-summary></div>
+    <div data-list data-fleet-list></div>
     <div class="actionbar"><button class="btn primary" data-vadd>+ Araç/Makine</button></div>`;
-  const maint = await db.getAll("maintenance_records");
-  const docs = await db.listActive("documents");
-  qs("[data-list]", root).innerHTML = rows
+  await watchFleetDocuments(ctx,(data,error)=>{
+    if(error){qs('[data-list]',root).innerHTML=notice('warn','Filo belgeleri okunamadı. Ekranı yeniden açın.');return;}
+    const rows=data.vehicles.filter(isActive),maint=data.maintenance_records,model=fleetDocumentModel(data,{includeInactive:true});
+    qs('[data-fleet-summary]',root).innerHTML=fleetDocumentHome(fleetDocumentModel(data));
+    qs("[data-list]", root).innerHTML = rows
     .map((v) => {
       const open = maint.filter(
         (m) =>
           isActive(m) && m.vehicle_id === v.id && m.status !== "Tamamlandı",
       ).length;
-      const docState = vehicleDocumentStatus(v, docs);
+      const deadline = nearestVehicleDocument(model,v.id);
       return li({
         ic: v.ownership === "Taşeron" ? "🤝" : "🚜",
         href: "#/filo/" + v.id,
         t1: esc(v.name),
         t2: `${esc(v.type || "")} · ${esc(v.ownership || "")}${v.assignee_id ? " · zimmet: " + esc(names.personnel[v.assignee_id] || "") : ""}`,
         badgeHtml:
-          badge(
-            docState.status,
-            docState.status === "BELGELER TAM"
-              ? "ok"
-              : docState.status === "SÜRESİ GEÇMİŞ"
-                ? "danger"
-                : "warn",
-          ) + (open ? badge(open + " açık", "danger") : ""),
+          fleetDocumentBadge(deadline) + (open ? badge(open + " açık", "danger") : ""),
       });
     })
     .join("");
+  });
   qs("[data-vadd]", root).addEventListener("click", async () => {
     const name = await promptDialog("Yeni Araç/Makine", "Ad / Plaka");
     if (!name) return;
