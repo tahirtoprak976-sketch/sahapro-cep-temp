@@ -4,7 +4,11 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.88** — 30.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.89** — 30.10.2026
+
+Filo → Belge Süreleri: muayene, sigorta, kasko ve diğer araç belgelerinde kalan gün,
+bugün biten / süresi geçmiş uyarısı, eski ve gelecekte başlayacak belgelerin ayrımı.
+Ana sayfa ve araç kartı aynı belgeleri gösterir. [Kullanım](docs/FLEET_DOCUMENT_COUNTDOWN_v3989.md).
 
 İmzalı fişin kaynak işi, hakedişe bağlı mazot düzeltmesi ve eşzamanlı yedek geri yükleme için
 kayıt korumaları güçlendirildi. Fiyat ve not tamamlama korunur; şema 7 kalır.

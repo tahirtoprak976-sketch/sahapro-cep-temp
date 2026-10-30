@@ -161,6 +161,12 @@ function contextBind(root, d) {
   sync();
 }
 export async function screen(ctx) {
+  if(ctx.parts[0]==='filo-belgeleri'){
+    await (await import('./fleet-document-ui.js')).fleetDocumentScreen(ctx);return true;
+  }
+  if(ctx.parts[0]==='belge-suresi'){
+    await (await import('./fleet-document-ui.js')).documentExpiryScreen(ctx,ctx.parts[1]);return true;
+  }
   if(ctx.parts[0]==='isler'&&ctx.parts[1]==='kontrol'){
     await (await import('./work-day-ui.js')).workDayScreen(ctx);return true;
   }

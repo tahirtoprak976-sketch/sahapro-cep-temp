@@ -1202,3 +1202,31 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 
 /* Work-day review: compact person groups and read-only source comparison. */
 .work-day-nav,.work-day-date{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0 14px}.work-day-date label{flex:1;min-width:140px}.work-day-date input{width:100%;min-width:0}.work-day-group{min-width:0}.work-day-group h2{font-size:20px;margin:0 0 6px}.work-day-row{padding:12px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}.work-day-row .btn,.work-day-match .btn{margin:6px 6px 0 0;white-space:normal}.work-day-main{display:block;color:inherit;text-decoration:none}.work-day-main .small{margin-top:5px}.work-day-main:focus-visible{outline:3px solid var(--accent)}.work-day-note{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1;overflow:hidden}.work-day-warning{color:var(--warn,#865100)}.work-day-quote{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto}.work-day-match{padding:12px;overflow-wrap:anywhere}.work-day-match[data-day-match=linked]{border-left:4px solid var(--ok,#2f8f64)}[data-day-message]{width:100%;box-sizing:border-box}[data-day-groups] a.btn,[data-day-comparison] a.btn{color:inherit;text-decoration:none}
+/* Vehicle document countdowns use calendar days and the existing document cards. */
+.fleet-doc-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.fleet-doc-heading>div{min-width:0;flex:1 1 160px}
+.fleet-doc-heading h2,.fleet-doc-home h2{font-size:18px;margin:6px 0;overflow-wrap:anywhere}
+.fleet-doc-vehicle,.fleet-doc-vehicle:visited,.fleet-doc-home-row,.fleet-doc-home-row:visited{color:inherit;text-decoration:none}
+.fleet-doc-vehicle{font-weight:700;overflow-wrap:anywhere}
+.fleet-doc-counter{display:block;font-size:25px;line-height:1.25;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.fleet-doc-counter.danger{color:#a52222}.fleet-doc-counter.warn{color:#946000}.fleet-doc-counter.ok{color:#16704b}
+.fleet-doc-row{border-left:4px solid #d5a23b}.fleet-doc-overdue,.fleet-doc-today{border-left-color:#b43434}
+.fleet-doc-valid,.fleet-doc-unlimited{border-left-color:#31976d}
+.fleet-doc-row p{overflow-wrap:anywhere}
+.fleet-doc-progress{height:7px;background:var(--border,#e0e5e9);border-radius:5px;overflow:hidden;margin:12px 0}
+.fleet-doc-progress span{display:block;height:100%;background:#31976d}.fleet-doc-progress .warn{background:#d5a23b}.fleet-doc-progress .danger{background:#b43434}
+.fleet-doc-actions,.fleet-doc-filters{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.fleet-doc-actions .btn,.fleet-doc-filters .btn{max-width:100%;white-space:normal;overflow-wrap:anywhere;text-decoration:none;color:inherit}
+[data-fleet-document-controls] summary{font-weight:600;overflow-wrap:anywhere;cursor:pointer}
+[data-fleet-document-controls] .field{margin-top:12px}
+.fleet-doc-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.fleet-doc-stats .card{margin:0;padding:14px;text-align:left;color:inherit;min-width:0}
+.fleet-doc-stats strong{display:block;font-size:28px;font-variant-numeric:tabular-nums}.fleet-doc-stats span{font-size:13px}
+.fleet-doc-home-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--border,#e0e5e9)}
+.fleet-doc-home-row>span:first-child{min-width:0;overflow-wrap:anywhere;font-size:14px}.fleet-doc-home-row .badge{flex-shrink:0;white-space:normal;max-width:46%}
+.fleet-doc-history{margin-top:12px;font-size:13px}.fleet-doc-history a{color:inherit;overflow-wrap:anywhere}
+[data-fleet-list] .badge{white-space:normal;max-width:145px;overflow-wrap:anywhere}
+[data-fleet-list] .li{display:grid;grid-template-columns:38px minmax(0,1fr)}
+[data-fleet-list] .li>.grow{grid-column:2;min-width:0}
+[data-fleet-list] .fleet-doc-badges{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+@media(min-width:760px){.fleet-doc-stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
