@@ -10,7 +10,7 @@ assert not origin.username and not origin.password and not origin.query and not 
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
     ctx = b.new_context(viewport={'width': 412, 'height': 900}, service_workers='block')
-    ctx.add_init_script("localStorage.setItem('sp_role','boss')")
+    ctx.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
     pg = ctx.new_page(); errors = []; pg.on('pageerror', lambda e: errors.append(str(e)))
     pg.on('dialog', lambda d: d.accept())
     app = U + 'index.html?db=tdup_' + uuid.uuid4().hex[:10]

@@ -98,7 +98,7 @@ with sync_playwright() as playwright:
 
     def profile():
         context = browser.new_context(viewport={"width": 390, "height": 850}, service_workers="block", accept_downloads=True)
-        context.add_init_script("localStorage.setItem('sp_role','boss')")
+        context.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
 
         def route(request):
             parsed = urlparse(request.request.url)

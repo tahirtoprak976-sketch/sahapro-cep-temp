@@ -7,7 +7,7 @@ parser=argparse.ArgumentParser();parser.add_argument('url',nargs='?',default='ht
 from urllib.parse import urlparse
 assert urlparse(U).hostname in ['localhost','127.0.0.1']
 with sync_playwright() as pw:
- b=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')")
+ b=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
  pg=c.new_page();errors=[];pg.on('pageerror',lambda e:errors.append(str(e)));app=U+'index.html?db=tpartial83_'+uuid.uuid4().hex[:8]
  pg.goto(app+'#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]')
  ids=pg.evaluate("""async()=>{const db=await import('./js/db.js');for(const[k,v]of Object.entries({gemini_key:'TEST-NOT-A-REAL-KEY',gemini_model:'gemini-2.5-flash',gemini_consent:true,gemini_daily_limit:100}))await db.metaSet(k,v);const v=await db.saveNew('vehicles',{name:'TEST Truck',plate:'34TST627',type:'Kamyon'},'TEST'),c=await db.saveNew('customers',{name:'TEST Ticket Customer'},'TEST');return {v:v.id,c:c.id};}""")

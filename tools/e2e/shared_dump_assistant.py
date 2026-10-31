@@ -6,7 +6,7 @@ U = sys.argv[1] if len(sys.argv) > 1 else 'http://localhost:8841/'
 with sync_playwright() as p:
     b = p.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
     c = b.new_context(service_workers='block', viewport={'width':360,'height':850})
-    c.add_init_script("localStorage.setItem('sp_role','boss')")
+    c.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
     page = c.new_page(); errors=[]; calls=[]; plans=[]
     page.on('pageerror', lambda e:errors.append(str(e)))
     def model(route):

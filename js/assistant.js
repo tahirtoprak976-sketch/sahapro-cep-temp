@@ -1,3 +1,5 @@
+import {assistantPageHTML,mountAssistantPage,conversationHTML} from "./assistant-page-ui.js";
+import {bindAssistantReview,openReviewCard} from "./assistant-review-ui.js";
 import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
@@ -37,9 +39,11 @@ const opt = (list, val, empty = "— seçin —") =>
 
 function drawConversation(root,state) {
   const log=qs('[data-chat-log]',root);if(!log||!root.isConnected)return;
-  const label={pending:'Yanıt bekleniyor',answer:'Yanıt',draft:'Onay bekliyor',clarify:'Bilgi gerekiyor',saved:'Kaydedildi',partial:'Kontrol gerekiyor',error:'Tamamlanamadı',cancelled:'Vazgeçildi'};
-  log.innerHTML=state.turns.length ? state.turns.map(t=>`<article class="assistant-chat-turn" data-chat-turn="${esc(t.id)}"><div class="assistant-chat-user"><b>Siz</b><div>${esc(t.user)}</div></div><div class="assistant-chat-reply"><b>Asistan</b><span class="badge" data-chat-state="${esc(t.status)}">${label[t.status]}</span><div>${esc(t.reply)}</div></div></article>`).join('') : '<p class="muted small">İşi anlatın; kayıtları kontrol edelim, eksik bilgiyi tamamlayıp işlemi birlikte yapalım.</p>';
-  log.scrollTop=log.scrollHeight;
+  const historyOpen=!!qs('[data-earlier-turns]',log)?.open;
+  log.innerHTML=conversationHTML(state);
+  if(historyOpen)qs('[data-earlier-turns]',log)?.setAttribute('open','');
+  const welcome=qs('[data-assistant-welcome]',root);if(welcome){welcome.hidden=false;welcome.classList.toggle('compact',!!state.turns.length);}
+
 }
 
 export async function screen(ctx) {
@@ -48,40 +52,8 @@ export async function screen(ctx) {
   const { root, db } = ctx;
   const { geminiSettings } = await import("./ai-gemini.js");
   const g = await geminiSettings(db);
-  root.innerHTML =
-    appbar("Akıllı Asistan", "Sohbetle yönetim · kayıt ve hesap araçları") +
-    `<div style="height:10px"></div>
-    ${ctx.query?.wa ? `<div class="card" style="border-left:4px solid #25d366"><div class="small"><b>💬 WhatsApp toplu işleme</b> — ${esc(ctx.query.wa)}: grubun mesajları ve fotoğrafları aşağıya yüklendi. <b>Asistana Gönder</b>'e basın, kartları kontrol edip kaydedin.</div><div class="row" style="gap:6px;margin-top:6px"><button class="btn sm grow" data-go="#/whatsapp-toplu">← Listeye dön</button></div></div>` : ""}
-    ${g.ready ? notice("info", "İsteğini yaz. Eksik bilgiyi birlikte tamamlayalım; kayıtlar onayından sonra uygulanır. Genel sohbet ve belge okuma mevcut Gemini bağlantısını kullanır.") : notice("warn", "Müşteri oluşturma ve iş, tahsilat, gider, yakıt, bakım taslaklarını adım adım tamamlama anahtarsız çalışır. Genel mesaj/fotoğraf okuma için Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin.") + '<button class="btn block" data-go="#/yapay-zeka">Yapay Zeka Ayarları</button>'}
-    <section class="assistant-conversation" aria-label="Sohbet">
-      <div class="row between"><b>Sohbet</b><button class="btn sm" data-new-chat disabled>Yeni sohbet</button></div>
-      <div data-chat-log class="assistant-chat-log" aria-label="Önceki mesajlar"></div>
-      <div class="tiny muted">Son 20 konuşma turu bu telefonda saklanır. Eski mesajlar güncel hesap yerine geçmez.</div>
-      <label class="history-check small"><input type="checkbox" data-chat-context checked> Önceki sohbeti ve açık isteği Gemini ile bağlam olarak paylaş</label>
-    </section>
-    <div data-agent-task></div><div data-task-center></div><div class="card">
-      <div class="field"><label>Mesaj</label><textarea data-msg rows="3" placeholder="Ne yapmak istiyorsunuz? İşi anlatın; eksik bilgiyi birlikte tamamlayalım."></textarea></div>
-      <div class="field"><label>Şoför aktarım dosyası, fiş fotoğrafı veya ses kaydı</label><input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos></div>
-      <p class="tiny muted">En fazla 20 dosya. SAHAPRO iş özeti PDF’ini (.sahapro.pdf) veya eski tek paketi (.sahapro.zip) seçmeniz yeterlidir; fotoğraflar içindedir. Eski .sahapro.txt yönteminde dosyayı ve bütün fotoğrafları birlikte ekleyin. Aktarım dosyası seçilirse kayıtlar dosyadan okunur; mesaj kutusundaki yazı ayrıca işlenmez.</p>
-      <button class="btn block" data-rec ${g.ready ? "" : "disabled"}>🎤 Sesli not kaydet</button>
-      <div class="row" style="gap:6px;flex-wrap:wrap" data-thumbs></div><button class="btn sm" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div>
-      <div data-turn-intent class="small" role="status" aria-live="polite" style="margin-top:8px">Yeni istek veya belge gönderebilirsiniz.</div>
-      <label class="history-check small" data-refine-wrap hidden style="margin-top:6px"><input type="checkbox" data-refine><span><b>↻ Önceki sonucu düzelt</b><span style="display:block;margin-top:4px">“Müşteri Kaya olacak”, “2 sefer” gibi kısa düzeltmeler tanınır. Bu kutuyla seçimi değiştirebilirsiniz.</span><span class="muted tiny" style="display:block;margin-top:4px" data-refine-prev></span></span></label>
-      <button class="btn primary block" style="margin-top:10px" data-ask disabled>🤖 Asistana Gönder</button>
-      <div data-read-status hidden role="status"><p class="small">İstek okunuyor. Kayıt yazılmıyor; mesaj ve dosyalar bu telefonda korunuyor.</p><button class="btn block" data-stop-reading>Okumayı durdur</button></div>
-      <button class="btn block" style="margin-top:8px" data-part-document>Yedek parça / garanti belgesi oku</button>
-    </div>
-    <div data-lastundo></div>
-    <div data-out></div>
-    ${guideHTML()}
-    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/pdf-gecmis">📄 Geçmiş işleri PDF’den aktar</button>
-    <details class="card assistant-guide"><summary><b>Diğer asistan araçları</b></summary>
-    <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn grow" data-go="#/akilli-asistan/ozet">📝 Gün Sonu Özeti</button><button class="btn grow" data-go="#/akilli-asistan/soru">❓ Soru Sor</button></div>
-    <button class="btn block" style="margin-bottom:8px" data-go="#/akilli-asistan/danisman">🎓 Yönetim Danışmanı — araç / müşteri karnesi ve öneriler</button>
-    <button class="btn block" style="margin-bottom:8px" data-go="#/teklif-hesap">🧮 Teklif Asistanı — kaça vermeliyim?</button>
-    ${ctx.query?.wa ? "" : '<button class="btn block" style="margin-bottom:8px" data-go="#/whatsapp-toplu">💬 WhatsApp Grubu — günün tüm mesajlarını toplu işle</button>'}
-    </details>
-`;
+  root.innerHTML=assistantPageHTML(g,ctx.query,guideHTML());
+  const page=mountAssistantPage(ctx);
   bindGuide(root,db);
   const conversation=await openConversation(db,state=>drawConversation(root,state));
   ctx.assistantConversation=conversation;
@@ -148,6 +120,8 @@ export async function screen(ctx) {
   }
   ctx.assistantTaskChanged=task=>{activeTask=task;paintTask();};
   await mountBulkResume(ctx);
+  const previewURLs=[];
+  page.onDispose(()=>{for(const url of previewURLs.splice(0))URL.revokeObjectURL(url);});
   let files = [], attachmentError = "", filesGeneration = 0, filesPending = false;
   const attachmentLimit = 20;
   const isTransfer=f=>isDriverTransferFile(f)||isDriverBundle(f)||isDriverPDF(f);
@@ -157,13 +131,16 @@ export async function screen(ctx) {
     const errorBox = qs("[data-attachment-error]", root); errorBox.hidden = !attachmentError; errorBox.textContent = attachmentError;
     qs("[data-clearfiles]",root).hidden=!files.length && !attachmentError;
     const box = qs("[data-thumbs]", root);
-    box.innerHTML = files
-      .map((f, i) => isTransfer(f)
-        ? `<div class="card small" style="margin:0;padding:8px;width:100%;overflow-wrap:anywhere">${isDriverPDF(f)?"📄 SAHAPRO iş özeti · fotoğraflar içinde":isDriverBundle(f)?"📦 SAHAPRO tek paket · fotoğraflar içinde":"📎 SAHAPRO aktarım dosyası"} · ${esc(f.name)} <button class="btn sm" data-rm="${i}">Kaldır</button></div>`
-        : isAudio(f)
-        ? `<div class="card" style="margin:0;padding:6px;width:100%"><div class="small">🎤 Ses kaydı ${esc(f.name || "")} <button class="btn small" data-rm="${i}">Sil</button></div><audio controls src="${URL.createObjectURL(f)}" style="width:100%"></audio></div>`
-        : `<img src="${URL.createObjectURL(f)}" alt="Fiş ${i + 1}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">`)
-      .join("");
+    for(const url of previewURLs.splice(0))URL.revokeObjectURL(url);
+    box.innerHTML=files.map((f,i)=>{
+      const remove=`<button type="button" class="btn sm" data-rm="${i}" aria-label="${esc((f.name||'Belge')+' ekini kaldır')}">Kaldır</button>`;
+      if(isTransfer(f))return `<div class="assistant-file-tile"><b>${isDriverPDF(f)?'SAHAPRO iş özeti':isDriverBundle(f)?'SAHAPRO tek paket':'Şoför aktarımı'}</b><span>${esc(f.name)}</span>${remove}</div>`;
+      const url=URL.createObjectURL(f);previewURLs.push(url);
+      if(isAudio(f))return `<div class="assistant-file-tile"><span>${esc(f.name||'Ses kaydı')}</span><audio controls src="${url}"></audio>${remove}</div>`;
+      if(f.type==='application/pdf')return `<div class="assistant-file-tile"><b>PDF belgesi</b><span>${esc(f.name)}</span>${remove}</div>`;
+      return `<div class="assistant-file-tile"><img src="${url}" alt="${esc(f.name||'Fotoğraf '+(i+1))}"><span>${esc(f.name||'Fotoğraf')}</span>${remove}</div>`;
+    }).join('');
+    const welcome=qs('[data-assistant-welcome]',root);if(welcome&&files.length)welcome.classList.add('compact');
     for (const b of qsa("[data-rm]", box)) b.addEventListener("click", () => { filesGeneration++; filesPending=false; files.splice(Number(b.dataset.rm), 1); showThumbs(); });
     if (save) persistFiles();
   };
@@ -200,16 +177,20 @@ export async function screen(ctx) {
     catch (e) { attachmentError = e.message || String(e); toast("Dosya taslağı temizlenemedi: " + attachmentError, "err"); }
     showThumbs();
   };
-  photosIn.addEventListener("change", async () => {
+  const fileControls=busy=>{for(const el of qsa('[data-attach],[data-photos],[data-addphotos],[data-clearfiles],[data-rm]',root))el.disabled=busy||asking;};
+  const selectFiles=async(picker,append)=>{
+    if(append&&filesPending){picker.value='';return toast('Dosyalar hazırlanıyor; tamamlanınca yeni ek seçin. Önceki seçim korunuyor.','err');}
     const generation = ++filesGeneration; filesPending=false;
-    const next = [...files.filter((f) => f._rec), ...photosIn.files];
-    if (next.length > attachmentLimit) { photosIn.value = ""; attachmentError = "En fazla 20 dosya seçin. Önceki ekler korunuyor; yeni seçim alınmadı. Yeniden seçin veya ekleri temizleyin."; showThumbs(); return toast(attachmentError, "err"); }
-    filesPending=true;
-    try { const prepared = await Promise.all(next.map(prepareInput)); if(generation!==filesGeneration)return; files=prepared; attachmentError=""; }
-    catch (e) { if(generation===filesGeneration){attachmentError=e.message;photosIn.value="";showThumbs();toast(attachmentError,"err");}return; }
-    finally { if(generation===filesGeneration)filesPending=false; }
+    const next = [...(append?files:files.filter(f=>f._rec)), ...picker.files];
+    if (next.length > attachmentLimit) { picker.value = ""; attachmentError = "En fazla 20 dosya seçin. Önceki ekler korunuyor; yeni seçim alınmadı. Yeniden seçin veya ekleri temizleyin."; showThumbs(); return toast(attachmentError, "err"); }
+    filesPending=true;fileControls(true);
+    try { const prepared = await Promise.all(next.map(prepareInput)); if(generation!==filesGeneration)return; const seen=new Set(),unique=[];for(const f of prepared){const bytes=await f.arrayBuffer(),digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(x=>x.toString(16).padStart(2,'0')).join(''),id=f.name+':'+digest;if(!seen.has(id)){seen.add(id);unique.push(f);}}if(generation!==filesGeneration)return;files=unique;picker.value="";attachmentError=""; }
+    catch (e) { if(generation===filesGeneration){attachmentError=e.message;picker.value="";showThumbs();toast(attachmentError,"err");}return; }
+    finally { if(generation===filesGeneration){filesPending=false;fileControls(false);} }
     showThumbs();
-  });
+  };
+  photosIn.addEventListener("change",()=>selectFiles(photosIn,false));
+  const addPhotos=qs("[data-addphotos]",root);addPhotos.addEventListener("change",()=>selectFiles(addPhotos,true));
   qs('[data-part-document]',root).onclick=async()=>{
     if(asking)return;if(filesPending)return toast('Dosyalar doğrulanıyor; tamamlanmasını bekleyin','err');asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
     try{if(files.some(isTransfer))throw Error('Şoför aktarımı kendi akışından okunmalı. Parça belgesini ayrı seçin.');await stagePartDocuments(ctx,files,{message:msgEl.value});}
@@ -217,6 +198,7 @@ export async function screen(ctx) {
   };
   // Sesli not: telefonun mikrofonu ile kayıt (en çok 3 dakika)
   let rec = null, recT = null, autoSend = false;
+  page.onDispose(()=>{autoSend=false;clearTimeout(recT);if(rec&&rec.state!=='inactive')rec.stop();});
   qs("[data-rec]", root).addEventListener("click", async (ev) => {
     const b = ev.currentTarget;
     if (rec) return rec.stop();
@@ -228,6 +210,7 @@ export async function screen(ctx) {
     }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if(!root.isConnected){stream.getTracks().forEach(t=>t.stop());return;}
       const type = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4", "audio/webm"].find((t) => MediaRecorder.isTypeSupported?.(t)) || "";
       rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
       const chunks = [];
@@ -237,6 +220,7 @@ export async function screen(ctx) {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunks, { type: (rec.mimeType || type || "audio/webm").split(";")[0] });
         rec = null;
+        if(!root.isConnected)return;
         b.textContent = "🎤 Sesli not kaydet";
         if (blob.size < 500) return toast("Kayıt boş", "err");
         const f = new File([blob], "sesli-not-" + new Date().toTimeString().slice(0, 5).replace(":", "") + "." + (blob.type.split("/")[1] || "webm"), { type: blob.type });
@@ -289,6 +273,7 @@ export async function screen(ctx) {
     clearTimeout(draftT);
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
+  ctx.assistantPrepareNavigation=async()=>{if(asking||filesPending)throw Error('İşlem veya dosya kontrolü sürüyor.');clearTimeout(fileDraftT);await fileDraftWrite;await(await import('./assistant-task-files.js')).savePendingFiles(db,[...files]);clearTimeout(draftT);await db.metaSet('assistant_draft',msgEl.value);};
   qs("[data-ask]", root).addEventListener("click", async () => {
     if(asking)return;if(filesPending)return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin","err");asking=true;
     const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
@@ -775,7 +760,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + (v.driverPhotoReselect ? `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Paketin dosyalarını yeniden seç${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/jpeg,image/png,image/webp" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : v.driverPhotoClear ? '<button class="btn block" data-drvclear>Bu mesajın eklerini kaldır ve yeniden hazırla</button>' : "") : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
-    v.questions.map((q) => notice("info", "Soru: " + q)).join("") +
+    [...new Set(v.questions)].map((q) => notice("info", "Soru: " + q)).join("") +
     v.memory
       .map((r, i) => `<div class="card" data-kind="memory" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧠 Hafızaya ekle</b></label>
@@ -1123,6 +1108,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
   v._workflow=bindDraftWorkflow(out,v,d);
   bindBulkEntry(ctx,out,v,d,{message,files});
+  bindAssistantReview(ctx,out,v,d);
 }
 
 async function save(ctx, out, v, d, { message, files }) {
@@ -1143,7 +1129,7 @@ async function save(ctx, out, v, d, { message, files }) {
   }
   if(workflowRows.length){
     const problem=draftPreflight(workflowRows,preflightData);
-    if(problem){const row=workflowRows.find(r=>r.key===problem.key),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);card.scrollIntoView({block:'center'});qs(`[name="${problem.field}"]`,card)?.focus({preventScroll:true});return toast(problem.message,'err');}
+    if(problem){const row=workflowRows.find(r=>r.key===problem.key),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);openReviewCard(card);card.scrollIntoView({block:'center'});qs(`[name="${problem.field}"]`,card)?.focus({preventScroll:true});return toast(problem.message,'err');}
   }
   const val = (c, n) => qs(`[name=${n}]`, c)?.value ?? "";
   // Önce eksik kontrolü: hiçbir şey yazılmadan
@@ -1164,7 +1150,7 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
     if (miss) {
-      c.scrollIntoView({ behavior: "smooth", block: "center" });
+      openReviewCard(c);c.scrollIntoView({ behavior: "smooth", block: "center" });
       return toast(k === "doc" ? "Belge kartında eksik/uyumsuz alan var (araç belgesi araca, personel belgesi personele)" : "İşaretli kartta eksik alan var", "err");
     }
     if (k === 'fuelout') {
@@ -1909,7 +1895,10 @@ async function save(ctx, out, v, d, { message, files }) {
       status:done.conflict?'partial':Object.entries(done).some(([k,n])=>!['already','conflict'].includes(k)&&n>0)?'saved':'answer',
       reply:'Seçilen kartların sonucu: '+(parts.join(', ')||'Yeni kayıt oluşturulmadı.')+(pendingCash.length?' Şoför nakit bildirimi ayrıca onay bekliyor.':'')
     }).catch(()=>toast('Kayıt sonucu doğrulandı; sohbet notu saklanamadı.','err'));
-    out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + dslipBtns +
+    const receiptRoutes={work_records:['isler','İş'],expense_records:['gider','Gider'],fuel_records:['yakit','Yakıt'],maintenance_records:['bakim','Bakım']};
+    const receiptRows=[...snap0.writes.values()].filter(w=>w.after&&!w.after.deleted_at&&receiptRoutes[w.store]);
+    const receiptLinks=receiptRows.slice(0,20).map(w=>`<a class="btn" data-saved-record="${esc(w.store+':'+w.id)}" href="#/${receiptRoutes[w.store][0]}/${encodeURIComponent(w.id)}">${receiptRoutes[w.store][1]} kaydını aç</a>`).join('');
+    out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + (receiptLinks?'<div class="card assistant-receipt"><b>Kayıt sonucu</b><p class="small">Doğrulanan kayıtları açıp inceleyebilirsiniz.</p>'+receiptLinks+'</div>':'') + dslipBtns +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
       (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;
     if (pendingCash.length) {
@@ -1936,6 +1925,7 @@ async function save(ctx, out, v, d, { message, files }) {
     if(v._agentTask?.status==='applying')try{v._agentTask=await transitionTask(db,v._agentTask,'review','Kayıt sırasında hata: '+(e.message||String(e)));ctx.assistantTaskChanged?.(v._agentTask);}catch{}
     // Hata veren kart: bir kısmı yazılmış olabilir (ör. iş kaydedildi, fotoğraf eklenemedi) — işaretten çıkarılır, kontrol istenir
     if (current) {
+      openReviewCard(current);
       const pk = qs("[data-pick]", current);
       if (pk) pk.checked = false;
       current.insertAdjacentHTML("afterbegin", notice("warn", "Bu kart kaydedilirken hata oldu: " + (e.message || String(e)) + ". Kayıtlarda olup olmadığına bakın; yoksa yeniden işaretleyip Kaydet'e basın."));

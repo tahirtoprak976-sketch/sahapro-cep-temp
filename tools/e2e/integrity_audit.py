@@ -5,7 +5,7 @@ U=(sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8841/').rstrip('/')+'/'
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);errors=[]
  def profile():
-  c=b.new_context(viewport={'width':390,'height':850});c.add_init_script("localStorage.setItem('sp_role','boss')");pg=c.new_page();pg.on('pageerror',lambda e:errors.append(str(e)));pg.goto(U+'index.html#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]');return c,pg
+  c=b.new_context(viewport={'width':390,'height':850});c.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')");pg=c.new_page();pg.on('pageerror',lambda e:errors.append(str(e)));pg.goto(U+'index.html#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]');return c,pg
  c,pg=profile()
  r=pg.evaluate("""async()=>{
  const d=await import('./js/db.js'),E=await import('./js/enterprise-db.js'),C=await import('./js/core.js'),R=await import('./js/record-refresh.js');

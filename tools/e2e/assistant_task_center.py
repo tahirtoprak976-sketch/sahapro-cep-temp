@@ -17,7 +17,7 @@ CREATE="""async arg=>{
 with sync_playwright() as pw:
     browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH','/usr/bin/chromium'),args=['--no-sandbox'])
     ctx=browser.new_context(viewport={'width':390,'height':850},service_workers='allow')
-    ctx.add_init_script("localStorage.setItem('sp_role','boss')")
+    ctx.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
     def route(req):
         u=urlparse(req.request.url)
         if (u.scheme,u.hostname,u.port)==(O.scheme,O.hostname,O.port):req.continue_()
@@ -27,7 +27,7 @@ with sync_playwright() as pw:
     page.goto(BASE+'index.html?db='+name+'#/akilli-asistan');page.wait_for_selector('[data-photos]')
     page.evaluate("async()=>await navigator.serviceWorker.ready")
     page.locator('[data-photos]').set_input_files({'name':'safe.pdf','mimeType':'application/pdf','buffer':b'%PDF-1.4\nstartxref\n0\n%%EOF'})
-    page.wait_for_selector('[data-thumbs] img')
+    page.wait_for_selector('[data-thumbs] .assistant-file-tile')
     page.wait_for_function("async()=>{const db=await import('./js/db.js');return (await db.draftGet('assistant-pending-files'))?.files?.length===1;}")
     page.evaluate("""async()=>{const F=await import('./js/assistant-task-files.js'),db=await import('./js/db.js');const f=new File(['%PDF-1.4\\nstartxref\\n0\\n%%EOF'],'safe.pdf',{type:'application/pdf'});await F.savePendingFiles(db,[f]);}""")
     ids=[]
@@ -44,7 +44,7 @@ with sync_playwright() as pw:
     # Files live only with their task; activating A restores exactly one PDF.
     page.locator('[data-task-activate="'+ids[0]['id']+'"]').click()
     page.wait_for_timeout(700)
-    page.wait_for_selector('[data-thumbs] img')
+    page.wait_for_selector('[data-thumbs] .assistant-file-tile')
     active=page.evaluate("""async()=>{const db=await import('./js/db.js'),T=await import('./js/assistant-task.js'),F=await import('./js/assistant-task-files.js');const t=await T.readTask(db);return {id:t.id,files:(await F.loadTaskFiles(db,t.id)).length};}""")
     assert active=={'id':ids[0]['id'],'files':1},active
     other=page.evaluate("""async id=>{const db=await import('./js/db.js');return (await db.metaGet('assistant_tasks_v1')).items.find(x=>x.id===id)}""",ids[1]['id'])

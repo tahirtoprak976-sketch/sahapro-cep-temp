@@ -11,7 +11,7 @@ out=Path(a.artifacts);out.mkdir(parents=True,exist_ok=True);results={};errors=[]
 def image(color):
  buf=BytesIO();Image.new('RGB',(48,48),color).save(buf,format='PNG');return buf.getvalue()
 with sync_playwright() as pw:
- b=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':390,'height':850},service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')")
+ b=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':390,'height':850},service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
  def mock(r):
   calls.append(json.loads(r.request.post_data))
   if hold:held.append(r);return

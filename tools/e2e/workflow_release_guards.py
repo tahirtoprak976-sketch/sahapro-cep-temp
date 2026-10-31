@@ -17,7 +17,7 @@ results={};external=[];errors=[]
 with sync_playwright() as pw:
  browser=pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH','/usr/bin/chromium'),args=['--no-sandbox'])
  ctx=browser.new_context(viewport={'width':390,'height':850},service_workers='block')
- ctx.add_init_script("localStorage.setItem('sp_role','boss')")
+ ctx.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
  def route(r):
   u=urlparse(r.request.url)
   if (u.scheme,u.hostname,u.port)==(origin.scheme,origin.hostname,origin.port):r.continue_()
