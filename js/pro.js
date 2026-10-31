@@ -1338,7 +1338,7 @@ ${fSelect(
       ? "work_records"
       : f.store;
     const financialData = ['work_records','maintenance_records'].includes(sourceStore) ? await db.dumpAll() : null;
-    const records = (sourceStore==='maintenance_records'?maintenanceHistory(financialData).map(r=>r.history_unknown_status?{...r,status:'İş durumu belirtilmemiş'}:r):financialData ? financialData.work_records.filter(core.isActive) : await db.listActive(sourceStore)).filter((r) =>
+    const records = (sourceStore==='maintenance_records'?maintenanceHistory(financialData).map(r=>({...r,amount:r.cost,gross_total:r.cost,grand_total:r.cost,total:r.cost,price_snapshot:null,status:r.history_unknown_status?'İş durumu belirtilmemiş':r.status})):financialData ? financialData.work_records.filter(core.isActive) : await db.listActive(sourceStore)).filter((r) =>
       f.store === "dump_work"
         ? r.dump_site_id || r.dump_area
         : f.store === "quarry_work"
@@ -1384,11 +1384,12 @@ ${fSelect(
     }
     const pendingFuel=sourceStore==="fuel_records"?pendingFuelSummary({pending_fuel_records:filterRecords((await db.listActive("pending_fuel_records")).map(r=>({...r,ownership:byId[r.vehicle_id]?.ownership})),f)}):{count:0,warning:""};
     const financialReview = rows.filter(r => r.financial_review).length;
+    const maintenanceUnknown=sourceStore==='maintenance_records'?rows.filter(r=>r.cost==null).length:0;
     const summary = `${rows.length} kayıt · ${Object.entries(units)
       .map(([u, n]) => core.fmtNum(n) + " " + u)
       .join(
         " · ",
-      )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}${financialReview ? ` · ⚠ ${financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi, kaynakları kontrol edin.` : ""}`;
+      )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}${maintenanceUnknown?' · '+maintenanceUnknown+' kayıtta maliyet belirtilmemiş / kaynak kontrolü gerekiyor; yalnız bilinen toplam gösterildi.':''}${financialReview ? ` · ⚠ ${financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi, kaynakları kontrol edin.` : ""}`;
     if (f.detail === "ÖZET") {
       const groups = groupRecords(rows, f.group || "date");
       table = {
