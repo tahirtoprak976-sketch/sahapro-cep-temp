@@ -4,7 +4,12 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.89** — 30.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.90** — 31.10.2026
+
+Bakım / Arıza: esnaf / alış ve bakım kategorili giderler, bakım kayıtlarıyla birlikte
+görünür. Açık kaynak bağlantısında maliyet bir kez gösterilir; ödeme bakımın tamamlandığı
+anlamına gelmez. Esnaf belgesinin fotoğrafı kaynak detayında da açılır.
+[Kullanım ve doğrulama](docs/MAINTENANCE_EXPENSE_HISTORY_v3990.md).
 
 Filo → Belge Süreleri: muayene, sigorta, kasko ve diğer araç belgelerinde kalan gün,
 bugün biten / süresi geçmiş uyarısı, eski ve gelecekte başlayacak belgelerin ayrımı.

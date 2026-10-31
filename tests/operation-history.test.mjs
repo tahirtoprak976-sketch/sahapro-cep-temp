@@ -43,13 +43,14 @@ const maintenance=[
  {id:'m7',date:'2026-10-20',cost:0.1},
  {id:'m8',date:'2026-10-20',cost:0.2},
 ];
-m=exploreOperations('maintenance',maintenance,names,{},today);
+m=exploreOperations('maintenance',maintenance,names,{f:'open'},today);
 assert.equal(m.rows.length,7);assert.equal(m.cost,123.75);assert.equal(m.priced,4);assert.equal(m.unpriced,3);
 assert.equal(exploreOperations('maintenance',maintenance,names,{f:'done'},today).rows[0].id,'m3');
 assert.equal(exploreOperations('maintenance',maintenance,names,{f:'all'},today).unpriced,4);
 assert.equal(exploreOperations('maintenance',maintenance,names,{q:'filtre'},today).rows[0].id,'m1');
 assert.equal(exploreOperations('maintenance',maintenance,names,{q:'servisi'},today).rows[0].id,'m1');
-assert.equal(operationQuery('maintenance',{f:'invalid'},today).f,'open');
+assert.equal(operationQuery('maintenance',{f:'invalid'},today).f,'all');
+assert.equal(exploreOperations('maintenance',maintenance,names,{},today).rows.length,8,'default view includes completed history');
 assert.equal(operationQuery('maintenance',{source:'Depo Tankı'},today).source,'');
 const url=operationURL('fuel',{q:'Kılıç & Soner',vehicle_id:'v',source:'Müşteri Verdi',from:today},{source:null,period:'all',from:null,unknown:'bad'});
 const params=new URLSearchParams(url.split('?')[1]);assert.equal(params.get('q'),'Kılıç & Soner');assert.equal(params.get('vehicle_id'),'v');assert.equal(params.has('source'),false);assert.equal(params.has('unknown'),false);

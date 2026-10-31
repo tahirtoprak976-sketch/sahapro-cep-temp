@@ -1,4 +1,5 @@
 import {resolveWorkTonnage} from './work-tonnage.js';
+import {maintenanceHistory} from './maintenance-history-core.js';
 import {costCompleteness, dumpCostIncomplete} from './cost-completeness.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 // Detaylı kayıt raporları — SAF katman (DOM yok). Her "kalem" (döküm sahası, ocak, müşteri, şantiye, araç, personel,
@@ -384,13 +385,15 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     R.tables.push(grp((e) => e.payment_method, "Ödeme şekl"));
     R.tables.push(grp((e) => monthName(String(e.date).slice(0, 7)), "Ay"));
   } else if (k === "bakim") {
-    const maint = live(d, "maintenance_records").filter((m) => (id ? m.vehicle_id === id : true) && inR(m.date)).sort(byDate);
+    const maint = maintenanceHistory(d).filter((m) => (id ? m.vehicle_id === id : true) && inR(m.date)).sort(byDate);
     if (card) R.info = infoPairs(card, [["name", "Araç / makine"], ["type", "Tür"], ["brand", "Marka"], ["model_year", "Model yılı"], ["km", "Km (kart)", (r) => (r.km ? num(r.km) : "")]]);
     const T = r2(maint.reduce((n, m) => n + (Number(m.cost) || 0), 0));
-    R.kpis = [["Bakım / arıza kaydı", String(maint.length)], ["Toplam maliyet", tl(T)], ["Açık (tamamlanmamış)", String(maint.filter((m) => m.status && !/tamam|kapandı|bitti/i.test(m.status)).length)]];
-    R.tables.push({ title: "Bakım / arıza kayıtları", headers: ["Tarih", ...(id ? [] : ["Araç"]), "Tür", "Durum", "Açıklama", "Servis / esnaf", "Km / saat", "Maliyet"], widths: [9, ...(id ? [] : [10]), 11, 9, 30, 13, 8, 10],
-      rows: maint.map((m) => [trDate(m.date), ...(id ? [] : [nm("vehicles", m.vehicle_id)]), m.maint_type || "", m.status || "", m.description || "", m.service_company || nm("suppliers", m.supplier_id), m.km ? num(m.km) + " km" : m.machine_hours ? num(m.machine_hours) + " sa" : "", m.cost ? tl(m.cost) : ""]),
-      link: maint.map((m) => "#/bakim/" + m.id) });
+    const unknown=maint.filter(m=>m.cost==null).length;
+    R.kpis = [["Bakım / arıza kaydı", String(maint.length)], ["Toplam maliyet", tl(T)+(unknown?' · '+unknown+' kayıtta maliyet belirtilmemiş':'')], ["Açık (tamamlanmamış)", String(maint.filter((m) => !m.history_unknown_status && m.status!=='Tamamlandı').length)],['İş durumu belirtilmemiş',String(maint.filter(m=>m.history_unknown_status).length)]];
+    R.notes.push('Bakım, bakım kategorili gider ve esnaf / alış kayıtları birlikte gösterilir. Yalnız açık kaynak bağlantısı bulunan maliyetler birleştirilir; alışın ödenmesi bakımın tamamlandığını göstermez. Bu toplam kasa çıkışı değildir.');
+    R.tables.push({ title: "Bakım / arıza kayıtları", headers: ["Tarih", ...(id ? [] : ["Araç"]), "Tür", "Durum", "Açıklama", "Servis / esnaf", "Km / saat", "Maliyet",'Kaynak'], widths: [9, ...(id ? [] : [10]), 11, 9, 30, 13, 8, 10,14],
+      rows: maint.map((m) => [trDate(m.date), ...(id ? [] : [nm("vehicles", m.vehicle_id)]), m.maint_type || "", m.history_unknown_status?'İş durumu belirtilmemiş':m.status || "", m.description || "", m.service_company || nm("suppliers", m.supplier_id), m.km ? num(m.km) + " km" : m.machine_hours ? num(m.machine_hours) + " sa" : "", m.cost!=null ? tl(m.cost) : "Belirtilmedi",m.history_origin]),
+      link: maint.map((m) => m.history_href) });
     const grp = (keyFn, label) => { const g = new Map(); for (const m of maint) { const kk = keyFn(m) || "—"; const o = g.get(kk) || { n: 0, T: 0 }; o.n++; o.T += Number(m.cost) || 0; g.set(kk, o); } return { title: label + "e göre", headers: [label, "Kayıt", "Maliyet"], widths: [50, 20, 30], rows: [...g.entries()].sort((a, b) => b[1].T - a[1].T).map(([kk, o]) => [kk, String(o.n), tl(r2(o.T))]) }; };
     if (!id) R.tables.push(grp((m) => nm("vehicles", m.vehicle_id), "Araç"));
     R.tables.push(grp((m) => m.maint_type, "Tür"));

@@ -5,6 +5,10 @@ const eventName = "sp-records-committed";
 const relevant = new Set([
   "documents",
   "vehicles",
+  "maintenance_records",
+  "expense_records",
+  "payables",
+  "suppliers",
   "customers",
   "cash_records",
   "cari_movements",

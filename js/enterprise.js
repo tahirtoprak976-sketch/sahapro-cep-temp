@@ -1,4 +1,5 @@
-import { downloadAttachment } from "./attachment-ui.js";
+import { downloadAttachment,attachmentHTML } from "./attachment-ui.js";
+import {maintenanceCategory} from './maintenance-history-core.js';
 import {financialResultText,financialResultWarning} from './cost-completeness.js';
 import * as core from "./core.js";
 import * as rules from "./enterprise-core.js";
@@ -1146,9 +1147,11 @@ async function detail(ctx, d, store, r, label) {
     actionsHTML += button("Kartı Düzenle", "#/" + route + "/" + r.id + "/edit");
   if (r.note || r.description) sections.push({ text: r.note || r.description });
   const attachments = (await ctx.db.getAll("attachments")).filter(
-    (a) => a.record_type === store && a.record_id === r.id,
+    (a) => core.isActive(a) && (a.record_type === store || store==='payables'&&a.record_type==='payable') && a.record_id === r.id,
   );
+  if(store==='payables'&&(maintenanceCategory(r.cost_category)||r.source_store==='maintenance_records'))actionsHTML+=button('Araç bakım geçmişi','#/bakim?f=all'+(r.vehicle_id?'&vehicle_id='+encodeURIComponent(r.vehicle_id):''));
   extra += attachments.map((a) => '<div class="card">' + kv("Orijinal Dosya", a.name) + '<button class="btn" data-original="' + esc(a.id) + '">Orijinal Dosyayı İndir</button></div>').join("");
+  if(store==='payables')for(const attachment of attachments)extra+='<div class="card">'+await attachmentHTML(attachment)+'</div>';
   root.innerHTML =
     appbar(label) +
     exportsHTML() +

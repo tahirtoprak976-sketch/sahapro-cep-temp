@@ -3,6 +3,8 @@ import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
 import {tankTimeline} from './tank-timeline.js';
 import {recordNoteHTML} from './record-notes-ui.js';
 import {vehicleDocumentStatus} from './business.js';
+import {maintenanceHistory,readMaintenanceData} from './maintenance-history-core.js';
+import {maintenanceSourcesHTML} from './maintenance-history-ui.js';
 import {fleetDocumentModel,nearestVehicleDocument} from './fleet-document-core.js';
 import {watchFleetDocuments,fleetDocumentBadge,fleetDocumentHome} from './fleet-document-ui.js';
 import {entryContext,entryContextHTML,entrySaveHash} from './entry-context.js';
@@ -696,6 +698,7 @@ async function maintDetail(ctx, id) {
     return;
   }
   const atts = await db.attachmentsFor("maintenance", id);
+  const historyRow=maintenanceHistory(await readMaintenanceData(db)).find(r=>r.history_source_store==='maintenance_records'&&r.history_source_id===id);
   root.innerHTML =
     appbar(`${names.vehicles[m.vehicle_id] || "Bakım"}`, trDate(m.date), {
       right: statusBadge(m.status || "Açık"),
@@ -707,6 +710,8 @@ async function maintDetail(ctx, id) {
       ${kv("Personel", names.personnel[m.personnel_id] || "—")}
       ${recordNoteHTML(m,'description',names,'maintenance',{label:'Açıklama'})}
       ${m.cost ? kv("Maliyet", fmtTL(m.cost) + " ₺") : ""}
+      ${historyRow?.history_sources.length>1?kv('Bağlı alıştaki maliyet (tek sayılır)',historyRow.cost==null?'Kontrol gerekli':fmtTL(historyRow.cost)+' ₺'):''}
+      ${maintenanceSourcesHTML(historyRow)}
       ${m.service_company ? kv("Servis", m.service_company) : ""}
       ${m.km_hours ? kv("KM/Saat", m.km_hours) : ""}
     </div>
