@@ -29,7 +29,7 @@ with sync_playwright() as w:
  # Enter remains a newline; Ctrl+Enter explicitly sends a local draft request.
  p.fill('[data-msg]','TEST satır');p.locator('[data-msg]').press('End');p.locator('[data-msg]').press('Enter');assert '\n' in p.input_value('[data-msg]') and p.locator('[data-kind]').count()==0
  p.fill('[data-msg]','Yeni iş kaydı oluştur');p.locator('[data-msg]').press('Control+Enter');p.wait_for_selector('[data-review-overview]');p.wait_for_function("()=>!document.querySelector('[data-ask]').disabled")
- card=p.locator('[data-kind=work]');assert not card.locator('[data-record-details]').evaluate('e=>e.open') and not card.locator('[data-pick]').is_checked() and p.evaluate(SNAP)==before
+ card=p.locator('[data-kind=work]');assert not p.locator('.assistant-review-more').evaluate('e=>e.open') and not card.locator('[data-record-details]').evaluate('e=>e.open') and not card.locator('[data-pick]').is_checked() and p.evaluate(SNAP)==before
  send('Sohbeti buradan sürdürelim');assert p.locator('[data-draft-reply]').is_visible() and 'taslağınız korunuyor' in p.locator('[data-draft-reply]').inner_text()
  for t in ['Bugün','TEST Kendo92','34TEST92','Makine Çalışması','2 saat']:send(t)
  p.click('[data-batch-prices]');assert 'Fiyat bekliyor' in card.locator('[data-record-summary]').inner_text() and p.evaluate(SNAP)==before
@@ -68,7 +68,7 @@ with sync_playwright() as w:
   works=[{'date':ids['date'],'customer_id':ids['customer'],'vehicle_id':ids['vehicle'],'work_type':'Makine Çalışması','quantity':n,'unit':'Saat'} for n in [1,2]]
   r.fulfill(status=200,content_type='application/json',body=json.dumps({'candidates':[{'content':{'parts':[{'text':json.dumps({'works':works})}]},'finishReason':'STOP'}]}))
  c.route('https://generativelanguage.googleapis.com/**',model)
- send('TEST Kendo92 TEST Manitou92 bugün 1 saat çalıştı. İkinci iş TEST Kendo92 TEST Manitou92 bugün 2 saat çalıştı.');p.wait_for_selector('[data-kind=work][data-i="1"]');baseline=p.evaluate(SNAP)
+ send('TEST Kendo92 TEST Manitou92 bugün 1 saat çalıştı. İkinci iş TEST Kendo92 TEST Manitou92 bugün 2 saat çalıştı.');p.wait_for_selector('[data-kind=work][data-i="1"]');assert p.locator('.assistant-review-more').evaluate('e=>e.open');baseline=p.evaluate(SNAP)
  send('3 sefer');assert p.locator('[data-draft-choice]').count()==2 and p.locator('[data-draft-choice]').first.is_visible();p.locator('[data-draft-choice]').first.click();assert p.evaluate(SNAP)==baseline
  # Reading status and Abort remain visible in the fixed composer, even after a long request.
  mode['hold']=True;p.fill('[data-msg]','TEST müşterisinin gelecek ayki işlerini değerlendir');p.click('[data-ask]');p.wait_for_function("()=>!document.querySelector('[data-read-status]').hidden");p.wait_for_timeout(100);assert p.locator('[data-stop-reading]').is_visible() and p.locator('[data-msg]').is_disabled() and len(held)>=1;p.click('[data-stop-reading]');p.wait_for_function("()=>!document.querySelector('[data-ask]').disabled");assert p.evaluate(SNAP)==baseline
