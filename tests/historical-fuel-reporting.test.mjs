@@ -25,7 +25,7 @@ const d={customers:[{id:'C',name:'TEST customer'}],vehicles:[{id:'V',name:'TEST 
  work_records:[{id:'W',date,vehicle_id:'V',personnel_id:'P',customer_id:'C',site_id:'S',quantity:5,unit:'Sefer',work_type:'TEST haul',description:'TEST preserved work description',price_snapshot:{unit_price:1000,amount:5000,kdv_rate:20,kdv_included:false}}],
  fuel_records:[{id:'F',date,vehicle_id:'V',personnel_id:'P',liters:20,total:1000,unit_price:50,fuel_source:'Akaryakıt İstasyonu'}],fuel_tank_movements:[{id:'I',date:'2026-10-01',move_type:'GİRİŞ',liters:80,total:4000}],pending_fuel_records:[pending],expense_records:[],maintenance_records:[],cash_records:[],cari_movements:[],hakedis:[],payables:[],dump_sites:[],dump_entries:[]};
 const clean={...d,pending_fuel_records:[]},before=JSON.stringify(d);
-assert.equal(SCHEMA_VERSION,7);assert.match(APP_VERSION,/3\.9\.90$/);assert.ok(ENTITY_STORES.includes('pending_fuel_records'));
+assert.equal(SCHEMA_VERSION,7);assert.match(APP_VERSION,/3\.9\.91$/);assert.ok(ENTITY_STORES.includes('pending_fuel_records'));
 assert.equal(pendingFuelSummary(d).count,1);assert.equal(pendingFuelSummary(d).liters,854);
 assert.equal(pendingFuelSummary(d,{from:'2026-10-21'}).count,0);assert.equal(pendingFuelSummary(d,{vehicle_id:'V2'}).count,0);
 assert.deepEqual(calcTankBalance(d.fuel_tank_movements),{in:80,out:0,remaining:80});

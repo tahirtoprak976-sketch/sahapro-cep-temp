@@ -3,6 +3,8 @@ import { startActivity } from "./update-safety.js";
 import { isActive, todayStr, uuid, fmtTL, trDate } from "./core.js";
 import * as ui from "./ui.js";
 import { PART_SOURCES, warrantyState, partCostState } from "./parts-core.js";
+import {partPurchaseGroups,purchaseDraft,partAttachments,readPartData} from './parts-history-core.js';
+import {watchPartHistory} from './parts-history-ui.js';
 import {bindPartDocumentReader,stagePartDocuments} from './part-document-ui.js';
 import {
   saveSparePart,
@@ -40,10 +42,11 @@ function partCostPreview(f){
 }
 export async function screen(ctx) {
   if (ctx.parts[0] !== "yedek-parca") return false;
-  const { root, db, parts, query: q } = ctx,
-    d = await db.dumpAll();
-  const name = (id) => d.vehicles.find((v) => v.id === id)?.name || "Araç";
-  const liveParts = (d.maintenance_parts || []).filter(
+  const { root, db, parts, query: q } = ctx;
+  let d;
+  try{d=await readPartData(db);}catch(e){root.innerHTML=appbar('Yedek Parça / Garanti')+notice('warn','Parça kaynakları okunamadı. '+e.message);return true;}
+  const name = (id) => d.vehicles.find((v) => v.id === id)?.name || "Araç belirtilmemiş";
+  let liveParts = (d.maintenance_parts || []).filter(
     (r) => isActive(r) && r.kind !== "İşçilik",
   );
   const r = liveParts.find((r) => r.id === parts[1]);
@@ -65,8 +68,12 @@ export async function screen(ctx) {
     };return true;
   }
   if (parts[1] === "new" || edit) {
+    let purchase;
+    if(!edit&&(q.source_store||q.source_id)){
+      try{purchase=purchaseDraft(d,q.source_store,q.source_id);}catch(e){const g=partPurchaseGroups(d).find(g=>g.store===q.source_store&&g.source.id===q.source_id);root.innerHTML=appbar('Alıştan Garanti Takibi')+notice('warn',e.message)+(g?.linked||[]).map(p=>button(p.description,'#/yedek-parca/'+p.id)).join('')+button('Parça Listesine Dön','#/yedek-parca');return true;}
+    }
     const vehicles = d.vehicles
-      .filter(isActive)
+      .filter(v=>isActive(v)&&(!purchase||v.id===purchase.fields.vehicle_id))
       .map((v) => ({ v: v.id, t: v.name }));
     root.innerHTML =
       appbar(
@@ -81,12 +88,12 @@ export async function screen(ctx) {
           : `${fSelect("Araç / Makine", "vehicle_id", vehicles, q.vehicle_id || "")}${fDate("Alış tarihi", "date", q.part_draft?'':todayStr(), true)}${fText("Parça adı", "description", "", { req: true, ph: "Akü, lastik, filtre…" })}<div class="formgrid2">${fNum("Miktar", "quantity", q.part_draft?'':1, { min: 0.001, step: "any", req: true })}${fNum("Birim fiyat (KDV dahil, opsiyonel)", "unit_price", "", { min: 0, step: "any" })}</div><div data-total class="notice info">Tutar belirtilmedi</div>${fSelect(
               "Maliyet kaydı (zorunlu)",
               "cost_mode",
-              costOptions,
+              purchase?costOptions.filter(o=>o.v==='existing'):costOptions,
               "",{req:true,emptyText:'— Yeni gider mi, mevcut kayıt mı? —'},
             )}<div data-source hidden>${fSelect("Mevcut maliyet", "source", [], "")}</div><div class="notice warn" data-cost-preview role="status"></div>${notice("info", "Bakım veya alış bedeli önceden kaydedildiyse mevcut kayda bağlayın. Yeni gider seçimi bedeli bir kez giderlere yazar; kasa/banka ödemesi oluşturmaz. Veresiye için Alış Belgeleri / Borçlar bölümündeki belgeye bağlayın.")}`
       }${warrantyForm(edit ? r : {})}${fileInput}</div><button class="btn primary block" type="submit">${edit ? "Garanti ve Belgeleri Kaydet" : "Parça ve Belgeleri Kaydet"}</button><div data-part-error role="alert"></div></form>`;
     const form = qs("form", root),
-      draftId = /^[a-f0-9-]{36}$/i.test(q.part_draft||'')?'part-document:'+q.part_draft:edit?'spare-part-edit:'+r.id:"spare-part-new:" + (q.vehicle_id || "all");
+      draftId = purchase?'spare-part-purchase:'+purchase.group.id:/^[a-f0-9-]{36}$/i.test(q.part_draft||'')?'part-document:'+q.part_draft:edit?'spare-part-edit:'+r.id:"spare-part-new:" + (q.vehicle_id || "all");
     form.inert=true;
     const draft = await db.draftGet(draftId);
     const committed =
@@ -100,6 +107,7 @@ export async function screen(ctx) {
       return true;
     }
     const key = draft?.key || uuid();
+    const purchaseProof=draft?.purchaseProof||purchase?.fields;
     let selectedFiles = draft?.files || [],
       pendingDraft = Promise.resolve(),pendingFiles=Promise.resolve(),readerResults=draft?.readerResults||[],readAttempted=!!draft?.auto_read_attempted,reader;
     const editedFields=new Set(draft?.editedFields||(draft?.fields?Object.keys(draft.fields):edit?Object.keys(r):[]));
@@ -108,6 +116,8 @@ export async function screen(ctx) {
     const revokeOriginals=()=>{for(const url of originalUrls.splice(0))URL.revokeObjectURL(url);};
     const observer=new MutationObserver(()=>{if(!form.isConnected){revokeOriginals();observer.disconnect();}});observer.observe(root,{childList:true,subtree:true});
     if (draft?.fields) ui.setForm(form, draft.fields);
+    else if(purchase)ui.setForm(form,purchase.fields);
+    if(purchase){const info=document.createElement('div');info.innerHTML=notice('info','Bu alışın maliyeti zaten kayıtlı. İkinci gider veya ödeme oluşturulmaz. Parçanın adını, miktarını ve garanti belgesini kontrol edin; belge toplamı otomatik parça fiyatı yapılmaz.')+(purchase.group.mixed?notice('warn','Belge birden fazla kalem içeriyor. Takip edeceğiniz parçayı ve miktarını belirtin. Diğer kalemler kaynak belgede korunur.'):'')+button('Alış / Gider Belgesini Aç',purchase.group.href);form.prepend(info);}
     if(!edit&&draft?.fields?.cost_mode&&!draft.cost_choice_confirmed&&!draft.editedFields?.includes('cost_mode'))qs('[name=cost_mode]',form).value='';
     if(!edit&&q.part_draft&&!draft?.fields?.date)qs('[name=date]',form).value='';
       const persist = (pendingSelection=null) => {
@@ -115,7 +125,7 @@ export async function screen(ctx) {
         const fields = collectForm(form),
           files = Array.isArray(pendingSelection)?pendingSelection:[...selectedFiles];
         pendingDraft = pendingDraft
-          .then(() => db.draftSave(draftId, { key, fields, files,editedFields:[...editedFields],readerResults,auto_read_attempted:readAttempted,base_version:baseVersion,cost_choice_confirmed:!!fields.cost_mode }))
+          .then(() => db.draftSave(draftId, { key, fields, files,editedFields:[...editedFields],readerResults,auto_read_attempted:readAttempted,base_version:baseVersion,cost_choice_confirmed:!!fields.cost_mode,purchaseProof }))
           .catch((e) => {
             qs("[data-part-error]", root).textContent =
               "Taslak kaydedilemedi: " + e.message;
@@ -156,8 +166,8 @@ export async function screen(ctx) {
         prior = select.value;
       qs("[data-source]", form).hidden = f.cost_mode !== "existing";
       select.required=f.cost_mode==='existing';
-      select.innerHTML='<option value="">— seçin —</option>'+costSourceOptions(d,f.vehicle_id).map(o=>`<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
-      select.value = prior;
+      select.innerHTML='<option value="">— seçin —</option>'+costSourceOptions(d,f.vehicle_id).filter(o=>!purchase||o.v===purchase.group.id).map(o=>`<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
+      select.value = purchase?purchase.group.id:prior;
       qs('[name=unit_price]',form).required=f.cost_mode==='new_expense';
       qs('[data-cost-preview]',form).textContent=partCostPreview(f);
       qs('[data-cost-preview]',form).className='notice '+(f.cost_mode==='tracking'||!f.cost_mode?'warn':'info');
@@ -189,6 +199,7 @@ export async function screen(ctx) {
         await pendingFiles;
         await pendingDraft;
         const f = collectForm(form);
+        if(purchaseProof){f.purchase_source_key=purchaseProof.purchase_source_key;f.purchase_source_signature=purchaseProof.purchase_source_signature;}
         if (f.source) {
           const i = f.source.indexOf(":");
           f.cost_source_store = f.source.slice(0, i);
@@ -239,7 +250,7 @@ export async function screen(ctx) {
         : null;
     root.innerHTML =
       appbar(r.description, name(r.vehicle_id)) +
-      `<div class="card">${badge(state.label, state.kind)}${kv("Araç", name(r.vehicle_id))}${kv("Alış tarihi", trDate(r.date))}${kv("Miktar", r.quantity)}${kv("Birim fiyat", money(r.unit_price))}${kv("Parça toplamı", money(r.total))}${kv("Marka / model", r.brand || "—")}${kv("Satıcı", r.seller || "—")}${kv("Belge no", r.invoice_no || "—")}${kv("Seri numaraları", r.serial_numbers || "—")}${kv("Garanti başlangıcı", r.warranty_start ? trDate(r.warranty_start) : "Belirtilmedi")}${kv("Garanti bitişi", r.warranty_until ? trDate(r.warranty_until) : "Belirtilmedi")}${kv("Not", r.note || "—")}${notice(costState.kind,costState.label+" — "+costState.detail)}${r.tracking&&!source&&!r.maintenance_id?button("Gider Oluştur / Mevcut Maliyete Bağla","#/yedek-parca/"+r.id+"/maliyet"):""}${href ? button("Maliyet Kaydını Aç", href) : ""}${source ? '<button class="btn" data-unlink>Maliyet Bağlantısını Kaldır</button>' : ""}${button("Araç Kartı", "#/filo/" + r.vehicle_id)}${r.tracking ? button("Garanti Bilgilerini Düzenle", "#/yedek-parca/" + r.id + "/garanti") : ""}</div><div class="card"><h3>Garanti / Fatura Belgeleri</h3><div data-attachments></div><form data-add-files>${fileInput}<button class="btn primary" type="submit">Belgeleri Ekle</button><div role="alert" data-file-error></div></form></div>`;
+      `<div class="card">${badge(state.label, state.kind)}${kv("Araç", name(r.vehicle_id))}${kv("Alış tarihi", trDate(r.date))}${kv("Miktar", r.quantity)}${kv("Birim fiyat", money(r.unit_price))}${kv("Parça toplamı", money(r.total))}${kv("Marka / model", r.brand || "—")}${kv("Satıcı", r.seller || "—")}${kv("Belge no", r.invoice_no || "—")}${kv("Seri numaraları", r.serial_numbers || "—")}${kv("Garanti başlangıcı", r.warranty_start ? trDate(r.warranty_start) : "Belirtilmedi")}${kv("Garanti bitişi", r.warranty_until ? trDate(r.warranty_until) : "Belirtilmedi")}${kv("Not", r.note || "—")}${notice(costState.kind,costState.label+" — "+costState.detail)}${r.tracking&&!source&&!r.maintenance_id?button("Gider Oluştur / Mevcut Maliyete Bağla","#/yedek-parca/"+r.id+"/maliyet"):""}${href ? button("Maliyet Kaydını Aç", href) : ""}${source ? '<button class="btn" data-unlink>Maliyet Bağlantısını Kaldır</button>' : ""}${button("Araç Kartı", "#/filo/" + r.vehicle_id)}${r.tracking||r.maintenance_id ? button("Garanti Bilgilerini Düzenle", "#/yedek-parca/" + r.id + "/garanti") : ""}</div><div class="card"><h3>Garanti / Fatura Belgeleri</h3><div data-attachments></div><form data-add-files>${fileInput}<button class="btn primary" type="submit">Belgeleri Ekle</button><div role="alert" data-file-error></div></form></div>`;
     qs("[data-unlink]", root)?.addEventListener("click", async () => {
       const reason = await ui.promptDialog(
         "Maliyet bağlantısını kaldır",
@@ -253,9 +264,9 @@ export async function screen(ctx) {
         toast(e.message, "err");
       }
     });
-    const atts = await db.attachmentsFor("maintenance_parts", r.id),
+    const atts = await partAttachments(db,r,d),
       holder = qs("[data-attachments]", root);
-    if(atts.length&&r.tracking){const read=document.createElement('button');read.className='btn block';read.textContent='Belgelerden garanti bilgilerini oku';read.dataset.readSavedPart='';holder.before(read);read.onclick=async()=>{if(read.disabled)return;read.disabled=true;try{await stagePartDocuments(ctx,atts.map(a=>new File([a.blob],a.name,{type:a.type})),{part:r});}catch(e){toast(e.message,'err');read.disabled=false;}};}
+    if(atts.length&&(r.tracking||r.maintenance_id)){const read=document.createElement('button');read.className='btn block';read.textContent='Belgelerden garanti bilgilerini oku';read.dataset.readSavedPart='';holder.before(read);read.onclick=async()=>{if(read.disabled)return;read.disabled=true;try{await stagePartDocuments(ctx,atts.map(a=>new File([a.blob],a.name,{type:a.type})),{part:r});}catch(e){toast(e.message,'err');read.disabled=false;}};}
     holder.innerHTML = atts.length
       ? ""
       : notice("info", "Henüz belge eklenmedi.");
@@ -314,7 +325,7 @@ export async function screen(ctx) {
         { v: "unknown", t: "Garanti tarihi eksik" },
       ],
       "",
-    )}</div><div data-parts-list></div>`;
+    )}</div><div data-parts-summary role="status"></div><div data-parts-list></div>`;
   const show = () => {
     const term = qs("[data-search]", root).value.toLocaleLowerCase("tr-TR"),
       v = qs("[name=vehicle_filter]", root).value,
@@ -339,17 +350,20 @@ export async function screen(ctx) {
         );
       })
       .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-    qs("[data-parts-list]", root).innerHTML = rows.length
+    const purchases=partPurchaseGroups(d).filter(g=>!g.linked.length||g.mixed).filter(g=>(!v||g.vehicle_id===v)&&(!w||w==='unknown'&&!g.linked.length)&&[g.description,g.seller,g.invoice_no,...g.items.map(i=>i.description),name(g.vehicle_id)].join(' ').toLocaleLowerCase('tr-TR').includes(term));
+    qs('[data-parts-summary]',root).textContent=`${rows.length} parça kartı · ${purchases.length} alış / gider belgesi. Belge tutarı ayrıca gider yazılmaz.`;
+    qs("[data-parts-list]", root).innerHTML = rows.length||purchases.length
       ? rows
           .map((r) => {
             const s = warrantyState(r);
-            return `<div class="card tap" data-go="#/yedek-parca/${esc(r.id)}"><b>${esc(r.description)}</b>${kv(name(r.vehicle_id), `${r.quantity} adet · ${trDate(r.date)}`)}${badge(s.label, s.kind)}<p class="small">${esc(partCostState(d,r).label)} · ${esc(money(r.total))}</p></div>`;
+            return `<div class="card tap" data-part-id="${esc(r.id)}" data-go="#/yedek-parca/${esc(r.id)}"><b>${esc(r.description)}</b>${kv(name(r.vehicle_id), `${r.quantity} adet · ${r.date?trDate(r.date):'Alış tarihi belirtilmedi'}`)}${badge(s.label, s.kind)}<p class="small">${esc(partCostState(d,r).label)} · ${esc(money(r.total))}</p></div>`;
           })
-          .join("")
+          .join("")+purchases.map(g=>`<div class="card" data-part-purchase="${esc(g.id)}"><b>${esc(g.description)}</b>${kv('Araç',name(g.vehicle_id))}${kv('Alış tarihi',g.date?trDate(g.date):'Belirtilmedi')}${kv('Kaynak belge toplamı',money(g.amount))}${g.seller?kv('Satıcı',g.seller):''}${g.items.length?kv('Belge kalemleri',g.items.map(i=>i.description).join(' · ')):''}${badge(g.linked.length?g.linked.length+' parça kartı bağlı':'Garanti bilgileri eksik','warn')}${g.conflict?notice('warn','Bağlı kaynakların araçları farklı. Kaynağı düzeltin; otomatik birleştirilmedi.'):''}${g.mixed?notice('info','Belge birden fazla kalem içeriyor; her parçanın garanti ve seri numaralarını ayrı takip edin. Belge toplamı tek parçanın bedeli sayılmaz.'):''}${g.linked.map(p=>button(p.description,'#/yedek-parca/'+p.id)).join('')}${button('Kaynak Belgeyi Aç',g.href)}${!g.linked.length&&!g.conflict&&g.vehicle_id?button('Garanti Bilgilerini Tamamla','#/yedek-parca/new?source_store='+encodeURIComponent(g.store)+'&source_id='+encodeURIComponent(g.source.id)):!g.vehicle_id?notice('warn','Önce kaynak alış / gider kaydında aracı belirtin.'):''}</div>`).join('')
       : notice("info", "Bu filtrede parça yok.");
   };
   root.addEventListener("input", show);
   root.addEventListener("change", show);
   show();
+  await watchPartHistory(db,qs('[data-parts-list]',root),(data,error)=>{if(error){qs('[data-parts-summary]',root).textContent='';qs('[data-parts-list]',root).innerHTML=notice('warn','Parça kaynakları okunamadı. '+error.message);return;}d=data;liveParts=d.maintenance_parts.filter(r=>isActive(r)&&r.kind!=='İşçilik');show();});
   return true;
 }

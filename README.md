@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.90** — 31.10.2026
+Sürüm: **SAHAPRO SOLO v3.9.91** — 31.10.2026
+
+Parça / Garanti: gider ve esnaf alışları kaynak belgeleriyle görünür; mevcut maliyetten garanti takibi ikinci gider oluşturmadan tamamlanır. [Kullanım ve doğrulama](docs/PARTS_PURCHASE_HISTORY_v3991.md).
 
 Bakım / Arıza: esnaf / alış ve bakım kategorili giderler, bakım kayıtlarıyla birlikte
 görünür. Açık kaynak bağlantısında maliyet bir kez gösterilir; ödeme bakımın tamamlandığı

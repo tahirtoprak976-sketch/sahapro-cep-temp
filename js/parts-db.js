@@ -2,12 +2,14 @@ import { prepareAttachment } from "./attachment-safety.js";
 import { newRecord, uuid, stableStringify, nowISO, isActive } from "./core.js";
 import { transaction } from "./enterprise-db.js";
 import { sparePartFields } from "./parts-core.js";
+import {purchaseDraft} from './parts-history-core.js';
 const stores = [
   "maintenance_parts",
   "vehicles",
   "expense_records",
   "maintenance_records",
   "payables",
+  "suppliers",
 ];
 function createPartExpense(r, t) {
   const expense = newRecord({date:r.date,vehicle_id:r.vehicle_id,category:"Yedek Parça",amount:r.total,company:r.seller,description:`${r.quantity} × ${r.description}`,payment_method:null,kdv_rate:null,part_id:r.id});
@@ -60,6 +62,12 @@ export async function saveSparePart(f, files = [], key = uuid()) {
           "Bu işlem anahtarı farklı içerikle kullanılmış; ekranı yeniden açın",
         );
       return old;
+    }
+    if(f.purchase_source_key){
+      const at=String(f.purchase_source_key).indexOf(':');
+      const {group}=purchaseDraft(d,String(f.purchase_source_key).slice(0,at),String(f.purchase_source_key).slice(at+1));
+      if(group.signature!==f.purchase_source_signature)throw Error('Alış / gider değişti. Güncel kaynağı yeniden açın.');
+      if(f.cost_mode!=='existing'||f.cost_source_store!==group.store||f.cost_source_id!==group.source.id||f.vehicle_id!==group.vehicle_id)throw Error('Bu alış için mevcut maliyet bağlantısını koruyun; ikinci gider oluşturulmaz.');
     }
     const fields = sparePartFields(d, f);
     const shared=prepared.some(a=>d.attachments.some(old=>old.src_sha256===a.src_sha256&&old.record_type==='maintenance_parts'&&d.maintenance_parts.some(p=>isActive(p)&&p.id===old.record_id)));
@@ -137,13 +145,17 @@ export async function updatePartWarranty(id, f, expectedVersion, files=[]) {
   const prepared=await preparePartFiles(files);
   return transaction([...stores,'attachments'], (d, t) => {
     const old = d.maintenance_parts.find(
-      (r) => r.id === id && isActive(r) && r.tracking,
+      (r) => r.id === id && isActive(r) && r.kind!=="İşçilik",
     );
     if (!old) throw Error("Parça bulunamadı");
-    if (expectedVersion && old.updated_at !== expectedVersion)
+    const maintenance=old.maintenance_id&&d.maintenance_records.find(m=>m.id===old.maintenance_id&&isActive(m)&&m.status!=="İptal"&&m.vehicle_id===old.vehicle_id);
+    if(!old.tracking&&!maintenance)throw Error("Parçanın bakım kaydı bulunamadı; kaynağı kontrol edin.");
+    if (!expectedVersion || old.updated_at !== expectedVersion)
       throw Error("Parça başka ekranda değişti; yeniden açın");
     const current = sparePartFields(d, {
       ...old,
+      date:old.date||maintenance?.date,
+      cost_mode:old.cost_mode||"tracking",
       warranty_start: f.warranty_start,
       warranty_until: f.warranty_until,
       brand: f.brand,
