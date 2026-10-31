@@ -24,6 +24,7 @@ on:
       - fix/solo-integrity-review-88
       - feat/solo-fleet-document-countdown-89
       - fix/solo-maintenance-expense-link-90
+      - fix/solo-parts-purchase-bridge-91
 
 permissions:
   contents: read
@@ -106,7 +107,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -294,6 +295,36 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e583a2f75fb3795af0a414bb204df77926213612
+
+      - name: Verify installed live v3.9.90 to purchased parts preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 522b58f4932b0e68246cba87a7e50529eb3b4a8e
+
+      - name: Reproduce purchased parts visibility and invalid warranty on unchanged v3.9.90
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          parts_baseline=$(mktemp -d /tmp/solo-parts90-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 522b58f4932b0e68246cba87a7e50529eb3b4a8e | tar -x -C "$parts_baseline"
+          python3 -m http.server 8858 --bind 127.0.0.1 --directory "$parts_baseline" > /tmp/solo-parts90-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$parts_baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8858/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/parts_purchase_history.py http://localhost:8858/ --baseline-proof --artifacts /tmp/solo-parts90-baseline
 
       - name: Reproduce maintenance visibility, source photo and servicing clock defects on unchanged v3.9.89
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
@@ -567,6 +598,8 @@ jobs:
             /tmp/solo-work-entry/*.png
             /tmp/solo-fleet-documents89/*
             /tmp/solo-maintenance90/*
+            /tmp/solo-parts91/*
+            /tmp/solo-parts90-baseline/*
             /tmp/solo-maintenance89-baseline/*
             /tmp/solo-integrity88/*
             /tmp/solo-integrity88-baseline/*

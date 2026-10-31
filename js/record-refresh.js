@@ -6,6 +6,7 @@ const relevant = new Set([
   "documents",
   "vehicles",
   "maintenance_records",
+  "maintenance_parts",
   "expense_records",
   "payables",
   "suppliers",

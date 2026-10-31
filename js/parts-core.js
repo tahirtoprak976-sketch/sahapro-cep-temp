@@ -105,8 +105,15 @@ export function partCostState(d, r) {
   return {label:"Gider kaydı yok",kind:"warn",detail:"Bu kart yalnız parça ve garanti takibidir. Bedeli giderlere işlemek için yeni gider oluşturun veya mevcut maliyet kaydına bağlayın."};
 }
 export function warrantyState(r, today = todayStr()) {
+  try {
+    validDate(today);
+    if(r.warranty_start)validDate(r.warranty_start);
+    if(r.warranty_until)validDate(r.warranty_until);
+    if(r.warranty_start&&r.warranty_until&&r.warranty_until<r.warranty_start)throw Error('range');
+  } catch {return {label:'Garanti tarihi kontrol edilmeli',kind:'warn'};}
   if (!r.warranty_until)
     return { label: "Garanti tarihi belirtilmedi", kind: "" };
+  if(r.warranty_start&&r.warranty_start>today)return {label:'Garanti henüz başlamadı',kind:'info'};
   const days = Math.round(
     (Date.parse(r.warranty_until + "T12:00:00Z") -
       Date.parse(today + "T12:00:00Z")) /
