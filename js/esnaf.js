@@ -1,4 +1,5 @@
 import { attachmentHTML } from "./attachment-ui.js";
+import {maintenanceCategory} from './maintenance-history-core.js';
 // Esnaf hesabı: lastikçi, tamirci, kaynakçı gibi veresiye çalışılan ustaların borç takibi.
 // Mevcut tedarikçi / alış belgesi / tedarikçi ödemesi kayıtlarının üstünde basit bir ön yüzdür;
 // yeni veri türü eklemez. Alış belgesi = borç, tedarikçi ödemesi = ödeme.
@@ -453,16 +454,18 @@ async function payDetail(ctx, e) {
   });
 }
 async function billDetail(ctx, e) {
-  const atts = await ctx.db.attachmentsFor("payable", e.id);
+  const atts = (await Promise.all(['payable','payables'].map(type=>ctx.db.attachmentsFor(type,e.id)))).flat().filter(isActive);
   const sh = sheet(`<h3>${esc(e.text)}</h3>
     ${kv("Tarih", trDate(e.date))}
     ${kv("Tutar", fmtTL(fromKurus(e.amount)) + " ₺")}
     ${kv("Bu alıştan ödenen", fmtTL(fromKurus(e.paid)) + " ₺")}
     ${kv("Belge no", e.rec.document_no)}
+    ${maintenanceCategory(e.rec.cost_category)||e.rec.source_store==='maintenance_records'?`<a class="btn block" data-maintenance-go href="#/bakim?f=all${e.rec.vehicle_id?'&vehicle_id='+encodeURIComponent(e.rec.vehicle_id):''}">Araç bakım geçmişinde göster →</a>`:''}
     <div data-photos style="margin-top:10px">${atts.length ? "" : '<span class="muted small">Fiş fotoğrafı yok</span>'}</div>
     ${e.paid === 0 ? '<button class="btn danger block" style="margin-top:12px" data-cancel>Bu alışı iptal et</button>' : '<p class="muted small">Ödemesi olan alış iptal edilemez.</p>'}
     <button class="btn block" style="margin-top:8px" data-close>Kapat</button>`);
   const box = qs("[data-photos]", sh);
+  qs('[data-maintenance-go]',sh)?.addEventListener('click',()=>sheetClose());
   for (const a of atts) box.insertAdjacentHTML("beforeend", await attachmentHTML(a));
   qs("[data-close]", sh).addEventListener("click", () => sheetClose());
   qs("[data-cancel]", sh)?.addEventListener("click", async () => {

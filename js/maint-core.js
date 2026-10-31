@@ -2,6 +2,7 @@
 // Sayaç: araç kartı, sayaç okumaları ve yakıt kayıtlarındaki km/saat; makinede son okumadan sonraki saatlik işler eklenerek tahmin.
 // Son bakım: kurala bağlı bakım kaydı > başlığına uyan bakım kaydı > kuralda elle girilen başlangıç. Kalan km/saat/gün ve tahmini gün hesaplanır.
 import { isActive, todayStr, addDays } from "./core.js";
+import {validDate} from './driver-delivery.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
@@ -77,8 +78,8 @@ export function meterAt(d, v, kind, date) {
 
 const kwList = (rule) => (rule.keywords ? String(rule.keywords).split(",") : [fold(rule.title).split(/\s+/).filter((w) => w.length >= 3).slice(0, 2).join(" ")]).map((k) => fold(k).trim()).filter(Boolean);
 
-export function lastDone(d, v, rule) {
-  const ms = live(d, "maintenance_records").filter((m) => m.vehicle_id === v.id && m.status !== "Açık" && m.status !== "Parça Bekliyor").sort((a, b) => b.date.localeCompare(a.date));
+export function lastDone(d, v, rule, {today=todayStr()}={}) {
+  const ms = live(d, "maintenance_records").filter((m) => m.vehicle_id === v.id && m.status === "Tamamlandı" && validDate(m.date) && m.date<=today).sort((a, b) => b.date.localeCompare(a.date));
   const kws = kwList(rule);
   const m = ms.find((x) => x.service_rule_id === rule.id) || ms.find((x) => { const t = fold([x.maint_type, x.description].join(" ")); return kws.some((k) => t.includes(k)); });
   const base = rule.last && (rule.last.date || rule.last.km || rule.last.hours) ? rule.last : null;
@@ -88,7 +89,7 @@ export function lastDone(d, v, rule) {
 }
 
 export function ruleStatus(d, v, rule, { today = todayStr() } = {}) {
-  const last = lastDone(d, v, rule);
+  const last = lastDone(d, v, rule, {today});
   const km = rule.every_km ? meterNow(d, v, "km", { today }) : null;
   const hr = rule.every_hours ? meterNow(d, v, "hours", { today }) : null;
   const out = { rule, last, km, hr, leftKm: null, leftHours: null, leftDays: null, estDays: null, state: "?", text: "" };

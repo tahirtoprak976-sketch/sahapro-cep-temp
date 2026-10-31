@@ -23,6 +23,7 @@ on:
       - feat/solo-work-day-review-87
       - fix/solo-integrity-review-88
       - feat/solo-fleet-document-countdown-89
+      - fix/solo-maintenance-expense-link-90
 
 permissions:
   contents: read
@@ -105,7 +106,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown)
+          suites=(secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -287,6 +288,36 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref ad6e5b47dee4fa6aff9bc0006d22ae75664de86c
+
+      - name: Verify installed live v3.9.89 to maintenance history preservation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e583a2f75fb3795af0a414bb204df77926213612
+
+      - name: Reproduce maintenance visibility, source photo and servicing clock defects on unchanged v3.9.89
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          maintenance_baseline=$(mktemp -d /tmp/solo-maintenance89-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive e583a2f75fb3795af0a414bb204df77926213612 | tar -x -C "$maintenance_baseline"
+          python3 -m http.server 8857 --bind 127.0.0.1 --directory "$maintenance_baseline" > /tmp/solo-maintenance89-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$maintenance_baseline"' EXIT
+          python3 - <<'PYCODE'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8857/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYCODE
+          /tmp/solo-e2e-venv/bin/python tools/e2e/maintenance_expense_history.py http://localhost:8857/ --baseline-proof --artifacts /tmp/solo-maintenance89-baseline
 
       - name: Reproduce eight write-boundary findings on unchanged live v3.9.87
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
@@ -535,6 +566,8 @@ jobs:
             /tmp/solo-report-clarity/*.csv
             /tmp/solo-work-entry/*.png
             /tmp/solo-fleet-documents89/*
+            /tmp/solo-maintenance90/*
+            /tmp/solo-maintenance89-baseline/*
             /tmp/solo-integrity88/*
             /tmp/solo-integrity88-baseline/*
             /tmp/solo-finance-integrity/*

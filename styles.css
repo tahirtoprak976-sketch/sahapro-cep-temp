@@ -1229,4 +1229,10 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 [data-fleet-list] .li{display:grid;grid-template-columns:38px minmax(0,1fr)}
 [data-fleet-list] .li>.grow{grid-column:2;min-width:0}
 [data-fleet-list] .fleet-doc-badges{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.maintenance-source-links{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-2px 0 14px;min-width:0;overflow-wrap:anywhere}
+.maintenance-source-links .notice{width:100%;min-width:0}.maintenance-source-links .badge{white-space:normal}
+[data-maintenance-related] .li{display:grid;grid-template-columns:38px minmax(0,1fr)}
+[data-maintenance-related] .li>.grow{grid-column:2;min-width:0}
+[data-maintenance-related] .li>.badge{grid-column:2;justify-self:start;white-space:normal;max-width:100%}
+@media(max-width:420px){[data-maintenance-summary] .work-explorer-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}[data-maintenance-summary] .work-explorer-metrics>div:last-child{grid-column:1/-1}}
 @media(min-width:760px){.fleet-doc-stats{grid-template-columns:repeat(4,minmax(0,1fr))}}

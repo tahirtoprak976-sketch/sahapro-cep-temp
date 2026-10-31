@@ -5,6 +5,8 @@ import {recordNoteText} from './record-notes.js';
 import {recordSourceHTML} from './record-notes-ui.js';
 import {driverCashContextHTML} from "./driver-cash-context.js";
 import {documentDetailCountdown,mountDocumentCountdown,mountVehicleDocuments} from './fleet-document-ui.js';
+import {maintenanceHistory,readMaintenanceData} from './maintenance-history-core.js';
+import {maintenanceSourcesHTML,watchMaintenanceHistory} from './maintenance-history-ui.js';
 import {
   workFinancials,
   operatingResult,
@@ -152,6 +154,7 @@ function haulCard(v, over) {
   </div>`;
 }
 export const FIELD_LABELS = {
+  history_origin: 'Kayıt kaynağı',
   date: "Tarih",
   name: "Ad / Ünvan",
   type: "Tür",
@@ -1131,6 +1134,17 @@ async function card(ctx) {
       el.innerHTML = `<button class="btn primary" data-go="#/raporlar?store=work_records&${key}=${id}">İş Geçmişi Raporu</button><button class="btn" data-go="#/raporlar?store=documents&${key}=${id}">Evrak Raporu</button>`;
       return;
     }
+    if(s==='maintenance_records'){
+      const rows=maintenanceHistory(await readMaintenanceData(db)).filter(x=>x[key]===id);
+      el.innerHTML=`<div class="section-title">Bakım / Arıza (${rows.length})</div><div class="field-actions"><a class="btn sm" href="#/bakim?f=all&vehicle_id=${encodeURIComponent(id)}">Tüm bakım geçmişi</a><a class="btn sm" href="#/detayli-rapor?k=bakim&id=${encodeURIComponent(id)}&p=all">Bakım Raporu / PDF</a></div><p class="small muted">Esnaf ve bakım giderleri dahildir; bağlı maliyet bir kez gösterilir. Ödeme, bakımın tamamlandığı anlamına gelmez.</p><div data-related data-maintenance-related></div>`;
+      await watchMaintenanceHistory(db,qs('[data-related]',el),(data,error)=>{
+        const holder=qs('[data-related]',el);if(!holder)return;
+        if(error){holder.innerHTML=ui.notice('warn','Bakım geçmişi okunamadı; ekranı yeniden açın.');return;}
+        const current=maintenanceHistory(data).filter(x=>x[key]===id);qs('.section-title',el).textContent='Bakım / Arıza ('+current.length+')';
+        pagedRender(holder,current,x=>li({href:x.history_href,t1:esc(core.trDate(x.date)+' · '+(x.maint_type||'Bakım / Onarım')),t2:esc(x.description||''),badgeHtml:ui.badge(x.history_unknown_status?'İş durumu belirtilmemiş':x.status||'Açık')})+maintenanceSourcesHTML(x));
+      });
+      return;
+    }
     let rows = (await db.listActive(s)).filter(
       (x) => x[key] === id || (s === "documents" && x.owner_id === id),
     );
@@ -1323,8 +1337,8 @@ ${fSelect(
     const sourceStore = ["dump_work", "quarry_work"].includes(f.store)
       ? "work_records"
       : f.store;
-    const financialData = sourceStore === "work_records" ? await db.dumpAll() : null;
-    const records = (financialData ? financialData.work_records.filter(core.isActive) : await db.listActive(sourceStore)).filter((r) =>
+    const financialData = ['work_records','maintenance_records'].includes(sourceStore) ? await db.dumpAll() : null;
+    const records = (sourceStore==='maintenance_records'?maintenanceHistory(financialData).map(r=>({...r,amount:r.cost,gross_total:r.cost,grand_total:r.cost,total:r.cost,price_snapshot:null,status:r.history_unknown_status?'İş durumu belirtilmemiş':r.status})):financialData ? financialData.work_records.filter(core.isActive) : await db.listActive(sourceStore)).filter((r) =>
       f.store === "dump_work"
         ? r.dump_site_id || r.dump_area
         : f.store === "quarry_work"
@@ -1370,11 +1384,12 @@ ${fSelect(
     }
     const pendingFuel=sourceStore==="fuel_records"?pendingFuelSummary({pending_fuel_records:filterRecords((await db.listActive("pending_fuel_records")).map(r=>({...r,ownership:byId[r.vehicle_id]?.ownership})),f)}):{count:0,warning:""};
     const financialReview = rows.filter(r => r.financial_review).length;
+    const maintenanceUnknown=sourceStore==='maintenance_records'?rows.filter(r=>r.cost==null).length:0;
     const summary = `${rows.length} kayıt · ${Object.entries(units)
       .map(([u, n]) => core.fmtNum(n) + " " + u)
       .join(
         " · ",
-      )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}${financialReview ? ` · ⚠ ${financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi, kaynakları kontrol edin.` : ""}`;
+      )}${liters ? " · " + core.fmtNum(liters) + " Lt" : ""}${amount ? " · " + core.fmtTL(core.fromKurus(amount)) + " TL" : ""}${maintenanceUnknown?' · '+maintenanceUnknown+' kayıtta maliyet belirtilmemiş / kaynak kontrolü gerekiyor; yalnız bilinen toplam gösterildi.':''}${financialReview ? ` · ⚠ ${financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı tutarlar korunarak gösterildi, kaynakları kontrol edin.` : ""}`;
     if (f.detail === "ÖZET") {
       const groups = groupRecords(rows, f.group || "date");
       table = {
@@ -1607,6 +1622,7 @@ function reportKeys(store, audience = "internal") {
       "description",
       "status",
       "cost",
+      "history_origin",
     ],
     expense_records: [
       "date",

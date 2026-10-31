@@ -88,7 +88,7 @@ with sync_playwright() as p:
  pg.click('[data-history-clear]');pg.wait_for_function("()=>document.querySelectorAll('[data-operation-record]').length===41")
  assert snapshot()==before
  print('PASS archived/missing filter IDs remain explicit, customer search and exact date range work; invalid calendar date blocks results/export without writes',flush=True)
- visit('bakim');assert records().count()==3 and '123,45 ₺' in summary() and '2 kaydın maliyeti girilmiş' in summary() and '1 kaydın maliyeti belirtilmemiş' in summary()
+ visit('bakim',f='open');assert records().count()==3 and '123,45 ₺' in summary() and '2 kaydın maliyeti girilmiş' in summary() and '1 kaydın maliyeti belirtilmemiş' in summary()
  assert 'Maliyet belirtilmedi' not in pg.locator('[data-operation-record="m-zero"]').text_content() and '0,00 ₺ kayıtlı maliyet' in pg.locator('[data-operation-record="m-zero"]').text_content()
  assert 'Maliyet belirtilmedi' in pg.locator('[data-operation-record="m-missing"]').text_content()
  pg.get_by_role('button',name='Tamamlanan',exact=True).click();pg.wait_for_function("()=>document.querySelectorAll('[data-operation-record]').length===1")

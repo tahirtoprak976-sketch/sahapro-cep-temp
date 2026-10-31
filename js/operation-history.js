@@ -11,7 +11,7 @@ export function operationURL(kind,query={},patch={}){
 }
 export function operationQuery(kind,query={},today=todayStr()){
  const state=Object.fromEntries(keys.map(k=>[k,String(query[k]||'')]));
- state.f=kind==='maintenance'&&['all','done','open'].includes(state.f)?state.f:kind==='maintenance'?'open':'all';
+ state.f=kind==='maintenance'&&['all','done','open'].includes(state.f)?state.f:'all';
  state.period=['today','week','month'].includes(state.period)?state.period:'all';
  state.to=state.to||state.from;
  state.error='';
@@ -32,7 +32,7 @@ export function exploreOperations(kind,all,names={},query={},today=todayStr()){
   if((state.from||state.to)&&!realDate(r.date))return false;
   if(state.from&&r.date<state.from||state.to&&r.date>state.to)return false;
   for(const k of ['vehicle_id','personnel_id'])if(state[k]&&r[k]!==state[k])return false;
-  if(kind==='maintenance'&&(state.f==='open'&&r.status==='Tamamlandı'||state.f==='done'&&r.status!=='Tamamlandı'))return false;
+  if(kind==='maintenance'&&(state.f==='open'&&(r.status==='Tamamlandı'||r.history_unknown_status)||state.f==='done'&&r.status!=='Tamamlandı'))return false;
   if(state.source&&r.fuel_source!==state.source)return false;
   return matchSearch([operationName(names,'vehicles',r.vehicle_id),operationName(names,'personnel',r.personnel_id),names.customers?.[r.customer_id],recordNoteText(r,'description',names,kind),r.fuel_source,r.pump_no,r.receipt,r.maint_type,r.status,r.severity,r.part,r.service_company,r.km_hours].filter(Boolean).join(' '),state.q);
  }).sort((a,b)=>String(realDate(b.date)?b.date:'').localeCompare(String(realDate(a.date)?a.date:''))||String(b.created_at||'').localeCompare(String(a.created_at||''))||String(a.id).localeCompare(String(b.id)));
@@ -50,9 +50,9 @@ export function exploreOperations(kind,all,names={},query={},today=todayStr()){
   undated:rows.filter(r=>!realDate(r.date)).length,days:new Set(rows.map(r=>r.date).filter(realDate)).size};
 }
 export function operationCSV(kind,rows,names={}){
- const lines=[kind==='fuel'?['Tarih','Araç','Personel','Litre','Kaynak','Mazotu veren müşteri','Fiş','Açıklama']:['Tarih','Araç','Personel','Kayıt tipi','Durum','Önem','Kayıtlı maliyet (TL)','Servis','Parça','Açıklama']];
+ const lines=[kind==='fuel'?['Tarih','Araç','Personel','Litre','Kaynak','Mazotu veren müşteri','Fiş','Açıklama']:['Tarih','Araç','Personel','Kayıt tipi','Durum','Önem','Kayıtlı maliyet (TL)','Servis','Parça','Açıklama','Kayıt kaynağı','Kaynak kimliği','Kontrol notu']];
  for(const r of rows){const common=[r.date||'',operationName(names,'vehicles',r.vehicle_id),operationName(names,'personnel',r.personnel_id)];
-  lines.push([...common,...(kind==='fuel'?[r.liters??'',r.fuel_source||'',r.fuel_source==='Müşteri Verdi'?names.customers?.[r.customer_id]||'Belirtilmedi':'',r.receipt||'',recordNoteText(r,'description',names,kind)]:[r.maint_type||'',r.status||'Açık',r.severity||'',r.cost??'',r.service_company||'',r.part||'',recordNoteText(r,'description',names,kind)])]);
+  lines.push([...common,...(kind==='fuel'?[r.liters??'',r.fuel_source||'',r.fuel_source==='Müşteri Verdi'?names.customers?.[r.customer_id]||'Belirtilmedi':'',r.receipt||'',recordNoteText(r,'description',names,kind)]:[r.maint_type||'',r.history_unknown_status?'İş durumu belirtilmemiş':r.status||'Açık',r.severity||'',r.cost??'',r.service_company||'',r.part||'',recordNoteText(r,'description',names,kind),r.history_origin||'Bakım kaydı',r.history_source_id||r.id,(r.history_warnings||[]).join(' · ')])]);
  }
  return '\uFEFF'+lines.map(row=>row.map(csvCell).join(';')).join('\r\n');
 }
