@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.95** — 01.11.2026
+Sürüm: **SAHAPRO SOLO v3.9.96** — 01.11.2026
+
+Araç türü genel kalmış Kamyonet kartları fiyat kapsamına araç adından alınır; açık ad/tür çelişkisi ve bilinmeyen tür engellenir. Önizleme her iş için eşleştirme dayanağını gösterir. [Ayrıntı ve doğrulama](docs/VEHICLE_PRICE_TYPE_v3996.md).
 
 Asistan fiyat uygulaması mevcut fiyatlı işleri ve önizlenen şantiye bağlantılarını aynı onayda günceller; sıfır iş değişirken başarı bildirmez. Kaynak işte ana para/KDV/toplam ve işlem sonucunda etkilenen işler görünür. Finans artık açık dönem seçimi, son kayıtlı aya geçiş ve tüm tarihlerden genel alacağı gösterir. [Ayrıntı ve doğrulama](docs/PRICE_APPLICATION_FINANCE_v3995.md).
 

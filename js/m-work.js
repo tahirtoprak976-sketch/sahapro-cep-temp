@@ -1,3 +1,4 @@
+import {priceVehicleContext} from "./core.js";
 import {slipWorkState,slipWorkCandidates} from './digital-slip-core.js';
 import {createDigitalSlip,updateDigitalSlipDraft} from './digital-slip-db.js';
 import { prepareAttachment } from "./attachment-safety.js";
@@ -751,7 +752,7 @@ async function workForm(ctx, editId) {
         const jobWill = (w) => { const j = J.jobFor(dJob, w); return j && !j.ambiguous && (val.job_scope || "dahil") !== "ekstra"; }; // sözleşme fiyatlayacaksa sorma
         if (!(val.manual_price !== "" && val.manual_price != null) && !jobWill(fields) && !fuelState.only_pay) {
           const { askPriceSnapshot } = await import("./price-pick.js");
-          const r = await askPriceSnapshot(await db.listActive("price_book"), { ...fields, vehicle_type: vehicles.find((v) => v.id === fields.vehicle_id)?.type },
+          const r = await askPriceSnapshot(await db.listActive("price_book"), priceVehicleContext(fields,vehicles.find((v) => v.id === fields.vehicle_id)),
             { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${fields.date} · ${fields.quantity} ${fields.unit}`, memo: priceMemo });
           if (r.cancel) return;
           fields.price_snapshot = r.snap;
@@ -808,7 +809,7 @@ async function workForm(ctx, editId) {
         else {
           const { priceSnapshot } = await import("./business.js");
           const j = J.jobFor(dAll, base);
-          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: J.extraSnapshot(j.site, base) || priceSnapshot(base, await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
+          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: J.extraSnapshot(j.site, base) || priceSnapshot(priceVehicleContext(base,vehicles.find(v=>v.id===base.vehicle_id)), await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
         }
       }
       const extras = batchActive() ? extraRows() : [];
@@ -848,7 +849,7 @@ async function workForm(ctx, editId) {
           const rate = kdvRateOf(row.x_manual_kdv !== "" ? row.x_manual_kdv : val.manual_kdv) ?? NaN; // boş → geçersiz (sessizce %0 olmaz)
           if ((manual === "" || manual == null) && !(J.jobFor(dJob, r) && !J.jobFor(dJob, r).ambiguous && (val.job_scope || "dahil") !== "ekstra") && !workFuelState(dAll,r).only_pay) {
             const { askPriceSnapshot } = await import("./price-pick.js");
-            const pr = await askPriceSnapshot(prices, r, crane, { label: `${r.date} · ${r.quantity} ${r.unit}`, memo: priceMemo });
+            const pr = await askPriceSnapshot(prices, priceVehicleContext(r,vehicles.find(v=>v.id===r.vehicle_id)), crane, { label: `${r.date} · ${r.quantity} ${r.unit}`, memo: priceMemo });
             if (pr.cancel) return;
             r.price_snapshot = pr.snap;
           }

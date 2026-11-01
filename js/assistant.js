@@ -1,3 +1,4 @@
+import {priceVehicleContext} from "./core.js";
 import * as priceCore from "./price-rule-core.js";
 import {assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
 import {bindAssistantReview,openReviewCard} from "./assistant-review-ui.js";
@@ -1038,7 +1039,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         if (jp && jp.kind !== "ambiguous" && (jp.kind !== "extra" || jp.rate) && !r0.fuelAllowance) { card.dataset.priceAmb = ""; box.innerHTML = "📐 <b>" + esc(jp.text) + "</b>" + (jp.kind === "sefer" ? ` = <b>${fmtTL(Number(JOB.dealOf(jp.site).price) * q)} ₺</b>` : jp.rate ? ` = <b>${fmtTL(Number(jp.rate.price) * q)} ₺</b>` : ""); return; }
         const jpNote = jp ? `<div class="small">📐 ${esc(jp.text)}</div>` : "";
         const dateSure = !(r0.dateUnsure && g("date") === r0.date);
-        const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
+        const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, vehicle_name: veh?.name, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
         card.dataset.priceAmb = dec.ambiguous ? "1" : "";
         box.innerHTML = dec.rule ? `💰 <b>Fiyat listesinden</b> — ${esc(priceSummary(dec.rule, { date: g("date"), quantity: q, unit: g("unit") }))}${r0.fuelAllowance?.only_pay ? " · <b>Bu müşteride ücret yalnız mazot: hakedişe 0 ₺ yazılır</b>" : ""}`
           : dec.ambiguous ? `❓ <b>Fiyat seçimi gerekli:</b> ${esc(dec.reason)} — kaydederken sorulacak`
@@ -1073,7 +1074,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         card._priceScopeKey=scopeKey;
         binds=binds.filter(id=>rows.some(r=>r.status==='bind'&&r.work.id===id));
         for(const name of ['apply_unpriced','apply_differ'])qs('[name='+name+']',card).disabled=onlyRule;
-        area.innerHTML=`<details open data-price-work-review><summary>Mevcut işler (${rows.length}) · tarih ve kapsam kontrolü</summary><div style="max-height:320px;overflow:auto">${rows.map(row=>`<article class="small" data-price-work="${esc(row.work.id)}" style="border-bottom:1px solid var(--line);padding:8px 0">${row.status==='bind'?`<label class="history-check"><input type="checkbox" data-price-bind value="${esc(row.work.id)}" ${!onlyRule&&binds.includes(row.work.id)?'checked':''} ${onlyRule?'disabled':''}><b>${esc(row.reason)}</b></label>`:`<b>${esc(row.reason)}</b>`}<div>${esc(trDate(row.work.date))} · ${esc(row.vehicle)} · ${fmtNum(row.work.quantity)} ${esc(row.work.unit)} · ${row.work.price_snapshot?.unit_price!=null?fmtTL(row.work.price_snapshot.unit_price)+' ₺':'fiyatsız'}${row.status==='blocked'||row.status==='already'||onlyRule?' · değişmeyecek':` → ${fmtTL(rule.price)} ₺ / ${esc(rule.unit)}${row.status==='bind'&&!binds.includes(row.work.id)?' (seçilirse)':''}`}</div><div class="tiny muted">${esc([row.work.from_place,row.work.to_place,row.work.description].filter(Boolean).join(' · ').slice(0,280))}</div><a href="#/isler/${esc(row.work.id)}">Kaynak işi aç ›</a></article>`).join('')||'<p class="small">Bu müşteri ve birimde iş kaydı yok.</p>'}</div></details>`;
+        area.innerHTML=`<details open data-price-work-review><summary>Mevcut işler (${rows.length}) · tarih ve kapsam kontrolü</summary><div style="max-height:320px;overflow:auto">${rows.map(row=>`<article class="small" data-price-work="${esc(row.work.id)}" style="border-bottom:1px solid var(--line);padding:8px 0">${row.status==='bind'?`<label class="history-check"><input type="checkbox" data-price-bind value="${esc(row.work.id)}" ${binds.includes(row.work.id)?'checked':''} ${onlyRule?'disabled':''}><b>${esc(row.reason)}</b></label>`:`<b>${esc(row.reason)}</b>`}<div>${esc(trDate(row.work.date))} · ${esc(row.vehicle)} · ${fmtNum(row.work.quantity)} ${esc(row.work.unit)} · ${row.work.price_snapshot?.unit_price!=null?fmtTL(row.work.price_snapshot.unit_price)+' ₺':'fiyatsız'}${row.status==='blocked'||row.status==='already'||onlyRule?' · değişmeyecek':` → ${fmtTL(rule.price)} ₺ / ${esc(rule.unit)}${row.status==='bind'&&!binds.includes(row.work.id)?' (seçilirse)':''}`}</div><div class="tiny muted" data-price-vehicle>${esc(row.vehicleNote)}</div><div class="tiny muted">${esc([row.work.from_place,row.work.to_place,row.work.description].filter(Boolean).join(' · ').slice(0,280))}</div><a href="#/isler/${esc(row.work.id)}">Kaynak işi aç ›</a></article>`).join('')||'<p class="small">Bu müşteri ve birimde iş kaydı yok.</p>'}</div></details>`;
         const options={unpriced:!onlyRule&&qs('[name=apply_unpriced]',card).checked,differ:!onlyRule&&qs('[name=apply_differ]',card).checked,bind_ids:onlyRule?[]:binds,applyExisting:!onlyRule};
         const review=priceCore.priceRuleReview(d,rule,options);
         card._priceReview={rule,options,signature:review.signature};
@@ -1438,7 +1439,7 @@ async function save(ctx, out, v, d, { message, files }) {
             internal_note:'',material:r.material||'',quantity:1,unit:'Sefer',dump_site_id:val(c,'dump_site')||null,quarry_id:null,
             dump_area:(d.dump_sites||[]).find(x=>x.id===val(c,'dump_site'))?.name||r.dump_site_name||'',quarry:'',slip_status:null,slip_no:no,customer_note:'',distance_km:null,source:'asistan'
           },['internal_note']);
-          f.price_snapshot=priceSnapshot(f,prices,crane);Object.assign(f,JOB.applyJob(await db.dumpAll(),f));newWork=f;
+          f.price_snapshot=priceSnapshot(priceVehicleContext(f,veh),prices,crane);Object.assign(f,JOB.applyJob(await db.dumpAll(),f));newWork=f;
         }
         const docFields={category:'Döküm Fişi',date,doc_no:no,title:'Döküm fişi '+no,
           note:[val(c,'tonnage')?val(c,'tonnage')+' ton':'',r.dump_site_name].filter(Boolean).join(' · '),
@@ -1595,19 +1596,19 @@ async function save(ctx, out, v, d, { message, files }) {
         else {
           // Fiyat listesi: eşit öncelikli birden çok kural ya da tarihe göre değişen fiyat + kesin olmayan tarih → SESSİZ SEÇİM YOK
           const wr1 = v.works[Number(c.dataset.i)] || {};
-          const dec = priceDecision(prices, fields, { dateSure: !(wr1.dateUnsure && fields.date === wr1.date) });
+          const dec = priceDecision(prices, priceVehicleContext(fields,veh), { dateSure: !(wr1.dateUnsure && fields.date === wr1.date) });
           if (dec.ambiguous) {
             const pick = await choiceDialog("Hangi fiyat kuralı uygulansın?", `${fields.date} · ${(d.customers || []).find((x) => x.id === fields.customer_id)?.name || ""} · ${fields.quantity} ${fields.unit}: ${dec.reason}`,
               [...dec.candidates.map((x) => [x.id, `${fmtTL(x.price)} ₺ · ${x.price_source}${x.valid_from ? " · " + x.valid_from + "'den" : ""}${x.valid_to ? " " + x.valid_to + "'e kadar" : ""} · KDV ${x.kdv_included ? "dahil" : "hariç"} %${x.kdv_rate}`]), ["", "Fiyatsız kaydet (sonra fiyatlandırırım)"]]);
             if (pick == null) continue;
-            fields.price_snapshot = pick ? priceSnapshot(fields, prices.filter((x) => x.id === pick).map((x) => ({ ...x, valid_from: null, valid_to: null })), crane) : null;
+            fields.price_snapshot = pick ? priceSnapshot(priceVehicleContext(fields,veh), prices.filter((x) => x.id === pick).map((x) => ({ ...x, valid_from: null, valid_to: null })), crane) : null;
             if (fields.price_snapshot) fields.price_snapshot.price_choice = "kullanıcı seçti: " + dec.reason;
-          } else fields.price_snapshot = priceSnapshot(fields, prices, crane);
+          } else fields.price_snapshot = priceSnapshot(priceVehicleContext(fields,veh), prices, crane);
         }
         // Mazot karşılığı (Kılıç: sefer başı 75 L, ücret yalnız mazot) — kartta değişen müşteri/miktara göre yeniden hesaplanır
         if(!pendingPrice){ const dNow = await db.dumpAll(); Object.assign(fields, applyFuelPay(dNow, fields, message)); const { applyYard } = await import("./yard-core.js"); Object.assign(fields, applyYard(dNow, fields));
           Object.assign(fields, JOB.applyJob(dNow, fields, { extra: !!qs("[name=job_extra]", c)?.checked }));
-          if (fields.job_extra && !fields.price_snapshot) fields.price_snapshot = priceSnapshot(fields, prices, crane); }
+          if (fields.job_extra && !fields.price_snapshot) fields.price_snapshot = priceSnapshot(priceVehicleContext(fields,veh), prices, crane); }
         // Aynı gün/araç/müşteri/miktar: gerçekten aynı iş mi? İki şoför kaydı (ayrı kimlik) ya da farklı fiş no → ayrı iştir, sorulmaz
         const slipK = (x) => String(x || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
         const dup = existingWorks.some((w) => w.date === fields.date && w.vehicle_id === fields.vehicle_id && w.customer_id === fields.customer_id && w.work_type === fields.work_type && Number(w.quantity) === fields.quantity && w.unit===fields.unit && (w.site_id||null)===(fields.site_id||null) && String(w.material||'').trim().toLocaleLowerCase('tr-TR')===String(fields.material||'').trim().toLocaleLowerCase('tr-TR')

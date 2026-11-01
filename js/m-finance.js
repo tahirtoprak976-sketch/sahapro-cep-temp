@@ -891,6 +891,7 @@ async function hakedisNew(ctx) {
                 unit: w.unit,
                 date: w.date,
                 material: w.material,
+                vehicle_name: vehicles.find((v) => v.id === w.vehicle_id)?.name,
                 vehicle_type:
                   vehicles.find((v) => v.id === w.vehicle_id)?.type ||
                   w.vehicle_type,
@@ -908,7 +909,7 @@ async function hakedisNew(ctx) {
             ${isCrane ? '<span class="badge accent">vinç</span>' : `<input type="number" data-price="${w.id}" value="${price ? price.price : ""}" placeholder="₺" step="any" style="width:100%;min-height:40px;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);padding:6px 8px;text-align:right">`}
           </div>
         </div>
-        ${price ? "" : (() => { const dec = priceDecision(pricebook, { customer_id: w.customer_id, site_id: w.site_id, vehicle_id: w.vehicle_id, work_type: w.work_type, unit: w.unit, date: w.date, material: w.material, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type || w.vehicle_type, distance_km: w.distance_km });
+        ${price ? "" : (() => { const dec = priceDecision(pricebook, { customer_id: w.customer_id, site_id: w.site_id, vehicle_id: w.vehicle_id, work_type: w.work_type, unit: w.unit, date: w.date, material: w.material, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type || w.vehicle_type, vehicle_name: vehicles.find((v) => v.id === w.vehicle_id)?.name, distance_km: w.distance_km });
           return dec.ambiguous ? `<div class="tiny" style="color:var(--warn);margin-top:5px" data-amb="${w.id}">⚠ Birden çok fiyat kuralı uyuyor — seçin ya da el ile girin:</div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${dec.candidates.map((c) => `<button type="button" class="chip" data-pickprice="${w.id}" data-v="${c.price}" data-kdv="${c.kdv_rate}" data-inc="${c.kdv_included ? 1 : 0}">${esc(candidateLabel(c))}</button>`).join("")}</div>` : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'; })()}
         <p class="small" data-hakedis-row-error="${esc(w.id)}" role="alert" hidden></p>
       </div>`;
@@ -937,6 +938,7 @@ async function hakedisNew(ctx) {
               unit: w.unit,
               date: w.date,
               material: w.material,
+              vehicle_name: vehicles.find((v) => v.id === w.vehicle_id)?.name,
               vehicle_type:
                 vehicles.find((v) => v.id === w.vehicle_id)?.type ||
                 w.vehicle_type,

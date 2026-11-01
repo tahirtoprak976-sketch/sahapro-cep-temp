@@ -4,7 +4,7 @@ import {pendingFuelSummary} from './historical-fuel.js';
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.95";
+export const APP_VERSION = "SAHAPRO SOLO v3.9.96";
 export const SCHEMA_VERSION = 7;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -369,8 +369,8 @@ export const PRICE_VEHICLE_GROUPS = Object.assign(Object.create(null), {
   TIR: { label: "Yalnız Tır / Çekici", types: ["TIR"] },
   VAN: { label: "Yalnız Kamyonet", types: ["VAN"] },
 });
-export function transportVehicleType(type) {
-  const key = String(type || "")
+function vehicleKindKey(value) {
+  return String(value || "")
     .toLocaleLowerCase("tr-TR")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -378,9 +378,11 @@ export function transportVehicleType(type) {
     .replace(/[\/()_-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+function typedTransportKind(key) {
   if (
     [
-      "kamyon",
+      "truck", "kamyon",
       "damperli kamyon",
       "hafriyat kamyonu",
       "kamyon damperli",
@@ -389,8 +391,36 @@ export function transportVehicleType(type) {
     return "TRUCK";
   if (["tir", "cekici", "tir cekici", "damperli tir"].includes(key))
     return "TIR";
-  if (["kamyonet"].includes(key)) return "VAN";
+  if (["van", "kamyonet", "pikap", "pickup", "pick up", "panelvan", "panel van"].includes(key)) return "VAN";
   return null;
+}
+const TRANSPORT_LABELS = {TRUCK:"Kamyon", TIR:"Tır / Çekici", VAN:"Kamyonet"};
+// Only the vehicle card's name may supplement an empty/generic card type.
+// A plate, job description or model guess is never evidence of vehicle kind.
+export function transportVehicleInfo(type, name = "") {
+  const key = vehicleKindKey(type), nameKey = vehicleKindKey(name);
+  const named = new Set();
+  for (const word of nameKey.split(" ")) {
+    const kind = typedTransportKind(word);
+    if (kind) named.add(kind);
+  }
+  if (/\bpick up\b|\bpanel van\b/.test(nameKey)) named.add("VAN");
+  const typed = typedTransportKind(key);
+  const generic = ["", "arac makine", "diger"].includes(key);
+  if (named.size > 1 || (typed && named.size === 1 && !named.has(typed)))
+    return {type:null, note:`Araç kartında ad ve tür çelişiyor: ${name} / ${type || "belirtilmemiş"}`, conflict:true};
+  if (typed) return {type:typed, note:`Araç türü: ${TRANSPORT_LABELS[typed]}`, conflict:false};
+  if (generic && named.size === 1) {
+    const resolved = [...named][0];
+    return {type:resolved, note:`${TRANSPORT_LABELS[resolved]} — araç adından; kart türü: ${type || "belirtilmemiş"}`, conflict:false};
+  }
+  return {type:null, note:`Araç türü doğrulanamadı; kart türü: ${type || "belirtilmemiş"}`, conflict:false};
+}
+export function transportVehicleType(type, name = "") {
+  return transportVehicleInfo(type, name).type;
+}
+export function priceVehicleContext(work, vehicle) {
+  return {...work, vehicle_type:vehicle?.type || work.vehicle_type || null, vehicle_name:vehicle?.name || null};
 }
 export function priceVehicleScope(entry, vehicleNames = {}) {
   if (entry.vehicle_id)
@@ -418,7 +448,7 @@ export function rankPrices(entries, ctx, opts = {}) {
     if (
       e.vehicle_group &&
       !PRICE_VEHICLE_GROUPS[e.vehicle_group]?.types.includes(
-        transportVehicleType(ctx.vehicle_type),
+        transportVehicleType(ctx.vehicle_type, ctx.vehicle_name),
       )
     )
       continue;

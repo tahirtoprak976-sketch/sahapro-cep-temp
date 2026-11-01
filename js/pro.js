@@ -1,3 +1,4 @@
+import {priceVehicleContext} from "./core.js";
 import { attachmentHTML } from "./attachment-ui.js";
 import {financialResultText,financialResultWarning} from './cost-completeness.js';
 import {pendingFuelSummary} from './historical-fuel.js';
@@ -1715,7 +1716,7 @@ export async function augment(ctx) {
         try {
           const vehicle = await db.get("vehicles", r.vehicle_id);
           const { askPriceSnapshot } = await import("./price-pick.js");
-          const pr = await askPriceSnapshot(await db.listActive("price_book"), { ...r, vehicle_type: vehicle?.type },
+          const pr = await askPriceSnapshot(await db.listActive("price_book"), priceVehicleContext(r,vehicle),
             { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${r.date} · ${r.quantity} ${r.unit}` });
           if (pr.cancel) return;
           const snap = pr.snap;
@@ -1753,12 +1754,9 @@ export async function augment(ctx) {
     for (const w of await db.listActive("work_records"))
       if (!w.price_snapshot) {
         // Eşit öncelikli farklı kural: toplu uygulamada sessizce seçilmez, atlanır (iş açılıp tek tek seçilir)
-        if (priceDecision(entries, { ...w, vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type }).ambiguous) { amb++; continue; }
+        if (priceDecision(entries, priceVehicleContext(w,vehicles.find((v) => v.id === w.vehicle_id))).ambiguous) { amb++; continue; }
         const snap = priceSnapshot(
-          {
-            ...w,
-            vehicle_type: vehicles.find((v) => v.id === w.vehicle_id)?.type,
-          },
+          priceVehicleContext(w,vehicles.find((v) => v.id === w.vehicle_id)),
           entries,
           crane,
         );
