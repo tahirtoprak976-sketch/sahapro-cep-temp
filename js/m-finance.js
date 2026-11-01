@@ -97,16 +97,18 @@ function dumpCostBreakdown(rows) {
 async function hub(ctx) {
   const { root, db } = ctx;
   const today = todayStr();
-  const from = today.slice(0, 8) + "01";
   const d = await db.dumpAll();
-  const { monthlySeries } = await import("./finance-chart.js");
+  const {financePeriod}=await import('./finance-period.js');
+  const selected=financePeriod(d,ctx.query||{},today),{from,to}=selected;
   const { costRows } = await import("./costs-core.js");
-  const monthCosts=costRows(d,{from,to:today});
-  const cur = monthlySeries(d, { today, months: 1, fuelRefPrice: await db.metaGet("fuel_ref_price") })[0];
+  const monthCosts=costRows(d,{from,to});
+  const cur=selected.summary;
+  const {customerVatBreakdowns,receivableVatSummary}=await import('./vat-contract.js');
+  const general=receivableVatSummary(customerVatBreakdowns(d));
   const monthH = cur.work;
   const monthT = cur.collected;
   const monthG = cur.cost;
-  const receipts=(d.cash_records||[]).filter(c=>isActive(c)&&c.cash_type==='Müşteriden Para Alındı'&&c.date>=from&&c.date<=today);
+  const receipts=(d.cash_records||[]).filter(c=>isActive(c)&&c.cash_type==='Müşteriden Para Alındı'&&(!from||c.date>=from)&&c.date<=to);
   const custody=groups=>Math.round(receipts.filter(c=>groups.includes(c.cash_status)).reduce((n,c)=>n+Number(c.amount||0),0)*100)/100;
   const atPersonnel=custody(['PERSONELDE']),waitingHandover=custody(['TESLIM_BILDIRILDI']),atBank=custody(['BANKADA']),atCash=custody(['KASAYA_TESLIM_EDILDI','KASADA']);
   const unknownCustody=receipts.filter(c=>!['PERSONELDE','TESLIM_BILDIRILDI','BANKADA','KASAYA_TESLIM_EDILDI','KASADA'].includes(c.cash_status)).length;
@@ -123,29 +125,33 @@ async function hub(ctx) {
     ["#/fiyat", "🏷", "Fiyat Listesi", "fiyatlar + vinç tarifesi"],
   ];
   root.innerHTML =
-    appbar("Finans", "Bu ay") +
+    appbar("Finans", selected.label) +
     `
+    <section class="card" data-finance-period><label for="finance-month"><b>Dönem: ${esc(selected.label)}</b></label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="finance-month" data-finance-month type="month" value="${esc(selected.month)}" max="${today.slice(0,7)}" style="min-width:0;max-width:100%">${[['month','Bu ay'],['last','Geçen ay'],['3m','Son 3 ay'],['all','Tümü']].map(([key,label])=>`<a class="chip ${selected.period===key&&!selected.automatic&&!ctx.query?.month?'on':''}" href="#/finans?period=${key}">${label}</a>`).join('')}</div><p class="tiny muted">${from?esc(trDate(from))+' – ':''}${esc(trDate(to))} · Aşağıdaki tutarlar seçilen döneme aittir.</p>${selected.automatic?notice('info','Bu ay henüz hareket yok. Son kayıt bulunan '+selected.label+' gösteriliyor.'):''}${selected.invalid?notice('warn','Geçersiz dönem yerine '+selected.label+' gösterildi.'):''}</section>
+    <section class="card" data-finance-general><div class="row between"><b>Genel müşteri alacağı · tüm tarihler</b><a href="#/cari">Cariyi aç ›</a></div>${cariMoneyHTML(general,true)}<p class="tiny muted">Bu tutar dönem filtresinden bağımsızdır. Tahsil edilmemiş müşteri bakiyesidir; kasa mevcudu değildir.</p></section>
     <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${financeCard(fmtTL(monthH), "İş değeri ₺", "accent", "#/cari")}
       ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
     </div>
-    <section class="card" data-finance-custody><h3>Bu ayki tahsilatın parası nerede?</h3>
+    <section class="card" data-finance-custody><h3>${esc(selected.label)} tahsilatının parası nerede?</h3>
       ${kv('Personelde',fmtTL(atPersonnel)+' ₺')}${kv('Teslim bildirildi · onay bekliyor',fmtTL(waitingHandover)+' ₺')}${kv('Kasaya teslim edilmiş',fmtTL(atCash)+' ₺')}${kv('Banka kaydı',fmtTL(atBank)+' ₺')}
-      <p class="small muted">Bunlar bu ayın tahsilat kayıtlarıdır; toplam kasa / banka bakiyesi değildir. Personeldeki para ile kasaya teslim ayrı izlenir.</p>
+      <p class="small muted">Bunlar seçilen dönemin tahsilat kayıtlarıdır; toplam kasa / banka bakiyesi değildir. Personeldeki para ile kasaya teslim ayrı izlenir.</p>
       ${unknownCustody?notice('warn',unknownCustody+' tahsilatta paranın bulunduğu durum kayıtlı değil; kasa/banka toplamına varsayımla eklenmedi.'):''}
       <a class="btn sm" href="#/kasa">Tahsilat ve teslim kayıtlarını incele →</a></section>
     ${cur.financialReview ? notice("warn", `${cur.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) + '<a class="btn sm" href="#/veri-sagligi" data-go="#/veri-sagligi">Veri Sağlığı ›</a>' : ""}
     ${dumpCostBreakdown(monthCosts)}
-    ${pendingFuelSummary(d,{from,to:today}).count?notice("warn",pendingFuelSummary(d,{from,to:today}).warning):""}
+    ${pendingFuelSummary(d,{from,to}).count?notice("warn",pendingFuelSummary(d,{from,to}).warning):""}
     <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
     <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
-    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">Bu ay tahmini kâr (iş − masraf)</span><span data-month-profit class="strong ${!cur.costIncomplete&&cur.profit < 0 ? "danger" : ""}">${cur.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit)+" ₺"}</span></div>
+    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">${esc(selected.label)} tahmini sonuç (iş − masraf)</span><span data-month-profit class="strong ${!cur.costIncomplete&&cur.profit < 0 ? "danger" : ""}">${cur.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit)+" ₺"}</span></div>
       <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
+    ${cur.unpriced?notice('warn',cur.unpriced+' işin fiyatı eksik; iş değeri ve alacak hesabı bu işler tamamlanana kadar eksik görünür.')+'<a class="btn block" href="#/isler?review=unpriced">Fiyatı eksik işleri incele ›</a>':''}
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
     </div>`;
+  qs('[data-finance-month]',root).onchange=e=>{if(e.target.value)ctx.go('#/finans?month='+encodeURIComponent(e.target.value));};
 }
 
 // ============ TEKLİF ============

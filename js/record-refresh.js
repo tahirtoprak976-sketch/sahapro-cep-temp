@@ -65,7 +65,8 @@ export function fuelReadView(parts) {
     (parts[0] === "musteriler" &&
       !parts.includes("new") &&
       !parts.includes("edit")) ||
-    (parts[0] === "mazot-hesaplari" && !parts[1])
+    (parts[0] === "mazot-hesaplari" && !parts[1]) ||
+    (parts[0] === "finans" && !parts[1])
   );
 }
 export async function installRecordRefresh({ db, context, reload }) {

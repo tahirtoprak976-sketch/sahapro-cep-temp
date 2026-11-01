@@ -1704,9 +1704,12 @@ export async function augment(ctx) {
       () => recordCsv(r, names, spec.audience),
     );
     if (store === "work_records") {
-      root.insertAdjacentHTML(
-        "beforeend",
-        `<div class="card">${kv("Fiyat kaynağı", r.price_snapshot?.price_source || "Fiyat yok")}${r.price_snapshot?.price_scope ? kv("Araç kapsamı", r.price_snapshot.price_scope) : ""}${r.price_snapshot ? kv("Birim fiyat", core.fmtTL(r.price_snapshot.unit_price) + " TL") : ""}${r.price_snapshot?.locked ? '<div class="notice">Finansal snapshot kilitli</div>' : '<button class="btn" data-apply-price>Fiyat Uygula</button>'}</div>`,
+      const {workMoney}=await import('./vat-contract.js');
+      const money=workMoney(r,await db.dumpAll());
+      const amounts=money&&!money.ambiguous?`${kv("Ana para (KDV hariç)",core.fmtTL(money.net)+" ₺")}${kv("+ KDV %"+money.rate,core.fmtTL(money.kdv)+" ₺")}${kv("Toplam (KDV dahil)",core.fmtTL(money.gross)+" ₺")}`:money?`${kv("Kayıtlı iş tutarı",core.fmtTL(money.booked)+" ₺")}<p class="notice warn">${money.issues.map(esc).join(' · ')}</p>`:r.price_snapshot?.amount===0?kv("Kayıtlı iş tutarı","0,00 ₺"):'';
+      (root.querySelector('.card')||root).insertAdjacentHTML(
+        root.querySelector('.card')?"afterend":"beforeend",
+        `<div class="card" data-work-price>${amounts}${kv("Fiyat kaynağı", r.price_snapshot?.price_source || "Fiyat yok")}${r.price_snapshot?.price_scope ? kv("Araç kapsamı", r.price_snapshot.price_scope) : ""}${r.price_snapshot ? kv("Birim fiyat", core.fmtTL(r.price_snapshot.unit_price) + " TL") : ""}${r.price_snapshot?.locked ? '<div class="notice">Finansal snapshot kilitli</div>' : '<button class="btn" data-apply-price>Fiyat Uygula</button>'}</div>`,
       );
       qs("[data-apply-price]", root)?.addEventListener("click", async () => {
         try {
