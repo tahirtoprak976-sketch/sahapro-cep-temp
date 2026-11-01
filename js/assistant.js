@@ -1,3 +1,4 @@
+import * as priceCore from "./price-rule-core.js";
 import {assistantPageHTML,mountAssistantPage,conversationHTML} from "./assistant-page-ui.js";
 import {bindAssistantReview,openReviewCard} from "./assistant-review-ui.js";
 import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
@@ -988,7 +989,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>💲 Fiyat kuralı</b> (fiyat listesine)</label>
         <div class="formgrid2">
           <div class="field"><label>Müşteri</label><select name="customer">${opt([...customers, ...(r.new_customer ? [["new:" + r.new_customer, "➕ Yeni: " + r.new_customer]] : [])], r.customer_id || (r.new_customer ? "new:" + r.new_customer : ""), "— tüm müşteriler —")}</select></div>
-          <div class="field"><label>Kapsam</label><select name="scope">${r.scopes.map((s, j) => `<option value="${j}">${esc(s.label)}</option>`).join("")}</select></div>
+          <div class="field"><label>Şantiye</label><select name="price_site"><option value="">— şantiye seçin —</option><option value="__all__" ${!r.site_required ? "selected" : ""}>Bu müşterinin tüm şantiyeleri</option>${sites.map(site=>`<option data-customer="${esc(site.customer_id)}" value="${esc(site.id)}" ${site.id===r.site_id?"selected":""}>${esc(site.name)}</option>`).join("")}</select></div>
+          <div class="field"><label>İş ve araç kapsamı (birlikte)</label><select name="scope">${r.scopes.map((s, j) => `<option value="${j}">${esc(s.label)}</option>`).join("")}</select></div>
           <div class="field"><label>Birim</label><select name="unit">${opt(ASSIST_UNITS.map((u) => [u, u]), r.unit || "")}</select></div>
           <div class="field"><label>Fiyat (₺, KDV hariç)</label><input type="number" step="any" name="price" value="${r.price ?? ""}"></div>
         </div>
@@ -1051,20 +1053,31 @@ function render(ctx, out, v, d, { message, files, ms }) {
       if (ss && ss.value.startsWith("new:")) ss.value = "";
     });
   }
-  // Fiyat kuralı: seçilen kapsama göre eski iş sayıları ve mevcut kural
+  // A site selection is explicit. Changing customer never turns a site rule into a general one.
   for (const card of qsa('.card[data-kind="price"]', out)) {
-    const r = v.prices[Number(card.dataset.i)];
-    const show = () => {
-      const s = r.scopes[Number(qs("[name=scope]", card).value) || 0];
-      const same = qs("[name=customer]", card).value === (r.customer_id || "") && qs("[name=unit]", card).value === r.unit;
-      qs("[data-n-unpriced]", card).textContent = same ? `(${s.unpriced} iş)` : "";
-      qs("[data-n-differ]", card).textContent = same ? `(${s.differ} iş)` : "";
-      qs("[data-scopeinfo]", card).innerHTML = [
-        s.existing ? `Mevcut kural: <b>${fmtTL(s.existing.price)} ₺${s.existing.kdv_included ? " (KDV dahil)" : ""}</b> → yeni fiyatla${s.existing.kdv_included ? " <b>KDV hariç</b> olarak" : ""} güncellenecek` : "Yeni kural eklenecek",
-        s.locked ? `<span class="muted">${s.locked} iş hakedişe girdiği için değişmez</span>` : "",
-      ].filter(Boolean).join(" · ");
+    const r=v.prices[Number(card.dataset.i)], cs=qs('[name=customer]',card), ss=qs('[name=price_site]',card);
+    r._priceKey ||= ctx.core.uuid();
+    const show=()=>{
+      card._priceReview=null;
+      for(const o of ss.options)if(o.dataset.customer)o.hidden=o.disabled=o.dataset.customer!==cs.value;
+      try {
+        const rule=priceCore.priceCardRule(r,{customer_id:cs.value,site_id:ss.value,scope:qs('[name=scope]',card).value,unit:qs('[name=unit]',card).value,price:qs('[name=price]',card).value},d);
+        const options={unpriced:qs('[name=apply_unpriced]',card).checked,differ:qs('[name=apply_differ]',card).checked};
+        const review=priceCore.priceRuleReview(d,rule,options);
+        card._priceReview={rule,options,signature:review.signature};
+        qs('[data-n-unpriced]',card).textContent=`(${review.pw.unpriced.length} iş)`;
+        qs('[data-n-differ]',card).textContent=`(${review.pw.differ.length} iş)`;
+        const site=sites.find(x=>x.id===rule.site_id);
+        qs('[data-scopeinfo]',card).textContent=[site?`Şantiye: ${site.name}`:'Şantiye: bu müşterinin tüm şantiyeleri',r.scopes[Number(qs('[name=scope]',card).value)].label,`${fmtTL(rule.price)} ₺ / ${rule.unit} + KDV`,`${review.todo.length} eski işin fiyatı değişecek`,review.old?`Mevcut kural ${fmtTL(review.old.price)} ₺${review.old.kdv_included?' (KDV dahil)':''}; yeni fiyat KDV hariç`:'Yeni kural eklenecek',review.pw.locked?`${review.pw.locked} hakedişe bağlı iş değişmez`:'',review.missingSite?`${review.missingSite} işte şantiye seçilmemiş; açıklamada yer adı olsa bile bu işlere dokunulmaz.`:''].filter(Boolean).join(' · ');
+        qs('[data-row-issues]',card).textContent=r.issues.filter(x=>!/Şantiye seçin|Şantiye belirsiz/.test(x)).join(' · ');
+      }catch(e){
+        qs('[data-scopeinfo]',card).textContent=e.message;
+        qs('[data-n-unpriced]',card).textContent='';qs('[data-n-differ]',card).textContent='';
+      }
     };
-    for (const n of ["scope", "customer", "unit"]) qs(`[name=${n}]`, card).addEventListener("change", show);
+    cs.addEventListener('change',()=>{ss.value='';show();});
+    for(const el of qsa('select,input',card))el.addEventListener('change',show);
+    qs('[name=price]',card).addEventListener('input',show);
     show();
   }
   let saveInFlight = false;
@@ -1122,6 +1135,10 @@ async function save(ctx, out, v, d, { message, files }) {
   const workflowRows=v._workflow?.read().filter(r=>r.selected)||[];
   const preflightData=await db.dumpAll();
   for(const card of cards){
+    if(card.dataset.kind==='price'){
+      try{const pr=await import('./price-rule-core.js'),review=card._priceReview;if(!review || pr.priceRuleReview(preflightData,review.rule,review.options).signature!==review.signature)throw Error('Fiyat önizlemesi eksik veya işler değişmiş; şantiye ve kapsamı yeniden inceleyin. Hiçbir kart kaydedilmedi.');}
+      catch(e){openReviewCard(card);return toast(e.message,'err');}
+    }
     const k=card.dataset.kind,r=k==='edit'?v.edits[Number(card.dataset.i)]:k==='action'?v.actions[Number(card.dataset.i)]:null;
     if(!r?.rec)continue;
     const current=(preflightData[r.store]||[]).find(x=>x.id===r.id);
@@ -1146,7 +1163,7 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "personnel" ? !val(c, "date") || !val(c, "personnel")
       : k === "ticket" ? !val(c, "ticket_no").trim() || !val(c, "date") || !val(c, "vehicle") || !val(c, "link") || (val(c, "link") === "new" && (!val(c, "customer") || !val(c, "work_type")))
       : k === "doc" ? !val(c, "category") || !val(c, "owner") || !val(c, "doc_no").trim() || !val(c, "date") || documentOwner(val(c, "category")) !== ({ newveh: "vehicle", newper: "personnel" }[val(c, "owner")] || val(c, "owner").split(":")[0]) || (val(c, "owner") === "newveh" && !plateKey(val(c, "nv_plate"))) || (val(c, "owner") === "newper" && val(c, "np_name").trim().split(/\s+/).length < 2) || (val(c, "expiry_date") && val(c, "expiry_date") < val(c, "date")) || (!val(c, "expiry_date") && !NO_EXPIRY.includes(val(c, "category")))
-      : k === "price" ? !(Number(val(c, "price")) > 0) || !val(c, "unit")
+      : k === "price" ? !c._priceReview
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
     if (miss) {
@@ -1286,29 +1303,13 @@ async function save(ctx, out, v, d, { message, files }) {
         continue;
       }
       if (k === "price") {
-        const r = v.prices[Number(c.dataset.i)];
-        const pr = await import("./price-rule-core.js");
-        const s = r.scopes[Number(val(c, "scope")) || 0];
-        const cust = val(c, "customer") ? await ensureCustomer(val(c, "customer")) : null;
-        const rule = { customer_id: cust, site_id: cust === r.customer_id ? r.site_id : null, work_type: s.work_type, vehicle_id: s.vehicle_id,
-          unit: val(c, "unit"), price: Number(val(c, "price")), kdv_rate: 20, kdv_included: false, valid_from: null };
-        let fresh = await db.dumpAll();
-        const old = pr.sameRule(fresh, rule);
-        // Kartta yazan fiyat KDV HARİÇTİR: mevcut kural "KDV dahil" idiyse o da hariçe çevrilir (yoksa yeni fiyat dahil sayılırdı).
-        // Mevcut kuralın KDV oranı korunur (KDV'siz müşteri: %0).
-        if (old && old.kdv_rate != null && Number.isFinite(Number(old.kdv_rate))) rule.kdv_rate = Number(old.kdv_rate);
-        const rec = old
-          ? await db.saveExisting("price_book", old, { price: rule.price, kdv_included: false, kdv_rate: rule.kdv_rate }, "Asistan: fiyat kuralı güncellendi (KDV hariç)")
-          : await db.saveNew("price_book", noteFor('price',r,{...rule,active:true,note:''},['note']), "Asistan: fiyat kuralı");
-        done.price++;
-        const ruleId = rec?.id || old?.id || null;
-        const pw = pr.pastWorksFor(fresh, rule);
-        const todo = [...(qs("[name=apply_unpriced]", c).checked ? pw.unpriced : []), ...(qs("[name=apply_differ]", c).checked ? pw.differ : [])];
-        for (const w of todo) {
-          await db.saveExisting("work_records", w, { price_snapshot: pr.priceSnapshotFor(rule, w, ruleId) }, "Asistan: fiyat kuralı eski işe uygulandı");
-          done.priced++;
-        }
-        prices = await db.listActive("price_book");
+        const r=v.prices[Number(c.dataset.i)], review=c._priceReview;
+        if(!review)throw Error('Fiyat kuralında müşteri, şantiye ve kapsamı tamamlayın.');
+        const {saveReviewedPriceRule}=await import('./price-rule-db.js');
+        const result=snap0.track(await saveReviewedPriceRule(review.rule,review.options,review.signature,r._priceKey,noteFor('price',r,{note:''},['note'])));
+        if(result._existing){done.already++;continue;}
+        done.price++;done.priced+=result.priced;if(result.customerCreated)done.customer++;
+        prices=await db.listActive('price_book');
         continue;
       }
       if (k === "card") {
