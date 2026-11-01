@@ -6,6 +6,8 @@
 
 Fiyat kuralı oluşturmak mevcut iş snapshot'larını tek başına değiştirmez. Eski asistan kartı başlangıçta yalnız fiyatsız işleri değiştiriyor; önceden fiyatlı işleri ayrı, işaretsiz seçenekte bırakıyordu. Şantiye alanı boş olan Tarabya kaynakları da kapsam dışında kalıyordu. Sonuçta “kural kaydedildi” doğru olsa bile kullanıcının hedeflediği işler aynı kalabiliyordu. Kaynak iş detayında birim fiyat gösteriliyor, ana para ve KDV'li toplam görünmüyordu.
 
+Model genel actions/price_book fiyat düzeltmesi döndürürse desteklenen basit kural aynı iş bazlı fiyat önizlemesine dönüştürülür. Karmaşık/tarihli/formüllü kural genel kart editörüyle sessizce değiştirilmez.
+
 “Fiyatı ... yap / güncelle / uygula” gibi açık mevcut iş talimatında artık uygun mevcut fiyatlı ve fiyatsız işler önizlemede seçilir. “Yalnız fiyat listesine kaydet” ayrı ve açık seçenektir; gelecekteki tarife isteğiyle geçmiş işler sessizce karıştırılmaz. Müşteri, şantiye, iş türü, araç ve birim koşulları birlikte korunur.
 
 Her kaynak iş tarih, araç, miktar, mevcut fiyat ve öneriyle görünür. Birim fiyat aynı olsa da kayıtlı iş tutarı eski/bozuk veya KDV dahil esası farklıysa fiyat uygulaması tutarı ve esası yeniden hesaplar; yanlışlıkla zaten doğru diye atlamaz. Şantiye boşsa ve kaynakta seçilen yer geçiyorsa bağlantı önerilir. Tek, açık from_place eşleşmesi önizlemede seçili hazırlanır; yalnız açıklamada geçen yer kullanıcı seçimi ister. Kaynağın müşterisi/araç/iş türü farklıysa veya başka şantiye zaten kayıtlıysa değiştirilmez. Şantiyesi boş dijital fiş bağlantılı iş otomatik bağlanmaz. Hakediş ve mazot/sözleşme korumaları sürer. Her kapsam dışı işte neden gösterilir.

@@ -30,3 +30,12 @@ for(const snapshot of [{unit_price:7000,amount:0},{unit_price:7000,amount:NaN},{
  const stale={...d,work_records:[w('stale',{price_snapshot:snapshot})]};
  assert.equal(priceRuleReview(stale,rule,{unpriced:true,differ:true,applyExisting:true}).todo[0].id,'stale','same unit price with stale amount/basis must be repaired, not labelled already correct');
 }
+
+const {normalizePriceActionPlan}=await import('../js/price-rule-core.js');
+const {validateActions}=await import('../js/assistant-actions.js');
+const priceAction={op:'update',store:'price_book',id:'P',fields:{price:7000}},rules={...d,price_book:[{id:'P',...rule,price:3000,active:true}]};
+const normalized=normalizePriceActionPlan({actions:[priceAction]},rules);
+assert.equal(normalized.actions.length,0);assert.equal(normalized.price_rules[0].price,7000);assert.equal(normalized.price_rules[0].site_id,'T');
+assert.equal(normalizePriceActionPlan({...normalized,actions:[priceAction]},rules).price_rules.length,1);
+assert.equal(validateActions({actions:[priceAction]},{message:'7000 TL yap',d:rules})[0].ok,false);
+for(const extra of [{valid_from:'2026-01-01'},{formula:'CRANE_FIRST_HOUR'},{active:false}])assert.equal(normalizePriceActionPlan({actions:[priceAction]},{...rules,price_book:[{...rules.price_book[0],...extra}]}).actions.length,1);

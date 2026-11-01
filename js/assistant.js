@@ -528,6 +528,9 @@ export async function screen(ctx) {
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = agentResult?.mode==='continue'&&taskForRun?.id===agentResult.task_id?[taskForRun.source,'[DÜZELTME] '+typed].join('\n'):[message, heard].filter(Boolean).join("\n");
+      plan=priceCore.normalizePriceActionPlan(plan,d);
+      assertAssistantPlan(plan);
+      if(agentResult)agentResult={...agentResult,plan};
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
       v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;

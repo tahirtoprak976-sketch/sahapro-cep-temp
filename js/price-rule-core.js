@@ -251,3 +251,19 @@ export function priceApplicationRows(d,rule){
  }
  return out.sort((a,b)=>String(b.work.date).localeCompare(String(a.work.date))||a.work.id.localeCompare(b.work.id));
 }
+
+// Some model responses use the generic card editor for prices. Route supported
+// edits through the same work-level preview; never let an alternate tool silently
+// update only price_book when the user asked to apply a price to existing jobs.
+export function normalizePriceActionPlan(plan,d){
+ const prices=[...(plan.price_rules||[])],actions=[];
+ for(const action of plan.actions||[]){
+  if(action?.op!=='update'||action.store!=='price_book'||!Object.hasOwn(action.fields||{},'price')){actions.push(action);continue;}
+  const old=live(d,'price_book').find(r=>r.id===action.id);
+  const simple=old&&old.active!==false&&!old.formula&&!old.material&&!old.vehicle_type&&!old.valid_from&&!old.valid_to&&old.distance_min==null&&old.distance_max==null&&Object.keys(action.fields).every(k=>k==='price');
+  if(!simple){actions.push(action);continue;}
+  const row={customer_id:old.customer_id||null,site_id:old.site_id||null,work_type:old.work_type||null,vehicle_id:old.vehicle_id||null,vehicle_group:old.vehicle_group||null,unit:old.unit,price:action.fields.price};
+  if(!prices.some(p=>Number(p.price)===Number(row.price)&&(p.customer_id||null)===(row.customer_id||null)&&(p.site_id||null)===(row.site_id||null)&&p.unit===row.unit))prices.push(row);
+ }
+ return {...plan,price_rules:prices,actions};
+}

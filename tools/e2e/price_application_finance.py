@@ -22,10 +22,11 @@ with sync_playwright() as w:
   const customer=await d.saveNew('customers',{name:'Ahmet Bey'},'TEST'),other=await d.saveNew('customers',{name:'TEST Other95'},'TEST'),t=await d.saveNew('sites',{name:'Tarabya',customer_id:customer.id},'TEST'),k=await d.saveNew('sites',{name:'Kemer',customer_id:customer.id},'TEST'),v=await d.saveNew('vehicles',{name:'34EC1353',type:'Kamyonet'},'TEST'),truck=await d.saveNew('vehicles',{name:'34GA2261',type:'Kamyon'},'TEST');
   const work=async(name,f={})=>await d.saveNew('work_records',{date:'2026-10-27',customer_id:customer.id,site_id:t.id,vehicle_id:v.id,work_type:'Moloz Nakliye',unit:'Sefer',quantity:1,description:'TEST '+name,...f},'TEST');
   const rows={};for(const[name,f]of [['unpriced',{}],['priced',{quantity:2,price_snapshot:{unit_price:3000,kdv_rate:20,kdv_included:false,amount:6000}}],['origin',{site_id:null,from_place:'Tarabya',price_snapshot:{unit_price:2000,kdv_rate:20,kdv_included:false,amount:2000}}],['text',{site_id:null,description:'Tarabya moloz alındı TEST'}],['kemer',{site_id:k.id}],['truck',{vehicle_id:truck.id}],['locked',{price_snapshot:{unit_price:1500,kdv_rate:20,kdv_included:false,amount:1500,locked:true}}]])rows[name]=(await work(name,f)).id;
+  const priceRule=await d.saveNew('price_book',{customer_id:customer.id,site_id:t.id,work_type:'Moloz Nakliye',vehicle_group:'VAN',unit:'Sefer',price:3000,kdv_rate:20,kdv_included:false,active:true},'TEST');
   const receipt=await d.saveCashEvent({date:'2026-10-28',customer_id:customer.id,cash_type:'Müşteriden Para Alındı',cash_status:'KASAYA_TESLIM_EDILDI',payment_method:'Nakit',amount:1000});
   await d.saveNew('expense_records',{date:'2026-10-28',category:'Diğer',amount:500,description:'TEST expense95'},'TEST');
   for(const[k,v]of Object.entries({gemini_key:'TEST',gemini_model:'gemini-2.5-flash',gemini_consent:true,gemini_daily_limit:100}))await d.metaSet(k,v);
-  return {customer:customer.id,other:other.id,t:t.id,k:k.id,v:v.id,rows};}""")
+  return {customer:customer.id,other:other.id,t:t.id,k:k.id,v:v.id,rule:priceRule.id,rows};}""")
  before=snap();view('#/finans')
  if a.baseline_proof:
   assert all(p.locator('.finance-stat .v').nth(i).inner_text()=='0,00' for i in range(3)) and p.locator('[data-finance-month]').count()==0
@@ -66,6 +67,9 @@ with sync_playwright() as w:
  # The operation receipt undoes only the four priced/bound jobs and its rule.
  p.evaluate("async()=>await(await import('./js/undo.js')).applyUndo(await import('./js/db.js'))")
  undone=snap();assert all(next(r for r in undone['work_records'] if r['id']==id)==old[id] for id in changed)
+ # An alternate generic model action must reach the exact same price/work preview.
+ view('#/akilli-asistan');reply={'actions':[{'op':'update','store':'price_book','id':ids['rule'],'fields':{'price':7000}}]};stable=snap();send('Ahmet Bey Tarabyadan kamyonetle alınan moloz seferlerine 7000 TL yap');p.wait_for_selector('[data-kind=price]');assert p.locator('[data-kind=action]').count()==0 and p.locator('[data-kind=price] [name=apply_differ]').is_checked() and snap()==stable
+ print('PASS alternate generic price-book model edit is promoted to the same scoped work preview; no direct rule-only edit or business write',flush=True)
  # Refuse an existing-work request that matches no usable jobs; allow explicit list-only intent.
  view('#/akilli-asistan');reply={'price_rules':[{'customer_id':ids['other'],'work_type':'Moloz Nakliye','unit':'Sefer','price':7000}]};send('TEST Other95 moloz seferlerini 7000 TL yap');p.wait_for_selector('[data-kind=price]');card=p.locator('[data-kind=price]');stable=snap()
  assert 'fiyatı değişecek iş yok' in card.locator('[data-scopeinfo]').inner_text();p.click('[data-save]');assert snap()==stable and not p.locator('[data-price-application-receipt]').count()
