@@ -658,7 +658,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     // tarih: kural SESSİZCE seçilmez, kaydederken sorulur.
     if (!r.price_pending && !r.unit_price && r.unit && (r.customer_id || r.new_customer)) {
       const v0 = byId(vehicles, r.vehicle_id);
-      const dec = priceDecision(live(d, "price_book"), { unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, vehicle_type: v0?.type || null, work_type: r.work_type, date: r.date, material: r.material || null }, { dateSure: !r.dateUnsure });
+      const dec = priceDecision(live(d, "price_book"), { unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, vehicle_type: v0?.type || null, vehicle_name: v0?.name, work_type: r.work_type, date: r.date, material: r.material || null }, { dateSure: !r.dateUnsure });
       const rule = dec.rule;
       r.priceInfo = { ambiguous: dec.ambiguous, reason: dec.reason || "", candidates: dec.candidates, summary: rule ? priceSummary(rule, { date: r.date, quantity: r.quantity, unit: r.unit }) : "" };
       if (dec.ambiguous) issues.push("Fiyat seçimi gerekli: " + dec.reason + " (" + dec.candidates.map((c) => `${Number(c.price).toLocaleString("tr-TR")} ₺ ${c.price_source}${c.valid_from ? " " + c.valid_from + "'den" : ""}`).join(" / ") + ")");

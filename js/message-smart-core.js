@@ -1,3 +1,4 @@
+import {priceVehicleContext} from "./core.js";
 import { analyzeMessage, ENGINE_VERSION } from "./message-engine.js";
 // Local message assistance. Suggestions never create financial records.
 import { normKey, WORK_TYPES, WORK_UNITS, resolvePrice } from "./core.js";
@@ -324,7 +325,7 @@ export function datedPriceSuggestion(row, d) {
       /^\d{4}-\d{2}-\d{2}$/.test(e.valid_from),
   );
   // Eşit öncelikli farklı kural varsa önerilmez (sessiz seçim yok); kullanıcı fiyatı elle yazar
-  const p = resolvePriceSafe(entries, { ...row, vehicle_type: vehicle?.type });
+  const p = resolvePriceSafe(entries, priceVehicleContext(row,vehicle));
   return p && !p.formula && p.price != null && Number.isFinite(Number(p.price))
     ? { ...p, unit_price: Number(p.price) }
     : null;

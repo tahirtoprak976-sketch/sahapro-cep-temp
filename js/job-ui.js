@@ -1,3 +1,4 @@
+import {priceVehicleContext} from "./core.js";
 // İş sözleşmeleri (#/is-sozlesmeleri, …/oku, #/is-sozlesmesi/<şantiye>, …/bagla): götürü, sefer ya da m³ anlaşması; sözleşme PDF'inden kurulum, kapsam içi / ekstra işler,
 // tahmini yerinde m³, ölçüm → cariye metraj hakedişi, kapanış raporu ve katsayı öğrenme. Para yazan her adım önizleme + onayla.
 import { qs, qsa, esc, appbar, toast, notice, badge, li, kv, emptyState, confirmDialog, choiceDialog, fSelect, fNum, fDate, fText, fArea, collectForm, go } from "./ui.js";
@@ -447,7 +448,7 @@ async function link(ctx, id) {
         let fields;
         if (act === "dahil") fields = { site_id: site.id, job_extra: false, price_snapshot: J.jobSnapshot(site, w) };
         else if (act === "ekstra") { const x = J.extraSnapshot(site, w); fields = { site_id: site.id, job_extra: true, ...(x ? { price_snapshot: x } : {}) }; }
-        else fields = { job_extra: true, price_snapshot: J.extraSnapshot(site, w) || priceSnapshot({ ...w, site_id: site.id }, prices, crane) };
+        else fields = { job_extra: true, price_snapshot: J.extraSnapshot(site, w) || priceSnapshot(priceVehicleContext({ ...w, site_id: site.id },(d.vehicles||[]).find(v=>v.id===w.vehicle_id)), prices, crane) };
         const after = fields.price_snapshot !== undefined ? (() => { const p = fields.price_snapshot; const a = Number(p?.amount ?? Number(p?.unit_price) * Number(w.quantity)); return Number.isFinite(a) && a > 0 ? a : 0; })() : amt(w);
         return { w, fields, before: amt(w), after };
       });

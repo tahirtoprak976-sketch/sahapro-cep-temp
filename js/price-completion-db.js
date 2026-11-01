@@ -1,3 +1,4 @@
+import {priceVehicleContext} from "./core.js";
 // Cari'deki eksik fiyatlar: tek onay, tek KDV temeli, atomik iş + isteğe bağlı fiyat kuralı.
 import { isActive, newRecord, stableStringify, rankPrices, priceForQuantity, toKurus, fromKurus, WORK_UNITS } from "./core.js";
 import { hakedisNumber } from "./hakedis-validation.js";
@@ -62,7 +63,7 @@ export function preparePriceCompletion(d, command) {
     const quantity = hakedisNumber(w.quantity);
     if (quantity == null || quantity <= 0 || !Number.isSafeInteger(Math.round(price * quantity * 100)) || !Number.isSafeInteger(Math.round(price * quantity * (1 + rate / 100) * 100))) fail("İş miktarı veya hesaplanan tutar geçersiz; hiçbir fiyat yazılmadı.");
     const vehicle = (d.vehicles || []).find(v => v.id === w.vehicle_id);
-    const ctx = { ...w, vehicle_type: vehicle?.type || w.vehicle_type };
+    const ctx = priceVehicleContext(w,vehicle);
     if (w.price_snapshot?.formula || rankPrices(d.price_book || [], ctx).some(candidate => candidate.e.formula)) fail("Vinç / formüllü fiyat bu toplu ekranda tek birim fiyata çevrilemez. İş kartından tarifeyi tamamlayın; hiçbir fiyat yazılmadı.");
   }
   const rule = { ...scopeRule(command.customer_id, group), price, kdv_rate: rate, kdv_included: command.kdv_included };
