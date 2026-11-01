@@ -61,3 +61,12 @@ export function conversationHTML(state){
  const recent=state.turns.slice(-2),earlier=state.turns.slice(0,-2);
  return (earlier.length?`<details data-earlier-turns ${detailedAssistant()?'open':''}><summary>Önceki ${earlier.length} mesajı göster</summary>${earlier.map(turn).join('')}</details>`:'')+recent.map(turn).join('');
 }
+
+// One recoverable request warning; restoring the original nodes retains live form values/listeners.
+export function showAssistantRequestError(out,message,restore=null){
+ if(!out)return;
+ if(restore)out.replaceChildren(...restore);
+ for(const old of out.querySelectorAll(':scope > [data-assistant-request-error]'))old.remove();
+ const wrapper=document.createElement('div');wrapper.innerHTML=notice('warn',message);
+ const node=wrapper.firstElementChild;node.dataset.assistantRequestError='';node.setAttribute('role','alert');out.prepend(node);
+}

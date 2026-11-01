@@ -1,5 +1,5 @@
 import * as priceCore from "./price-rule-core.js";
-import {assistantPageHTML,mountAssistantPage,conversationHTML} from "./assistant-page-ui.js";
+import {assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
 import {bindAssistantReview,openReviewCard} from "./assistant-review-ui.js";
 import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
@@ -644,13 +644,12 @@ export async function screen(ctx) {
       turnPreview();
     } catch (e) {
       if(msgEl.isConnected){
-        out.replaceChildren(...priorNodes);
-        out.insertAdjacentHTML('afterbegin',notice('warn',(e.message||String(e))+(priorNodes.length?' Önceki kontrol kartları aşağıda korunuyor.':'')));
+        showAssistantRequestError(out,(e.message||String(e))+(priorNodes.some(n=>n.nodeType===1&&!n.matches('[data-assistant-request-error]'))?' Önceki kontrol kartları aşağıda korunuyor.':''),priorNodes);
         await finishChat({status:'error',reply:e.message||String(e)});
       }
     }
     } catch(error) {
-      if(msgEl.isConnected && qs('[data-out]',root))qs('[data-out]',root).insertAdjacentHTML('afterbegin',notice('warn','İstek tamamlanamadı. Mesaj ve önceki kartlar korunuyor. Kontrol edip tekrar deneyin. '+(error.message||error)));
+      if(msgEl.isConnected)showAssistantRequestError(qs('[data-out]',root),'İstek tamamlanamadı. Mesaj ve önceki kartlar korunuyor. Kontrol edip tekrar deneyin. '+(error.message||error));
     } finally {
       requestScope?.cleanup?.();requestScope?.dispose();requestScope=null;
       if(msgEl.isConnected)qs('[data-read-status]',root).hidden=true;

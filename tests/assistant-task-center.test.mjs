@@ -23,11 +23,11 @@ for (let i = 0; i < MAX_OPEN_TASKS; i++) {
 }
 assert.equal(listTaskCenter(values[CENTER_KEY]).open.length, MAX_OPEN_TASKS);
 assert.equal(new Set(listTaskCenter(values[CENTER_KEY]).items.map(x => x.id)).size, MAX_OPEN_TASKS);
-await assert.rejects(
-  saveTaskProposal(db, { epoch: "CHAT", previous: tasks.at(-1), result: { goal: "Altıncı", plan: { works: [{}] } }, source: "yeni" }),
-  /En fazla 5 açık görev/,
-);
-assert.equal(listTaskCenter(values[CENTER_KEY]).items.length, MAX_OPEN_TASKS, "sınırda mevcutlar korunur");
+const sixth=await saveTaskProposal(db,{epoch:"CHAT",previous:tasks.at(-1),result:{goal:"Altıncı",plan:{works:[{}]}},source:"yeni"});
+assert.equal(listTaskCenter(values[CENTER_KEY]).items.length,MAX_OPEN_TASKS+1,"yeni ve önceki tüm taslaklar korunur");
+assert.equal(listTaskCenter(values[CENTER_KEY]).open.length,MAX_OPEN_TASKS);
+assert.equal(listTaskCenter(values[CENTER_KEY]).paused.length,1,"sınır hata vermek yerine eski isteği bekletir");
+assert.equal(listTaskCenter(values[CENTER_KEY]).items.find(t=>t.id===tasks[0].id).source,tasks[0].source);
 
 const selected = tasks[1], other = tasks[2];
 const activated = await activateTaskCenter(db, selected.id);
@@ -68,5 +68,5 @@ for (const c of CAPABILITY_CATALOG) {
 const mapped = capabilitiesForTools(AGENT_TOOLS);
 assert.equal(mapped.length, AGENT_TOOLS.length);
 assert.ok(mapped.every(x => x.read && x.model_write === false));
-assert.equal(values[CENTER_KEY].items.length, MAX_OPEN_TASKS);
+assert.equal(values[CENTER_KEY].items.length, MAX_OPEN_TASKS+1);
 console.log("assistant task center PASS: five independent tasks, targeted revision, max3 shared questions, persistent files/quota, capability catalog and no model write");

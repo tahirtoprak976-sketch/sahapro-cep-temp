@@ -5,7 +5,7 @@ import {cleanAgentPlan} from './assistant-agent-core.js';
 import {CENTER_KEY,upsertTaskCenter} from './assistant-task-center.js';
 export const TASK_KEY='assistant_task_v1';
 const CHAT_KEY='assistant_conversation_v1';
-const states=new Set(['draft','clarify','applying','complete','review','cancelled']);
+const states=new Set(['draft','clarify','applying','complete','review','cancelled','paused']);
 export const taskOpen=t=>!!t&&['draft','clarify'].includes(t.status);
 export function cleanTask(raw){
  if(!raw||raw.version!==1||typeof raw.id!=='string'||typeof raw.chat_id!=='string'||!Number.isInteger(raw.rev)||raw.rev<1||!states.has(raw.status))return null;
