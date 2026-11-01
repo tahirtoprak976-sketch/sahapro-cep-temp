@@ -24,7 +24,7 @@ with sync_playwright() as w:
   const rows={};for(const[name,f]of [['unpriced',{}],['priced',{quantity:2,price_snapshot:{unit_price:3000,kdv_rate:20,kdv_included:false,amount:6000}}],['origin',{site_id:null,from_place:'Tarabya',price_snapshot:{unit_price:2000,kdv_rate:20,kdv_included:false,amount:2000}}],['text',{site_id:null,description:'Tarabya moloz alındı TEST'}],['kemer',{site_id:k.id}],['truck',{vehicle_id:truck.id}],['locked',{price_snapshot:{unit_price:1500,kdv_rate:20,kdv_included:false,amount:1500,locked:true}}]])rows[name]=(await work(name,f)).id;
   const priceRule=await d.saveNew('price_book',{customer_id:customer.id,site_id:t.id,work_type:'Moloz Nakliye',vehicle_group:'VAN',unit:'Sefer',price:3000,kdv_rate:20,kdv_included:false,active:true},'TEST');
   const receipt=await d.saveCashEvent({date:'2026-10-28',customer_id:customer.id,cash_type:'Müşteriden Para Alındı',cash_status:'KASAYA_TESLIM_EDILDI',payment_method:'Nakit',amount:1000});
-  await d.saveNew('expense_records',{date:'2026-10-28',category:'Diğer',amount:500,description:'TEST expense95'},'TEST');
+  await d.saveNew('expense_records',{date:'2026-10-28',category:'Diğer',amount:3223150,description:'TEST large expense95'},'TEST');
   for(const[k,v]of Object.entries({gemini_key:'TEST',gemini_model:'gemini-2.5-flash',gemini_consent:true,gemini_daily_limit:100}))await d.metaSet(k,v);
   return {customer:customer.id,other:other.id,t:t.id,k:k.id,v:v.id,rule:priceRule.id,rows};}""")
  before=snap();view('#/finans')
@@ -37,7 +37,7 @@ with sync_playwright() as w:
   assert not by[ids['rows']['origin']].get('site_id') and not by[ids['rows']['text']].get('price_snapshot')
   print('BASELINE PROOF v3.9.94: November finance all zero without month selector; price Save changes only one already-linked unpriced job, leaves old prices and Tarabya origins untouched',flush=True);c.close();b.close();raise SystemExit(0)
  assert 'Ekim 2026' in p.locator('[data-finance-period]').inner_text() and p.locator('.finance-stat[href="#/cari"] .v').inner_text()=='9.500,00'
- assert p.locator('.finance-stat[href="#/kasa"] .v').inner_text()=='1.000,00' and p.locator('.finance-stat[href="#/gider"] .v').inner_text()=='500,00'
+ assert p.locator('.finance-stat[href="#/kasa"] .v').inner_text()=='1.000,00' and p.locator('.finance-stat[href="#/gider"] .v').inner_text()=='3.223.150,00'
  assert p.locator('[data-finance-general]').count()==1 and snap()==before
  p.screenshot(path=str(OUT/'finance-latest-october.png'),full_page=True)
  p.locator('a[href="#/isler?f=fiyatsiz&period=all"]').click();p.wait_for_selector('.work-explorer-row');assert p.locator('.work-explorer-row').count()==4;assert 'f=fiyatsiz' in p.url and 'Fiyatsız' in p.locator('#screen').inner_text();assert snap()==before
@@ -77,7 +77,10 @@ with sync_playwright() as w:
  # Another tab updates an old work while Finance is open: a read view refreshes after commit.
  view('#/finans?period=all');p.evaluate('()=>document.activeElement?.blur()');other=c.new_page();other.goto(BASE+'README.md?db='+app.split('?db=')[1].split('#')[0]);other.evaluate("""async id=>{const d=await import('./js/db.js'),row=await d.get('work_records',id);await d.saveExisting('work_records',row,{price_snapshot:{unit_price:9000,kdv_rate:20,kdv_included:false,amount:9000}},'TEST cross-tab update');}""",ids['rows']['unpriced'])
  p.clock.run_for(150);p.wait_for_function("()=>document.querySelector('.finance-stat[href=\"#/cari\"] .v')?.textContent==='18.500,00'");other.close()
- for width in (320,390,768):p.set_viewport_size({'width':width,'height':850});assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
+ for width in (320,390,768):
+  p.set_viewport_size({'width':width,'height':850});assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
+  assert p.locator('.finance-stat[href="#/gider"] .v').inner_text()=='3.223.150,00'
+  assert p.locator('.finance-stat[href="#/gider"] .v').evaluate('el=>{const r=document.createRange();r.selectNodeContents(el);return r.getClientRects().length===1}'),width
  assert not errors,errors
  (OUT/'result.json').write_text(json.dumps({'only_synthetic':True,'actual_four_work_apply':True,'trip_total':35000,'finance_october_total_after':36500,'no_op_blocked':True,'binding_undo':True,'cross_tab_finance_refresh':True,'errors':errors},indent=2))
  print('PASS receipt restores original prices/sites with Undo; zero-work existing request writes nothing; explicit list-only choice is labelled; finance updates after another-tab commit; narrow layouts; price_application_finance browser PASS',flush=True)

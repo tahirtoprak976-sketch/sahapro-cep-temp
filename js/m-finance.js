@@ -80,7 +80,7 @@ export async function screen(ctx) {
 }
 
 function financeCard(value,label,color,route) {
-  return `<a class="stat finance-stat ${esc(color)}" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="v">${esc(value)}</span><span class="l">${esc(label)}</span></a>`;
+  return `<a class="stat finance-stat ${esc(color)}" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="l">${esc(label)}</span><span class="v" style="white-space:nowrap;font-size:clamp(16px,5vw,22px)">${esc(value)}</span></a>`;
 }
 
 function dumpCostBreakdown(rows) {
@@ -129,7 +129,7 @@ async function hub(ctx) {
     `
     <section class="card" data-finance-period><label for="finance-month"><b>Dönem: ${esc(selected.label)}</b></label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="finance-month" data-finance-month type="month" value="${esc(selected.month)}" max="${today.slice(0,7)}" style="min-width:0;max-width:100%">${[['month','Bu ay'],['last','Geçen ay'],['3m','Son 3 ay'],['all','Tümü']].map(([key,label])=>`<a class="chip ${selected.period===key&&!selected.automatic&&!ctx.query?.month?'on':''}" href="#/finans?period=${key}">${label}</a>`).join('')}</div><p class="tiny muted">${from?esc(trDate(from))+' – ':''}${esc(trDate(to))} · Aşağıdaki tutarlar seçilen döneme aittir.</p>${selected.automatic?notice('info','Bu ay henüz hareket yok. Son kayıt bulunan '+selected.label+' gösteriliyor.'):''}${selected.invalid?notice('warn','Geçersiz dönem yerine '+selected.label+' gösterildi.'):''}</section>
     <section class="card" data-finance-general><div class="row between"><b>Genel müşteri alacağı · tüm tarihler</b><a href="#/cari">Cariyi aç ›</a></div>${cariMoneyHTML(general,true)}<p class="tiny muted">Bu tutar dönem filtresinden bağımsızdır. Tahsil edilmemiş müşteri bakiyesidir; kasa mevcudu değildir.</p></section>
-    <div class="statgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
+    <div class="statgrid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));margin-top:10px">
       ${financeCard(fmtTL(monthH), "İş değeri ₺", "accent", "#/cari")}
       ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
       ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
