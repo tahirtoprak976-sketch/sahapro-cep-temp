@@ -10,6 +10,8 @@ Artık beş istek doğrudan açık tutulur. Yeni bir istek hazırlanırken en es
 
 **Kapat**, yalnız seçilen açık/bekleyen taslağı iptal eder; iş/para kaydı oluşturmaz veya silmez. Diğer görevler ve aktif sohbet korunur. Aktif taslak kapatılırsa kendi dosyaları görevde kalır, sonraki yeni isteğe ek olarak taşınmaz. Yazılan mesaj ve diğer seçili görev dosyaları ekrandaki yeniden yüklemede korunur. applying/review durumları bekletilmez, bu düğmelerle kapatılmaz veya otomatik yeniden uygulanmaz.
 
+Bekletme ayrı bir işaretle saklanır; eski draft/clarify durumları değiştirilmez. Açık kalmış v3.9.93 sekmesi görev listesini yeniden yazarsa yeni işareti kaldırsa bile kaynakları ve görevleri silmez; yeni sürüm sonraki yazımda sırayı tekrar düzenler.
+
 Görev işlemleri tek metadata transaction'ında yapılır. Başka sekmenin eski revizyonu kaynak üzerine yazamaz; kota/yazma hatası eski görevleri kısmen bekletmez. Bekleyen kaynaklara otomatik zaman aşımı/silme uygulanmaz. Tamamlanan/iptal edilenlerin mevcut 20 kayıt geçmişi sınırı sürer.
 
 Aynı istekte tekrarlanan hata ekranda **tek güncel uyarı** olur. Mevcut form düğümleri, elle yazılan değerler ve olay bağları korunur. Hata bir kayıt onayı veya işin uygulandığı anlamına gelmez.

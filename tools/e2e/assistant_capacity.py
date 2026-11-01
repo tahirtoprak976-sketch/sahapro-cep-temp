@@ -30,11 +30,13 @@ with sync_playwright() as w:
  view();before=state();old=center();phrase='Ahmet Bey Tarabyadan kamyonetle alınan moloz seferlerine 7000 TL yap'
  send(phrase)
  if a.baseline_proof:
+  compatibility=p.evaluate("""async()=>{const d=await import('./js/db.js'),C=await import('./js/assistant-task-center.js'),raw=structuredClone(await d.metaGet(C.CENTER_KEY)),extra=structuredClone(raw.items[0]);extra.id='TEST-legacy-extra94';extra.paused=true;raw.items[0].paused=true;raw.items.push(extra);const task={...raw.items[1],status:'complete'},out=C.upsertTaskCenter(raw,task,raw.items[1].chat);return {before:raw.items.map(t=>t.id).sort(),after:out.items.map(t=>t.id).sort()};}""")
+  assert compatibility['before']==compatibility['after'],compatibility
   assert 'En fazla 5 açık görev' in p.locator('[data-out]').inner_text() and not p.locator('[data-kind=price]').count()
   send(phrase);assert p.locator('[data-out] .notice').count()==2 and center()==old and state()==before
   p.screenshot(path=str(OUT/'baseline-full-and-duplicate.png'),full_page=True);print('BASELINE PROOF v3.9.93: full task list blocks sixth price preview and repeated failure stacks two notices; business/tasks unchanged',flush=True);c.close();b.close();raise SystemExit(0)
  p.wait_for_selector('[data-kind=price]');assert 'En fazla 5 açık görev' not in p.locator('[data-out]').inner_text() and p.locator('[data-kind=price] [name=price_site]').input_value()==ids['site']
- saved=center();assert len(saved['items'])==6 and len([x for x in saved['items'] if x['status']=='paused'])==1 and state()==before
+ saved=center();assert len(saved['items'])==6 and len([x for x in saved['items'] if x.get('paused')])==1 and state()==before
  for oldtask in ids['tasks']:
   current=next(t for t in saved['items'] if t['id']==oldtask['id']);assert current['source']==oldtask['source'] and current['plan']==oldtask['plan']
  assert p.locator('[data-task-close]').count()==6
@@ -51,13 +53,13 @@ with sync_playwright() as w:
  p.evaluate('()=>{IDBObjectStore.prototype.put=window.__capacityPut}')
  print('PASS repeated failed task persistence keeps one warning, edited original form, tasks and all business records; no silent eviction',flush=True)
  # Resume paused evidence without an AI request or a business write.
- paused=next(t for t in center()['items'] if t['id']==ids['tasks'][0]['id']);assert paused['status']=='paused';n=len(calls)
+ paused=next(t for t in center()['items'] if t['id']==ids['tasks'][0]['id']);assert paused.get('paused');n=len(calls)
  p.locator('[data-task-activate="'+paused['id']+'"]').click();p.wait_for_selector('[data-thumbs] .assistant-file-tile');p.wait_for_function("async()=>{const d=await import('./js/db.js');return(await d.metaGet('assistant_task_v1')).id==='"+paused['id']+"'}")
  restored=p.evaluate("""async id=>{const d=await import('./js/db.js'),F=await import('./js/assistant-task-files.js');return {task:await d.metaGet('assistant_task_v1'),files:await Promise.all((await F.loadTaskFiles(d,id)).map(async f=>({name:f.name,text:await f.text()})))};}""",paused['id'])
  assert restored['task']['status']==ids['tasks'][0]['status'] and restored['files']==[{'name':'TEST-evidence.txt','text':'TEST original warranty'}] and len(calls)==n and state()==before
  p.fill('[data-msg]','TEST yazdığım mesaj korunacak');p.locator('[data-msg]').dispatch_event('input')
  # Close another paused task from the list. The active task, selected file and typed message survive reload.
- other=next(t for t in center()['items'] if t['status']=='paused');active=restored['task']['id'];old_screen=p.locator('#screen').element_handle();p.locator('[data-task-close="'+other['id']+'"]').click();p.locator('.sheet [data-x="1"]').click();p.wait_for_function("async()=>{const d=await import('./js/db.js');return(await d.metaGet('assistant_tasks_v1')).items.find(t=>t.id==='"+other['id']+"').status==='cancelled'}")
+ other=next(t for t in center()['items'] if t.get('paused'));active=restored['task']['id'];old_screen=p.locator('#screen').element_handle();p.locator('[data-task-close="'+other['id']+'"]').click();p.locator('.sheet [data-x="1"]').click();p.wait_for_function("async()=>{const d=await import('./js/db.js');return(await d.metaGet('assistant_tasks_v1')).items.find(t=>t.id==='"+other['id']+"').status==='cancelled'}")
  p.wait_for_function('e=>!e.isConnected',arg=old_screen);p.wait_for_function("()=>document.querySelector('[data-ask]')&&!document.querySelector('[data-ask]').disabled");p.wait_for_selector('[data-thumbs] .assistant-file-tile');assert p.input_value('[data-msg]')=='TEST yazdığım mesaj korunacak' and state()==before
  assert p.evaluate("async()=>(await(await import('./js/db.js')).metaGet('assistant_task_v1')).id")==active
  print('PASS paused task resumes exact status/source/original file; direct close of another task preserves current file/message; no provider/business write',flush=True)

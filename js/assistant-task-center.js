@@ -5,7 +5,7 @@ import { cleanConversation, chatText } from "./assistant-conversation.js";
 
 export const CENTER_KEY = "assistant_tasks_v1";
 export const MAX_OPEN_TASKS = 5;
-const states = new Set(["draft", "clarify", "applying", "complete", "review", "cancelled", "paused"]);
+const states = new Set(["draft", "clarify", "applying", "complete", "review", "cancelled"]);
 const openStates = new Set(["draft", "clarify"]);
 
 function cleanItem(raw) {
@@ -13,7 +13,7 @@ function cleanItem(raw) {
   try {
     return {
       version: 1, id: raw.id.slice(0, 80), chat_id: raw.chat_id.slice(0, 80), rev: raw.rev,
-      status: raw.status, resume_status: raw.status === "paused" && openStates.has(raw.resume_status) ? raw.resume_status : null, native: !!raw.native, goal: chatText(raw.goal, 240), source: chatText(raw.source, 12000),
+      status: raw.status, paused: openStates.has(raw.status) && raw.paused === true, native: !!raw.native, goal: chatText(raw.goal, 240), source: chatText(raw.source, 12000),
       plan: cleanAgentPlan(raw.plan), updated_at: String(raw.updated_at || "").slice(0, 35),
       created_at: String(raw.created_at || raw.updated_at || "").slice(0, 35), receipt: chatText(raw.receipt, 1000),
       chat: cleanConversation(raw.chat),
@@ -33,7 +33,7 @@ export function cleanTaskCenter(raw) {
 }
 export function listTaskCenter(raw) {
   const center = cleanTaskCenter(raw);
-  return { ...center, open: center.items.filter(x => openStates.has(x.status)), paused: center.items.filter(x => x.status === "paused"), recovery: center.items.filter(x => ['applying','review'].includes(x.status)), closed: center.items.filter(x => ['complete','cancelled'].includes(x.status)) };
+  return { ...center, open: center.items.filter(x => openStates.has(x.status) && !x.paused), paused: center.items.filter(x => openStates.has(x.status) && x.paused), recovery: center.items.filter(x => ['applying','review'].includes(x.status)), closed: center.items.filter(x => ['complete','cancelled'].includes(x.status)) };
 }
 export function upsertTaskCenter(raw, task, chat) {
   const center = cleanTaskCenter(raw), index = center.items.findIndex(x => x.id === task.id);
@@ -43,12 +43,12 @@ export function upsertTaskCenter(raw, task, chat) {
   if (index >= 0) center.items[index] = item; else center.items.push(item);
   // Keep five immediately resumable requests. Preserve every older unfinished
   // proposal/chat/file key; pausing is neither cancellation nor a business write.
-  const others=center.items.filter(x=>x.id!==item.id && openStates.has(x.status))
+  const others=center.items.filter(x=>x.id!==item.id && openStates.has(x.status) && !x.paused)
     .sort((a,b)=>String(a.updated_at).localeCompare(String(b.updated_at))||String(a.created_at).localeCompare(String(b.created_at)));
-  let count=center.items.filter(x=>openStates.has(x.status)).length;
+  let count=center.items.filter(x=>openStates.has(x.status) && !x.paused).length;
   while(count>MAX_OPEN_TASKS && others.length){
     const oldest=others.shift(),at=center.items.findIndex(x=>x.id===oldest.id);
-    center.items[at]={...oldest,status:"paused",resume_status:oldest.status,rev:oldest.rev+1,updated_at:nowISO()};count--;
+    center.items[at]={...oldest,paused:true,rev:oldest.rev+1,updated_at:nowISO()};count--;
   }
   return cleanTaskCenter(center);
 }
@@ -60,7 +60,7 @@ export async function activateTaskCenter(db, id) {
     let updated = center;
     if (current?.id && current.id !== selected.id && openStates.has(current.status) && center.items.some(x => x.id === current.id))
       updated = upsertTaskCenter(center, current, values.assistant_conversation_v1);
-    if(selected.status === "paused")updated=upsertTaskCenter(updated,{...selected,status:selected.resume_status||"draft",resume_status:null,rev:selected.rev+1,updated_at:nowISO()},selected.chat);
+    if(selected.paused)updated=upsertTaskCenter(updated,{...selected,paused:false,rev:selected.rev+1,updated_at:nowISO()},selected.chat);
     const selectedFresh = updated.items.find(x => x.id === selected.id);
     return { set: { [CENTER_KEY]: updated, assistant_task_v1: selectedFresh, assistant_conversation_v1: selectedFresh.chat }, result: selectedFresh };
   });
@@ -69,11 +69,11 @@ export async function activateTaskCenter(db, id) {
 export async function closeTaskCenter(db,id,expectedRev){
   return db.metaTxn([CENTER_KEY,"assistant_task_v1","assistant_conversation_v1"],values=>{
     const center=listTaskCenter(values[CENTER_KEY]),selected=center.items.find(x=>x.id===id);
-    if(!selected || !["draft","clarify","paused"].includes(selected.status))throw Error("Bu görev kapatılamaz; kayıt sonucunu inceleyin.");
+    if(!selected || !["draft","clarify"].includes(selected.status))throw Error("Bu görev kapatılamaz; kayıt sonucunu inceleyin.");
     if(selected.rev!==expectedRev)throw Error("Görev başka sekmede değişmiş; güncel listeyi açın.");
     const current=values.assistant_task_v1,wasActive=current?.id===id;
     if(wasActive && (current.rev!==expectedRev || current.chat_id!==values.assistant_conversation_v1?.id))throw Error("Açık görev değişmiş; yeniden açın.");
-    const next={...selected,status:"cancelled",resume_status:null,rev:selected.rev+1,updated_at:nowISO(),receipt:"Kullanıcı isteği kaydetmeden kapattı."};
+    const next={...selected,status:"cancelled",paused:false,rev:selected.rev+1,updated_at:nowISO(),receipt:"Kullanıcı isteği kaydetmeden kapattı."};
     const updated=upsertTaskCenter(center,next,wasActive?values.assistant_conversation_v1:selected.chat);
     return {set:{[CENTER_KEY]:updated,...(wasActive?{assistant_task_v1:next}:{})},result:{task:next,wasActive}};
   });

@@ -27,3 +27,11 @@ await assert.rejects(closeTaskCenter(db,applying.id,applying.rev),/kapatılamaz/
 const unchanged=JSON.stringify(values),failing={...db,metaTxn:async(keys,fn)=>{fn(structuredClone(values));throw Error('TEST quota');}};
 await assert.rejects(saveTaskProposal(failing,{epoch:'TEST-CHAT',previous,result:{plan:{works:[{}]}},source:'quota'}),/quota/);assert.equal(JSON.stringify(values),unchanged);
 console.log('PASS capacity94: 9 proposals without blocking; five active + preserved paused; resume status/source/chat; stale revision; targeted close; recovery non-replay; quota atomicity');
+
+// A legacy writer can discard unknown fields but keeps the known draft/clarify states.
+const savedCenter=structuredClone(values[CENTER_KEY]);
+assert.ok(savedCenter.items.every(t=>['draft','clarify','applying','complete','review','cancelled'].includes(t.status)));
+const legacy={version:1,items:savedCenter.items.map(({paused,...old})=>old)};
+const latest=legacy.items.find(t=>t.id===previous.id);const rebuilt=(await import('../js/assistant-task-center.js')).upsertTaskCenter(legacy,latest,values.assistant_conversation_v1);
+assert.equal(rebuilt.items.length,savedCenter.items.length);assert.equal(listTaskCenter(rebuilt).open.length,5);
+for(const t of savedCenter.items){const row=rebuilt.items.find(r=>r.id===t.id);assert.equal(row.source,t.source);assert.deepEqual(row.plan,t.plan);}
