@@ -75,7 +75,8 @@ jobs:
           for test in tests/*.test.mjs; do
             files=$((files + 1))
             echo "::group::$test"
-            if node "$test"; then
+            echo "TEST $test" >> /tmp/solo-node-tests.log
+            if node "$test" 2>&1 | tee -a /tmp/solo-node-tests.log; then
               echo "PASS $test"
             else
               failed=$((failed + 1))
@@ -86,6 +87,15 @@ jobs:
           echo "RESULT files=$files passed=$((files - failed)) failed=$failed"
           test "$files" -gt 0
           test "$failed" -eq 0
+
+      - name: Retain complete Node diagnostics before browser validation
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: solo-node-diagnostics-${{ github.sha }}
+          path: /tmp/solo-node-tests.log
+          if-no-files-found: error
+          retention-days: 3
 
       - name: Run browser suites with only isolated synthetic data
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
