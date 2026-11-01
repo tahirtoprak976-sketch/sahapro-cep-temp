@@ -139,7 +139,7 @@ export function bindDraftWorkflow(out,v,d){
  const controls=document.createElement('div'),body=document.createElement('div');
  controls.className='row';controls.style.cssText='gap:6px;flex-wrap:wrap;margin:8px 0';
  controls.innerHTML='<button class="btn small" data-batch-ready>Hazır iş kartlarını seç</button><button class="btn small" data-batch-prices>İşlerin fiyatını sonra belirle</button>';
- panel.innerHTML='<b>İşlem taslakları</b>';panel.append(controls,body);
+ panel.innerHTML='<b>İşlem taslakları</b>';body.dataset.draftBody='';const replyBox=document.createElement('div');replyBox.dataset.draftReply='';replyBox.setAttribute('role','status');panel.append(controls,body,replyBox);
  const read=()=>readDraftRows(out,v,d);
  let observed=read().map(row=>({key:row.key,fields:{...row.fields}}));
  const capture=plan=>{
@@ -157,7 +157,7 @@ export function bindDraftWorkflow(out,v,d){
  const refresh=()=>{
   const rows=read(),missing=rows.filter(r=>draftMissing(r).length),quantities={};
   for(const r of rows.filter(r=>r.kind==='work'&&Number(r.fields.quantity)>0&&r.fields.unit))quantities[r.fields.unit]=(quantities[r.fields.unit]||0)+Number(r.fields.quantity);
-  body.innerHTML=`<div class="small" data-draft-status>${rows.length} taslak · ${missing.length} eksik · ${rows.filter(r=>r.selected).length} seçili</div>${Object.entries(quantities).length?`<p class="small">İş miktarı: ${Object.entries(quantities).map(([u,n])=>esc(fmtNum(n)+' '+u)).join(' · ')}</p>`:''}${rows.map(r=>`<button class="btn block small" style="display:block;margin-top:6px;text-align:left;white-space:normal" data-draft-focus="${esc(r.key)}"><b>${esc(r.label)}</b>${r.fields.customer?` · ${esc(r.options.customer?.find(o=>o.value===r.fields.customer)?.label||'')}`:''}<br>${draftMissing(r).length?'Eksik: '+esc(draftMissing(r).map(f=>DRAFT_FIELDS[f]).join(', ')):'Alanlar tamam; kontrol edip kartı işaretleyin.'}</button>`).join('')}<p class="tiny muted">Sohbetle tamamlayabilirsiniz: “ikinci iş 3 sefer”, “araç 34ABC123”, “tahsilat tutarı 20.000 TL”. Kartlar Kaydet düğmesine basana kadar taslaktır.</p><div data-draft-reply role="status"></div>`;
+  body.innerHTML=`<div class="small" data-draft-status>${rows.length} taslak · ${missing.length} eksik · ${rows.filter(r=>r.selected).length} seçili</div>${Object.entries(quantities).length?`<p class="small">İş miktarı: ${Object.entries(quantities).map(([u,n])=>esc(fmtNum(n)+' '+u)).join(' · ')}</p>`:''}${rows.map(r=>`<button class="btn block small" style="display:block;margin-top:6px;text-align:left;white-space:normal" data-draft-focus="${esc(r.key)}"><b>${esc(r.label)}</b>${r.fields.customer?` · ${esc(r.options.customer?.find(o=>o.value===r.fields.customer)?.label||'')}`:''}<br>${draftMissing(r).length?'Eksik: '+esc(draftMissing(r).map(f=>DRAFT_FIELDS[f]).join(', ')):'Alanlar tamam; kontrol edip kartı işaretleyin.'}</button>`).join('')}<p class="tiny muted">Sohbetle tamamlayabilirsiniz: “ikinci iş 3 sefer”, “araç 34ABC123”, “tahsilat tutarı 20.000 TL”. Kartlar Kaydet düğmesine basana kadar taslaktır.</p>`;
   const workRows=rows.filter(r=>r.kind==='work'&&!r.saved);
   controls.hidden=!workRows.length;
   if(workRows.length){
@@ -173,7 +173,7 @@ export function bindDraftWorkflow(out,v,d){
     refresh();qs('[data-draft-reply]',panel).textContent=`${count} hazır iş kartı seçildi. Eksik, tahminli, mükerrer ve şoför kartlarını ayrı kontrol edin. Kaydet düğmesiyle uygulanacak.`;
    };
   }
-  for(const btn of panel.querySelectorAll('[data-draft-focus]'))btn.onclick=()=>{const row=read().find(r=>r.key===btn.dataset.draftFocus),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);card.scrollIntoView({block:'center',behavior:'smooth'});const field=qs(`[name="${draftMissing(row)[0]||'date'}"]`,card);field?.focus({preventScroll:true});};
+  for(const btn of panel.querySelectorAll('[data-draft-focus]'))btn.onclick=()=>{const row=read().find(r=>r.key===btn.dataset.draftFocus),card=out.querySelector(`[data-kind="${row.kind}"][data-i="${row.index}"]`);card.querySelector('[data-record-details]')?.setAttribute('open','');card.scrollIntoView({block:'center',behavior:'smooth'});const field=qs(`[name="${draftMissing(row)[0]||'date'}"]`,card);field?.focus({preventScroll:true});};
  };
  out.addEventListener('input',refresh);out.addEventListener('change',refresh);refresh();
  const apply=(change,reply)=>{

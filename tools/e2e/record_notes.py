@@ -12,7 +12,7 @@ MSG+='\n[23/10 22:00] TEST Güvenlik: '+('Ayrı sohbet verisi. '*90)+'<img src=x
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);errors=[]
  def profile():
-  c=b.new_context(viewport={'width':390,'height':850});c.add_init_script("localStorage.setItem('sp_role','boss')");pg=c.new_page();pg.on('pageerror',lambda e:errors.append(str(e)));pg.goto(U+'index.html#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]');return c,pg
+  c=b.new_context(viewport={'width':390,'height':850});c.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')");pg=c.new_page();pg.on('pageerror',lambda e:errors.append(str(e)));pg.goto(U+'index.html#/daha');pg.wait_for_selector('#screen[data-view-ready="1"]');return c,pg
  def seed(pg):return pg.evaluate("""async()=>{const d=await import('./js/db.js');const a=await d.saveNew('customers',{name:'TEST Alfa İnşaat'},'TEST'),z=await d.saveNew('customers',{name:'TEST Beta Yapı'},'TEST'),v=await d.saveNew('vehicles',{name:'U55',type:'İş Makinesi'},'TEST'),v2=await d.saveNew('vehicles',{name:'U36',type:'İş Makinesi'},'TEST'),man=await d.saveNew('vehicles',{name:'TEST Manitou',type:'İş Makinesi'},'TEST'),s=await d.saveNew('personnel',{name:'TEST Soner'},'TEST');await d.saveNew('fuel_tank_movements',{date:'2026-10-01',move_type:'GİRİŞ',liters:2000,total:100000},'TEST');return {a:a.id,z:z.id,v:v.id,v2:v2.id,man:man.id,s:s.id}}""")
  def state(pg):return pg.evaluate("async()=>{const d=await import('./js/db.js');return JSON.stringify({d:await d.dumpAll(),audit:await d.getAll('audit_log')})}")
  c,pg=profile();ids=seed(pg)

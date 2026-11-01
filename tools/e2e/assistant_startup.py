@@ -7,7 +7,7 @@ p=argparse.ArgumentParser();p.add_argument('url',nargs='?',default='http://local
 U=a.url.rstrip('/')+'/';o=urlparse(U);assert o.scheme=='http' and o.hostname in ('localhost','127.0.0.1','::1') and not o.query and not o.fragment
 out=Path(a.artifacts);out.mkdir(parents=True,exist_ok=True)
 with sync_playwright() as pw:
- b=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')")
+ b=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')")
  pg=c.new_page();errors=[];calls=[];pg.on('pageerror',lambda e:errors.append(str(e)))
  def block(r):calls.append(r.request.url);r.abort()
  c.route('https://generativelanguage.googleapis.com/**',block)

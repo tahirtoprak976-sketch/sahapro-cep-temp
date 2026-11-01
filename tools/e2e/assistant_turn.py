@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 U=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8841/'
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
- c=b.new_context(viewport={'width':360,'height':850},service_workers='allow');c.add_init_script("try{localStorage.setItem('sp_role','boss')}catch(e){}")
+ c=b.new_context(viewport={'width':360,'height':850},service_workers='allow');c.add_init_script("try{localStorage.setItem('sp_role','boss');localStorage.setItem('sp_assistant_details_v1','expanded')}catch(e){}")
  bodies=[];reply={};http_error=False;hold_reply=False;pending=[]
  def mock(route):
   bodies.append(json.loads(route.request.post_data or '{}'))

@@ -130,6 +130,6 @@ export function bindBulkEntry(ctx,out,v,data,{message,files}){
 export async function mountBulkResume(ctx){
  const draft=await readBulkDraft();if(!draft)return;
  const box=document.createElement('div');box.className='card';box.innerHTML='<b>Bekleyen toplu geçmiş giriş</b><p class="small">Kaydedilmiş satırlar yeniden yazılmaz; eksiklere kaldığınız yerden devam edin.</p><button class="btn block" data-bulk-resume>Toplu taslağa devam et</button>';
- qs('[data-agent-task]',ctx.root).after(box);
+ qs('[data-out]',ctx.root).before(box);
  qs('[data-bulk-resume]',box).onclick=async()=>{try{const current=await readBulkDraft();if(!current)throw Error('Taslak kapanmış veya sohbet değişmiş.');await openBulkReview(ctx,qs('[data-out]',ctx.root),current);box.remove();}catch(e){toast(e.message,'err');}};
 }

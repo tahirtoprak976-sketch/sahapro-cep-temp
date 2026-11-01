@@ -16,7 +16,12 @@ await test("eşleştirmede yalnız açık anahtar; özel anahtar dışarı çık
   await assert.rejects(() => readRecipientCode("SPAK1.AA"));
 });
 await test("şifreli dosyada iş/müşteri adı yok; hedef telefon içeriği aynen açar", async () => {
-  assert.ok(!new TextDecoder().decode(sealed.bytes).includes("TEST"));
+  // Base64 ciphertext/public keys can randomly contain the four letters TEST.
+  // Check the actual private values; authenticated round-trip equality below
+  // still proves that only the intended recipient recovers every field.
+  const envelopeText=new TextDecoder().decode(sealed.bytes);
+  for(const value of [pkg.title,pkg.rows[0].row_id,pkg.rows[0].customer,pkg.rows[0].vehicle,pkg.rows[0].raw_message,pkg.rows[0].description])
+    assert.ok(!envelopeText.includes(value), 'Özel iş alanı açık metinde bulunmamalı: '+value);
   const r = await openTransfer(sealed.bytes, recipient, { now, id: sealed.id, digest: sealed.digest });
   assert.deepEqual(r.pkg, readHistoryPackage(pkg)); assert.equal(r.id, sealed.id);
 });
