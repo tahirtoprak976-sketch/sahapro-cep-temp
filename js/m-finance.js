@@ -147,7 +147,7 @@ async function hub(ctx) {
     <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
     <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">${esc(selected.label)} tahmini sonuç (iş − masraf)</span><span data-month-profit class="strong ${!cur.costIncomplete&&cur.profit < 0 ? "danger" : ""}">${cur.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit)+" ₺"}</span></div>
       <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
-    ${cur.unpriced?notice('warn',cur.unpriced+' işin fiyatı eksik; iş değeri ve alacak hesabı bu işler tamamlanana kadar eksik görünür.')+'<a class="btn block" href="#/isler?review=unpriced">Fiyatı eksik işleri incele ›</a>':''}
+    ${cur.unpriced?notice('warn',cur.unpriced+' işin fiyatı eksik; iş değeri ve alacak hesabı bu işler tamamlanana kadar eksik görünür.')+'<a class="btn block" href="#/isler?f=fiyatsiz&period=all">Fiyatı eksik işleri incele ›</a>':''}
     <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
       ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
     </div>`;

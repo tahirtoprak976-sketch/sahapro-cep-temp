@@ -39,6 +39,7 @@ with sync_playwright() as w:
  assert p.locator('.finance-stat[href="#/kasa"] .v').inner_text()=='1.000,00' and p.locator('.finance-stat[href="#/gider"] .v').inner_text()=='500,00'
  assert p.locator('[data-finance-general]').count()==1 and snap()==before
  p.screenshot(path=str(OUT/'finance-latest-october.png'),full_page=True)
+ p.locator('a[href="#/isler?f=fiyatsiz&period=all"]').click();p.wait_for_selector('.work-explorer-row');assert p.locator('.work-explorer-row').count()==4;assert 'f=fiyatsiz' in p.url and 'Fiyatsız' in p.locator('#screen').inner_text();assert snap()==before
  view('#/finans?period=month');assert p.locator('.finance-stat[href="#/cari"] .v').inner_text()=='0,00' and 'Kasım 2026' in p.locator('[data-finance-period]').inner_text()
  view('#/finans?period=all');assert p.locator('.finance-stat[href="#/cari"] .v').inner_text()=='9.500,00'
  print('PASS November empty current month opens clearly-labelled last recorded October; explicit current/all filters work; general receivable independent; read-only',flush=True)
