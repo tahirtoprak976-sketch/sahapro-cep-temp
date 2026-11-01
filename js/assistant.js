@@ -528,6 +528,9 @@ export async function screen(ctx) {
       // Sesli notta Gemini'nin duyduğu metin mesaj yerine geçer; kullanıcıya gösterilir, sayılar onunla doğrulanır
       const heard = audios.length ? heardText(plan) : "";
       const vmsg = agentResult?.mode==='continue'&&taskForRun?.id===agentResult.task_id?[taskForRun.source,'[DÜZELTME] '+typed].join('\n'):[message, heard].filter(Boolean).join("\n");
+      plan=priceCore.normalizePriceActionPlan(plan,d);
+      assertAssistantPlan(plan);
+      if(agentResult)agentResult={...agentResult,plan};
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
       v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
@@ -993,9 +996,11 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Birim</label><select name="unit">${opt(ASSIST_UNITS.map((u) => [u, u]), r.unit || "")}</select></div>
           <div class="field"><label>Fiyat (₺, KDV hariç)</label><input type="number" step="any" name="price" value="${r.price ?? ""}"></div>
         </div>
-        <div data-scopeinfo class="small" style="margin-top:4px"></div>
+        <label class="history-check small"><input type="checkbox" name="rule_only" ${r.apply_existing?'':'checked'}> Yalnız fiyat listesine kaydet; mevcut işleri değiştirme</label>
+        <div data-scopeinfo class="small" style="margin-top:4px" role="status"></div>
+        <div data-price-application></div>
         <label class="history-check small"><input type="checkbox" name="apply_unpriced" checked> Fiyatı boş eski işlere uygula <span data-n-unpriced class="muted"></span></label>
-        <label class="history-check small"><input type="checkbox" name="apply_differ"> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
+        <label class="history-check small"><input type="checkbox" name="apply_differ" ${r.apply_existing?"checked":""}> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
       .join("") +
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked || v.partDocuments?.length ? "" : fallbackHtml(v, d, message));
@@ -1061,19 +1066,28 @@ function render(ctx, out, v, d, { message, files, ms }) {
       for(const o of ss.options)if(o.dataset.customer)o.hidden=o.disabled=o.dataset.customer!==cs.value;
       try {
         const rule=priceCore.priceCardRule(r,{customer_id:cs.value,site_id:ss.value,scope:qs('[name=scope]',card).value,unit:qs('[name=unit]',card).value,price:qs('[name=price]',card).value},d);
-        const options={unpriced:qs('[name=apply_unpriced]',card).checked,differ:qs('[name=apply_differ]',card).checked};
+        const onlyRule=qs('[name=rule_only]',card).checked,area=qs('[data-price-application]',card);
+        const scopeKey=JSON.stringify([rule.customer_id,rule.site_id,rule.work_type,rule.vehicle_id,rule.vehicle_group,rule.unit]);
+        const rows=priceCore.priceApplicationRows(d,rule);
+        let binds=scopeKey===card._priceScopeKey?qsa('[data-price-bind]:checked',area).map(e=>e.value):rows.filter(r=>r.suggested).map(r=>r.work.id);
+        card._priceScopeKey=scopeKey;
+        binds=binds.filter(id=>rows.some(r=>r.status==='bind'&&r.work.id===id));
+        for(const name of ['apply_unpriced','apply_differ'])qs('[name='+name+']',card).disabled=onlyRule;
+        area.innerHTML=`<details open data-price-work-review><summary>Mevcut işler (${rows.length}) · tarih ve kapsam kontrolü</summary><div style="max-height:320px;overflow:auto">${rows.map(row=>`<article class="small" data-price-work="${esc(row.work.id)}" style="border-bottom:1px solid var(--line);padding:8px 0">${row.status==='bind'?`<label class="history-check"><input type="checkbox" data-price-bind value="${esc(row.work.id)}" ${!onlyRule&&binds.includes(row.work.id)?'checked':''} ${onlyRule?'disabled':''}><b>${esc(row.reason)}</b></label>`:`<b>${esc(row.reason)}</b>`}<div>${esc(trDate(row.work.date))} · ${esc(row.vehicle)} · ${fmtNum(row.work.quantity)} ${esc(row.work.unit)} · ${row.work.price_snapshot?.unit_price!=null?fmtTL(row.work.price_snapshot.unit_price)+' ₺':'fiyatsız'}${row.status==='blocked'||row.status==='already'||onlyRule?' · değişmeyecek':` → ${fmtTL(rule.price)} ₺ / ${esc(rule.unit)}${row.status==='bind'&&!binds.includes(row.work.id)?' (seçilirse)':''}`}</div><div class="tiny muted">${esc([row.work.from_place,row.work.to_place,row.work.description].filter(Boolean).join(' · ').slice(0,280))}</div><a href="#/isler/${esc(row.work.id)}">Kaynak işi aç ›</a></article>`).join('')||'<p class="small">Bu müşteri ve birimde iş kaydı yok.</p>'}</div></details>`;
+        const options={unpriced:!onlyRule&&qs('[name=apply_unpriced]',card).checked,differ:!onlyRule&&qs('[name=apply_differ]',card).checked,bind_ids:onlyRule?[]:binds,applyExisting:!onlyRule};
         const review=priceCore.priceRuleReview(d,rule,options);
         card._priceReview={rule,options,signature:review.signature};
         qs('[data-n-unpriced]',card).textContent=`(${review.pw.unpriced.length} iş)`;
         qs('[data-n-differ]',card).textContent=`(${review.pw.differ.length} iş)`;
         const site=sites.find(x=>x.id===rule.site_id);
-        qs('[data-scopeinfo]',card).textContent=[site?`Şantiye: ${site.name}`:'Şantiye: bu müşterinin tüm şantiyeleri',r.scopes[Number(qs('[name=scope]',card).value)].label,`${fmtTL(rule.price)} ₺ / ${rule.unit} + KDV`,`${review.todo.length} eski işin fiyatı değişecek`,review.old?`Mevcut kural ${fmtTL(review.old.price)} ₺${review.old.kdv_included?' (KDV dahil)':''}; yeni fiyat KDV hariç`:'Yeni kural eklenecek',review.pw.locked?`${review.pw.locked} hakedişe bağlı iş değişmez`:'',review.missingSite?`${review.missingSite} işte şantiye seçilmemiş; açıklamada yer adı olsa bile bu işlere dokunulmaz.`:''].filter(Boolean).join(' · ');
+        qs('[data-scopeinfo]',card).textContent=[site?`Şantiye: ${site.name}`:'Şantiye: bu müşterinin tüm şantiyeleri',r.scopes[Number(qs('[name=scope]',card).value)].label,`${fmtTL(rule.price)} ₺ / ${rule.unit} + KDV`,onlyRule?'Yalnız fiyat listesine kaydedilecek; mevcut işler değişmeyecek':`${review.todo.length} işin fiyatı değişecek${review.bindings.length?' · '+review.bindings.length+' işe şantiye bağlanacak':''}${review.already?' · '+review.already+' iş zaten bu fiyatta':''}`,review.old?`Mevcut kural ${fmtTL(review.old.price)} ₺${review.old.kdv_included?' (KDV dahil)':''}; yeni fiyat KDV hariç`:'Yeni kural eklenecek',review.pw.locked?`${review.pw.locked} hakedişe bağlı iş değişmez`:'',review.missingSite?`${review.missingSite} işte şantiye boş; kaynakta yer adı doğrulananlar yukarıdan seçilebilir.`:''].filter(Boolean).join(' · ');
         qs('[data-row-issues]',card).textContent=r.issues.filter(x=>!/Şantiye seçin|Şantiye belirsiz/.test(x)).join(' · ');
       }catch(e){
         qs('[data-scopeinfo]',card).textContent=e.message;
         qs('[data-n-unpriced]',card).textContent='';qs('[data-n-differ]',card).textContent='';
       }
     };
+    qs('[data-price-application]',card).addEventListener('change',show);
     cs.addEventListener('change',()=>{ss.value='';show();});
     for(const el of qsa('select,input',card))el.addEventListener('change',show);
     qs('[name=price]',card).addEventListener('input',show);
@@ -1184,6 +1198,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const batchWorks = {};
   const newVehByPlate = new Map(), savedDocs = [], dslipIds = [];
   const done = { already: 0, conflict: 0, action: 0, setting: 0, price: 0, priced: 0, tank: 0, tankLinked: 0, ticket: 0, doc: 0, work: 0, expense: 0, fuel: 0, fuelOut: 0, customer: 0, site: 0, collection: 0, maintenance: 0, personnel: 0, edit: 0, cards: 0, learned: 0, vupd: 0, pcards: 0, docSame: 0, dumpdep: 0, dumpinv: 0, dumpinvPaid: 0 };
+  const priceReceipts=[];
   const trackedCredit=(create,...args)=>create(...args.slice(0,4),{...(args[4]||{}),onSaved:rec=>snap0.track(rec)});
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
@@ -1307,7 +1322,7 @@ async function save(ctx, out, v, d, { message, files }) {
         const {saveReviewedPriceRule}=await import('./price-rule-db.js');
         const result=snap0.track(await saveReviewedPriceRule(review.rule,review.options,review.signature,r._priceKey,noteFor('price',r,{note:''},['note'])));
         if(result._existing){done.already++;continue;}
-        done.price++;done.priced+=result.priced;if(result.customerCreated)done.customer++;
+        done.price++;done.priced+=result.priced;priceReceipts.push(result);if(result.customerCreated)done.customer++;
         prices=await db.listActive('price_book');
         continue;
       }
@@ -1901,6 +1916,10 @@ async function save(ctx, out, v, d, { message, files }) {
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + (receiptLinks?'<div class="card assistant-receipt"><b>Kayıt sonucu</b><p class="small">Doğrulanan kayıtları açıp inceleyebilirsiniz.</p>'+receiptLinks+'</div>':'') + dslipBtns +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
       (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;
+    if(priceReceipts.length){
+      const receipt=document.createElement('section');receipt.className='card';receipt.dataset.priceApplicationReceipt='';
+      receipt.innerHTML=priceReceipts.map(r=>`<h3>${r.ruleOnly?'Yalnız fiyat listesine kaydedildi':r.priced?r.priced+' işe fiyat uygulandı':'İşlerin birim fiyatı zaten aynı'}</h3>${r.ruleOnly?'<p>Mevcut işlerin fiyatları değiştirilmedi.</p>':''}${r.already?`<p>${r.already} işin birim fiyatı zaten aynıydı.</p>`:''}${(r.applied||[]).map(w=>`<p><a href="#/isler/${esc(w.id)}">${esc(trDate(w.date))} · ${fmtNum(w.quantity)} ${esc(w.unit)}</a><br>${w.old_price==null?'Fiyatsız':fmtTL(w.old_price)+' ₺'} → <b>${fmtTL(w.new_price)} ₺ / ${esc(w.unit)}</b> · iş tutarı ${fmtTL(w.amount)} ₺${w.site_bound?' · Şantiye bağlandı':''}</p>`).join('')}`).join('');out.append(receipt);
+    }
     if (pendingCash.length) {
       out.insertAdjacentHTML("beforeend", notice("warn", pendingCash.length + " şoför nakit bildirimi ONAYLANMADI; tahsilat yazılmadı. Ayrı kontrol edip kaydedin veya aynı şoför mesajını tekrar açın.") + '<button class="btn primary block" data-pending-driver-cash>Nakit bildirimlerini incele</button>');
       qs("[data-pending-driver-cash]", out).onclick = async () => {

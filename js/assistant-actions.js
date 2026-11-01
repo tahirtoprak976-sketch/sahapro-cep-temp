@@ -57,6 +57,7 @@ export const ACTIONS_PROMPT = [
   "  alanlar: " + Object.entries(ACTION_STORES).map(([s, x]) => `${s}(${Object.keys(x.fields).join(",")})`).join("; ") + ". 'Leda'nın telefonu 0532…', 'Kaya'nın ana firması Hisar Polat', 'JCB'nin muayenesi 12.03.2027'de bitiyor', 'Ahmet artık 34ABC123'ü kullanıyor', 'Erdem Yapı kartını sil'.",
   "Yeni müşteri aç/oluştur/ekle isteğinde actions create customers kullan; fields.name kullanıcının söylediği tam ad olsun. Örnek: Gürçelik Sürücü Kursu, Kemer Country No 53. İsimdeki sayı ve sözcükleri koru; benzer kayıtla kendiliğinden değiştirme. Ad eksikse questions ile sor. Müşteri kartı açmak iş, borç veya tahsilat açmak değildir.",
   "\"settings\":[{\"key\":\"rule\"|\"promise\"|\"iban\"|\"fuel_ref_price\"|\"fuel_rule\",\"value\",\"customer_id\",\"date\",\"amount\",\"per\",\"unit\",\"match\",\"only_pay\"}]",
+  "  Fiyat değişikliklerinde actions/price_book yerine price_rules kullan; mevcut işlerin fiyatı ancak iş bazlı önizleme ve Kaydet onayıyla değişir.",
   "  rule: 'bundan sonra şunu unutma / kural ekle' → value=kural metni (asistan kurallarına eklenir). promise: 'Kaya cuma ödeyecek' → customer_id, date, amount. iban: value. fuel_ref_price: mazot litre fiyatı value. fuel_rule: 'X sefer başı 75 litre mazotla ödüyor' → customer_id, per, unit, match (hangi işler: 'gravak maslak'), only_pay (yalnız mazotla mı).",
   "\"open\":{\"screen\":" + Object.keys(SCREENS).map((s) => `"${s}"`).join("|") + ",\"id\"} (kullanıcı bir ekranı görmek isterse: 'Leda'nın ekstresini aç' → cari + müşteri ID).",
   "Yapamayacağın bir şey istenirse answer'a kısaca neyin yapılamadığını yaz; 'kaydedilemedi' deme, yukarıdaki alanlardan biri uyuyorsa onu kullan.",
@@ -102,6 +103,9 @@ export function validateActions(plan, { message = "", d } = {}) {
     const op = ["create", "update", "delete"].includes(a.op) ? a.op : null;
     const r = { op, store: a.store, label: def?.label || a.store, id: null, rec: null, changes: {}, shown: [], reason: String(a.reason || "").slice(0, 200) || "Asistan", issues: [], ok: false };
     if (!def || !op) { r.issues.push("Bu işlem yapılamıyor"); out.push(r); continue; }
+    if(a.store==='price_book'&&op==='update'&&Object.hasOwn(a.fields||{},'price')){
+      r.issues.push('Fiyat değişikliği genel kart işleminden yapılamıyor; iş bazlı fiyat önizlemesi veya özel tarihlendirilmiş tarife için Fiyat Listesi ekranı gerekir.');out.push(r);continue;
+    }
     if (op !== "create") {
       r.rec = live(d, a.store).find((x) => x.id === a.id) || null;
       if (!r.rec) { r.issues.push("Kayıt bulunamadı"); out.push(r); continue; }

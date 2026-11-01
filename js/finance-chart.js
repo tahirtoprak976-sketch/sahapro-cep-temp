@@ -27,15 +27,22 @@ const TR_MONTHS = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Ey
 export const monthLabel = (k) => TR_MONTHS[Number(k.slice(5, 7)) - 1] + " " + k.slice(2, 4);
 
 export function monthlySeries(data, opts = {}) {
-  const today = opts.today || todayStr();
-  const keys = lastMonths(today, opts.months || 6);
+  const today=opts.today||todayStr();
+  return financialBuckets(data,lastMonths(today,opts.months||6),opts);
+}
+export function financePeriodSummary(data,opts={}){
+  return financialBuckets(data,["period"],opts,()=>"period")[0];
+}
+function financialBuckets(data,keys,opts={},keyOf=monthKey){
+  const today=opts.to||opts.today||todayStr(),from=opts.from||"";
+  const inRange=date=>!!date && date<=today && (!from||date>=from);
   const rows = new Map(
-    keys.map((k) => [k, { key: k, label: monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, pay: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0, fuelGotL: 0 }]),
+    keys.map((k) => [k, { key: k, label: k==="period"?"Dönem":monthLabel(k), work: 0, collected: 0, expense: 0, fuel: 0, maint: 0, esnaf: 0, dump: 0, pay: 0, unpriced: 0, works: 0, fuelPay: 0, fuelPayL: 0, fuelPayUnvalued: 0, fuelGotL: 0 }]),
   );
   const {internal,billed}=workReviewContext(data);
   for (const w of data.work_records || []) {
-    if (!isActive(w) || w.date > today) continue;
-    const r = rows.get(monthKey(w.date));
+    if (!isActive(w) || !inRange(w.date)) continue;
+    const r = rows.get(keyOf(w.date));
     if (!r) continue;
     r.works++;
     if (claimWorkResolution(data, w).issue) r.financialReview = (r.financialReview || 0) + 1;
@@ -47,14 +54,14 @@ export function monthlySeries(data, opts = {}) {
     if (L > 0) r.fuelPayL += L;
   }
   for (const c of data.cash_records || []) {
-    if (!isActive(c) || c.date > today || c.cash_type !== "Müşteriden Para Alındı") continue;
-    const r = rows.get(monthKey(c.date));
+    if (!isActive(c) || !inRange(c.date) || c.cash_type !== "Müşteriden Para Alındı") continue;
+    const r = rows.get(keyOf(c.date));
     if (r) r.collected += toKurus(c.amount);
   }
   // Use the exact same recognized costs as Masraflar; receipt-linked expenses cannot recur.
   const kinds = {gider:'expense',yakit:'fuel',bakim:'maint',esnaf:'esnaf',dokum:'dump',personel:'pay'};
-  for (const cost of costRows(data,{to:today})) {
-    const r = rows.get(monthKey(cost.date));
+  for (const cost of costRows(data,{from,to:today,fuelRefPrice:opts.fuelRefPrice})) {
+    const r = rows.get(keyOf(cost.date));
     if (!r) continue;
     r[kinds[cost.kind]] += toKurus(cost.amount);
     if (cost.kind === 'dokum') {
@@ -65,11 +72,11 @@ export function monthlySeries(data, opts = {}) {
     }
   }
   for (const f of data.fuel_records || []) {
-    if (!isActive(f) || f.date > today || f.fuel_source !== 'Müşteri Verdi') continue;
-    const r = rows.get(monthKey(f.date)); if (r) r.fuelGotL += Number(f.liters) || 0;
+    if (!isActive(f) || !inRange(f.date) || f.fuel_source !== 'Müşteri Verdi') continue;
+    const r = rows.get(keyOf(f.date)); if (r) r.fuelGotL += Number(f.liters) || 0;
   }
-  for (const f of pendingFuelSummary(data,{to:today}).rows) {
-    const r=rows.get(monthKey(f.date)); if(!r)continue;
+  for (const f of pendingFuelSummary(data,{from,to:today}).rows) {
+    const r=rows.get(keyOf(f.date)); if(!r)continue;
     r.fuelPending=(r.fuelPending||0)+1; r.fuelPendingLiters=(r.fuelPendingLiters||0)+(Number(f.liters)||0);
   }
   return [...rows.values()].map((r) => ({

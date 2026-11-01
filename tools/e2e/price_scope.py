@@ -46,8 +46,8 @@ with sync_playwright() as pw:
  assert card.locator('[name=price_site]').input_value()==ids['t']
  assert card.locator('[name=scope]').inner_text()=='Moloz Nakliye · Yalnız Kamyonet'
  assert card.locator('[data-n-unpriced]').inner_text()=='(2 iş)' and card.locator('[data-n-differ]').inner_text()=='(1 iş)'
- assert 'Şantiye: Tarabya' in card.inner_text() and '1 işte şantiye seçilmemiş' in card.inner_text()
- assert card.locator('[data-pick]').is_checked() and not card.locator('[name=apply_differ]').is_checked()
+ assert 'Şantiye: Tarabya' in card.inner_text() and '1 işte şantiye boş' in card.inner_text()
+ assert card.locator('[data-pick]').is_checked() and card.locator('[name=apply_differ]').is_checked()
  assert json.loads(snap())==before
  for width in [320,390,768]:p.set_viewport_size({'width':width,'height':850});assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
  p.set_viewport_size({'width':390,'height':850});p.screenshot(path=str(OUT/'tarabya-preview.png'),full_page=True)
@@ -55,9 +55,9 @@ with sync_playwright() as pw:
  after=json.loads(snap());rules=[r for r in after['price_book'] if r.get('customer_id')==ids['a']];assert len(rules)==1
  rule=rules[0];assert rule['site_id']==ids['t'] and rule['vehicle_group']=='VAN' and rule['work_type']=='Moloz Nakliye' and rule['price']==7000
  before_by={r['id']:r for r in before['work_records']};after_by={r['id']:r for r in after['work_records']}
- changed=[k for k in before_by if before_by[k]!=after_by[k]];assert set(changed)=={ids['rows']['yes'],ids['rows']['van2']},changed
+ changed=[k for k in before_by if before_by[k]!=after_by[k]];assert set(changed)=={ids['rows']['yes'],ids['rows']['van2'],ids['rows']['priced'],ids['rows']['missing']},changed
  for key in changed:assert after_by[key]['price_snapshot']['amount']==14000 and after_by[key]['price_snapshot']['kdv_rate']==20
- print('PASS exact phrase: model omits site and class; real card resolves Tarabya AND pickup AND rubble; only two matching unpriced works change; unrelated/missing-site/locked/priced records untouched',flush=True)
+ print('PASS exact phrase: model omits site and class; real card resolves Tarabya AND pickup AND rubble; all matching unpriced/priced works plus previewed Tarabya origin change; unrelated/locked records untouched',flush=True)
  # Undo covers this operation's exact rule + two work writes. Retry cannot reapply an undone request.
  undone=p.evaluate("""async()=>{const d=await import('./js/db.js'),u=await import('./js/undo.js');const op=(await d.metaGet('assistant_undo'));await u.applyUndo(d);return op;}""")
  undo_state=json.loads(snap());assert all(next(x for x in undo_state['work_records'] if x['id']==k)==before_by[k] for k in changed)

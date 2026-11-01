@@ -30,7 +30,12 @@ assert.match(a[2].issues.join(), /değiştirilemez/);
 assert.match(a[3].issues.join(), /yapılamıyor/);
 // Fiyat güncelle
 a = validateActions({ actions: [{ op: "update", store: "price_book", id: "P1", fields: { price: 3000 } }] }, { message: "Leda saatlik fiyatı 3.000 tl yap", d });
-assert.equal(a[0].ok, true); assert.equal(a[0].changes.price, 3000);
+assert.equal(a[0].ok,false);assert.match(a[0].issues.join(),/iş bazlı fiyat/);
+const {normalizePriceActionPlan,validatePriceRules}=await import('../js/price-rule-core.js');
+const normalizedPrice=normalizePriceActionPlan({actions:[{op:'update',store:'price_book',id:'P1',fields:{price:3000}}]},d);
+assert.equal(normalizedPrice.actions.length,0);
+const [pricePreview]=validatePriceRules(normalizedPrice,{message:'Leda saatlik fiyatı 3.000 tl yap',d});
+assert.equal(pricePreview.ok,true);assert.equal(pricePreview.customer_id,'L');assert.equal(pricePreview.price,3000);
 // Ayarlar
 const s = validateSettings({ settings: [
   { key: "rule", value: "Ağırtaş işleri Hisar Polat'a yazılmasın" },

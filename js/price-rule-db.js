@@ -7,7 +7,7 @@ export async function saveReviewedPriceRule(rule, options, reviewSignature, key,
   if(!key || !reviewSignature)throw Error('Fiyat önizlemesi eksik; yeniden inceleyin.');
   const request=stableStringify({rule,options,reviewSignature});
   const stamp=row=>new Date(Math.max(Date.now(),(Date.parse(row?.updated_at)||0)+1)).toISOString();
-  return transaction(['price_book','work_records','customers','sites','vehicles','hakedis','meta'],(d,t)=>{
+  return transaction(['price_book','work_records','customers','sites','vehicles','hakedis','slips','meta'],(d,t)=>{
     const opKey='assistant_price:'+key, prior=d.meta.find(r=>r.key===opKey)?.value;
     if(prior){
       if(prior.request!==request)throw Error('Aynı fiyat işlemi farklı kapsamla tekrar gönderildi; yeniden isteyin.');
@@ -30,9 +30,10 @@ export async function saveReviewedPriceRule(rule, options, reviewSignature, key,
       :newRecord({...note,...pricedRule,active:true});
     const after=[...(customer?[{store:'customers',row:customer}]:[]),{store:'price_book',row:rec}];
     // All checks precede every write; a quota/write failure aborts the whole transaction.
-    for(const w of review.todo)after.push({store:'work_records',row:{...w,price_snapshot:priceSnapshotFor(pricedRule,w,rec.id),updated_at:stamp(w)}});
+    for(const w of review.todo)after.push({store:'work_records',row:{...w,...(review.bindings.includes(w.id)?{site_id:rule.site_id}:{}),price_snapshot:priceSnapshotFor(pricedRule,w,rec.id),updated_at:stamp(w)}});
     for(const {store,row} of after)(store==='customers'||store==='price_book'&&!old?t.add:t.put)(store,row);
-    const result={rule:rec,priced:review.todo.length,customerCreated:!!customer};
+    const result={rule:rec,priced:review.todo.length,customerCreated:!!customer,already:review.already,ruleOnly:!review.todo.length&&!options.applyExisting,
+      applied:review.todo.map(w=>({id:w.id,date:w.date,quantity:w.quantity,unit:w.unit,old_price:w.price_snapshot?.unit_price??null,new_price:rule.price,amount:priceSnapshotFor(pricedRule,w,rec.id).amount,site_bound:review.bindings.includes(w.id)}))};
     t.put('meta',{key:opKey,value:{request,result,after}});
     return result;
   });
