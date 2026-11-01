@@ -40,7 +40,7 @@ export function mountAssistantPage(ctx){
  const schedule=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(layout);};
  const resize=new ResizeObserver(schedule);resize.observe(workspace);resize.observe(composer);window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
  const dispose=()=>{if(closed)return;closed=true;cancelAnimationFrame(frame);resize.disconnect();observer.disconnect();window.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);for(const fn of cleanups)fn();};
- const observer=new MutationObserver(()=>{if(!workspace.isConnected)dispose();else{const active=!!qs('[data-agent-task]',root)?.textContent.trim();qs('[data-resume-panel]',root).hidden=!active;schedule();}});observer.observe(root,{childList:true,subtree:true});
+ const observer=new MutationObserver(()=>{if(!workspace.isConnected)dispose();else{const active=!!qs('[data-agent-task]',root)?.textContent.trim();qs('[data-resume-panel]',root).hidden=!active;schedule();}});observer.observe(document.body,{childList:true,subtree:true});
  qs('[data-attach]',root).onclick=()=>qs('[data-addphotos]',root).click();
  qs('[data-history-open]',root).onclick=()=>{const panel=qs('[data-history-panel]',root);panel.open=!panel.open;qs('[data-resume-panel]',root).open=panel.open;qs('[data-earlier-turns]',root)?.toggleAttribute('open',panel.open);panel.scrollIntoView({block:'start',behavior:'smooth'});};
  qs('[data-tools-open]',root).onclick=()=>{const panel=qs('[data-assistant-tools]',root);panel.open=!panel.open;panel.scrollIntoView({block:'start',behavior:'smooth'});};

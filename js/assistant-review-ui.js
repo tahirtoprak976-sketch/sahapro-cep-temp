@@ -54,6 +54,6 @@ export function bindAssistantReview(ctx,out,v,d){
  // Existing live validation can change warnings without dispatching an input event.
  const watched=cards.flatMap(c=>[...c.querySelectorAll('[data-row-issues],[data-fuelout-issues]')]);
  const obs=new MutationObserver(()=>{if(!out.isConnected)obs.disconnect();else update();});for(const el of watched)obs.observe(el,{childList:true,subtree:true,characterData:true});
- const detach=new MutationObserver(()=>{if(!panel.isConnected){obs.disconnect();detach.disconnect();}});detach.observe(ctx.root,{childList:true,subtree:true});
+ const detach=new MutationObserver(()=>{if(!panel.isConnected){obs.disconnect();detach.disconnect();}});detach.observe(document.body,{childList:true,subtree:true});
  return {update};
 }
