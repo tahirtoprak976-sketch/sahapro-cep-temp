@@ -27,10 +27,11 @@ assert.equal(r.ok, true, r.issues.join());
 assert.equal(r.customer_id, "L");
 assert.equal(r.unit, "Saat");
 assert.equal(r.price, 3000);
-const wt = r.scopes.find((s) => s.key === "wt"), veh = r.scopes.find((s) => s.key === "veh");
-assert.equal(wt.unpriced, 1); assert.equal(wt.differ, 1); assert.equal(wt.locked, 1); assert.equal(wt.existing.id, "P0");
-assert.equal(veh.unpriced, 2, "araç kapsamı 'Makine Çalışması' yazılan işi de kapsar");
-assert.equal(r.scopes[0].key, "veh", "en çok eski işi kapsayan önce");
+const scope=r.scopes[0];
+assert.equal(r.scopes.length,1,"iş ve araç koşulları ayrı alternatifler değildir");
+assert.equal(scope.work_type,"Manitou Çalışması");assert.equal(scope.vehicle_id,"M");
+assert.equal(scope.unpriced,1);assert.equal(scope.differ,1);assert.equal(scope.locked,1);
+assert.equal(scope.existing,null,"yalnız iş türü olan eski kural daha dar araç kuralı değildir");
 
 // Uydurma fiyat ve belirsiz birim
 const [bad] = validatePriceRules({ price_rules: [{ customer_id: "L", unit: "Saat", price: 3500 }] }, { message: msg, d });
