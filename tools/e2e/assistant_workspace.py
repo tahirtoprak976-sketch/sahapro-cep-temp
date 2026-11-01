@@ -20,6 +20,7 @@ with sync_playwright() as w:
  def ready():p.wait_for_function("()=>document.querySelector('[data-new-chat]')&&!document.querySelector('[data-new-chat]').disabled")
  def send(t):p.fill('[data-msg]',t);p.click('[data-ask]');p.wait_for_function("()=>!document.querySelector('[data-ask]').disabled")
  view('#/daha');ids=p.evaluate("""async()=>{const d=await import('./js/db.js'),c=await import('./js/core.js');const customer=await d.saveNew('customers',{name:'TEST Kendo92'},'TEST'),v=await d.saveNew('vehicles',{name:'TEST Manitou92',plate:'34TEST92'},'TEST');return {customer:customer.id,vehicle:v.id,date:c.todayStr()};}""");before=p.evaluate(SNAP)
+ view('#/akilli-asistan?foto=1');ready();assert p.locator('[data-attach]').evaluate('e=>e===document.activeElement')
  view('#/akilli-asistan');ready();assert p.locator('[data-msg]').count()==1 and not p.locator('[data-assistant-tools]').evaluate('e=>e.open') and not p.locator('[data-history-panel]').evaluate('e=>e.open')
  p.screenshot(path=str(OUT/'welcome-390.png'),full_page=True)
  for width in [320,390,768,1280]:

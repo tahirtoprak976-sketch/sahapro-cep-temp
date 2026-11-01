@@ -668,7 +668,7 @@ export async function screen(ctx) {
     if(hand?.database===database&&realDate(hand.date)&&typeof hand.text==='string'&&hand.text.length<=20000){
       const use=!msgEl.value.trim()||msgEl.value===hand.text||await confirmDialog('Asistandaki mesaj değişsin mi?','Gün kontrolünden seçtiğiniz satır mesaj kutusuna gelecek. Mevcut mesajın yerini almasını onaylıyor musunuz?','Seçili satırı aç');
       if(use){manualRefine=false;msgEl.value=hand.text;msgEl.dispatchEvent(new Event('input',{bubbles:true}));msgEl.focus();
-        msgEl.closest('.card').insertAdjacentHTML('beforebegin',`<p class="notice info" data-day-handoff>Gün kontrolünden geldi. Henüz gönderilmedi veya kaydedilmedi. Tarih ve bilgileri kontrol edip Asistana Gönder’e basın. <a href="${dayReviewURL(hand.date)}">Gün kontrolüne dön</a></p>`);
+        qs('[data-out]',root).insertAdjacentHTML('beforebegin',`<p class="notice info" data-day-handoff>Gün kontrolünden geldi. Henüz gönderilmedi veya kaydedilmedi. Tarih ve bilgileri kontrol edip Asistana Gönder’e basın. <a href="${dayReviewURL(hand.date)}">Gün kontrolüne dön</a></p>`);
       }
     }
     try{sessionStorage.removeItem(key);}catch{}
@@ -679,7 +679,7 @@ export async function screen(ctx) {
     if (t) { msgEl.value = t; if (g.ready && navigator.onLine) qs("[data-ask]", root).click(); else msgEl.focus(); }
   }
   if (ctx.query?.yapistir) { msgEl.focus(); msgEl.scrollIntoView({ block: "center" }); msgEl.placeholder = "WhatsApp mesajını buraya yapıştırın (uzun basın → Yapıştır)"; }
-  if (ctx.query?.foto) { const ph = qs("[data-photos]", root); ph.scrollIntoView({ block: "center" }); ph.closest(".field").style.outline = "2px solid var(--brand-orange,#f5a623)"; ph.focus(); }
+  if (ctx.query?.foto) { const ph = qs("[data-attach]", root); qs("[data-composer]",root).style.outline = "2px solid var(--brand-orange,#f5a623)"; ph.focus(); }
   // 🎤 Sesle anlat: kayıt hemen başlar, bitince kendiliğinden asistana gider
   if (ctx.query?.mic) {
     autoSend = true;

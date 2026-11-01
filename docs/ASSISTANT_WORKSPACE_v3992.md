@@ -26,7 +26,7 @@ Son iki sohbet turu ana alanda, önceki turlar açılabilir geçmiştedir. Yerle
 
 - `tests/assistant-workspace.test.mjs`: gerçek seçili sayı tanımı, devre dışı / kaydedilmiş satırlar, eksik soru gruplama, tek mesaj alanı ve HTML kaçışları.
 - `tools/e2e/assistant_workspace.py`: varsayılan kısa görünüm, 320 / 390 / 768 / 1280 genişlik, sabit mesaj alanı, Enter / Ctrl+Enter, konuşarak düzeltirken manuel açıklamanın korunması, fiyat bekletme, açık onayla tek kayıt, gerçek kayıt bağlantısı, salt okunur geçmiş, ekleme / kaldırma / içerik tekliği, aynı adlı farklı fotoğraflar, PDF kartı, geçişte dosya taslağı, çevrimdışı yerel taslak / iptal, taklit modelle görünür hedef sorusu ve okuma iptali.
-- Mevcut ayrıntılı düzenleyici testleri gerçek kullanıcı görünüm tercihini açar; kayıt / güvenlik assertion'ları korunur. Görev / PDF testinin iki görsel bekleyicisi, PDF artık resim olmadığı için dosya kartını bekler. Görev, dosya, CAS ve çevrimdışı veri assertion'ları korunur.
+- Mevcut ayrıntılı düzenleyici testleri gerçek kullanıcı görünüm tercihini açar; kayıt / güvenlik assertion'ları korunur. Görev / PDF testlerinin üç görsel bekleyicisi, PDF artık resim olmadığı için dosya kartını bekler. Görev, dosya, CAS ve çevrimdışı veri assertion'ları korunur.
 - CI bütün Node dosyalarını, 66 tarayıcı suitini ve kurulu eski sürümlerden güncellemeleri çalıştırır. Yeni modüller servis çalışanı önbelleğine dahildir. Şema 7 kalır.
 
 Testler ayrı TEST veri tabanlarında ve taklit model yanıtlarıyla çalışır. Gerçek telefonun sistem klavyesi / paylaşım ekranı ve gerçek Gemini okuma doğruluğu bu paketle ölçülmez. İşletmenin gerçek verilerine otomatik toplu değişiklik yapılmaz.

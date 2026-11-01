@@ -87,7 +87,7 @@ with sync_playwright() as pw:
  assert tasks['retained'] and tasks['closed']==20,tasks
  page.goto(BASE+'index.html?db='+name+'#/akilli-asistan');page.wait_for_selector('[data-task-activate="'+tasks['id']+'"]')
  assert 'TEST incomplete result' in page.locator('[data-task-id="'+tasks['recovery']+'"]').inner_text()
- page.locator('[data-task-activate="'+tasks['id']+'"]').click();page.wait_for_selector('[data-thumbs] img')
+ page.locator('[data-task-activate="'+tasks['id']+'"]').click();page.wait_for_selector('[data-thumbs] .assistant-file-tile')
  state=page.evaluate("async()=>{const db=await import('./js/db.js');return {id:(await db.metaGet('assistant_task_v1')).id,files:(await db.draftGet('assistant-pending-files')).files.length};}")
  assert state=={'id':tasks['id'],'files':1},state
  results['open_task_and_file_survive_history_and_reload']=True

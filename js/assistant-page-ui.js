@@ -42,7 +42,7 @@ export function mountAssistantPage(ctx){
  const dispose=()=>{if(closed)return;closed=true;cancelAnimationFrame(frame);resize.disconnect();observer.disconnect();window.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);for(const fn of cleanups)fn();};
  const observer=new MutationObserver(()=>{if(!workspace.isConnected)dispose();else{const active=!!qs('[data-agent-task]',root)?.textContent.trim();qs('[data-resume-panel]',root).hidden=!active;schedule();}});observer.observe(root,{childList:true,subtree:true});
  qs('[data-attach]',root).onclick=()=>qs('[data-addphotos]',root).click();
- qs('[data-history-open]',root).onclick=()=>{const panel=qs('[data-history-panel]',root);panel.open=!panel.open;qs('[data-earlier-turns]',root)?.toggleAttribute('open',panel.open);panel.scrollIntoView({block:'start',behavior:'smooth'});};
+ qs('[data-history-open]',root).onclick=()=>{const panel=qs('[data-history-panel]',root);panel.open=!panel.open;qs('[data-resume-panel]',root).open=panel.open;qs('[data-earlier-turns]',root)?.toggleAttribute('open',panel.open);panel.scrollIntoView({block:'start',behavior:'smooth'});};
  qs('[data-tools-open]',root).onclick=()=>{const panel=qs('[data-assistant-tools]',root);panel.open=!panel.open;panel.scrollIntoView({block:'start',behavior:'smooth'});};
  let starting=false;
  const start=async(text,href)=>{if(starting||qs('[data-ask]',root).disabled)return;starting=true;try{if(msg.value.trim()&&!(await confirmDialog(href?'Ekrana geçilsin mi?':'Mesaj değişsin mi?',href?'Yazdığınız mesaj bu telefonda saklanacak.':'Yazdığınız metnin yerine başlangıç örneği gelecek; ekler korunacak.',href?'Ekranı aç':'Örneği yaz')))return;if(!root.isConnected)return;if(href){await ctx.assistantPrepareNavigation?.();await db.metaSet('assistant_draft',msg.value);ctx.go(href);}else{msg.value=text;msg.dispatchEvent(new Event('input',{bubbles:true}));msg.focus();}}catch(e){toast(e.message,'err');}finally{starting=false;}};
@@ -51,7 +51,7 @@ export function mountAssistantPage(ctx){
  qs('[data-start-claim]',root).onclick=()=>start(null,'#/hakedis/hazirlik');
  msg.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)&&!e.isComposing&&e.keyCode!==229){e.preventDefault();qs('[data-ask]',root).click();}});
  const grow=()=>{msg.style.height='auto';msg.style.height=Math.min(120,Math.max(52,msg.scrollHeight))+'px';schedule();};msg.addEventListener('input',grow);
- if(detailedAssistant()){qs('[data-assistant-tools]',root).open=true;qs('[data-history-panel]',root).open=true;}
+ if(detailedAssistant()){qs('[data-assistant-tools]',root).open=true;qs('[data-history-panel]',root).open=true;qs('[data-resume-panel]',root).open=true;}
  grow();layout();return {dispose,onDispose:fn=>cleanups.push(fn),refresh:grow};
 }
 
