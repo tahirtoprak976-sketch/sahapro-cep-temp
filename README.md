@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.93** — 01.11.2026
+Sürüm: **SAHAPRO SOLO v3.9.94** — 01.11.2026
+
+Asistanın beş açık görev sınırı artık yeni istekleri engellemez. Eski yarım istekler kaynakları, sohbetleri ve dosyaları korunarak bekletilir; görev listesinden devam edilebilir veya kapatılabilir. Tekrarlanan istek hataları tek uyarıda gösterilir. [Ayrıntı ve doğrulama](docs/ASSISTANT_CAPACITY_v3994.md).
 
 Asistan fiyat kurallarında müşteri + şantiye + iş türü + araç/grup birlikte korunur. Şantiye önizlemede görünür; belirsiz şantiye müşteri geneline genişletilmez. Eski işlere uygulama tek transaction ile yapılır. [Kapsam ve doğrulama](docs/PRICE_SCOPE_v3993.md).
 
