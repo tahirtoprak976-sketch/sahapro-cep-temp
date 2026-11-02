@@ -1,3 +1,4 @@
+import {vehicleTypeInfo} from "./vehicle-type-core.js";
 import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
 import {tankTimeline} from './tank-timeline.js';
@@ -414,7 +415,7 @@ async function fleet(ctx) {
     appbar("Filo", "Araçlar / makineler ve belge süreleri") +
     `
     <div style="height:10px"></div>
-    <div data-fleet-summary></div>
+    <a class="btn block" href="#/arac-turleri">Araç türlerini kontrol et</a><div data-fleet-summary></div>
     <div data-list data-fleet-list></div>
     <div class="actionbar"><button class="btn primary" data-vadd>+ Araç/Makine</button></div>`;
   await watchFleetDocuments(ctx,(data,error)=>{
@@ -433,7 +434,7 @@ async function fleet(ctx) {
         ic: v.ownership === "Taşeron" ? "🤝" : "🚜",
         href: "#/filo/" + v.id,
         t1: esc(v.name),
-        t2: `${esc(v.type || "")} · ${esc(v.ownership || "")}${v.assignee_id ? " · zimmet: " + esc(names.personnel[v.assignee_id] || "") : ""}`,
+        t2: `${esc(vehicleTypeInfo(v).kind || v.type || "Türü kontrol edin")} · ${esc(v.ownership || "")}${v.assignee_id ? " · zimmet: " + esc(names.personnel[v.assignee_id] || "") : ""}`,
         badgeHtml:
           '<div class="fleet-doc-badges">'+badge(compliance.status,compliance.status==='BELGELER TAM'?'ok':compliance.status==='SÜRESİ GEÇMİŞ'?'danger':'warn') + fleetDocumentBadge(deadline) + (open ? badge(open + " açık", "danger") : "")+'</div>',
       });

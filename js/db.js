@@ -1,3 +1,4 @@
+import {normalizedVehicleFields} from "./vehicle-type-core.js";
 import {journalTransaction,rememberWrites,transactionWrites} from './write-receipt.js';
 import { prepareAttachment, prepareInvoiceOriginal } from "./attachment-safety.js";
 import {historicalFuelIdentity} from './historical-fuel.js';
@@ -1377,7 +1378,7 @@ function assertNumericFields(f) {
 }
 async function validateFields(store, fields, previous = null) {
   assertNumericFields(fields);
-  const f = { ...fields };
+  const f = store === "vehicles" ? normalizedVehicleFields(fields,previous) : { ...fields };
   // Only new/explicitly changed estimate inputs are validated here. An ordinary
   // note edit must not rewrite or reinterpret an old, unverified record.
   const dumpNumbers = store === "work_records" ? ["tonnage", "dump_cost"] : store === "vehicles" ? ["load_ton"] : [];

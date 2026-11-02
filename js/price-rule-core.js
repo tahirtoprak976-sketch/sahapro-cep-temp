@@ -1,3 +1,4 @@
+import {vehicleTypeMatches,existingVehicle} from "./vehicle-type-core.js";
 import {priceVehicleContext} from "./core.js";
 // Asistan ile fiyat kuralı: "Leda'ya manitou saatliği 3000 TL uygula" → fiyat listesine müşteriye özel kural
 // ve (isteğe bağlı) fiyatı boş / farklı olan eski işlere uygulama. SAF katman: kayıt yazmaz.
@@ -58,9 +59,10 @@ export function pastWorksFor(d, rule) {
     if (w.unit !== rule.unit) continue;
     if (rule.work_type && w.work_type !== rule.work_type) continue;
     if (rule.vehicle_id && w.vehicle_id !== rule.vehicle_id) continue;
-    const vehicle = (d.vehicles||[]).find(v => v.id === w.vehicle_id);
-    if (rule.vehicle_group && !PRICE_VEHICLE_GROUPS[rule.vehicle_group]?.types.includes(transportVehicleType(vehicle?.type||w.vehicle_type,vehicle?.name))) continue;
-    if (rule.vehicle_type && vehicle?.type !== rule.vehicle_type) continue;
+    const vehicle = (d.vehicles||[]).find(v => v.id === w.vehicle_id), ctx=priceVehicleContext(w,vehicle);
+    if (!existingVehicle(vehicle)) continue;
+    if (rule.vehicle_group && (ctx.vehicle_missing || !PRICE_VEHICLE_GROUPS[rule.vehicle_group]?.types.includes(transportVehicleType(ctx.vehicle_type,ctx.vehicle_name,ctx.vehicle_type_review)))) continue;
+    if (rule.vehicle_type && !vehicleTypeMatches(rule.vehicle_type,ctx)) continue;
     if (rule.valid_from && w.date < rule.valid_from) continue;
     if (rule.valid_to && w.date > rule.valid_to) continue;
     if (w.fuel_rule_id || w.customer_fuel_allowance_l || ["Mazot karşılığı","Sözleşmeye dahil","İç iş (kendi depo)"].includes(w.price_snapshot?.price_source)) continue; // mazotla ödenen iş
@@ -215,7 +217,8 @@ export function priceRuleReview(d,rule,{unpriced=true,differ=false,bind_ids=[],a
     if(!Number.isSafeInteger(Math.round(rule.price*Number(w.quantity)*100*2)))throw Error("Hesaplanan tutar geçersiz.");
   }
   const related=live(d,"work_records").filter(w=>w.customer_id===rule.customer_id && (!rule.work_type||w.work_type===rule.work_type) && w.unit===rule.unit && !w.site_id);
-  const signature=stableStringify({rule,unpriced,differ,bind_ids:[...bind_ids].sort(),applyExisting,old:old||null,todo,locked:pw.locked});
+  const vehicleIds=new Set(analysis.map(r=>r.work.vehicle_id)),vehicleFacts=(d.vehicles||[]).filter(v=>vehicleIds.has(v.id)).map(v=>({id:v.id,name:v.name,type:v.type,type_review:v.type_review,updated_at:v.updated_at,deleted_at:v.deleted_at,active:v.active})).sort((a,b)=>a.id.localeCompare(b.id));
+  const signature=stableStringify({rule,vehicleFacts,unpriced,differ,bind_ids:[...bind_ids].sort(),applyExisting,old:old||null,todo,locked:pw.locked});
   return {signature,old,pw,todo,bindings:bindings.map(w=>w.id),already,analysis,missingSite:rule.site_id?related.length:0};
 }
 
@@ -231,10 +234,12 @@ export function priceApplicationRows(d,rule){
  const site=live(d,'sites').find(s=>s.id===rule.site_id),out=[];
  for(const w of live(d,'work_records').filter(w=>w.customer_id===rule.customer_id && w.unit===rule.unit)){
   let reason='',status='blocked';
-  const vehicle=(d.vehicles||[]).find(v=>v.id===w.vehicle_id),p=w.price_snapshot;
-  if(rule.work_type && w.work_type!==rule.work_type)reason='İş türü farklı';
+  const vehicle=(d.vehicles||[]).find(v=>v.id===w.vehicle_id),p=w.price_snapshot,ctx=priceVehicleContext(w,vehicle),info=transportVehicleInfo(ctx.vehicle_type,ctx.vehicle_name,ctx.vehicle_type_review);
+  if(!existingVehicle(vehicle))reason='Araç kartı yok veya silinmiş';
+  else if(rule.work_type && w.work_type!==rule.work_type)reason='İş türü farklı';
   else if(rule.vehicle_id && w.vehicle_id!==rule.vehicle_id)reason='Araç farklı';
-  else if(rule.vehicle_group && !PRICE_VEHICLE_GROUPS[rule.vehicle_group]?.types.includes(transportVehicleType(vehicle?.type||w.vehicle_type,vehicle?.name)))reason=transportVehicleInfo(vehicle?.type||w.vehicle_type,vehicle?.name).conflict?'Araç kartında ad ve tür çelişiyor':transportVehicleType(vehicle?.type||w.vehicle_type,vehicle?.name)?'Araç türü kapsam dışında':'Araç türü doğrulanamadı; kartı kontrol edin';
+  else if(rule.vehicle_group && !PRICE_VEHICLE_GROUPS[rule.vehicle_group]?.types.includes(info.type))reason=info.conflict?'Araç kartında ad ve tür çelişiyor':info.type?'Araç türü kapsam dışında':'Araç türü doğrulanamadı; kartı kontrol edin';
+  else if(rule.vehicle_type&&!vehicleTypeMatches(rule.vehicle_type,ctx))reason='Araç türü kapsam dışında';
   else if(rule.site_id && w.site_id && w.site_id!==rule.site_id)reason='Başka şantiye kayıtlı';
   else if(p?.locked||live(d,'hakedis').some(h=>h.status!=='İptal'&&h.items?.some(i=>i.work_record_id===w.id)))reason='Hakedişe bağlı; fiyatı korunur';
   else if(w.fuel_rule_id||w.customer_fuel_allowance_l||['Mazot karşılığı','Sözleşmeye dahil','İç iş (kendi depo)'].includes(p?.price_source))reason='Mazot / sözleşme hesabı; bu işlemle değiştirilmez';
@@ -248,7 +253,7 @@ export function priceApplicationRows(d,rule){
   else if(differentWorkPrice(rule,w)){status='differ';reason='Eski fiyat değişecek';}
   else {status='already';reason='Birim fiyat zaten aynı';}
   const names=site?live(d,'sites').filter(s=>s.customer_id===rule.customer_id&&siteNamed(s,w.from_place||'')):[];
-  out.push({work:w,status,reason,vehicle:vehicle?.name||w.vehicle_id||'Araç yok',vehicleNote:transportVehicleInfo(vehicle?.type||w.vehicle_type,vehicle?.name).note,suggested:status==='bind'&&names.length===1&&names[0].id===site.id});
+  out.push({work:w,status,reason,vehicle:vehicle?.name||w.vehicle_id||'Araç yok',vehicleNote:info.note,suggested:status==='bind'&&names.length===1&&names[0].id===site.id});
  }
  return out.sort((a,b)=>String(b.work.date).localeCompare(String(a.work.date))||a.work.id.localeCompare(b.work.id));
 }

@@ -1,3 +1,4 @@
+import {VEHICLE_TYPES,canonicalVehicleType,vehicleTypeInText,vehicleTypeMatches,genericVehicleType,documentVehicleType} from "./vehicle-type-core.js";
 // Asistan — fotoğraftan döküm/kantar fişi ve araç/personel belgesi (bitiş tarihi) okuma. SAF katman.
 // Kural aynı: fiş numarası, tonaj, tarih ve plaka FOTOĞRAFIN YAZISINDA geçmeli; geçmeyen satır işaretsiz gelir.
 import { isActive, todayStr, addDays, COMPANY_NAME, sameDocument } from "./core.js";
@@ -152,7 +153,7 @@ export function vehicleInfo(x, text) {
   const kind = String(x.vehicle_kind || "").trim();
   const fuel = FUELS.find(([, re]) => re.test(foldTr(x.fuel_type || "").toLowerCase()) && re.test(foldTr(text).toLowerCase()));
   return {
-    type: kind && nt.includes(` ${norm(kind)}`) && vehicleKind(kind) !== "Araç/Makine" ? vehicleKind(kind) : "",
+    type: vehicleTypeInText(kind,text) ? canonicalVehicleType(kind) : "",
     brand: word(x.brand, 40), model: word(x.model, 60),
     model_year: yr >= 1950 && yr <= 2100 && String(text).includes(String(yr)) ? yr : null,
     chassis_no: code(x.chassis_no), engine_no: code(x.engine_no), color: word(x.color, 30),
@@ -161,7 +162,7 @@ export function vehicleInfo(x, text) {
   };
 }
 export const VEHICLE_INFO_LABELS = { plate: "Plaka", type: "Tür", brand: "Marka", model: "Model", model_year: "Model yılı", chassis_no: "Şasi no", engine_no: "Motor no", color: "Renk", fuel_type: "Yakıt tipi", km: "Km" };
-const sameType = (a, b) => { const g = (t) => (/^(tır|çekici)$/i.test(t) ? "TIR" : t); return g(a) === g(b); };
+const sameType = (a,b) => vehicleTypeMatches(a,{vehicle_type:b});
 // Kayıtlı araç kartı ile belge arasındaki farklar. on: varsayılan işaretli mi
 export function vehicleUpdate(v, info) {
   const out = [];
@@ -170,26 +171,15 @@ export function vehicleUpdate(v, info) {
     const to = info[k], from = v[k];
     if (to == null || to === "") continue;
     if (k === "km") { if (to > Number(from || 0)) out.push({ k, from: from || null, to, on: true }); continue; }
-    if (k === "type") { if (!sameType(from || "", to)) out.push({ k, from: from || null, to, on: !from || from === "Araç/Makine" }); continue; }
+    if (k === "type") { if (!sameType(from || "", to)) out.push({ k, from: from || null, to, on: genericVehicleType(from) }); continue; }
     if (k === "model_year" ? Number(from) === to : norm(from) === norm(to) || alnum(from) === alnum(to) && /_no$/.test(k)) continue;
     out.push({ k, from: from || null, to, on: true });
   }
   return out;
 }
 // Belgedeki cins → uygulamanın araç türü
-export const VEHICLE_KINDS = ["Çekici", "Yarı Römork", "Römork", "Tır", "Kamyon", "Kamyonet", "Binek", "Vinç", "İş Makinesi", "Araç/Makine"];
-export function vehicleKind(s) {
-  const t = String(s || "").toLocaleLowerCase("tr-TR");
-  if (/yar[ıi]\s*r[öo]mork|semi/.test(t)) return "Yarı Römork";
-  if (/r[öo]mork|dorse/.test(t)) return "Römork";
-  if (/[çc]ekici/.test(t)) return "Çekici";
-  if (/kamyonet|pikap|panelvan|pick ?up/.test(t)) return "Kamyonet";
-  if (/kamyon/.test(t)) return "Kamyon";
-  if (/(^|[^a-zçğıöşü])t[ıi]r($|[^a-zçğıöşü])/.test(t)) return "Tır";
-  if (/otomobil|binek|arazi ta[şs]|suv|hatchback|sedan|minib[üu]s/.test(t)) return "Binek";
-  if (/ekskavat|kaz[ıi]c[ıi]|y[üu]kleyici|loder|greyder|silindir|forklift|i[şs] makine/.test(t)) return "İş Makinesi";
-  return "Araç/Makine";
-}
+export const VEHICLE_KINDS = VEHICLE_TYPES;
+export const vehicleKind = documentVehicleType;
 export function validateDocuments(plan, { d, today = todayStr(), photoTexts = [], photoCount = 0, company = null } = {}) {
   const out = [];
   const companyOwner = { id: COMPANY_OWNER_ID, name: COMPANY_NAME, ...(company || {}) };
@@ -217,7 +207,7 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
       const pl = plateKey(x.plate);
       if (!owner && pl && alnum(text).includes(pl)) {
         owner = list.find((v) => plateKey(v.plate) === pl || plateKey(v.name) === pl) || null;
-        if (!owner) { const info = vehicleInfo(x, text); newVehicle = { plate: pl, ...info, type: info.type || vehicleKind(x.vehicle_kind || text) }; }
+        if (!owner) { const info = vehicleInfo(x, text); newVehicle = { plate: pl, ...info, type: info.type || "Araç/Makine" }; }
       }
       if (owner) {
         const pk = plateKey(owner.plate) || plateKey(owner.name) || (plateKey(x.plate) && alnum(text).includes(plateKey(x.plate)) && !list.some((v) => v.id !== owner.id && (plateKey(v.plate) === plateKey(x.plate) || plateKey(v.name) === plateKey(x.plate))) ? plateKey(x.plate) : "");

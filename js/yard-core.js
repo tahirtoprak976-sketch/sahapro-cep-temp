@@ -1,3 +1,4 @@
+import {vehicleTypeInfo} from "./vehicle-type-core.js";
 // Kendi depo / stok sahası — SAF katman.
 // Kamyonetimiz müşteriden döküm dahil malzeme (moloz, çöp, hafriyat) alıp kendi depoya döker (stok girer);
 // birikince tır/kamyonla döküm sahalarına götürülür (stok çıkar). Çıkış seferleri iç iştir: hakedişe girmez.
@@ -20,11 +21,11 @@ export function vehicleFactor(v, settings = {}) {
   if (!v) return { f: 1, known: false };
   const own = Number(settings.byVehicle?.[v.id]);
   if (own > 0) return { f: own, known: true };
-  const t = norm([v.type, v.name, v.model].filter(Boolean).join(" "));
+  const group=vehicleTypeInfo(v).group;
   const k = { ...DEFAULT_FACTORS, ...(settings.defaults || {}) };
-  if (/kamyonet|pikap|panelvan|transit/.test(t)) return { f: k.kamyonet, known: true };
-  if (/\btir\b|cekici|dorse/.test(t)) return { f: k.tir, known: true };
-  if (/kamyon|damper/.test(t)) return { f: k.kamyon, known: true };
+  if (group==='VAN') return { f: k.kamyonet, known: true };
+  if (group==='TIR') return { f: k.tir, known: true };
+  if (group==='TRUCK') return { f: k.kamyon, known: true };
   return { f: 1, known: false };
 }
 

@@ -1,3 +1,4 @@
+import {canonicalVehicleType,vehicleTypeRequested,genericVehicleType} from "./vehicle-type-core.js";
 // Akıllı Asistan: "uygulamada istediğim her şeyi yapsın" katmanı.
 // Gemini üç tür istek döndürür; hepsi telefonda doğrulanır ve kullanıcı kartı işaretleyip kaydetmeden hiçbir şey değişmez:
 //  1) actions  — kartları (müşteri, şantiye, araç, personel, esnaf, ocak, döküm yeri, fiyat, belge) ekle / düzelt / sil
@@ -26,7 +27,7 @@ const digits = (s) => String(s || "").replace(/\D/g, "");
 export const ACTION_STORES = {
   customers: { label: "Müşteri", create: true, del: true, fields: { name: "text", phone: "phone", note: "free", parent_customer_id: "ref:customers" } },
   sites: { label: "Şantiye", create: true, del: true, fields: { name: "text", address: "free", customer_id: "ref:customers" }, need: ["customer_id"] },
-  vehicles: { label: "Araç / makine", create: true, del: true, fields: { name: "text", plate: "plate", type: "free", tank_capacity: "num", next_maintenance_date: "date" } },
+  vehicles: { label: "Araç / makine", create: true, del: true, fields: { name: "text", plate: "plate", type: "vehicleType", tank_capacity: "num", next_maintenance_date: "date" } },
   personnel: { label: "Personel", create: true, del: true, fields: { name: "text", phone: "phone", role: "free", vehicle_id: "ref:vehicles" } },
   suppliers: { label: "Esnaf / tedarikçi", create: true, del: true, fields: { name: "text", phone: "phone", type: "free" } },
   quarries: { label: "Malzeme ocağı", create: true, del: true, fields: { name: "text", address: "free" } },
@@ -82,9 +83,13 @@ export function actionsSchemaProps() {
   };
 }
 
-function checkValue(kind, v, { message, d, nums, money }) {
-  if (v === null || v === "") return { ok: true, value: null };
+function checkValue(kind, v, { message, d, nums, money, create=false }) {
+  if (v === null || v === "") return kind === "vehicleType" ? {ok:false,why:"Araç türü boşaltılmaz; gerçek türünü Filo ekranından seçin"} : { ok: true, value: null };
   if (kind === "text") return textInMessage(v, message) ? { ok: true, value: String(v).trim().slice(0, 120) } : { ok: false, why: `"${v}" mesajda yazmıyor` };
+  if(kind==='vehicleType'){
+    const canonical=canonicalVehicleType(v);
+    return canonical&&(vehicleTypeRequested(v,message)||(create&&genericVehicleType(v)))?{ok:true,value:canonical}:{ok:false,why:'Araç türü mesajda açıkça yazmalı; Filo → Araç türlerini kontrol et ekranından da seçebilirsiniz'};
+  }
   if (kind === "free") return { ok: true, value: String(v).trim().slice(0, 300) };
   if (kind === "phone") return digits(v).length >= 10 && digits(message).includes(digits(v).slice(-10)) ? { ok: true, value: String(v).trim() } : { ok: false, why: `Telefon ${v} mesajda yazmıyor` };
   if (kind === "plate") return digits(v) && norm(message).replace(/ /g, "").includes(norm(v).replace(/ /g, "")) ? { ok: true, value: String(v).toUpperCase().trim() } : { ok: false, why: `Plaka ${v} mesajda yazmıyor` };
@@ -115,7 +120,7 @@ export function validateActions(plan, { message = "", d } = {}) {
     for (const [k, v] of Object.entries(a.fields && typeof a.fields === "object" ? a.fields : {})) {
       const kind = def.fields[k];
       if (!kind) { r.issues.push(`"${FIELD_TR[k] || k}" buradan değiştirilemez`); continue; }
-      const c = checkValue(kind, v, { message, d, nums, money });
+      const c = checkValue(kind, v, { message, d, nums, money,create:op==='create' });
       if (!c.ok) { r.issues.push(c.why); continue; }
       if (r.rec && String(r.rec[k] ?? "") === String(c.value ?? "")) continue;
       r.changes[k] = c.value;

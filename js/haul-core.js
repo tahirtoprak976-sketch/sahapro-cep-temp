@@ -1,3 +1,4 @@
+import {vehicleTypeInfo} from "./vehicle-type-core.js";
 // Kamyon taşıma kapasitesi ve kabarma payı — TAHMİN hesapları (kayıt yazmaz, cariye girmez).
 // Kaynak: "Kamyon kabarma payı ve metraj" araştırması (Ekim 2026). Yoğunluklar Caterpillar "Common Materials Loose & Bank"
 // tablosundan; kaya değerleri doğrulanmamış, moloz için güvenilir veri yok. Kesin miktar ortak ölçümcünün yerinde metrajıdır.
@@ -49,7 +50,7 @@ export function legalPayload(v) {
   if (!g || !(t > 0) || t >= g.ton) return null;
   return r1(g.ton - t);
 }
-export const isHauler = (v) => num(v?.body_m3) > 0 || num(v?.axles) > 0 || /kamyon|t[ıi]r|damper/i.test(String(v?.type || ""));
+export const isHauler = (v) => num(v?.body_m3) > 0 || num(v?.axles) > 0 || !!vehicleTypeInfo(v||{}).group;
 
 // Sefer başı yük (ton) kaynağı, güvenilirlik sırasıyla. (Kantar ortalaması 2. pakette eklenecek.)
 export function payload(v, { defaultTon = 0 } = {}) {

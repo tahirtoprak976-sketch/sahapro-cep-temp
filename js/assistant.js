@@ -999,7 +999,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         </div>
         <label class="history-check small"><input type="checkbox" name="rule_only" ${r.apply_existing?'':'checked'}> Yalnız fiyat listesine kaydet; mevcut işleri değiştirme</label>
         <div data-scopeinfo class="small" style="margin-top:4px" role="status"></div>
-        <div data-price-application></div>
+        <a class="btn block" href="#/arac-turleri">Araç türlerini kontrol et</a><div data-price-application></div>
         <label class="history-check small"><input type="checkbox" name="apply_unpriced" checked> Fiyatı boş eski işlere uygula <span data-n-unpriced class="muted"></span></label>
         <label class="history-check small"><input type="checkbox" name="apply_differ" ${r.apply_existing?"checked":""}> Farklı fiyatlı eski işleri de bu fiyata çevir <span data-n-differ class="muted"></span></label>
         ${issues(r)}</div>`)
@@ -1039,7 +1039,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         if (jp && jp.kind !== "ambiguous" && (jp.kind !== "extra" || jp.rate) && !r0.fuelAllowance) { card.dataset.priceAmb = ""; box.innerHTML = "📐 <b>" + esc(jp.text) + "</b>" + (jp.kind === "sefer" ? ` = <b>${fmtTL(Number(JOB.dealOf(jp.site).price) * q)} ₺</b>` : jp.rate ? ` = <b>${fmtTL(Number(jp.rate.price) * q)} ₺</b>` : ""); return; }
         const jpNote = jp ? `<div class="small">📐 ${esc(jp.text)}</div>` : "";
         const dateSure = !(r0.dateUnsure && g("date") === r0.date);
-        const dec = priceDecision((d.price_book || []).filter(isActive), { unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, vehicle_type: veh?.type || null, vehicle_name: veh?.name, work_type: g("work_type"), date: g("date"), material: g("material") || null }, { dateSure });
+        const dec = priceDecision((d.price_book || []).filter(isActive), priceVehicleContext({ unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, work_type: g("work_type"), date: g("date"), material: g("material") || null },veh), { dateSure });
         card.dataset.priceAmb = dec.ambiguous ? "1" : "";
         box.innerHTML = dec.rule ? `💰 <b>Fiyat listesinden</b> — ${esc(priceSummary(dec.rule, { date: g("date"), quantity: q, unit: g("unit") }))}${r0.fuelAllowance?.only_pay ? " · <b>Bu müşteride ücret yalnız mazot: hakedişe 0 ₺ yazılır</b>" : ""}`
           : dec.ambiguous ? `❓ <b>Fiyat seçimi gerekli:</b> ${esc(dec.reason)} — kaydederken sorulacak`

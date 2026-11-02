@@ -1,3 +1,4 @@
+import {normalizedVehicleFields} from "../js/vehicle-type-core.js";
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
@@ -28,7 +29,7 @@ function fixture(seed){
   function request(fn){pending++;const r={};queueMicrotask(()=>{if(!aborted){r.result=fn();r.onsuccess?.();}pending--;schedule();});return r;}
   schedule();return t;
  }};
- const context={journalTransaction:t=>t,rememberWrites:r=>r,...core,...dump,core,structuredClone,ENTERPRISE_STORES,workHours,freezeDumpEstimate,
+ const context={normalizedVehicleFields,journalTransaction:t=>t,rememberWrites:r=>r,...core,...dump,core,structuredClone,ENTERPRISE_STORES,workHours,freezeDumpEstimate,
   openDB:async()=>db,get:async(store,id)=>read(store,id),getAll:async store=>structuredClone(data[store]||[]),
   listActive:async store=>(data[store]||[]).filter(core.isActive),recordsCommitted(){},transactionError:()=>Error('abort'),
   stamp:core.nowISO,

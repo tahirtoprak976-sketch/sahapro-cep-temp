@@ -1,3 +1,4 @@
+import {canonicalVehicleType} from "./vehicle-type-core.js";
 // Structured historical import only. No guessing of WhatsApp prose, prices or VAT.
 import { FIELD_METADATA } from "./business.js";
 import {
@@ -241,7 +242,7 @@ export function prepareHistory(
       if (r.settlement_status !== "unbilled_unpaid")
         throw Error("Ödenmiş/hakedişe alınmış iş bu ekrandan aktarılmaz.");
       const vehicle_id = resolve("vehicles", r.vehicle, c, "vehicle_id", {
-        type: r.vehicle_type || "Diğer",
+        type: canonicalVehicleType(r.vehicle_type) || r.vehicle_type || "Araç/Makine",
       });
       if (!vehicle_id) throw Error("Araç/makine seçin.");
       const personnel_id = resolve("personnel", r.personnel, c, "personnel_id");
