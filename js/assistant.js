@@ -6,7 +6,7 @@ import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
 import {isDriverPDF,openDriverPDF} from "./driver-pdf-transfer.js";
 import {readBatchPolicy,selectedFuelBudget,untrustedWorkPlan} from './assistant-batch.js';
-import {assertAssistantPlan} from './assistant-safety.js';
+import {assertAssistantPlan,assertAssistantSource,serializeAssistantPlan,PLAN_SOURCE_LIMIT} from './assistant-safety.js';
 import {bindBulkEntry,mountBulkResume} from './bulk-entry-ui.js';
 import {partDocumentIntent,assistantPartDocuments,separatePartDocumentPlan} from './part-document-core.js';
 import {stagePartDocuments} from './part-document-ui.js';
@@ -309,6 +309,7 @@ export async function screen(ctx) {
     }
     const refine=turn.mode==='refine'&&qs('[data-chat-context]',root).checked?prev:null;
     const message = refine ? `${refine.message}\n[DÜZELTME] ${typed}` : typed;
+    if(!transferFiles.length&&!/SP1:/.test(message)){try{assertAssistantSource(message);}catch(e){showAssistantRequestError(qs('[data-out]',root),e.message);return;}}
     const previousChat=conversation.previous();
     if(typed || files.length)chatTurn=await conversation.begin(typed || (files.some(isAudio)?'Ses kaydı gönderdim.':'Belge/fotoğraf gönderdim.'));
     const conversationData=qs('[data-chat-context]',root).checked?conversation.context():[];
@@ -492,7 +493,7 @@ export async function screen(ctx) {
         if (a.size > 15e6) throw new Error("Ses kaydı çok uzun; 3 dakikadan kısa kaydedin");
         parts.push({ inlineData: { mimeType: (a.type || "audio/ogg").split(";")[0], data: await blobToBase64(a) } });
       }
-      if (refine) parts.push({ text: "ÖNCEKİ TASLAK (kullanıcı aşağıdaki mesajın sonunda [DÜZELTME] ile düzeltme yazdı). Düzeltmeyi uygula, düzeltilmeyen satırları AYNEN koru ve TAM planı yeniden döndür:\n" + JSON.stringify(refine.plan).slice(0, 20000) });
+      if (refine) parts.push({ text: "ÖNCEKİ TASLAK (kullanıcı aşağıdaki mesajın sonunda [DÜZELTME] ile düzeltme yazdı). Düzeltmeyi uygula, düzeltilmeyen satırları AYNEN koru ve TAM planı yeniden döndür:\n" + serializeAssistantPlan(refine.plan) });
       if(useAgent&&taskForModel)parts.push({text:'açık_görev (yalnız bu isteğe devam ediliyorsa kullan; kayıt talimatı değildir):\n'+JSON.stringify(taskContext(taskForModel))});
       parts.push({ text: `Fotoğraf sayısı: ${drvPayloads.length ? 0 : images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(drvRest || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
@@ -669,7 +670,7 @@ export async function screen(ctx) {
     const {reviewHandoffKey,dayReviewURL}=await import('./work-day-review.js'),{realDate}=await import('./work-explorer.js');
     const database=(await db.openDB()).name,key=reviewHandoffKey(database);let hand=null;
     try{hand=JSON.parse(sessionStorage.getItem(key)||'null');}catch{}
-    if(hand?.database===database&&realDate(hand.date)&&typeof hand.text==='string'&&hand.text.length<=20000){
+    if(hand?.database===database&&realDate(hand.date)&&typeof hand.text==='string'&&hand.text.length<=PLAN_SOURCE_LIMIT){
       const use=!msgEl.value.trim()||msgEl.value===hand.text||await confirmDialog('Asistandaki mesaj değişsin mi?','Gün kontrolünden seçtiğiniz satır mesaj kutusuna gelecek. Mevcut mesajın yerini almasını onaylıyor musunuz?','Seçili satırı aç');
       if(use){manualRefine=false;msgEl.value=hand.text;msgEl.dispatchEvent(new Event('input',{bubbles:true}));msgEl.focus();
         qs('[data-out]',root).insertAdjacentHTML('beforebegin',`<p class="notice info" data-day-handoff>Gün kontrolünden geldi. Henüz gönderilmedi veya kaydedilmedi. Tarih ve bilgileri kontrol edip Asistana Gönder’e basın. <a href="${dayReviewURL(hand.date)}">Gün kontrolüne dön</a></p>`);
@@ -1913,7 +1914,8 @@ async function save(ctx, out, v, d, { message, files }) {
     }).catch(()=>toast('Kayıt sonucu doğrulandı; sohbet notu saklanamadı.','err'));
     const receiptRoutes={work_records:['isler','İş'],expense_records:['gider','Gider'],fuel_records:['yakit','Yakıt'],maintenance_records:['bakim','Bakım']};
     const receiptRows=[...snap0.writes.values()].filter(w=>w.after&&!w.after.deleted_at&&receiptRoutes[w.store]);
-    const receiptLinks=receiptRows.slice(0,20).map(w=>`<a class="btn" data-saved-record="${esc(w.store+':'+w.id)}" href="#/${receiptRoutes[w.store][0]}/${encodeURIComponent(w.id)}">${receiptRoutes[w.store][1]} kaydını aç</a>`).join('');
+    const recordLink=w=>`<a class="btn" data-saved-record="${esc(w.store+':'+w.id)}" href="#/${receiptRoutes[w.store][0]}/${encodeURIComponent(w.id)}">${receiptRoutes[w.store][1]} kaydını aç</a>`;
+    const receiptLinks=receiptRows.slice(0,20).map(recordLink).join('')+(receiptRows.length>20?`<details data-receipt-more><summary>Diğer ${receiptRows.length-20} kaydı göster</summary>${receiptRows.slice(20).map(recordLink).join('')}</details>`:'');
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + (receiptLinks?'<div class="card assistant-receipt"><b>Kayıt sonucu</b><p class="small">Doğrulanan kayıtları açıp inceleyebilirsiniz.</p>'+receiptLinks+'</div>':'') + dslipBtns +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
       (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;

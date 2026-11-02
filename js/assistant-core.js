@@ -1,5 +1,5 @@
 import {isMachineKind,canonicalVehicleType,vehicleTypeRequested} from "./vehicle-type-core.js";
-import {assertAssistantPlan,rowEvidence} from './assistant-safety.js';
+import {assertAssistantPlan,rowEvidence,PLAN_LIMITS} from './assistant-safety.js';
 import {recordLocalText} from './record-notes.js';
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
 // dönen planı doğrular. Kayıt yazmaz. Kural: kimlikler listede olmalı, yeni müşteri/şantiye adı
@@ -293,6 +293,7 @@ export function assistantSystem(rules = "") {
     "'yarım gün', 'öğlene kadar' gibi ifadeler için tahminini quantity'ye yazabilirsin ama guessed=true işaretle.",
     "Sefer/gidiş/tur=Sefer, saat=Saat, yevmiye/gün=Yevmiye. İş türü listesi: " + WORK_TYPES.join(", ") + ".",
     "Gider kategorileri: " + EXPENSE_CATEGORIES.join(", ") + ". Bağlamdaki expense_categories listesi özel kategoriler dahil önceliklidir. Veresiye/açık hesap (esnafa borç) ise credit=true ve supplier_id ver.",
+    `Bir istekte en fazla ${PLAN_LIMITS.works} iş satırı hazırlanabilir. Her işi ayrı satırda ver; ilk 20 ile sınırlama, satırları birleştirme veya sessizce atlama.`,
     "Fotoğraf varsa her fotoğrafın yazısını photo_texts dizisine aynen yaz (sayı biçimini koru); uzun belgede yalnız rakam, tarih, plaka, fiş/belge no ve firma adı geçen satırları yaz (fotoğraf başına en çok 1200 karakter). FATURA / FİŞ ise TÜM kalem satırlarını (stok kodu, açıklama, miktar, birim fiyat, KDV, tutar) ve toplamları eksiksiz yaz (en çok 3500 karakter).",
     "Tarih YYYY-MM-DD. 'dün' gibi ifadeleri bugüne göre çöz; tarih yoksa bugünü kullan.",
     "Kullanıcı tüm işler için açık iş tarihi verdiyse WhatsApp gönderim tarihi yerine onu kullan. Toplu iş tarihinde yıl eksikse yılı sor. 'Fiyatlar beklesin / fiyatları sonra belirle' talimatında güncel fiyat veya anlaşma tahmin etme. Eksikleri iş numarasıyla tek bir kısa soru grubunda topla; kayıt oluşturduğunu söyleme.",
@@ -407,8 +408,6 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const batchPolicy=readBatchPolicy(message,today);
   out.batchPolicy=batchPolicy;
   plan = plan && typeof plan === "object" ? plan : {};
-  if(Array.isArray(plan.works)&&plan.works.length>20)throw Error('Bir seferde en fazla 20 iş kontrol edilebilir. Hiçbir satır kaydedilmedi; mesajı daha küçük gruplara bölün.');
-  if(Array.isArray(plan.fuel)&&plan.fuel.length>10)throw Error('Bir seferde en fazla 10 yakıt kontrol edilebilir. Hiçbir satır kaydedilmedi; mesajı daha küçük gruplara bölün.');
   const customers = live(d, "customers"), sites = live(d, "sites"), vehicles = live(d, "vehicles"),
     personnel = live(d, "personnel"), suppliers = live(d, "suppliers");
   const byId = (arr, id) => (id ? arr.find((x) => x.id === id) || null : null);
@@ -421,7 +420,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   const newNames = new Map(); // aynı yeni müşteri tek kart
   const hints = customerHints(d);
 
-  for (const [workIndex,original] of (Array.isArray(plan.works) ? plan.works : []).slice(0, 20).entries()) {
+  for (const [workIndex,original] of (Array.isArray(plan.works) ? plan.works : []).entries()) {
     const issues = [];
     const w=!original.from_driver&&batchPolicy.date?{...original,date:batchPolicy.date,date_source:'mesaj'}:original;
     // Şoför ekranından (SP1 kodu): müşteri/araç listeden kesin seçildi; metin tahmini kontrolleri uygulanmaz

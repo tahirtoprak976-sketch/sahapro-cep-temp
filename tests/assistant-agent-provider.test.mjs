@@ -21,4 +21,11 @@ const values={gemini_consent:true,gemini_daily_limit:1};let network=0;
 const db={metaTxn:async(keys,f)=>{const x=f(values);Object.assign(values,x.set);return x.result}};
 await assert.rejects(()=>geminiAgent([],{key:'T',model:'M',tools:AGENT_TOOLS,runTool,fetchFn:gatedFetch(db,async()=>{network++;return {ok:true,json:async()=>payload([fc('find_records',{store:'customers'})])}})}),/günlük/);assert.equal(network,1);
 values.gemini_consent=false;await assert.rejects(()=>geminiAgent([],{key:'T',model:'M',tools:AGENT_TOOLS,runTool,fetchFn:gatedFetch(db,async()=>{network++;throw Error('must not run')})}),/izni/);assert.equal(network,1);
+const tokenBudgets=[];
+await geminiAgent([],{key:'T',model:'OLD',tools:AGENT_TOOLS,runTool,fetchFn:async(u,o)=>{
+ tokenBudgets.push(JSON.parse(o.body).generationConfig.maxOutputTokens);
+ return tokenBudgets.length===1?{ok:false,status:400,json:async()=>({error:{message:'maxOutputTokens exceeds output token limit'}})}:{ok:true,json:async()=>payload([fc('prepare_plan',{plan_json:'{}'})])};
+}});
+assert.deepEqual(tokenBudgets,[32768,8192],'large budget falls back for older models');
+let truncatedCalls=0;await assert.rejects(()=>geminiAgent([],{key:'T',model:'M',tools:AGENT_TOOLS,runTool:async()=>{truncatedCalls++;return {}},fetchFn:async()=>({ok:true,json:async()=>({...payload([fc('prepare_plan',{plan_json:'{}'})]),candidates:[{content:{parts:[fc('prepare_plan',{plan_json:'{}'})]},finishReason:'MAX_TOKENS'}]})})}),/yarıda/);assert.equal(truncatedCalls,0,'a complete-looking truncated tool call is never executed');
 console.log('assistant agent provider: native read/read/ask loop, signature + call ID echo, unknown/mixed calls denied, request bounds, legacy JSON, per-round quota and consent PASS');

@@ -398,12 +398,18 @@ export async function geminiText(prompt, { key, model, system, fetchFn, maxToken
 export async function geminiAgent(parts,{key,model,system,tools,runTool,fetchFn,maxRounds=6,maxCalls=16,onTool}={}){
   const contents=[{role:'user',parts}],trace=[],allowed=new Set(tools.map(t=>t.name));
   const terminals=new Set(['prepare_plan','revise_draft','ask_user']);let count=0;
+  let outputTokens=32768;
   for(let round=0;round<Math.min(6,maxRounds);round++){
-    const data=await call(`/models/${encodeURIComponent(model)}:generateContent`,key,{
+    const send=()=>call(`/models/${encodeURIComponent(model)}:generateContent`,key,{
       systemInstruction:{parts:[{text:system}]},contents,
       tools:[{functionDeclarations:tools}],toolConfig:{functionCallingConfig:{mode:'AUTO'}},
-      generationConfig:{temperature:0,maxOutputTokens:16384},
+      generationConfig:{temperature:0,maxOutputTokens:outputTokens},
     },fetchFn);
+    let data;
+    try{data=await send();}catch(e){
+      if(outputTokens>8192&&/max_?output_?tokens|maxOutputTokens|output token/i.test(e.message)){outputTokens=8192;data=await send();}
+      else throw e;
+    }
     assertModelFinish(data);
     if(data?.candidates?.[0]?.finishReason==='MAX_TOKENS')throw Error('Asistan yanıtı yarıda kesildi. Hiçbir araç uygulanmadı; mesajı daha küçük gruplara bölüp tekrar deneyin.');
     const content=data?.candidates?.[0]?.content,returned=content?.parts||[],calls=returned.filter(p=>p.functionCall);

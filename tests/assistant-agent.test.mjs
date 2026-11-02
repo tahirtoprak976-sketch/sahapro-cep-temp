@@ -20,7 +20,7 @@ assert.throws(()=>reviseAgentPlan(task,[{group:'works',index:2,fields:{evil:'x'}
 assert.throws(()=>reviseAgentPlan(task,[{group:'works',index:4,fields:{}}]),/bulunamadı/);
 assert.throws(()=>cleanAgentPlan('{"works":[],"__proto__":{"polluted":true}}'),/alan/);
 assert.throws(()=>cleanAgentPlan({execute_sql:'DELETE'}),/Bilinmeyen/);
-assert.throws(()=>cleanAgentPlan({works:Array(31).fill({})}),/sınır/);
+assert.throws(()=>cleanAgentPlan({works:Array(101).fill({})}),/en fazla 100/);
 const nested=reviseAgentPlan({status:'draft',plan:{actions:[{op:'create',store:'customers',fields:{name:'A',phone:'123'}}]}},[{group:'actions',index:0,fields:{fields:{phone:'456'}}}]);assert.deepEqual(nested.actions[0].fields,{name:'A',phone:'456'});
 let reads=0;const before=JSON.stringify(d),run=createAgentRunner({snapshot:async()=>{reads++;return d},today:'2026-10-22',task});
 assert.equal((await run('find_records',{store:'customers',query:'çatıcı'})).records[0].id,'B');

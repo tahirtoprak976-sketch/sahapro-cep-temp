@@ -1,3 +1,4 @@
+import {BULK_JSON_LIMIT} from "./assistant-safety.js";
 import {withRecordSource} from './record-notes.js';
 import * as db from './db.js';
 import {uuid,newRecord,nowISO} from './core.js';
@@ -14,7 +15,7 @@ export async function readBulkDraft(){
  return draft?.version===1&&draft.chat_id===chat?.id&&draft.status==='open'?draft:null;
 }
 export async function saveBulkDraft(draft,{create=false}={}){
- if(!draft||draft.version!==1||JSON.stringify(draft).length>250000)throw Error('Toplu taslak geçersiz veya çok büyük. Mesajı bölün.');
+ if(!draft||draft.version!==1||JSON.stringify(draft).length>BULK_JSON_LIMIT)throw Error('Toplu taslak geçersiz veya çok büyük. Mesajı bölün.');
  return db.metaTxn([BULK_KEY,CHAT],values=>{
   const old=values[BULK_KEY];
   if(values[CHAT]?.id!==draft.chat_id)throw stale();

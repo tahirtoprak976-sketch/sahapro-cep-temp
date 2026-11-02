@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.97** — 02.11.2026
+Sürüm: **SAHAPRO SOLO v3.9.98** — 02.11.2026
+
+Asistan artık bir istekte **100 iş satırına kadar** kontrol eder; doğrulama, görev saklama, düzeltme ve toplu onayda satır sonları kesilmez. Fotoğraflı karma mesajlar aynı önizlemede incelenir; uzun kayıt sonucundaki bütün bağlantılara erişilir. [Kapsam ve doğrulama](docs/ASSISTANT_LARGE_BATCH_v3998.md).
 
 Araç türleri kart, belge, fiyat, depo katsayısı ve kapasite hesabında ortak tanımdan çözülür. Filo → **Araç türlerini kontrol et** ekranı belirsiz/çelişkili kartları gösterir; gerçek tür açık onayla, eski iş fiyatlarına dokunmadan doğrulanır. [Denetim, sınırlar ve doğrulama](docs/VEHICLE_TYPE_AUDIT_v3997.md).
 

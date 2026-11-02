@@ -1,3 +1,4 @@
+import {PLAN_SOURCE_LIMIT,assertAssistantSource} from "./assistant-safety.js";
 // One durable active request, bound to the chat epoch and guarded by a revision. Never resumes a posted plan.
 import {uuid,nowISO} from './core.js';
 import {chatText} from './assistant-conversation.js';
@@ -8,8 +9,9 @@ const CHAT_KEY='assistant_conversation_v1';
 const states=new Set(['draft','clarify','applying','complete','review','cancelled']);
 export const taskOpen=t=>!!t&&['draft','clarify'].includes(t.status);
 export function cleanTask(raw){
+ if(String(raw?.source||'').length>PLAN_SOURCE_LIMIT)return null;
  if(!raw||raw.version!==1||typeof raw.id!=='string'||typeof raw.chat_id!=='string'||!Number.isInteger(raw.rev)||raw.rev<1||!states.has(raw.status))return null;
- try{return {version:1,id:raw.id.slice(0,80),chat_id:raw.chat_id.slice(0,80),rev:raw.rev,status:raw.status,native:!!raw.native,goal:chatText(raw.goal,240),source:chatText(raw.source,12000),plan:cleanAgentPlan(raw.plan),updated_at:String(raw.updated_at||'').slice(0,35),receipt:chatText(raw.receipt,1000)};}catch{return null;}
+ try{return {version:1,id:raw.id.slice(0,80),chat_id:raw.chat_id.slice(0,80),rev:raw.rev,status:raw.status,native:!!raw.native,goal:chatText(raw.goal,240),source:chatText(raw.source,PLAN_SOURCE_LIMIT),plan:cleanAgentPlan(raw.plan),updated_at:String(raw.updated_at||'').slice(0,35),receipt:chatText(raw.receipt,1000)};}catch{return null;}
 }
 export async function readTask(db){
  const [raw,chat]=await Promise.all([db.metaGet(TASK_KEY),db.metaGet(CHAT_KEY)]),task=cleanTask(raw);
@@ -27,7 +29,7 @@ function assertCurrent(values,epoch,previous){
  return current;
 }
 export async function saveTaskProposal(db,{epoch,previous,result,source}){
- if(String(source).length>12000)throw Error('Bu görev çok uzadı. Kaydı kontrol edip yeni bir istek başlatın.');
+ assertAssistantSource(source);
  const plan=cleanAgentPlan(result.plan),status=(plan.questions||[]).length?'clarify':'draft';
  return db.metaTxn([TASK_KEY,CHAT_KEY,CENTER_KEY],values=>{
   const current=assertCurrent(values,epoch,previous),continuing=result.mode==='continue';

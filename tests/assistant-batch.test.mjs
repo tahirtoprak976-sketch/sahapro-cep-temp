@@ -13,7 +13,7 @@ const d={customers:[{id:'A',name:'TEST Alfa'},{id:'B',name:'TEST Beta'}],vehicle
 const W=(extra={})=>({date:'2026-09-05',date_source:'whatsapp',customer_id:'A',vehicle_id:'V',work_type:'Makine Çalışması',unit:'Saat',quantity:1,description:'TEST çalışma',...extra});
 const source='TEST Alfa TEST JCB 1 saat çalıştı';
 const raw={works:[W()]},before=JSON.stringify(raw);
-assert.throws(()=>validatePlan({works:Array.from({length:21},()=>W())},{message:source,d,today}),/en fazla 20 iş/,'oversized result is never silently truncated');
+assert.throws(()=>validatePlan({works:Array.from({length:101},()=>W())},{message:source,d,today}),/en fazla 100 iş/,'oversized result is never silently truncated');
 let v=validatePlan(raw,{message:'Bütün işler 7 Eylül 2026 tarihine ait. Fiyatlar bekleyecek; güncel fiyat listesini uygulama.\n[5/9 21:45] Şoför: '+source,d,today});
 assert.equal(v.works[0].date,'2026-09-07');assert.equal(v.works[0].dateUnsure,undefined);
 assert.equal(v.works[0].price_pending,true);assert.equal(v.works[0].priceInfo,undefined);assert.equal(v.works[0].unit_price,null);

@@ -1,3 +1,4 @@
+import {PLAN_SOURCE_LIMIT} from "./assistant-safety.js";
 // Bounded independent assistant tasks. Each item has its own proposal and chat snapshot.
 import { nowISO } from "./core.js";
 import { cleanAgentPlan } from "./assistant-agent-core.js";
@@ -9,11 +10,12 @@ const states = new Set(["draft", "clarify", "applying", "complete", "review", "c
 const openStates = new Set(["draft", "clarify"]);
 
 function cleanItem(raw) {
+  if(String(raw?.source||'').length>PLAN_SOURCE_LIMIT)return null;
   if (!raw || typeof raw.id !== "string" || typeof raw.chat_id !== "string" || !Number.isInteger(raw.rev) || raw.rev < 1 || !states.has(raw.status)) return null;
   try {
     return {
       version: 1, id: raw.id.slice(0, 80), chat_id: raw.chat_id.slice(0, 80), rev: raw.rev,
-      status: raw.status, paused: openStates.has(raw.status) && raw.paused === true, native: !!raw.native, goal: chatText(raw.goal, 240), source: chatText(raw.source, 12000),
+      status: raw.status, paused: openStates.has(raw.status) && raw.paused === true, native: !!raw.native, goal: chatText(raw.goal, 240), source: chatText(raw.source, PLAN_SOURCE_LIMIT),
       plan: cleanAgentPlan(raw.plan), updated_at: String(raw.updated_at || "").slice(0, 35),
       created_at: String(raw.created_at || raw.updated_at || "").slice(0, 35), receipt: chatText(raw.receipt, 1000),
       chat: cleanConversation(raw.chat),
