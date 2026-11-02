@@ -141,7 +141,7 @@ export function jobReport(d, site, { matOver = {}, calib = {}, today = "" } = {}
     if (average && m.bank) { const t = (average.ton / average.trips) * n; return { m3: t / m.bank, s: "kantar-ort", t }; }
     if (calib[w.vehicle_id + "|" + key]?.m3_per_trip > 0) return { m3: calib[w.vehicle_id + "|" + key].m3_per_trip * n, s: "ogrenilmis", t: 0 };
     if (v) {
-      const pl = payload(v, { defaultTon: DEFAULT_LOAD_TON[transportVehicleType(v.type)] || 0 });
+      const pl = payload(v, { defaultTon: DEFAULT_LOAD_TON[transportVehicleType(v.type,v.name,v.type_review)] || 0 });
       const e = pl ? tripEstimate(v, m, { payloadTon: pl.ton }) : null;
       if (e?.bankRaw != null) return { m3: e.bankRaw * n, s: "kasa", t: e.tonRaw * n };
     }

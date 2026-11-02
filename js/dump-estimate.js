@@ -5,7 +5,7 @@ import { resolveWorkTonnage } from './work-tonnage.js';
 const round = n => Math.round(n * 100) / 100;
 export const DEFAULT_LOAD_TON = { TIR: 27, TRUCK: 22 };
 export function loadTon(vehicle) {
-  return Number(vehicle?.load_ton) > 0 ? Number(vehicle.load_ton) : DEFAULT_LOAD_TON[transportVehicleType(vehicle?.type)] || 0;
+  return Number(vehicle?.load_ton) > 0 ? Number(vehicle.load_ton) : DEFAULT_LOAD_TON[transportVehicleType(vehicle?.type,vehicle?.name,vehicle?.type_review)] || 0;
 }
 const basisKeys = ['dump_site_id','vehicle_id','date','unit','quantity','tonnage','tonnage_scope','dump_cost'];
 export function freezeDumpEstimate(work, site, vehicle, previous = null) {

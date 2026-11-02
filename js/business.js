@@ -1,3 +1,4 @@
+import {vehicleTypeInfo} from "./vehicle-type-core.js";
 import {validDate} from './driver-delivery.js';
 import {
   isActive,
@@ -372,14 +373,9 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
         (d.owner_type === "vehicle" && d.owner_id === vehicle.id)),
   );
   const aliases = DOC_FAMILY;
-  const truck =
-    vehicle.type === "Kamyon" ||
-    /^\d{2}\s*[A-Z]/i.test(vehicle.plate || vehicle.name || "");
-  const required =
-    vehicle.required_document_types ||
-    (truck
-      ? ["Ruhsat", "Muayene Belgesi", "Zorunlu Trafik Sigortası"]
-      : ["Makine Tescil Belgesi", "Periyodik Kontrol"]);
+  const classification=vehicleTypeInfo(vehicle),truck=classification.family==='road';
+  const manual=Array.isArray(vehicle.required_document_types)?vehicle.required_document_types:null;
+  const required=manual|| (truck ? ["Ruhsat", "Muayene Belgesi", "Zorunlu Trafik Sigortası"] : classification.family==='machine' ? ["Makine Tescil Belgesi", "Periyodik Kontrol"] : []);
   const validTypes = new Set(
     docs
       .filter((d) => validDate(d.date) && ['Geçerli','7 Gün İçinde','30 Gün İçinde'].includes(expiryState(d, today)))
@@ -407,6 +403,7 @@ export function vehicleDocumentStatus(vehicle, documents, today = todayStr()) {
   return {
     status: overdue
       ? "SÜRESİ GEÇMİŞ"
+      : !manual && !classification.family ? "TÜR BELİRSİZ"
       : missing.length
         ? "EKSİK"
         : soon

@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.96** — 01.11.2026
+Sürüm: **SAHAPRO SOLO v3.9.97** — 02.11.2026
+
+Araç türleri kart, belge, fiyat, depo katsayısı ve kapasite hesabında ortak tanımdan çözülür. Filo → **Araç türlerini kontrol et** ekranı belirsiz/çelişkili kartları gösterir; gerçek tür açık onayla, eski iş fiyatlarına dokunmadan doğrulanır. [Denetim, sınırlar ve doğrulama](docs/VEHICLE_TYPE_AUDIT_v3997.md).
 
 Araç türü genel kalmış Kamyonet kartları fiyat kapsamına araç adından alınır; açık ad/tür çelişkisi ve bilinmeyen tür engellenir. Önizleme her iş için eşleştirme dayanağını gösterir. [Ayrıntı ve doğrulama](docs/VEHICLE_PRICE_TYPE_v3996.md).
 

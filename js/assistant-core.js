@@ -1,3 +1,4 @@
+import {isMachineKind,canonicalVehicleType,vehicleTypeRequested} from "./vehicle-type-core.js";
 import {assertAssistantPlan,rowEvidence} from './assistant-safety.js';
 import {recordLocalText} from './record-notes.js';
 // Asistan — SAF katman. Gemini'ye işletme bilgisini (kartlar, takma adlar, alışkanlıklar) verir,
@@ -10,7 +11,7 @@ import {customerFuelRows} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
-import { isActive, resolvePrice, WORK_TYPES, TRUCK_TYPES, transportVehicleType, EXPENSE_CATEGORIES, expenseCategoryNames, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
+import { isActive, resolvePrice, WORK_TYPES, TRUCK_TYPES, priceVehicleContext, EXPENSE_CATEGORIES, expenseCategoryNames, MAINT_TYPES, MAINT_STATUS, PERSONNEL_EVENT_TYPES, cariBalance, todayStr, calcTankBalance } from "./core.js";
 import { writtenNumbers, numbersInText } from "./ai-assist.js";
 import { foldTr } from "./parser.js";
 import { moneyMentions, rolesOf, ROLE_TR, amountOwners, customerSpans, ownerOfMention } from "./money-roles.js";
@@ -355,10 +356,8 @@ function numberCounts(text) {
   return out;
 }
 // İş makinesi mi (kepçe, JCB, ekskavatör…): saatle çalışır; malzeme adı geçti diye nakliye yapmaz
-const MACHINE_WORDS = /(^| )(jcb|kepce|beko|ekskavator|kazici|loder|loader|dozer|greyder|silindir|manitou|vinc|kato|forklift|is makinesi)( |$)/;
 export function isMachineVehicle(v) {
-  if (!v || transportVehicleType(v.type)) return false;
-  return MACHINE_WORDS.test(` ${norm([v.name, v.type].filter(Boolean).join(" "))} `);
+  return !!v && isMachineKind(v);
 }
 // Ad mesajda geçiyor mu? Son kelimeye Türkçe ek gelebilir ("Erdem Yapı" ↔ "erdem yapıya", "Kaya'ya")
 const inMessage = (name, message) => {
@@ -658,7 +657,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     // tarih: kural SESSİZCE seçilmez, kaydederken sorulur.
     if (!r.price_pending && !r.unit_price && r.unit && (r.customer_id || r.new_customer)) {
       const v0 = byId(vehicles, r.vehicle_id);
-      const dec = priceDecision(live(d, "price_book"), { unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, vehicle_type: v0?.type || null, vehicle_name: v0?.name, work_type: r.work_type, date: r.date, material: r.material || null }, { dateSure: !r.dateUnsure });
+      const dec = priceDecision(live(d, "price_book"), priceVehicleContext({ unit: r.unit, customer_id: r.customer_id, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, date: r.date, material: r.material || null },v0), { dateSure: !r.dateUnsure });
       const rule = dec.rule;
       r.priceInfo = { ambiguous: dec.ambiguous, reason: dec.reason || "", candidates: dec.candidates, summary: rule ? priceSummary(rule, { date: r.date, quantity: r.quantity, unit: r.unit }) : "" };
       if (dec.ambiguous) issues.push("Fiyat seçimi gerekli: " + dec.reason + " (" + dec.candidates.map((c) => `${Number(c.price).toLocaleString("tr-TR")} ₺ ${c.price_source}${c.valid_from ? " " + c.valid_from + "'den" : ""}`).join(" / ") + ")");
@@ -1097,6 +1096,11 @@ export function validateCards(plan, { message = "", d, photoTexts = [] } = {}) {
       const item = { kind, name, issues, ok: !twin && !!inText, data: {} };
       if (kind === "customers") { item.data = { phone: String(c.phone || "").slice(0, 30), note: String(c.note || "").slice(0, 200) }; if (item.ok) newCustomerNames.push(name); }
       if (kind === "vehicles") item.data = { plate: String(c.plate || "").toUpperCase().slice(0, 20), type: String(c.type || "Araç/Makine").slice(0, 40), ownership: c.ownership === "Taşeron" ? "Taşeron" : "Özmal" };
+      if(kind==='vehicles'){
+        const supplied=String(c.type||''),canonical=canonicalVehicleType(supplied);
+        item.data.type=canonical||'Araç/Makine';
+        if(supplied&&canonical!=='Araç/Makine'&&(!canonical||!vehicleTypeRequested(supplied,src))){issues.push('Araç türü kaynakta doğrulanamadı; türü seçip kontrol edin');item.ok=false;item.data.type='Araç/Makine';}
+      }
       if (kind === "personnel") item.data = { phone: String(c.phone || "").slice(0, 30), role: String(c.role || "").slice(0, 40) };
       if (kind === "quarries" || kind === "dump_sites") item.data = { address: String(c.address || "").slice(0, 120) };
       if (kind === "suppliers") item.data = { type: ["Servis", "Tedarikçi", "Petrolcü", "Diğer"].includes(c.type) ? c.type : "Servis", phone: String(c.phone || "").slice(0, 30) };

@@ -1,10 +1,12 @@
+import {transportVehicleType,vehicleTypeMatches,existingVehicle,genericVehicleType} from "./vehicle-type-core.js";
+export {transportVehicleInfo,transportVehicleType} from "./vehicle-type-core.js";
 import {pendingFuelSummary} from './historical-fuel.js';
 // SAHAPRO SOLO — çekirdek saf mantık (DOM/IndexedDB bağımsız)
 // v1 (SAHAPRO CEP) ile geriye dönük uyumlu; hesap kuralları sahapro-hakedis-engine skill'ine göre.
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.9.96";
+export const APP_VERSION = "SAHAPRO SOLO v3.9.97";
 export const SCHEMA_VERSION = 7;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -369,58 +371,9 @@ export const PRICE_VEHICLE_GROUPS = Object.assign(Object.create(null), {
   TIR: { label: "Yalnız Tır / Çekici", types: ["TIR"] },
   VAN: { label: "Yalnız Kamyonet", types: ["VAN"] },
 });
-function vehicleKindKey(value) {
-  return String(value || "")
-    .toLocaleLowerCase("tr-TR")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/ı/g, "i")
-    .replace(/[\/()_-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-function typedTransportKind(key) {
-  if (
-    [
-      "truck", "kamyon",
-      "damperli kamyon",
-      "hafriyat kamyonu",
-      "kamyon damperli",
-    ].includes(key)
-  )
-    return "TRUCK";
-  if (["tir", "cekici", "tir cekici", "damperli tir"].includes(key))
-    return "TIR";
-  if (["van", "kamyonet", "pikap", "pickup", "pick up", "panelvan", "panel van"].includes(key)) return "VAN";
-  return null;
-}
-const TRANSPORT_LABELS = {TRUCK:"Kamyon", TIR:"Tır / Çekici", VAN:"Kamyonet"};
-// Only the vehicle card's name may supplement an empty/generic card type.
-// A plate, job description or model guess is never evidence of vehicle kind.
-export function transportVehicleInfo(type, name = "") {
-  const key = vehicleKindKey(type), nameKey = vehicleKindKey(name);
-  const named = new Set();
-  for (const word of nameKey.split(" ")) {
-    const kind = typedTransportKind(word);
-    if (kind) named.add(kind);
-  }
-  if (/\bpick up\b|\bpanel van\b/.test(nameKey)) named.add("VAN");
-  const typed = typedTransportKind(key);
-  const generic = ["", "arac makine", "diger"].includes(key);
-  if (named.size > 1 || (typed && named.size === 1 && !named.has(typed)))
-    return {type:null, note:`Araç kartında ad ve tür çelişiyor: ${name} / ${type || "belirtilmemiş"}`, conflict:true};
-  if (typed) return {type:typed, note:`Araç türü: ${TRANSPORT_LABELS[typed]}`, conflict:false};
-  if (generic && named.size === 1) {
-    const resolved = [...named][0];
-    return {type:resolved, note:`${TRANSPORT_LABELS[resolved]} — araç adından; kart türü: ${type || "belirtilmemiş"}`, conflict:false};
-  }
-  return {type:null, note:`Araç türü doğrulanamadı; kart türü: ${type || "belirtilmemiş"}`, conflict:false};
-}
-export function transportVehicleType(type, name = "") {
-  return transportVehicleInfo(type, name).type;
-}
+// The vehicle card is authoritative. Old work snapshots cannot override it.
 export function priceVehicleContext(work, vehicle) {
-  return {...work, vehicle_type:vehicle?.type || work.vehicle_type || null, vehicle_name:vehicle?.name || null};
+  return {...work, vehicle_type:vehicle?vehicle.type:work.vehicle_type||null, vehicle_name:vehicle?.name||null, vehicle_type_review:vehicle?.type_review||null, vehicle_missing:!existingVehicle(vehicle)};
 }
 export function priceVehicleScope(entry, vehicleNames = {}) {
   if (entry.vehicle_id)
@@ -445,22 +398,22 @@ export function rankPrices(entries, ctx, opts = {}) {
   );
   const result = [];
   for (const e of cands) {
+    if(ctx.vehicle_missing&&(e.vehicle_id||e.vehicle_type||e.vehicle_group))continue;
     if (
       e.vehicle_group &&
-      !PRICE_VEHICLE_GROUPS[e.vehicle_group]?.types.includes(
-        transportVehicleType(ctx.vehicle_type, ctx.vehicle_name),
-      )
+      (ctx.vehicle_missing || !PRICE_VEHICLE_GROUPS[e.vehicle_group]?.types.includes(
+        transportVehicleType(ctx.vehicle_type, ctx.vehicle_name, ctx.vehicle_type_review),
+      ))
     )
       continue;
     if (
       [
         "vehicle_id",
-        "vehicle_type",
         "work_type",
         "customer_id",
         "site_id",
         "material",
-      ].some((k) => e[k] && e[k] !== ctx[k])
+      ].some((k) => e[k] && e[k] !== ctx[k]) || (e.vehicle_type && !vehicleTypeMatches(e.vehicle_type,ctx))
     )
       continue;
     if (
@@ -481,12 +434,12 @@ export function rankPrices(entries, ctx, opts = {}) {
     const tier = e.site_id ? 3 : e.customer_id ? 2 : 1;
     const specificity =
       ["vehicle_id", "vehicle_type", "work_type", "material"].filter(
-        (k) => e[k],
+        (k) => e[k] && (k!=="vehicle_type" || !genericVehicleType(e[k])),
       ).length + (e.distance_min != null || e.distance_max != null ? 1 : 0);
     const vehicleSpecificity = e.vehicle_id
       ? 4
       : e.vehicle_type
-        ? 3
+        ? genericVehicleType(e.vehicle_type) ? 0 : 3
         : e.vehicle_group
           ? PRICE_VEHICLE_GROUPS[e.vehicle_group].types.length === 1
             ? 2

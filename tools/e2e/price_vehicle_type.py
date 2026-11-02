@@ -39,6 +39,7 @@ with sync_playwright() as w:
  p.screenshot(path=str(OUT/'legacy-preview.png'),full_page=True)
  # A real card-type change between preview and commit invalidates the transaction.
  p.evaluate("""async id=>{const d=await import('./js/db.js'),P=await import('./js/price-rule-db.js'),v=await d.get('vehicles',id),r=document.querySelector('[data-kind=price]')._priceReview;await d.saveExisting('vehicles',v,{type:'Kamyon'},'TEST');const before=JSON.stringify(await d.dumpAll());let rejected=false;try{await P.saveReviewedPriceRule(r.rule,r.options,r.signature,'TEST-stale-kind96')}catch{rejected=true}if(!rejected||JSON.stringify(await d.dumpAll())!==before)throw Error('stale kind wrote data');await d.saveExisting('vehicles',await d.get('vehicles',id),{type:v.type},'TEST');}""",ids['vehicles']['legacy'])
+ view('#/akilli-asistan');send('Ahmet Bey Tarabyadan kamyonetle alınan moloz seferlerine 7000 TL yapalım');card=p.locator('[data-kind=price]');assert '5 işin fiyatı değişecek' in card.locator('[data-scopeinfo]').inner_text()
  p.click('[data-save]');p.wait_for_selector('[data-price-application-receipt]');assert '5 işe fiyat uygulandı' in p.locator('[data-price-application-receipt]').inner_text()
  after=snap();old={r['id']:r for r in before['work_records']};new={r['id']:r for r in after['work_records']};changed=[i for i in old if old[i]!=new[i]]
  assert set(changed)=={ids['rows'][k] for k in ('empty','priced','origin','other','typed')},changed

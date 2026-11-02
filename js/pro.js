@@ -1,3 +1,4 @@
+import {VEHICLE_TYPES} from "./vehicle-type-core.js";
 import {priceVehicleContext} from "./core.js";
 import { attachmentHTML } from "./attachment-ui.js";
 import {financialResultText,financialResultWarning} from './cost-completeness.js';
@@ -130,7 +131,7 @@ function scaleLabel(site) {
 function haulCard(v, over) {
   const fmt = (n) => (n == null ? "—" : core.fmtNum(n));
   const g = haul.legalGross(v), lp = haul.legalPayload(v);
-  const pl = haul.payload(v, { defaultTon: DEFAULT_LOAD_TON[core.transportVehicleType(v.type)] || 0 });
+  const pl = haul.payload(v, { defaultTon: DEFAULT_LOAD_TON[core.transportVehicleType(v.type,v.name,v.type_review)] || 0 });
   const mats = haul.materials(over || {});
   const scen = [];
   if (lp) scen.push({ t: lp, h: `Yasal yükle (${fmt(lp)} t)` });
@@ -954,18 +955,7 @@ async function master(ctx) {
                   [
                     ...new Set(
                       [
-                        "Araç/Makine",
-                        "Kamyon",
-                        "Tır",
-                        "Çekici",
-                        "Yarı Römork",
-                        "Römork",
-                        "Kamyonet",
-                        "Binek",
-                        "Ekskavatör",
-                        "JCB",
-                        "İş Makinesi",
-                        "Vinç",
+                        ...VEHICLE_TYPES,
                         r[k],
                       ].filter(Boolean),
                     ),
@@ -1105,7 +1095,7 @@ async function card(ctx) {
     (store === "dump_sites" && !r.own_yard ? `<button class="btn block" style="margin:0 0 8px" data-go="#/dokum-hesap/${encodeURIComponent(id)}">💳 Döküm hesabı — yatırılan para / kalan</button>` : "") +
     (store === "sites" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmesi/${encodeURIComponent(id)}">📐 ${r.deal ? "İş sözleşmesi — " + esc(r.deal.basis === "m³" ? "metreküp" : "sefer") + " · " + esc(r.deal.status || "") : "İş sözleşmesi aç (sefer / m³)"}</button>` : "") +
     (store === "customers" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmeleri?customer_id=${encodeURIComponent(id)}">📐 İş sözleşmeleri (sefer / m³)</button>` : "") +
-    `<div class="row"><button class="btn" data-go="#/${parts[0]}/${id}/edit">Kartı Düzenle</button>${["vehicles", "personnel", "customers"].includes(store) ? `<button class="btn" data-go="#/belgeler/new?owner_type=${store === "vehicles" ? "vehicle" : store === "personnel" ? "personnel" : "customer"}&owner_id=${id}&category=${encodeURIComponent(store === "vehicles" ? "Muayene Belgesi" : store === "personnel" ? "SRC" : "Sözleşme")}">Belge Ekle</button>` : ""}</div><div class="tabs" data-tabs><button class="chip on" data-tab="general">GENEL</button>${relations.map((s) => `<button class="chip" data-tab="${s}">${LABELS[s]}</button>`).join("")}${store === "vehicles" ? '<button class="chip" data-tab="cost">MALİYET</button>' : ""}<button class="chip" data-tab="report">RAPOR</button></div><div data-card-content></div>`;
+    `<div class="row"><button class="btn" data-go="#/${parts[0]}/${id}/edit">Kartı Düzenle</button>${store === "vehicles" ? `<a class="btn" href="#/arac-turleri?vehicle_id=${encodeURIComponent(id)}">Araç türünü kontrol et</a>` : ""}${["vehicles", "personnel", "customers"].includes(store) ? `<button class="btn" data-go="#/belgeler/new?owner_type=${store === "vehicles" ? "vehicle" : store === "personnel" ? "personnel" : "customer"}&owner_id=${id}&category=${encodeURIComponent(store === "vehicles" ? "Muayene Belgesi" : store === "personnel" ? "SRC" : "Sözleşme")}">Belge Ekle</button>` : ""}</div><div class="tabs" data-tabs><button class="chip on" data-tab="general">GENEL</button>${relations.map((s) => `<button class="chip" data-tab="${s}">${LABELS[s]}</button>`).join("")}${store === "vehicles" ? '<button class="chip" data-tab="cost">MALİYET</button>' : ""}<button class="chip" data-tab="report">RAPOR</button></div><div data-card-content></div>`;
   if(store === 'vehicles'){
     qs('[data-tabs]',root).insertAdjacentHTML('beforebegin','<section><h2 class="section-title">Belgeler ve Kalan Süreler</h2><div data-vehicle-documents></div></section>');
     await mountVehicleDocuments(ctx,id);

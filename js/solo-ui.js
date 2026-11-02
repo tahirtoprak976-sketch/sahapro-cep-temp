@@ -161,6 +161,7 @@ function contextBind(root, d) {
   sync();
 }
 export async function screen(ctx) {
+  if(ctx.parts[0]==='arac-turleri'){await (await import("./vehicle-type-ui.js")).vehicleTypeScreen(ctx);return true;}
   if(ctx.parts[0]==='filo-belgeleri'){
     await (await import('./fleet-document-ui.js')).fleetDocumentScreen(ctx);return true;
   }
