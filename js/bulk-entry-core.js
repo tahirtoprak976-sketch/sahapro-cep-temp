@@ -1,3 +1,4 @@
+import {PLAN_LIMITS} from "./assistant-safety.js";
 // Pure review decisions. Model proposals never supply authority, source IDs or write receipts.
 import {assertHistoricalScope,pendingFuelFields,historicalFuelProjection,historicalFuelIdentity} from './historical-fuel.js';
 import {foldTr} from './parser.js';
@@ -28,7 +29,7 @@ export function bulkSourceLines(message){
 }
 export function normalizeBulkRows(v,message,data,rawPlan={}){
  if(!v||typeof v!=='object'||['works','fuel'].some(k=>v[k]!=null&&!Array.isArray(v[k])||rawPlan[k]!=null&&!Array.isArray(rawPlan[k])))throw Error('Geçersiz toplu kayıt listesi.');
- if((rawPlan.works||v.works||[]).length>20||(rawPlan.fuel||v.fuel||[]).length>10)throw Error('Toplu kontrolde en fazla 20 iş ve 10 yakıt olabilir; hiçbir satır kesilmedi. Mesajı bölün.');
+ if((rawPlan.works||v.works||[]).length>PLAN_LIMITS.works||(rawPlan.fuel||v.fuel||[]).length>PLAN_LIMITS.fuel)throw Error('Toplu kontrolde en fazla '+PLAN_LIMITS.works+' iş ve '+PLAN_LIMITS.fuel+' yakıt olabilir; hiçbir satır kesilmedi.');
  const lines=bulkSourceLines(message),rows=[];
  for(const [kind,group]of [['work','works'],['fuel','fuel']])for(const [i,r]of (v[group]||[]).entries()){
   if(!r||typeof r!=='object'||Array.isArray(r))throw Error('Geçersiz toplu kayıt satırı.');
@@ -87,7 +88,7 @@ export function bulkSourceKey(r,answers={}){
 }
 export const bulkInputSignature=r=>JSON.stringify(Object.fromEntries(['kind','date','work_type','quantity','unit','material','liters','fuel_source'].map(k=>[k,k==='kind'?r.kind:r.fields[k]??null])));
 export function buildBulkPlan(draft,data,{today=todayStr()}={}){
- if(!draft||draft.version!==BULK_VERSION||!Array.isArray(draft.rows)||draft.rows.length>30||draft.rows.filter(r=>r.kind==='work').length>20||draft.rows.filter(r=>r.kind==='fuel').length>10)throw Error('Geçersiz toplu taslak veya satır sınırı');
+ if(!draft||draft.version!==BULK_VERSION||!Array.isArray(draft.rows)||draft.rows.length>PLAN_LIMITS.works+PLAN_LIMITS.fuel||draft.rows.filter(r=>r.kind==='work').length>PLAN_LIMITS.works||draft.rows.filter(r=>r.kind==='fuel').length>PLAN_LIMITS.fuel)throw Error('Geçersiz toplu taslak veya satır sınırı');
  if(new Set(draft.rows.map(r=>r?.key)).size!==draft.rows.length)throw Error('Toplu taslakta satır kimlikleri tekil olmalı.');
  const registry=Object.fromEntries(BULK_STORES.map(s=>[s,(data[s]||[]).filter(isActive).map(r=>({...r}))]));
  const questions=new Map(),cards=new Map(),sourceSeen=new Map(),rows=[],answers=draft.answers||{};

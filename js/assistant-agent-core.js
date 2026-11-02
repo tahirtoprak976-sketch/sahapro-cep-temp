@@ -1,5 +1,5 @@
 import {recordNoteText} from './record-notes.js';
-import {assertAssistantPlan} from './assistant-safety.js';
+import {assertAssistantPlan,PLAN_JSON_LIMIT} from './assistant-safety.js';
 // Read-only business tools + explicit proposal terminals. No database writes and no arbitrary code execution.
 import {ASK_TOOLS,runAskTool} from './day-summary.js';
 import {assistantSchema} from './assistant-core.js';
@@ -7,7 +7,7 @@ import {actionsSchemaProps} from './assistant-actions.js';
 import {foldTr} from './parser.js';
 import {validDate} from './driver-delivery.js';
 
-export const AGENT_LIMITS={rounds:6,calls:16,perRound:6,planBytes:60000,resultBytes:14000};
+export const AGENT_LIMITS={rounds:6,calls:16,perRound:6,planBytes:PLAN_JSON_LIMIT,resultBytes:14000};
 export const RECORD_FIELDS={
  customers:['id','name','parent_customer_id','active'],vehicles:['id','name','plate','type','assignee_id'],personnel:['id','name','vehicle_id','role'],
  sites:['id','name','customer_id'],suppliers:['id','name','type'],bank_accounts:['id','name','bank_name'],quarries:['id','name'],dump_sites:['id','name','fee','fee_unit'],
@@ -49,14 +49,14 @@ export function cleanAgentPlan(value){
  const props={...assistantSchema().properties,...actionsSchemaProps()};
  for(const k of Object.keys(plan))if(!own(props,k))throw Error('Bilinmeyen plan grubu: '+k);
  for(const [k,v]of Object.entries(plan)){
-  if(props[k].type==='array'&&(!Array.isArray(v)||v.length>30))throw Error('Plan satır sınırı aşıldı: '+k);
+  if(props[k].type==='array'&&!Array.isArray(v))throw Error('Plan satır sınırı aşıldı: '+k);
  }
  return assertAssistantPlan(plan);
 }
 export function reviseAgentPlan(task,changes){
  if(!task||!['draft','clarify'].includes(task.status))throw Error('Açık, kaydedilmemiş görev yok.');
  const result=cleanAgentPlan(task.plan),patches=safeJSON(changes);
- if(!Array.isArray(patches)||patches.length>30)throw Error('Düzeltme listesi geçersiz.');
+ if(!Array.isArray(patches)||patches.length>200)throw Error('Düzeltme listesi geçersiz.');
  const props={...assistantSchema().properties,...actionsSchemaProps()};
  for(const p of patches){
   if(!p||!own(props,p.group)||props[p.group].type!=='array')throw Error('Bu taslak grubu değiştirilemez.');
@@ -90,7 +90,7 @@ function boundedResult(result){
 export function createAgentRunner({snapshot,meta=async()=>null,today,task=null}){
  return async(name,args={})=>{
   if(!AGENT_TOOLS.some(t=>t.name===name))throw Error('Bilinmeyen araç; çalıştırılmadı.');
-  const a=safeJSON(args,16000);if(!a||typeof a!=='object'||Array.isArray(a))throw Error('Araç parametreleri geçersiz.');
+  const a=safeJSON(args,AGENT_TERMINALS.has(name)?PLAN_JSON_LIMIT*2+4096:16000);if(!a||typeof a!=='object'||Array.isArray(a))throw Error('Araç parametreleri geçersiz.');
   if(name==='prepare_plan')return {terminal:true,mode:'new',goal:String(a.goal||'İşlem isteği').slice(0,240),plan:cleanAgentPlan(a.plan_json)};
   if(name==='revise_draft'||name==='ask_user'){
    if(a.task_id&&(!task||task.id!==a.task_id||!['draft','clarify'].includes(task.status)))throw Error('Görev kapanmış veya değişmiş; eski isteği uygulamayın.');

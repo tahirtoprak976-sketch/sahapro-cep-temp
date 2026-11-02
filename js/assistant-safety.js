@@ -1,9 +1,13 @@
 // Reject incomplete batches before rendering. Never silently discard business rows.
 import {foldTr} from './parser.js';
-export const PLAN_LIMITS={works:20,expenses:10,fuel:10,customer_fuel:10,tank_in:5,collections:10,maintenance:10,personnel:10,edits:10,memory:10,price_rules:5,tickets:20,documents:10,actions:10,settings:8,part_documents:20,photo_texts:20,questions:5};
+export const PLAN_SOURCE_LIMIT=40000;
+export const PLAN_JSON_LIMIT=256000;
+export const BULK_JSON_LIMIT=1000000;
+export const PLAN_LIMITS=Object.freeze({works:100,expenses:10,fuel:10,customer_fuel:10,tank_in:5,collections:10,maintenance:10,personnel:10,edits:10,memory:10,price_rules:5,tickets:20,documents:10,actions:10,settings:8,part_documents:20,photo_texts:20,questions:5});
 const object=x=>!!x&&typeof x==='object'&&!Array.isArray(x);
 export function assertAssistantPlan(plan){
  if(!object(plan))throw Error('Asistan geçerli bir işlem planı döndürmedi. Mesaj ve dosyalar korunuyor.');
+ if(JSON.stringify(plan).length>PLAN_JSON_LIMIT)throw Error('Asistan taslağı çok büyük; mesaj ve ekler korunuyor. Hiçbir satır kesilmedi.');
  for(const [group,limit] of Object.entries(PLAN_LIMITS)){
   const rows=plan[group];if(rows==null)continue;
   if(!Array.isArray(rows))throw Error('Asistanın '+group+' listesi geçersiz; hiçbir satır kaydedilmedi.');
@@ -16,6 +20,15 @@ export function assertAssistantPlan(plan){
   for(const rows of Object.values(plan.cards))if(!Array.isArray(rows)||rows.length>200||rows.some(x=>!object(x)))throw Error('Yeni kart listesi eksik veya çok büyük; mesajı bölün.');
  }
  return plan;
+}
+export function assertAssistantSource(source){
+ if(String(source||'').length>PLAN_SOURCE_LIMIT)throw Error('Mesaj çok uzun; en fazla '+PLAN_SOURCE_LIMIT+' karakter kullanılabilir. Mesaj ve ekler korunuyor.');
+ return source;
+}
+export function serializeAssistantPlan(plan){
+ assertAssistantPlan(plan);const json=JSON.stringify(plan);
+ if(json.length>PLAN_JSON_LIMIT)throw Error('Asistan taslağı çok büyük; mesaj ve ekler korunuyor. Hiçbir satır kesilmedi.');
+ return json;
 }
 const norm=s=>foldTr(String(s||'')).replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 export function rowEvidence(row,{message='',photoTexts=[],photoCount=photoTexts.length,implicitPhoto=null}={}){

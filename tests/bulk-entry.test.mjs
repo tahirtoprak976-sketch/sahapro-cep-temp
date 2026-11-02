@@ -61,7 +61,7 @@ console.log('PASS historical stock, later existing outs, work-only progress, one
 x=works([w()]);x.rows[0].fields.date='2026-02-31';a=buildBulkPlan(x,data,{today});assert.ok(a.questions.some(q=>q.field==='date'));
 const q=a.questions.find(q=>q.field==='date');x=answerBulkQuestions(x,q.id,{value:'2026-09-07'});assert.equal(finalizeBulk(x,data,{today}).writes.length,1);
 x.excluded=[x.rows[0].key];assert.equal(finalizeBulk(x,data,{today}).skipped[0].status,'excluded');
-assert.throws(()=>normalizeBulkRows({works:Array.from({length:21},()=>w())},'',data),/20 iş/);
+assert.throws(()=>normalizeBulkRows({works:Array.from({length:101},()=>w())},'',data),/100 iş/);
 assert.throws(()=>normalizeBulkRows({fuel:Array.from({length:11},()=>f)},'',data),/10 yakıt/);
 x=works([{...w(),fromDriver:true}]);assert.equal(finalizeBulk(x,data,{today}).writes.length,0);
 x=works([{...w(),quote:'olmayan kaynak'}]);a=buildBulkPlan(x,data,{today});assert.equal(a.writes,undefined);assert.equal(a.counts.ready,0);
