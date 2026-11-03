@@ -59,3 +59,11 @@ Soru ölçümü saf doğrulayıcıdaki açık sorular ve alan istemlerinin yakla
 - Tüm Node, CI tarayıcı suitleri, yükseltme testleri ve Pages yayını: PR kontrol sonuçları esas alınır; hepsi geçmeden merge yok.
 
 Gerçek telefon, gerçek Gemini ve gerçek WhatsApp sınanmadı. Canlı sentetik CLI çalıştırılmadı. Eski kayıtlar değiştirilmedi.
+
+## İşlem masası testinin kararsızlığı
+
+CI kaydı `operation_desk` testinde kapanıştan sonra rastgele ilk işin değiştirilirken düştüğünü gösterdi. 36 işten biri iki saatlik puantaj planına bağlıydı; bu iş seçilince uygulama miktarı üç yapmayı doğru biçimde reddediyordu. Kayıt kimliğine bağlı sıra, testi aralıklı başarısız yapıyordu.
+
+Yalnız bu seçim `.find(x=>!x.plan_assignment_id)` ile puantajsız işe yöneltildi. Bütün eski assert ifadeleri aynen korundu. Ayrı iki assert, puantajlı işin miktarını değiştirme denemesinin doğru hata ile reddedildiğini ve tüm işletme kayıtlarının aynı kaldığını (miktarın iki saat olduğunu) doğrular.
+
+Değişmemiş v3.9.98 kaynağında puantajlı iş bilerek seçilerek aynı CI hatası yeniden üretildi. Düzeltilmiş test hem v3.9.98 hem v3.9.99 adayında geçti. Uygulama kodu veya puantaj kuralı bu düzeltme için değiştirilmedi.

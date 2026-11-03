@@ -66,12 +66,25 @@ with sync_playwright() as pw:
     page.reload();page.wait_for_selector('[data-operation-desk]')
     assert page.locator('[data-op-personnel]').input_value()==ids['person']
 
+    # A converted plan must retain the hours fixed by its timesheet.
+    guarded=page.evaluate('''async arg=>{
+      const db=await import('./js/db.js');
+      const w=(await db.listActive('work_records')).find(x=>x.plan_assignment_id===arg.plan);
+      const before=JSON.stringify(await db.dumpAll());
+      let error=null;
+      try{await db.saveExisting('work_records',w,{quantity:3},'TEST invalid timesheet quantity');}
+      catch(e){error=e.message;}
+      return {error,unchanged:before===JSON.stringify(await db.dumpAll()),quantity:(await db.get('work_records',w.id)).quantity};
+    }''',ids)
+    assert guarded['error'] and 'Puantaj ile saat miktarı aynı olmalı' in guarded['error'],guarded
+    assert guarded['unchanged'] and guarded['quantity']==2,guarded
+
     # Saved close is immutable; changed source is shown as a separate difference.
     page.goto(BASE+'README.md?db='+name)
     close=page.evaluate('''async arg=>{
       const db=await import('./js/db.js'),E=await import('./js/enterprise-db.js');
       const c=await E.closeDay(arg.date,'TEST close','TEST-close-key');
-      const w=(await db.listActive('work_records'))[0];await db.saveExisting('work_records',w,{quantity:3},'TEST source changed after close');
+      const w=(await db.listActive('work_records')).find(x=>!x.plan_assignment_id);await db.saveExisting('work_records',w,{quantity:3},'TEST source changed after close');
       return c.id;
     }''',ids)
     page.goto(BASE+'index.html?db='+name+'#/?'+query.replace('op_tab=today','op_tab=close'))
@@ -94,7 +107,7 @@ with sync_playwright() as pw:
     assert cancelled['count']==36
     assert not errors and not external,{'errors':errors,'external':external}
     result={'local_synthetic_only':True,'full_scope_rows':35,'plan_converted_once':True,'second_approval_no_duplicate':True,
-            'filters_preserved':True,'saved_close_unchanged':True,'source_difference_visible':True,'cancel_reason_preserved':True,
+            'plan_linked_quantity_change_rejected':True,'filters_preserved':True,'saved_close_unchanged':True,'source_difference_visible':True,'cancel_reason_preserved':True,
             'page_errors':errors,'external_requests':external}
     (out/'result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps(result,ensure_ascii=False,indent=2),flush=True)
