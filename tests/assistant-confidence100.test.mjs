@@ -80,8 +80,8 @@ test('satırdaki açık 20 saat makine koduyla karışmaz; kanıtsız sayı kesi
  const invented=row(cards,'02.11.2026 Alfa İnşaat JCB 3CX çalıştı',{customer_id:'TEST_C',quantity:20});assert.equal(invented.fieldConfidence.quantity.value,null);assert.equal(invented.ok,false);
 });
 
-test('dokuz yeni tarih/fotoğraf/rakamlı araç sınavı: alanlar ve işaretler birebir doğru',()=>{
- const measured=measure(confidenceCases);assert.equal(confidenceCases.length,9);assert.ok(gate(measured));assert.deepEqual(measured.failures,[]);
+test('on yeni tarih/fotoğraf/rakamlı araç sınavı: alanlar ve işaretler birebir doğru',()=>{
+ const measured=measure(confidenceCases);assert.equal(confidenceCases.length,10);assert.ok(gate(measured));assert.deepEqual(measured.failures,[]);
 });
 
 test('eski WhatsApp başlığındaki dün gönderenin gününe göre hesaplanır',()=>{
@@ -91,4 +91,19 @@ test('eski WhatsApp başlığındaki dün gönderenin gününe göre hesaplanır
 test('başka alan düzeltildiğinde Hazır seç bilinmeyen birimi otomatik onaylamaz',()=>{
  const r=row(cards,'02.11.2026 Alfa İnşaat JCB 3CX 2 saat çalıştı',{customer_id:'TEST_C',unit:'Sefer'}),edited={...r,_workflowCompleted:true};assert.equal(r.ok,false);assert.equal(bulkWorkReady({kind:'work'},edited),false);
  edited.fieldConfidence={...edited.fieldConfidence,unit:{value:'Saat',level:'KESIN',source:'user'}};assert.equal(bulkWorkReady({kind:'work'},edited),true);
+});
+
+test('tarihsiz alıntı mesajdaki tek ortak tarihi kaybetmez; çoklu tarih seçilmez',()=>{
+ const quote='JCB 3CX depodan 40 litre mazot aldı',fuel={date:'2026-09-07',vehicle_id:'TEST_V',liters:40,source:'Depo Tankı',quote};
+ const one=validatePlan({fuel:[fuel]},{d:cards,today,message:'7 Eylül 2026\n'+quote}).fuel[0];assert.equal(one.ok,true);assert.equal(one.fieldConfidence.date.value,'2026-09-07');assert.equal(one.dateUnsure,undefined);
+ const two=validatePlan({fuel:[fuel]},{d:cards,today,message:'7 Eylül 2026\n8 Eylül 2026\n'+quote}).fuel[0];assert.equal(two.ok,false);assert.equal(two.fieldConfidence.date.level,'BILINMIYOR');
+ const wrongToday=validatePlan({fuel:[{...fuel,date:today}]},{d:cards,today,message:'7 Eylül 2026\n8 Eylül 2026\n'+quote}).fuel[0];assert.equal(wrongToday.ok,false);
+});
+test('isteğe bağlı dolu ama doğrulanmamış esnaf önerisi de otomatik işaretlenmez',()=>{
+ const r=validatePlan({expenses:[{date:today,amount:500,category:'Lastik',supplier_id:'TEST_SUP',credit:false}]},{d:cards,today,message:'02.11.2026 lastik 500 TL aldık'}).expenses[0];assert.equal(r.supplier_id,'TEST_SUP');assert.equal(r.fieldConfidence.supplier_id.level,'BILINMIYOR');assert.equal(r.ok,false);
+});
+
+test('çok gönderenli mesajda miktar/birimle tek eşleşen kayıtlı gönderen kesinleşir',()=>{
+ const d={...cards,personnel:[{id:'TEST_P',name:'Mehmet Kaya',vehicle_id:'TEST_V'},{id:'TEST_P2',name:'Hasan Demir',vehicle_id:'TEST_TIR'}]};
+ const r=row(d,'[02/11/2026 18:00] Mehmet Kaya: Alfa İnşaat 2 saat çalıştı\n[02/11/2026 19:00] Hasan Demir: Alfa İnşaat 1 saat çalıştı',{customer_id:'TEST_C',reporter:'Mehmet Kaya'});assert.equal(r.personnel_id,'TEST_P');assert.equal(r.fieldConfidence.personnel_id.level,'KESIN');assert.equal(r.fieldConfidence.personnel_id.source,'sender_row');assert.equal(r.ok,true);
 });

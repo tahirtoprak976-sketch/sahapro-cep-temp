@@ -1,15 +1,15 @@
 {
-  "messages": 72,
-  "cards": 72,
+  "messages": 73,
+  "cards": 73,
   "silentWrong": 0,
   "moneyGuesses": 0,
   "mandatoryChecked": 0,
-  "checkedCorrect": 29,
-  "correctCards": 70,
+  "checkedCorrect": 30,
+  "correctCards": 71,
   "unnecessaryQuestions": 3,
   "questions": 23,
   "questionMessages": 19,
-  "shouldAskCorrect": 59,
+  "shouldAskCorrect": 60,
   "cardCountErrors": 0,
   "fields": {
     "customer_id": {
@@ -17,8 +17,8 @@
       "total": 46
     },
     "vehicle_id": {
-      "correct": 40,
-      "total": 40
+      "correct": 41,
+      "total": 41
     },
     "quantity": {
       "correct": 28,
@@ -29,8 +29,8 @@
       "total": 29
     },
     "date": {
-      "correct": 72,
-      "total": 72
+      "correct": 73,
+      "total": 73
     },
     "unit_price": {
       "correct": 34,
@@ -61,12 +61,12 @@
       "total": 6
     },
     "liters": {
-      "correct": 13,
-      "total": 13
+      "correct": 14,
+      "total": 14
     },
     "total": {
-      "correct": 12,
-      "total": 12
+      "correct": 13,
+      "total": 13
     },
     "cost": {
       "correct": 2,
@@ -181,7 +181,7 @@
       ]
     }
   ],
-  "checkedCorrectRate": 0.4027777777777778,
+  "checkedCorrectRate": 0.410958904109589,
   "unnecessaryQuestionRate": 0.13043478260869565,
-  "questionsPerMessage": 0.3194444444444444
+  "questionsPerMessage": 0.3150684931506849
 }

@@ -110,6 +110,7 @@ export function confidenceReady(row,kind='work'){
  if(kind==='expense'&&row.payment_method==='Personel Ödedi')fields.push('paid_by');
  if(['expense','maintenance','tank'].includes(kind)&&row.credit)fields.push('supplier_id');
  if(kind==='maintenance'&&row.credit)fields.push('cost');
+ if(Object.entries(row.fieldConfidence).some(([key,info])=>info.level===CONFIDENCE.UNKNOWN&&row[key]!=null&&row[key]!==''))return false;
  return fields.every(k=>row.fieldConfidence[k]?.level!==CONFIDENCE.UNKNOWN&&row.fieldConfidence[k]?.value!=null&&row.fieldConfidence[k]?.value!=='');
 }
 // Message rows and receipt text are independent evidence sources. Never search their concatenation.
@@ -148,7 +149,9 @@ function messageDateScope(r,kind,scope,whole,d){
  return hits.length===1?hits[0]:String(whole||scope||'');
 }
 function dateEvidence(value,{scope,whole,photoText,today,dateUnsure,row,kind,d}){
- const message=dateCandidates(messageDateScope(row,kind,scope,whole,d),today),photo=dateCandidates(photoText,today);
+ let message=dateCandidates(messageDateScope(row,kind,scope,whole,d),today);
+ const common=dateCandidates(whole,today),photo=dateCandidates(photoText,today);
+ if(!message.hint){if(common.values.length===1)message=common;else if(common.hint)message={values:[],hint:true};}
  const m=message.values.length===1?message.values[0]:null,p=photo.values.length===1?photo.values[0]:null;
  const conflict=!!(m&&p&&m.date!==p.date),chosen=m||p;
  const verify=reason=>({...unknown(reason),conflict:conflict||!!(chosen&&value&&value!==chosen.date),...(chosen?{suggestedValue:chosen.date,suggestedSource:m?'message':'photo'}:{})});
@@ -166,6 +169,13 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  if(r.fromDriver&&r.date&&!r.dateUnsure)f.date=certain(r.date,'Şoför ekranında seçilen tarih','driver');
  for(const [key,store,type]of [['customer_id','customers','customer'],['vehicle_id','vehicles','vehicle'],['personnel_id','personnel','personnel'],['site_id','sites','site'],['supplier_id','suppliers','supplier'],['bank_account_id','bank_accounts','bank'],['paid_by','personnel','personnel']])if(key in r){
   f[key]=r.fromDriver?certain(r[key],'Şoför ekranında seçilen alan','driver'):reference(d,store,r[key],text,type);
+ }
+ if(f.personnel_id?.level===CONFIDENCE.UNKNOWN&&r.personnel_id&&r.quantity&&r.unit){
+  const units={Saat:'saat',Sefer:'sefer',Yevmiye:'(?:yevmiye|gun)',Ton:'ton','m³':'(?:m3|m³|metrekup)',Adet:'adet'},unit=units[r.unit];
+  const number=String(r.quantity).replace('.','[.,]'),literal=unit?new RegExp('(?:^|[^0-9])'+number+'\\s*'+unit+'(?![a-z])','i'):null;
+  const chunks=String(fullMessage).split(/\n(?=\[\d{1,2}[/.])/).filter(c=>literal?.test(foldTr(c)));
+  const senders=chunks.map(c=>{const h=/^\[[^\]]+\]\s*([^:\n]+):/.exec(c.trim());return h?live(d,'personnel').filter(p=>norm(p.name)===norm(h[1])):[];});
+  if(senders.length&&senders.every(xs=>xs.length===1)&&unique(senders.map(xs=>xs[0].id)).length===1&&senders[0][0].id===r.personnel_id)f.personnel_id=certain(r.personnel_id,'Miktar/birimle eşleşen satırların tek kayıtlı göndereni','sender_row');
  }
  if(kind==='expense'&&r.payment_method==='Personel Ödedi')f.payment_option=f.paid_by?.level===CONFIDENCE.UNKNOWN?unknown('Ödeyen personel doğrulanmalı'):{...f.paid_by,value:'p:'+r.paid_by};
  if(r.new_site)f.site_id=certain('new:'+r.new_site,'Mesajdaki yeni şantiye');

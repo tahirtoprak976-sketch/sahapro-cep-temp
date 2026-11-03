@@ -373,5 +373,41 @@
     ],
     "shouldAsk": false,
     "synthetic": true
+  },
+  {
+    "id": "confidence100-shared-date-quoted-fuel",
+    "tags": [
+      "confidence100",
+      "regression"
+    ],
+    "message": "Bütün işler 7 Eylül 2026 tarihine ait. Fiyatlar beklesin.\nAlfa İnşaat JCB 3CX 99 saat çalıştı\nJCB 3CX depodan 40 litre mazot aldı",
+    "photoTexts": [],
+    "recordedResponse": {
+      "fuel": [
+        {
+          "date": "2026-09-07",
+          "vehicle_id": "TEST_V",
+          "liters": 40,
+          "source": "Depo Tankı",
+          "quote": "JCB 3CX depodan 40 litre mazot aldı"
+        }
+      ]
+    },
+    "cardsPatch": {},
+    "expectedCards": [
+      {
+        "kind": "fuel",
+        "fields": {
+          "date": "2026-09-07",
+          "vehicle_id": "TEST_V",
+          "liters": 40,
+          "total": null
+        },
+        "checked": true,
+        "mandatoryUnchecked": null
+      }
+    ],
+    "shouldAsk": false,
+    "synthetic": true
   }
 ]

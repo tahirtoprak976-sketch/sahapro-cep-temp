@@ -43,16 +43,18 @@ En büyük grup finansal onaydır: otomatik açılmadı. Fiyat belirsizliği iki
 
 ## Fotoğraf, tarih ve rakamlı araç düzeltmeleri
 
-Ek sınav seti confidence-cases.json içindedir: çok tarihli/fotoğraflı yakıt ve gider; mesaj–fotoğraf tarih çelişkisi; açık eski tarih, WhatsApp başlığı ve dün karşısında modelin bugünü; JCB3CX ve CAT320 miktarları. Bu 9 ek örnek başlangıçtaki orana katılmadı. Toplam72 örnekte eski v3.9.99 kaynaklarında4 sessiz yanlış görülürken adayda0; adayın yeni9 örneğinde alan/işaret/soru beklentileri birebir geçer.
+Ek sınav seti confidence-cases.json içindedir: çok tarihli/fotoğraflı yakıt ve gider; mesaj–fotoğraf tarih çelişkisi; açık eski tarih, WhatsApp başlığı ve dün karşısında modelin bugünü; JCB3CX ve CAT320 miktarları. Bu 10 ek örnek başlangıçtaki orana katılmadı. Toplam73 örnekte eski v3.9.99 kaynaklarında4 sessiz yanlış görülürken adayda0; adayın yeni10 örneğinde alan/işaret/soru beklentileri birebir geçer.
+
+Satırın kendi tarihi yoksa mesajdaki tek ortak tarih kullanılabilir; birden çok ortak tarihte seçim yapılmaz. İsteğe bağlı alanda dolu ama doğrulanmamış bir öneri de otomatik işaretlemeyi engeller.
 
 Tarih kanıtı mesaj satırı/başlığında ve ilgili fotoğrafta ayrı aranır. Birleşik metin mesaj içinde aranmaz. Tarih çelişirse modelin önerisi görünür ve işaretsiz kalır; mesajdaki tarih tek dokunuşla önerilir. Eski WhatsApp başlığındaki dün, gönderenin gününe göre hesaplanır. Açık sayı+birim, araç kodundaki rakamla karıştırılmaz.
 
 ## Tekrar çalıştırma ve önce/sonra kanıtı
 
 - `node tests/assistant-gold/prove-confidence.mjs`: değişmemiş v3.9.99 kaynaklarıyla aynı ölçüm ve odaklı testler; adayla karşılaştırma.
-- `node tests/assistant-gold/run.mjs`: değişmemiş63 örnek. `--confidence`: yeni9 dahil72 örnek.
+- `node tests/assistant-gold/run.mjs`: değişmemiş63 örnek. `--confidence`: yeni10 dahil73 örnek.
 - `python tools/e2e/prove_confidence_photo.py`: aynı, değiştirilmemiş assistant_large_batch testini v3.9.99 ve onarım öncesi PR commit6faebb1 üzerinde çalıştırır. Canlı99 geçer; eski PR100 iş aşamasını geçip fotoğraflı25 kartın kayıt sonucunda düşer. Aday aynı özgün testte tüm100+25 kontrollerini geçmelidir.
-- 18 odaklı Node kontrolü ve16 gerçek ekran senaryosu: önerilerin görünür/işaretsiz kalması, eksik alanın boşluğu, tarih önerisinin yalnız ilgili alanı değiştirmesi, KDV/fiyat kaynağı, veresiye ön kontrolü ve Kaydet öncesi sıfır yazma.
+- 21 odaklı Node kontrolü ve16 gerçek ekran senaryosu: önerilerin görünür/işaretsiz kalması, eksik alanın boşluğu, tarih önerisinin yalnız ilgili alanı değiştirmesi, KDV/fiyat kaynağı, veresiye ön kontrolü ve Kaydet öncesi sıfır yazma.
 - Eski dört tarayıcı testinin tüm özgün assert ifadeleri AST karşılaştırmasıyla korunur. Önceki boş alan ek kontrolleri son kullanıcı talimatına göre görünür öneri/Doğrulayın olarak güncellendi. Son kayıt, bakiye, görev kilidi, iptal ve sıfır yazma beklentileri değiştirilmedi.
 - Yerel tests/gold ayrıca raporlanır:80 mesaj,0 yanlış. Tüm Node dosyaları,75 tarayıcı suiti ve30 yükseltme senaryosu CI kapısıdır.
 
