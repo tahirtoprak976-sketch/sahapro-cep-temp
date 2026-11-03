@@ -41,7 +41,7 @@ export function measure(input=cases,responses=null){
     // Other explicit amounts in this same source still cannot authorize this field.
     if(!approved.some(x=>eq(v,x))){m.moneyGuesses++;problems.push(`${i}.${key}: kanıtlanmamış para ${v}`);}
    }
-   if(bad.length){if(a.checked)m.silentWrong++;problems.push(`${i}: yanlış ${bad.join(',')}`);}
+   if(bad.length || a.checked && !e.checked && !e.mandatoryUnchecked){if(a.checked)m.silentWrong++;problems.push(`${i}: yanlış ${bad.length?bad.join(','):'onaysız işaret'}`);}
    else if(!(e.mandatoryUnchecked&&a.checked)){m.correctCards++;if(a.checked)m.checkedCorrect++;}
    if(e.mandatoryUnchecked&&a.checked){m.mandatoryChecked++;problems.push(`${i}: zorunlu işaretsiz ${e.mandatoryUnchecked} işaretli`);}
    if(a.checked!==e.checked)problems.push(`${i}: işaret ${a.checked} / ${e.checked}`);

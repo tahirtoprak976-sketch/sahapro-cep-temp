@@ -1,0 +1,274 @@
+{
+  "messages": 63,
+  "cards": 63,
+  "silentWrong": 2,
+  "moneyGuesses": 0,
+  "mandatoryChecked": 9,
+  "checkedCorrect": 22,
+  "correctCards": 50,
+  "unnecessaryQuestions": 3,
+  "questions": 16,
+  "questionMessages": 13,
+  "shouldAskCorrect": 48,
+  "cardCountErrors": 0,
+  "fields": {
+    "customer_id": {
+      "correct": 38,
+      "total": 40
+    },
+    "vehicle_id": {
+      "correct": 32,
+      "total": 32
+    },
+    "quantity": {
+      "correct": 22,
+      "total": 23
+    },
+    "unit": {
+      "correct": 23,
+      "total": 23
+    },
+    "date": {
+      "correct": 63,
+      "total": 63
+    },
+    "unit_price": {
+      "correct": 28,
+      "total": 28
+    },
+    "amount": {
+      "correct": 23,
+      "total": 23
+    },
+    "money_role": {
+      "correct": 8,
+      "total": 8
+    },
+    "site_id": {
+      "correct": 1,
+      "total": 1
+    },
+    "price_rule": {
+      "correct": 1,
+      "total": 1
+    },
+    "personnel_id": {
+      "correct": 6,
+      "total": 6
+    },
+    "event_type": {
+      "correct": 6,
+      "total": 6
+    },
+    "liters": {
+      "correct": 11,
+      "total": 11
+    },
+    "total": {
+      "correct": 11,
+      "total": 11
+    },
+    "cost": {
+      "correct": 2,
+      "total": 2
+    },
+    "ticket_no": {
+      "correct": 4,
+      "total": 4
+    },
+    "tonnage": {
+      "correct": 4,
+      "total": 4
+    },
+    "duplicate": {
+      "correct": 4,
+      "total": 4
+    },
+    "link": {
+      "correct": 2,
+      "total": 2
+    }
+  },
+  "failures": [
+    {
+      "id": "work-quantity-invented",
+      "problems": [
+        "0: yanlış quantity",
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "work-same-day-unique",
+      "problems": [
+        "0: işaret false / true"
+      ]
+    },
+    {
+      "id": "work-site-unique",
+      "problems": [
+        "0: işaret false / true"
+      ]
+    },
+    {
+      "id": "work-duplicate-name",
+      "problems": [
+        "0: yanlış customer_id"
+      ]
+    },
+    {
+      "id": "work-subcontractor",
+      "problems": [
+        "0: işaret false / true",
+        "gereksiz soru/alan istemi"
+      ]
+    },
+    {
+      "id": "work-parent-wrong",
+      "problems": [
+        "0: yanlış customer_id",
+        "0: işaret true / false",
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-promise",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-offer",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-work-total",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-invented",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-negated",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "staff-cash-delivery",
+      "problems": [
+        "0: zorunlu işaretsiz b işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "staff-cash-not-delivered",
+      "problems": [
+        "0: zorunlu işaretsiz a işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "staff-advance",
+      "problems": [
+        "0: zorunlu işaretsiz c işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "staff-expense-payment",
+      "problems": [
+        "0: zorunlu işaretsiz c işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "staff-advance-no-amount",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "staff-injection",
+      "problems": [
+        "0: zorunlu işaretsiz c işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "customer-tank-in",
+      "problems": [
+        "0: zorunlu işaretsiz e işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "customer-tank-no-price",
+      "problems": [
+        "0: zorunlu işaretsiz e işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "customer-fuel-out",
+      "problems": [
+        "0: zorunlu işaretsiz d işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "customer-fuel-total",
+      "problems": [
+        "0: zorunlu işaretsiz d işaretli",
+        "0: işaret true / false"
+      ]
+    },
+    {
+      "id": "expense-no-amount",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "expense-photo-wrong",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "expense-cross-photo",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "maintenance-invented-cost",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "questions-unnecessary",
+      "problems": [
+        "gereksiz soru/alan istemi"
+      ]
+    },
+    {
+      "id": "work-price-owned-by-other",
+      "problems": [
+        "0: yanlış onaysız işaret",
+        "0: işaret true / false",
+        "gerekli soru/alan istemi yok"
+      ]
+    }
+  ],
+  "checkedCorrectRate": 0.3492063492063492,
+  "unnecessaryQuestionRate": 0.1875,
+  "questionsPerMessage": 0.25396825396825395
+}

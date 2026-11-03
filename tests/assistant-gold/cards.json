@@ -2,34 +2,34 @@
   "customers": [
     {
       "id": "TEST_C",
-      "name": "TEST Alfa"
+      "name": "Alfa İnşaat"
     },
     {
       "id": "TEST_B",
-      "name": "TEST Beta"
+      "name": "Beta Hafriyat"
     },
     {
       "id": "TEST_PARENT",
-      "name": "TEST Ulaş Rondela"
+      "name": "Ulaş Rondela"
     },
     {
       "id": "TEST_SUB",
-      "name": "TEST Çatıcı",
+      "name": "Çatıcı",
       "parent_customer_id": "TEST_PARENT"
     },
     {
       "id": "TEST_TWIN1",
-      "name": "TEST Ortak"
+      "name": "Ortak Yapı"
     },
     {
       "id": "TEST_TWIN2",
-      "name": "TEST Ortak"
+      "name": "Ortak Yapı"
     }
   ],
   "vehicles": [
     {
       "id": "TEST_V",
-      "name": "TEST JCB",
+      "name": "JCB 3CX",
       "type": "JCB"
     },
     {
@@ -42,26 +42,26 @@
   "personnel": [
     {
       "id": "TEST_P",
-      "name": "TEST Soner"
+      "name": "Soner Kaya"
     }
   ],
   "sites": [
     {
       "id": "TEST_SITE",
-      "name": "TEST Kuzey",
+      "name": "Kuzey Şantiyesi",
       "customer_id": "TEST_C"
     }
   ],
   "suppliers": [
     {
       "id": "TEST_SUP",
-      "name": "TEST Petrol"
+      "name": "Yıldız Petrol"
     }
   ],
   "bank_accounts": [
     {
       "id": "TEST_BANK",
-      "name": "TEST Banka"
+      "name": "Deneme Banka"
     }
   ],
   "aliases": [],

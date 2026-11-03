@@ -48,7 +48,7 @@ export function readBatchPolicy(message,today=todayStr()){
 }
 export function bulkWorkReady(row,data){
  if(row.kind!=='work'||row.saved||row.disabled)return false;
- const blocked=['fromDriver','driver_entry_id','driverDup','unverified','rejectedSource','guessed','hinted','badQuote','badNew','vehicleGuess','dateUnsure','customerGuess','typeDoubt','pasteDup','ambiguous'];
+ const blocked=['fromDriver','driver_entry_id','driverDup','unverified','rejectedSource','guessed','hinted','badQuote','badNew','vehicleGuess','dateUnsure','customerGuess','typeDoubt','pasteDup','ambiguous','priceUncertain','parentMismatch'];
  const reviewed=data?.ok===true||data?._workflowWasReady===true||data?._workflowCompleted===true&&!data.issues?.length;
  return !!data&&reviewed&&!blocked.some(k=>data[k])&&(data.price_pending||!data.priceInfo?.ambiguous);
 }

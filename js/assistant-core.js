@@ -402,6 +402,17 @@ export function quoteFound(quote, src) {
   const q = norm(quote), t = norm(src);
   return !!q && q.length >= 2 && (` ${t} `).includes(` ${q} `);
 }
+// Explicit “Alt firma (Ana firma)” only; shared words or model IDs are not evidence.
+export function parenthesizedSubcontractor(d, text) {
+  const customers = live(d, "customers"), hits = new Set();
+  for (const m of String(text || "").matchAll(/([^()\n;,]+)\(([^()\n]+)\)/gu)) {
+    for (const child of customers) {
+      const parent = customers.find(c => c.id === child.parent_customer_id);
+      if (parent && inMessage(child.name, m[1]) && norm(parent.name) === norm(m[2])) hits.add(child.id);
+    }
+  }
+  return hits.size === 1 ? customers.find(c => c.id === [...hits][0]) : null;
+}
 export function validatePlan(plan, { message = "", d, today = todayStr(), photoCount = 0, negatives = [] } = {}) {
   assertAssistantPlan(plan ?? {});
   const out = { works: [], expenses: [], fuel: [], fuelOut: [], questions: [], newCustomers: [] };
@@ -444,6 +455,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (up && roles.includes("unit_price")) { r.unit_price = up; r.unit_price_src = moneyMentions(message).find((m) => m.n === up && m.role === "unit_price")?.clause || ""; }
       else if (up) {
         r.moneyQuestion = { amount: up, roles };
+        r.priceUncertain = !roles.length || roles.includes("unknown");
         issues.push(`Mesajdaki ${up.toLocaleString("tr-TR")} TL birim fiyat olarak yazılmamış (${roles.map((x) => ROLE_TR[x] || x).join(", ") || "anlamı belirsiz"}) — fiyat BOŞ bırakıldı; fiyat listesindeki kural varsa o uygulanır. Bu tutar ödemeyse tahsilat kartındadır.`);
       }
       else issues.push(`Birim fiyat ${w.unit_price} mesajda yazmıyor; uygulanmadı`);
@@ -468,6 +480,14 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
         r.new_customer = newNames.get(key);
       }
     } else if (w.customer_id) issues.push("Müşteri listede yok");
+    const explicitChild = !fromDriver ? parenthesizedSubcontractor(d, w.quote && quoteFound(w.quote, message) ? w.quote : message) : null;
+    if (explicitChild && r.customer_id === explicitChild.parent_customer_id) {
+      r.customer_id = explicitChild.id;
+      r.suggested_customer_id = explicitChild.id;
+      r.parentMismatch = true;
+      r.unit_price = null;
+      issues.push(`Mesajdaki "${explicitChild.name}" kayıtlı alt firmadır; ana firma yerine önerildi. Borç bu alt firmaya aittir; müşteriyi kontrol edip işaretleyin.`);
+    }
     // Taşeron: yeni müşterinin ana firması (örn. "Mahir beyin inşaatında Erdem Yapı'ya" → ana firma Hisar Polat)
     if (r.new_customer && w.new_customer_parent_id && byId(customers, w.new_customer_parent_id)) r.new_customer_parent_id = w.new_customer_parent_id;
     const parentOf = r.customer_id ? byId(customers, r.customer_id)?.parent_customer_id || null : r.new_customer_parent_id || null;
@@ -605,7 +625,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     // Benzer adlı müşteriler: emin olunamıyorsa adaylar gösterilir, satır işaretsiz gelir
     {
       const rowText = w.quote && quoteFound(w.quote, message) ? String(w.quote) : message;
-      const amb = r.customer_id && !fromDriver ? customerAmbiguity(d, rowText, r.customer_id, { vehicleId: r.vehicle_id, date: r.date }) : null;
+      const amb = r.customer_id && !fromDriver && explicitChild?.id !== r.customer_id ? customerAmbiguity(d, rowText, r.customer_id, { vehicleId: r.vehicle_id, date: r.date }) : null;
       if (amb && amb.cands.length > 1) {
         r.ambiguous = amb.cands;
         const best = amb.cands[0];
@@ -648,6 +668,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
           : `${r.unit_price.toLocaleString("tr-TR")} TL birim fiyatının hangi müşterinin işine ait olduğu mesajda belirsiz — fiyat BOŞ bırakıldı; doğruysa elle yazın`);
         r.moneyQuestion = { amount: r.unit_price, roles: ["unit_price"], owner: [...own.owners] };
         r.ownerMismatch = true;
+        r.priceUncertain = true;
         r.unit_price = null; r.unit_price_src = "";
       }
     }
@@ -662,9 +683,15 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (dec.ambiguous) issues.push("Fiyat seçimi gerekli: " + dec.reason + " (" + dec.candidates.map((c) => `${Number(c.price).toLocaleString("tr-TR")} ₺ ${c.price_source}${c.valid_from ? " " + c.valid_from + "'den" : ""}`).join(" / ") + ")");
       else if (r.moneyQuestion) issues.push(rule ? `Fiyat listesinden: ${Number(rule.price).toLocaleString("tr-TR")} ₺ / ${r.unit.toLocaleLowerCase("tr-TR")} (${rule.price_source}${rule.valid_from ? ", " + rule.valid_from + " tarihinden" : ""}; KDV ${rule.kdv_included ? "dahil" : "hariç"} %${rule.kdv_rate ?? 20}) — kayıtta bu uygulanır` : dec.reason);
     }
+    if (r.priceUncertain && r.moneyQuestion) {
+      r.priceQuestion = `${r.moneyQuestion.amount.toLocaleString("tr-TR")} TL bu işin birim fiyatı mı?`;
+      out.questions.push(r.priceQuestion);
+      for (let i = issues.length - 1; i >= 0; i--) if (/^Mesajdaki .*birim fiyat olarak yazılmamış|Fiyat listesinden:/.test(issues[i])) issues.splice(i, 1);
+      if (!r.ownerMismatch) issues.push("Mesajdaki fiyat bu işe kesin bağlanamadı; birim fiyatı doğrulayın.");
+    }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt && !r.priceUncertain && !r.parentMismatch);
     r.fuelAllowance = r.price_pending?null:fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     // Alan kaynakları (kartta görünür): mesajdan / kayıtlı takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından
     {
@@ -774,7 +801,9 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       r.match = { id: mm.id, date: mm.date, liters: Number(mm.liters), total: Number(mm.total) || null, supplier_id: mm.supplier_id || null, bill: bill ? Number(bill.gross_total) || 0 : null };
       if (!r.supplier_id && !r.newSupplier && mm.supplier_id) r.supplier_id = mm.supplier_id;
     }
-    r.ok = !!liters && !r.issues.length;
+    r.okData = !!liters && !r.issues.length;
+    r.needsApproval = !!r.customer_id;
+    r.ok = r.okData && !r.needsApproval;
     out.tankIn.push(r);
   }
   out.dumpSites = live(d, "dump_sites").filter((x) => !x.own_yard).map((x) => [x.id, x.name]);
@@ -782,7 +811,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   let stock = out.tankStock + out.tankIn.filter((t) => t.ok && !t.match).reduce((n, t) => n + t.liters, 0);
   out.fuelOut = customerFuelRows(plan, {message, d, today});
   for (const r of out.fuelOut) {
-    if (r.liters > stock) { r.issues.push(`Depoda ${Math.max(0, stock)} L var; teslim için stok yetersiz`); r.ok = false; }
+    if (r.liters > stock) { r.issues.push(`Depoda ${Math.max(0, stock)} L var; teslim için stok yetersiz`); r.ok = false; r.okData = false; }
     else if (r.ok) stock -= r.liters;
   }
   const STATION = /istasyon|petrol|opet|shell|\bbp\b|total|aytemiz|lukoil|alpet|akaryak|pompac/i;
@@ -817,7 +846,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.ok = !!(r.date && r.vehicle_id && r.liters && !issues.length && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));
     out.fuel.push(r);
   }
-  out.questions = (Array.isArray(plan.questions) ? plan.questions : []).map(String).slice(0, 5);
+  out.questions = [...new Set([...out.questions, ...(Array.isArray(plan.questions) ? plan.questions : []).map(String)])];
   out.newCustomers = [...newNames.values()];
   out.photoTexts = photoTexts;
   return out;
@@ -1033,7 +1062,10 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     }
     if (!r.personnel_id) issues.push("Personel seçilmeli");
     r.issues = issues;
-    r.ok = !!(r.date && r.personnel_id && !issues.length);
+    r.needsApproval = ["Avans", "Personel Gideri", "Tahsilat", "Kasa Teslimi"].includes(r.event_type) || e.amount != null && e.amount !== "";
+    if (r.needsApproval && !r.amount) issues.push("Tutar yok; tutarı girin");
+    r.okData = !!(r.date && r.personnel_id && !issues.length);
+    r.ok = r.okData && !r.needsApproval;
     out.personnel.push(r);
   }
 

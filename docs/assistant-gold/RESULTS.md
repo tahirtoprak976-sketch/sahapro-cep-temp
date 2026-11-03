@@ -1,51 +1,61 @@
-# Paket 0 — başlangıç ölçümü ve yayın engeli
+# Paket 0 ve para güvenliği onarımları — v3.9.99
 
-Taban: `20612ee8af15ca8823bca705df8acf7c1f56b063`, gh-pages, v3.9.98, şema 7.
-Aday: v3.9.99; yayınlanmadı. Yalnız test/ölçüm/CI ve sürüm/önbellek etiketi değişti. Asistan davranışı ve YZ2 değişmedi; yeni uygulama modülü yok, SW ASSETS eklemesi gerekmiyor.
+Taban: `20612ee8af15ca8823bca705df8acf7c1f56b063`, gh-pages v3.9.98. Aynı PR #223 içinde ölçüm ve üç onarım bulunur. Şema 7; kayıt biçimi, geçmiş kayıtlar, YZ2, KDV/cari politikası ve sağlayıcı değişmedi. Anahtar telefonda; ücretli servis veya sunucu eklenmedi.
 
-61 elle hazırlanmış sentetik mesaj ve sabit model yanıtı, gerçek uygulama doğrulayıcılarıyla oynatıldı. Bu sonuç gerçek Gemini başarısı değildir. Beklentiler hedef iş kurallarından yazıldı; adayın çıktısı beklenen sonuç olarak kopyalanmadı.
+## Ne değişti?
 
-| Ölçüt | Başlangıç v3.9.98 | Aday v3.9.99 |
+- Beş finansal sınıf doğrulama katmanında işaretsizdir. Geçerli veri `okData` ile, elle onay gereği `needsApproval` ile ayrı tutulur. Normal petrolcü alımı ve parasal olmayan puantajın kontrolleri korunur.
+- Mesajdaki bir fiyat bu işe kesin bağlanamazsa kart işaretsiz kalır ve tek fiyat sorusu üretilir. Kullanıcı tutarı açıkça girmeden veya fiyatı sonraya bırakmadan bu kart kaydedilemez. Bu kontrol tüm yazmalardan önce yapılır. Fiş birleştirmek veya hazır kartları seçmek uyarıyı aşamaz.
+- `Alt firma (Ana firma)` kalıbı ve kayıtlı bağlantı uyuşursa modelin yanlış ana firma seçimi engellenir; alt firma işaretsiz önerilir. Meslek takma adı öğrenilmez.
+
+## Ölçüm düzeltmesi
+
+Eski 61 örnekte ortak TEST ad öneki iki yapay fiyat belirsizliği yaratıyordu. Adlar gerçekçi ve ayrık yapıldı; TEST işareti kimliklerde/veritabanı adında tutuldu. Eski raporlar silinmedi. Yeni 63 örnek, iki gerçek fiyat belirsizliği örneğini de içerir. Aşağıdaki iki sütun aynı 63 örnek, aynı beklenti ve aynı ölçüm koduyla ölçülmüştür. Taban değiştirilmeden git arşivinden tekrar çalıştırıldı.
+
+| Ölçüt | v3.9.98 (düzeltilmiş set) | v3.9.99 |
 |---|---:|---:|
-| Sessiz yanlış kart | 3 | 3 |
+| Sessiz yanlış kart | 2 | 0 |
 | Para alanında tahmin | 0 | 0 |
-| Zorunlu işaretsiz kartta işaret | 9 | 9 |
-| İşaretli doğru / tüm beklenen kartlar | 20/61 (%32,79) | 20/61 (%32,79) |
-| Gereksiz soru/alan istemi | 9/21 (%42,86) | 9/21 (%42,86) |
-| Mesaj başına soru/alan istemi | 21/61 (0,344) | 21/61 (0,344) |
+| Zorunlu işaretsiz kartta işaret | 9 | 0 |
+| İşaretli doğru / tüm beklenen kartlar | 22/63 (34,92%) | 22/63 (34,92%) |
+| Gereksiz soru/alan istemi | 3/16 (18,75%) | 3/19 (15,79%) |
+| Mesaj başına soru/alan istemi | 0.254 | 0.302 |
 | Kart sayısı hatası | 0 | 0 |
 | Yerel tests/gold yanlış | 0 | 0 |
 
-Soru sayısı saf katmandaki açık sorular ve doğrulama istemleri üzerinden yaklaşık ölçülür; DOM soru kutusu sayısı değildir. Ayrıntılar `tests/assistant-gold/README.md` içindedir. Alan beklentisi hataları ile işaretleme hataları ayrı raporlanır; zorunlu işaretsiz olduğu halde işaretlenmiş kart, işaretli doğru kart sayısına katılmaz.
+İki taban sessiz yanlışı: Çatıcı işinde ana firmayı seçen işaretli öneri; geçerli satır alıntısı yanında başka müşterinin fiyatını boşaltıp kartı işaretli bırakan öneri. Dokuz zorunlu işaret ihlali ayrı kaydedilir. Yanlış işaret kontrolü sıkılaştırıldı: finansal sınıf dışında, işaretsiz olması beklenen kartın işaretlenmesi de sessiz yanlış sayılır.
 
-Gerçek Chromium arayüzünde beş sınıf ayrı mesajlarla sınandı: tahsilat işaretsiz; kasaya teslim, personel avansı, müşteriye borç doğuran mazot teslimi ve müşteriden sefer karşılığı depo girişi işaretli geldi. Beş denemenin hiçbirinde Kaydet kullanılmadı; işletme kayıtlarının önce/sonra eşitliği doğrulandı. Bunlar yalnız izole TEST verileridir.
-
-Üç sessiz yanlış örneği: açık saat fiyatının boş kalmasına rağmen işaretli kart (`work-explicit-price`), açık fiyat + kısmi tahsilatta aynı durum (`work-price-and-partial-payment`), Çatıcı yerine ana firmayı seçen işaretli model önerisi (`work-parent-wrong`). Her girdinin beklentisi ve ham model önerisi sürüm kontrollü JSON'dadır.
+Soru ölçümü saf doğrulayıcıdaki açık sorular ve alan istemlerinin yaklaşık sayımıdır; arayüzdeki gerçek dokunma veya soru kutusu sayısı değildir. Bunlar elle hazırlanmış model yanıtlarıdır, gerçek Gemini başarısı değildir. Tam alan/işaret/soru hedefindeki kalan farklar JSON raporunda saklıdır; Paket 1–5'in tamamlandığı iddia edilmez.
 
 ## Alan doğruluğu
 
-| Alan | Doğru / sınanan |
-|---|---:|
-| customer_id | 36/38 |
-| vehicle_id | 30/30 |
-| quantity | 20/21 |
-| unit | 21/21 |
-| date | 61/61 |
-| unit_price | 24/26 |
-| amount | 23/23 |
-| money_role | 8/8 |
-| site_id | 1/1 |
-| price_rule | 1/1 |
-| personnel_id | 6/6 |
-| event_type | 6/6 |
-| liters | 11/11 |
-| total | 11/11 |
-| cost | 2/2 |
-| ticket_no | 4/4 |
-| tonnage | 4/4 |
-| duplicate | 4/4 |
-| link | 2/2 |
+| Alan | Önce | Sonra |
+|---|---:|---:|
+| customer_id | 38/40 | 39/40 |
+| vehicle_id | 32/32 | 32/32 |
+| quantity | 22/23 | 22/23 |
+| unit | 23/23 | 23/23 |
+| date | 63/63 | 63/63 |
+| unit_price | 28/28 | 28/28 |
+| amount | 23/23 | 23/23 |
+| money_role | 8/8 | 8/8 |
+| site_id | 1/1 | 1/1 |
+| price_rule | 1/1 | 1/1 |
+| personnel_id | 6/6 | 6/6 |
+| event_type | 6/6 | 6/6 |
+| liters | 11/11 | 11/11 |
+| total | 11/11 | 11/11 |
+| cost | 2/2 | 2/2 |
+| ticket_no | 4/4 | 4/4 |
+| tonnage | 4/4 | 4/4 |
+| duplicate | 4/4 | 4/4 |
+| link | 2/2 | 2/2 |
 
-## Sınırlar
+## Doğrulama
 
-Gerçek telefon, gerçek Gemini ve gerçek WhatsApp denenmedi. Canlı sentetik CLI eklendi, çalıştırılmadı. Tarayıcı kanıtı beş zorunlu işaretsiz sınıfa aittir; 61 örneğin tamamını gerçek Gemini veya uçtan uca arayüz başarısı olarak sunmaz. Tüm tarayıcı ve yükseltme suitleri çalıştırılmadan birleştirme yapılmaz. Güvenlik kapısı başarısız olduğu için bu aday canlıya alınamaz.
+- Aynı dokuz bağımsız Node regresyonu: değişmemiş v3.9.98'de sekiz hata, parasal olmayan bir kontrol başarılı; adayda dokuzu başarılı.
+- Chromium'da beş sınıfın hepsi işaretsiz, Kaydet öncesi işletme kayıtları aynı. Açık saat fiyatı korunur; gerçek belirsizlik bir kez sorulur, zorla işaretleme yazmaz, elle fiyat onayından sonra tam tutar kaydedilir. Yanlış ana firma önerisi alt firmaya çevrilir ve hazır seçimi kartı açmaz.
+- Eski finansal otomatik seçim beklentileri `okData=true` + `ok=false` olarak sıkılaştırıldı. Veri geçerliliği/tutar beklentileri korunur. Eski teslimat UI testi önce işaretsizliği doğrular, sonra açık kullanıcı seçimiyle aynı yazma kontrollerini sürdürür.
+- Tüm Node, CI tarayıcı suitleri, yükseltme testleri ve Pages yayını: PR kontrol sonuçları esas alınır; hepsi geçmeden merge yok.
+
+Gerçek telefon, gerçek Gemini ve gerçek WhatsApp sınanmadı. Canlı sentetik CLI çalıştırılmadı. Eski kayıtlar değiştirilmedi.

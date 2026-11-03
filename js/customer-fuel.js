@@ -60,7 +60,7 @@ export function customerFuelRows(plan, { message, d, today = todayStr() }) {
     if (!unit_price) issues.push('Müşteriye yazılacak litre fiyatı veya toplam bedel mesajda yok; tutarı girin');
     if (quotedTotal && total != null && Math.abs(quotedTotal - total) > 0.01) issues.push('Litre fiyatı ile toplam bedel uyuşmuyor; fiyatı kontrol edin');
     if (blocked) issues.push('Bu yol yalnız kendi depomuzdan müşterinin forkliftine teslim içindir; kaynağı ve teslim yönünü mesajda netleştirin');
-    return { customer_id, machine: 'Forklift', date, liters, unit_price, total, quote, blocked, issues, ok: !issues.length };
+    return { customer_id, machine: 'Forklift', date, liters, unit_price, total, quote, blocked, issues, needsApproval: true, okData: !issues.length, ok: false };
   });
 }
 

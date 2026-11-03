@@ -58,7 +58,7 @@ assert.equal(x.maintenance[0].ok, true); assert.equal(x.maintenance[0].cost, 350
 x = validateExtras({ maintenance: [{ vehicle_id: 'J', description: 'arıza', cost: 9999 }] }, { message: 'jcb arıza', d: d2, today });
 assert.equal(x.maintenance[0].ok, false);
 x = validateExtras({ personnel: [{ personnel_id: 'P1', event_type: 'Avans', amount: 2000 }] }, { message: 'Soner abiye 2000 avans', d: d2, today });
-assert.equal(x.personnel[0].ok, true);
+assert.equal(x.personnel[0].okData, true); assert.equal(x.personnel[0].ok, false);
 // düzeltme: alan ve sayı doğrulanır, varsayılan işaretsiz
 x = validateExtras({ edits: [{ store: 'work_records', id: 'W1', changes: { quantity: 5, price: 1 }, reason: 'yanlış' }] }, { message: 'dünkü 34 ABC 123 4 değil 5 sefer', d: d2, today });
 assert.equal(x.edits[0].changes.quantity, 5); assert.equal(x.edits[0].ok, false); assert.ok(x.edits[0].issues.some((i) => /price/.test(i)));

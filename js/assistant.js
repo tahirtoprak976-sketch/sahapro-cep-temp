@@ -1181,6 +1181,13 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "price" ? !c._priceReview
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
+    if (k === 'work') {
+      const row = v.works[Number(c.dataset.i)];
+      if (row.priceUncertain && !(Number(val(c,'unit_price'))>0) && !qs('[name=price_pending]',c)?.checked) {
+        openReviewCard(c);
+        return toast(row.priceQuestion || 'Mesajdaki birim fiyatı doğrulayın veya fiyatı sonra belirlemeyi seçin.','err');
+      }
+    }
     if (miss) {
       openReviewCard(c);c.scrollIntoView({ behavior: "smooth", block: "center" });
       return toast(k === "doc" ? "Belge kartında eksik/uyumsuz alan var (araç belgesi araca, personel belgesi personele)" : "İşaretli kartta eksik alan var", "err");

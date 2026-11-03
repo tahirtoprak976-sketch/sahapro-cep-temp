@@ -61,7 +61,7 @@ with sync_playwright() as p:
  assert state()['stock']==100 and state()['balance'].get(ids['customer'],0)==0
  print('PASS concurrent deliveries cannot oversell; paired cancellation restores all litres and debts',flush=True)
  pg.reload();pg.wait_for_function("()=>document.querySelector('[data-new-chat]')&&!document.querySelector('[data-new-chat]').disabled");ask("TEST Kaya'nın forkliftine 20 litre mazot verildi, litresi 45 TL")
- assert pg.locator('[data-kind=fuelout] [data-pick]').is_checked();save()
+ assert not pg.locator('[data-kind=fuelout] [data-pick]').is_checked();pg.check('[data-kind=fuelout] [data-pick]');save()
  s=state();mid=s['moves'][0]['id'];assert s['stock']==80 and s['balance'][ids['customer']]==900
  # Source-labelled statement + full backup/restore linkage checks.
  backup=pg.evaluate("async()=>await (await import('./js/backup.js')).fullBackup(await import('./js/db.js'),{encrypted:false,attachments:'none'})")
