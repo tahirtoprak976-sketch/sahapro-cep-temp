@@ -10,13 +10,13 @@ assert.equal(draft(text,d,today).customer_id,'C');
 assert.equal(row(text).liters,20);assert.equal(row(text).unit_price,null);assert.equal(row(text).ok,false);
 const typo=row("Kaya İnşaat'ın forkliftine 20 ltnmazot verilmişti");
 assert.equal(typo.liters,20);assert.equal(typo.date,'','past delivery without date must be confirmed');
-const priced=row(text+', litresi 45 TL');assert.equal(priced.total,900);assert.equal(priced.ok,true);
-assert.equal(row('Bizim depodan '+text+' litresi 45 TL').ok,true);
+const priced=row(text+', litresi 45 TL');assert.equal(priced.total,900);assert.equal(priced.okData,true);assert.equal(priced.ok,false);
+assert.equal(row('Bizim depodan '+text+' litresi 45 TL').okData,true);assert.equal(row('Bizim depodan '+text+' litresi 45 TL').ok,false);
 assert.equal(row(text+' toplam 900 TL').unit_price,45);
 assert.equal(row(text+' litresi 45,50 TL').total,910);
 assert.equal(row(text+' litresi 45.50 TL').date,today,'decimal price is not a calendar date');
 assert.equal(row(text.replace('20 lt','20.5 litre')+' litresi 45 TL').total,922.5);
-assert.equal(row(text+' litresi 45 TL toplam 1000 TL').ok,false,'inconsistent explicit amounts need review');
+assert.equal(row(text+' litresi 45 TL toplam 1000 TL').okData,false,'inconsistent explicit amounts need review');assert.equal(row(text+' litresi 45 TL toplam 1000 TL').ok,false);
 assert.equal(row('Dün '+text+' litresi 45 TL').date,'2026-10-20');
 assert.equal(row('07.09.2026 '+text+' litresi 45 TL').date,'2026-09-07');
 assert.equal(row('31.02.2026 '+text+' litresi 45 TL').date,'');
@@ -37,7 +37,7 @@ let v=rows({customer_fuel:[{quote:text,customer_id:'D',liters:200,unit_price:99}
 v=rows({customer_fuel:[{quote:text,customer_id:'D',liters:200,unit_price:99}]},{message:'Bir mesaj:\n'+text,d,today});assert.equal(v[0].liters,20);assert.equal(v[0].customer_id,'C');assert.equal(v[0].unit_price,null);
 const plan=validatePlan({fuel:[{customer_id:'C',vehicle_id:'OUR',liters:20,source:'Müşteri Verdi'}]}, {message:text+' litresi 45 TL',d,today});
 assert.equal(plan.fuelOut.length,1);assert.equal(plan.fuel.length,0,'same outgoing delivery must not become incoming customer payment');
-const short=validatePlan({}, {message:text+' litresi 45 TL',d:{...d,fuel_tank_movements:[]},today});assert.equal(short.fuelOut[0].ok,false);
+const short=validatePlan({}, {message:text+' litresi 45 TL',d:{...d,fuel_tank_movements:[]},today});assert.equal(short.fuelOut[0].okData,false);assert.equal(short.fuelOut[0].ok,false);
 const input={date:today,customer_id:'C',machine:'Forklift',liters:20,unit_price:45};assert.equal(fields(input,today).total,900);
 for (const [k,val] of [['liters',-20],['liters',Infinity],['liters',true],['unit_price',0],['unit_price','wat'],['customer_id',''],['machine',''],['date','2026-02-31'],['date','2026-10-22']]) assert.throws(()=>fields({...input,[k]:val},today));
 const m={id:'M',date:today,move_type:'ÇIKIŞ',delivery_kind:'customer_fuel',recipient_customer_id:'C',liters:20,charge_unit_price:45,charge_total:900,cari_movement_id:'A',event_id:'E'};
@@ -52,11 +52,11 @@ console.log('customer fuel: source/amount/direction/date ambiguity, model eviden
 // Multi-turn model proposals retain the first exact delivery and use a later exact user quote for price/date.
 const quote="Kaya İnşaat'ın forkliftine 20 litre mazot verilmişti",details='Litresi 50 TL, teslim tarihi 20.10.2026';
 const continued=rows({customer_fuel:[{quote,details_quote:details,unit_price:999}]},{message:quote+'\n[DÜZELTME] '+details,d,today})[0];
-assert.equal(continued.liters,20);assert.equal(continued.unit_price,50);assert.equal(continued.date,'2026-10-20');assert.equal(continued.total,1000);assert.equal(continued.ok,true);
+assert.equal(continued.liters,20);assert.equal(continued.unit_price,50);assert.equal(continued.date,'2026-10-20');assert.equal(continued.total,1000);assert.equal(continued.okData,true);assert.equal(continued.ok,false);
 assert.equal(rows({customer_fuel:[{quote,details_quote:'Litresi 999 TL'}]},{message:quote+'\n'+details,d,today})[0].blocked,true,'invented clarification is not evidence');
 assert.equal(rows({customer_fuel:[{quote,details_quote:details}]},{message:details+'\n'+quote,d,today})[0].blocked,true,'earlier unrelated text cannot serve as later clarification');
 assert.equal(rows({customer_fuel:[{quote,details_quote:'bedelsiz'}]},{message:quote+'\n[DÜZELTME] bedelsiz',d,today})[0].blocked,true);
 
 const turns=['Litresi 50 TL','Teslim tarihi 20.10.2026'];
 const mult=rows({customer_fuel:[{quote,details_quotes:turns}]},{message:quote+'\n[DÜZELTME] '+turns.join('\n[DÜZELTME] '),d,today})[0];
-assert.equal(mult.total,1000);assert.equal(mult.date,'2026-10-20');assert.equal(mult.ok,true);
+assert.equal(mult.total,1000);assert.equal(mult.date,'2026-10-20');assert.equal(mult.okData,true);assert.equal(mult.ok,false);

@@ -102,7 +102,7 @@ console.log("assistant-rules PASS");
   assert.equal(runAskTool(led, "customer_fuel", { customer: "Kılıç" }, today).musteriler[0].kalan_litre, 50);
   // asistan: depoya müşteriden mazot
   const v5 = validatePlan({ tank_in: [{ liters: 300, customer_id: "KL", credit: true }] }, { message: "Kılıçtan depoya 300 litre mazot aldık", d, today });
-  assert.equal(v5.tankIn[0].customer_id, "KL"); assert.equal(v5.tankIn[0].credit, false); assert.equal(v5.tankIn[0].ok, true);
+  assert.equal(v5.tankIn[0].customer_id, "KL"); assert.equal(v5.tankIn[0].credit, false); assert.equal(v5.tankIn[0].okData, true); assert.equal(v5.tankIn[0].ok, false);
   console.log("mazot-odeme PASS");
 }
 // iskelet: birden çok kural, birim, tarih aralığı, şantiye adında eşleşme
