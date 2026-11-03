@@ -6,7 +6,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 const base=mkdtempSync(join(tmpdir(),'assistant99-baseline-'));
 try{
- const archive=join(base,'baseline.tar');execFileSync('git',['archive','--output',archive,'20612ee8af15ca8823bca705df8acf7c1f56b063']);
+ const archive=join(base,'baseline.tar');execFileSync('git',['-c','safe.directory='+process.cwd(),'archive','--output',archive,'20612ee8af15ca8823bca705df8acf7c1f56b063']);
  const unpack=spawnSync('tar',['-xf',archive,'-C',base]);assert.equal(unpack.status,0);
  assert.match(readFileSync(join(base,'js/core.js'),'utf8'),/APP_VERSION = "SAHAPRO SOLO v3\.9\.98"/);
  cpSync('tests/assistant-gold',join(base,'tests/assistant-gold'),{recursive:true});
