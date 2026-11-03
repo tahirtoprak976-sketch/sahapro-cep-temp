@@ -1,17 +1,17 @@
 # Paket 1 — güven seviyeli doldurma, v3.10.00
 
-Aynı 63 sentetik mesaj ve aynı bağımsız beklentiler kullanıldı. cases.json ve cards.json değiştirilmedi. Kayıtlı model yanıtları gerçek doğrulama katmanında yeniden oynatıldı; bu ölçüm gerçek Gemini başarısını göstermez.
+Başlangıçtaki 63 sentetik mesaj ve bağımsız beklentileri değiştirilmedi. Kayıtlı model yanıtları gerçek doğrulama katmanında yeniden oynatıldı; bu ölçüm gerçek Gemini başarısını göstermez.
 
-| Ölçüt | v3.9.99 | v3.10.00 |
+| Ölçüt — aynı 63 örnek | v3.9.99 | v3.10.00 |
 |---|---:|---:|
 | İşaretli doğru kart | 22 / 63 (%34,9) | 24 / 63 (%38,1) |
 | Sessiz yanlış | 0 | 0 |
 | Para tahmini | 0 | 0 |
 | Zorunlu işaretsiz kart ihlali | 0 | 0 |
 
-Artış +3,17 yüzde puan, önceki doğru işaret sayısına göre %9,1. Daha çok kolay örnek ekleyerek oran yükseltilmedi. Alan doğrulukları, sorular ve kalan eksikler yanındaki JSON raporlarında bulunur. İşaretsiz yanlış/eksik alanlar hâlâ vardır; sıfır sessiz yanlış, bütün alanların doğru olduğu anlamına gelmez.
+Artış +3,17 yüzde puan, önceki doğru işaret sayısına göre %9,1. Kolay örnek ekleyerek bu oran yükseltilmedi. Alan doğrulukları, sorular ve kalan eksikler yanındaki JSON raporlarında bulunur. İşaretsiz yanlış/eksik alanlar hâlâ vardır; sıfır sessiz yanlış bütün alanların doğru olduğu anlamına gelmez.
 
-## Başlangıçta 41 işaretsiz kartın nedenleri
+## Başlangıçtaki 41 işaretsiz kart
 
 Bayraklar çakışabilir; toplamları 41 olmak zorunda değildir.
 
@@ -28,23 +28,32 @@ Bayraklar çakışabilir; toplamları 41 olmak zorunda değildir.
 | blocked | 1 |
 | dup | 1 |
 
-Ayrıca bu listede bayrağı olmayan fakat gerekli alan/kanıtı eksik 9 kart vardır. Ayrıntı: unchecked-v3.9.99.json.
+Bu bayraklar dışında gerekli alan/kanıtı eksik 9 kart vardır. Ayrıntı: unchecked-v3.9.99.json.
 
 En büyük grup finansal onaydır: otomatik açılmadı. Fiyat belirsizliği ikinci gruptur: para tahmini yapılmadı, fiyat sorusu korundu. Güvenle çözülebilen ilk iki neden tek şantiye sahibinden ve aynı gün aracın tek gerçek işinden müşteri çıkarımıdır. Bu iki örnek artık işaretli; gerçek çoklu müşteri adayları sessiz elenmez.
 
-## Davranış ve sınırlar
+## Alan davranışı
 
-- Alanlar Kesin / Çıkarım / Bilinmiyor olarak gösterilir. Çıkarımın gerekçesi kartta tek satırdır. Bilinmeyen alan düzenleme ekranında boştur.
-- Tam kayıtlı ad/takma ad, tek şantiye sahibi, aracın aynı günkü tek işi ve müşterinin tek açık iş sözleşmesi telefondaki kayıtlardan değerlendirilir. Üç günlük yakın geçmiş ve bulanık eşleşme kendiliğinden kesinleşmez.
-- Kayıtlı fiyat salt okunur gösterilir; manuel fiyat alanına aktarılmaz. Mevcut otomatik fiyat kaynağı, KDV ve cari hesabı korunur. Bağlam değiştiğinde fiyat önizlemesi mevcut fiyat motoruyla yenilenir.
-- Para alanı çıkarım olamaz. Beş zorunlu işaretsiz sınıfın kuralı değişmez. Kaydet öncesi yazma yoktur.
-- Fişte adı bulunmayan esnaf borcu otomatik seçilmez. Kullanıcı esnafı doğrular veya açıkça peşin gider seçer. Önceki fotoğraf testi bu yönde sıkılaştırıldı: tutarın doğru okunması tek başına isimsiz esnafı yetkilendirmez; eski tutar/fiş kontrolleri korundu.
-- Güven bilgisi yalnız geçici taslaktadır; kayıtlara yazılmaz. Şema7 ve kalıcı kayıt biçimi değişmez, eski kayıtlar düzeltilmez.
+- Kesin / Çıkarım / Doğrulayın rozetleri görünür; çıkarımın gerekçesi kartta tek satırdır. Kullanıcının son talimatı uyarınca BİLİNMİYOR alanın mevcut önerisi silinmez, kart işaretsiz kalır. Model değer vermemişse alan boş kalır. Doğrulama katmanının reddettiği para tutarı yeniden gösterilmez.
+- Tam kayıtlı ad/takma ad, tek şantiye sahibi, aracın aynı günkü tek işi ve müşterinin tek açık sözleşmesi telefondaki kayıtlardan değerlendirilir. Üç günlük yakın geçmiş ve bulanık eşleşme kendiliğinden kesinleşmez.
+- Kayıtlı fiyat ayrı gösterilir; manuel fiyat alanına aktarılmaz. Mevcut fiyat kaynağı, KDV ve cari hesabı korunur. Bağlam değiştiğinde fiyat mevcut motorla yenilenir.
+- Para alanı çıkarım olamaz. Beş zorunlu işaretsiz sınıf değişmez. Kaydet öncesi kayıt yazılmaz.
+- Veresiye kartta esnafı boşaltmak kendiliğinden peşin işlem oluşturmaz. Esnaf veya peşin ödeme açıkça seçilir; bütün seçimin kontrolü ilk yazmadan önce yapılır.
+- Güven bilgisi yalnız geçici taslaktadır. Şema7 ve kalıcı kayıt biçimi değişmedi; eski kayıtlar düzeltilmez. YZ2, sağlayıcı ve sunucu değişikliği yoktur.
 
-## Tekrar çalıştırma
+## Fotoğraf, tarih ve rakamlı araç düzeltmeleri
 
-`node tests/assistant-gold/prove-confidence.mjs` değişmemiş v3.9.99 kaynaklarını arşivleyip aynı ölçümü ve aynı yeni testleri çalıştırır. Eski sürümde eksikler görünür; adayda 15 odaklı Node kontrolü ve 9 gerçek ekran senaryosu doğrulanır. Yerel tests/gold ayrı raporlanır; eski finansal taban kanıtı da CI'de tutulur.
+Ek sınav seti confidence-cases.json içindedir: çok tarihli/fotoğraflı yakıt ve gider; mesaj–fotoğraf tarih çelişkisi; açık eski tarih, WhatsApp başlığı ve dün karşısında modelin bugünü; JCB3CX ve CAT320 miktarları. Bu 9 ek örnek başlangıçtaki orana katılmadı. Toplam72 örnekte eski v3.9.99 kaynaklarında4 sessiz yanlış görülürken adayda0; adayın yeni9 örneğinde alan/işaret/soru beklentileri birebir geçer.
 
-Gerçek telefon, gerçek Gemini ve gerçek WhatsApp bu sentetik testlerde sınanmadı. Sağlayıcı, sunucu, ücretli servis veya YZ2 değişikliği yoktur.
+Tarih kanıtı mesaj satırı/başlığında ve ilgili fotoğrafta ayrı aranır. Birleşik metin mesaj içinde aranmaz. Tarih çelişirse modelin önerisi görünür ve işaretsiz kalır; mesajdaki tarih tek dokunuşla önerilir. Eski WhatsApp başlığındaki dün, gönderenin gününe göre hesaplanır. Açık sayı+birim, araç kodundaki rakamla karıştırılmaz.
 
-Eski dört tarayıcı testindeki tüm özgün assert ifadeleri AST karşılaştırmasıyla korundu. Yeni kurala göre boşalan alanlar için kullanıcı seçimi eklendi; kanıtsız araç/müşteri ve modelin uydurduğu miktarın önce boş olduğu ayrıca doğrulanır. Son kayıt, bakiye, görev kilidi, iptal ve sıfır yazma beklentileri değiştirilmedi.
+## Tekrar çalıştırma ve önce/sonra kanıtı
+
+- `node tests/assistant-gold/prove-confidence.mjs`: değişmemiş v3.9.99 kaynaklarıyla aynı ölçüm ve odaklı testler; adayla karşılaştırma.
+- `node tests/assistant-gold/run.mjs`: değişmemiş63 örnek. `--confidence`: yeni9 dahil72 örnek.
+- `python tools/e2e/prove_confidence_photo.py`: aynı, değiştirilmemiş assistant_large_batch testini v3.9.99 ve onarım öncesi PR commit6faebb1 üzerinde çalıştırır. Canlı99 geçer; eski PR100 iş aşamasını geçip fotoğraflı25 kartın kayıt sonucunda düşer. Aday aynı özgün testte tüm100+25 kontrollerini geçmelidir.
+- 17 odaklı Node kontrolü ve16 gerçek ekran senaryosu: önerilerin görünür/işaretsiz kalması, eksik alanın boşluğu, tarih önerisinin yalnız ilgili alanı değiştirmesi, KDV/fiyat kaynağı, veresiye ön kontrolü ve Kaydet öncesi sıfır yazma.
+- Eski dört tarayıcı testinin tüm özgün assert ifadeleri AST karşılaştırmasıyla korunur. Önceki boş alan ek kontrolleri son kullanıcı talimatına göre görünür öneri/Doğrulayın olarak güncellendi. Son kayıt, bakiye, görev kilidi, iptal ve sıfır yazma beklentileri değiştirilmedi.
+- Yerel tests/gold ayrıca raporlanır:80 mesaj,0 yanlış. Tüm Node dosyaları,75 tarayıcı suiti ve30 yükseltme senaryosu CI kapısıdır.
+
+Gerçek telefon, gerçek Gemini ve gerçek WhatsApp bu sentetik testlerde sınanmadı.

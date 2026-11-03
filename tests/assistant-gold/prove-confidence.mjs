@@ -14,9 +14,10 @@ try{
  cpSync('tests/assistant-confidence100.test.mjs',join(base,'tests/assistant-confidence100.test.mjs'));
  const report=join(base,'measurement.json');const run=spawnSync(process.execPath,['tests/assistant-gold/run.mjs','--report',report],{cwd:base,encoding:'utf8'});assert.equal(run.status,0,run.stderr);
  const before=JSON.parse(readFileSync(report,'utf8')),after=measure();
+ const expandedReport=join(base,'expanded.json'),expandedRun=spawnSync(process.execPath,['tests/assistant-gold/run.mjs','--confidence','--report',expandedReport],{cwd:base,encoding:'utf8'});assert.equal(expandedRun.status,1);const expandedBefore=JSON.parse(readFileSync(expandedReport,'utf8'));assert.ok(expandedBefore.silentWrong>0);
  assert.equal(before.messages,63);assert.equal(after.messages,before.messages);assert.equal(before.checkedCorrect,22);assert.ok(gate(before));assert.ok(gate(after));assert.ok(after.checkedCorrect>before.checkedCorrect);
  const regression=spawnSync(process.execPath,['--test-reporter=tap','tests/assistant-confidence100.test.mjs'],{cwd:base,encoding:'utf8'});assert.equal(regression.status,1);assert.match(regression.stdout,/# fail [1-9]/);
  const output=process.argv[2]||'/tmp/solo-confidence100-measurement.json';assert.ok(output.startsWith('/tmp/'));
- writeFileSync(output,JSON.stringify({baseline:'v3.9.99',before,after,baselineRegressions:regression.stdout},null,2)+'\n');
+ writeFileSync(output,JSON.stringify({baseline:'v3.9.99',before,after,expandedBefore,baselineRegressions:regression.stdout},null,2)+'\n');
  console.log(JSON.stringify({before:before.checkedCorrectRate,after:after.checkedCorrectRate,safety:[after.silentWrong,after.moneyGuesses,after.mandatoryChecked],report:output}));
 }finally{rmSync(base,{recursive:true,force:true});}

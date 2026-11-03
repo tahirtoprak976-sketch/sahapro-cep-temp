@@ -857,7 +857,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     out.fuel.push(r);
   }
   out.questions = [...new Set([...out.questions, ...(Array.isArray(plan.questions) ? plan.questions : []).map(String)])];
-  for(const [group,kind]of Object.entries({expenses:'expense',fuel:'fuel',fuelOut:'fuelout',tankIn:'tank'}))for(const [i,row]of (out[group]||[]).entries())annotateConfidence(row,kind,{d,fullMessage:message,text:[row.source_quote||message,row.photo!=null?photoTexts[row.photo]||'':''].filter(Boolean).join('\n'),today,original:plan[group==='tankIn'?'tank_in':group]?.[i]||{}});
+  for(const [group,kind]of Object.entries({expenses:'expense',fuel:'fuel',fuelOut:'fuelout',tankIn:'tank'}))for(const [i,row]of (out[group]||[]).entries())annotateConfidence(row,kind,{d,fullMessage:message,dateScope:row.source_quote||message,photoText:row.photo!=null?photoTexts[row.photo]||'':'',text:[row.source_quote||message,row.photo!=null?photoTexts[row.photo]||'':''].filter(Boolean).join('\n'),today,original:plan[group==='tankIn'?'tank_in':group]?.[i]||{}});
   out.newCustomers = [...newNames.values()];
   out.photoTexts = photoTexts;
   return out;
@@ -1108,7 +1108,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     // Silme ve düzeltme varsayılan olarak işaretsiz gelir: kullanıcı bilerek işaretler
     out.edits.push({ store: x.store, id: rec.id, rec, changes, remove, reason: String(x.reason || "").slice(0, 200) || "Asistan düzeltmesi", issues, ok: false });
   }
-  for(const group of ['collections','personnel','maintenance'])for(const [i,row]of out[group].entries())annotateConfidence(row,group==='collections'?'collection':group,{d,fullMessage:message,text:[row.source_quote||message,row.photo!=null?photoTexts[row.photo]||'':''].filter(Boolean).join('\n'),today,original:plan[group]?.[i]||{}});
+  for(const group of ['collections','personnel','maintenance'])for(const [i,row]of out[group].entries())annotateConfidence(row,group==='collections'?'collection':group,{d,fullMessage:message,dateScope:row.source_quote||message,photoText:row.photo!=null?photoTexts[row.photo]||'':'',text:[row.source_quote||message,row.photo!=null?photoTexts[row.photo]||'':''].filter(Boolean).join('\n'),today,original:plan[group]?.[i]||{}});
   return out;
 }
 

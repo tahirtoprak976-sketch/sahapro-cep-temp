@@ -84,7 +84,7 @@ with sync_playwright() as p:
  print('PASS native targeted revision preserves untouched first job and separate cash amount',flush=True)
  # A failed durable write lock must stop before the first business write. Then selected subset closes to review.
  for box in pg.locator('[data-out] .card[data-kind] [data-pick]').all():box.uncheck()
- assert pg.input_value('[data-kind=work][data-i="0"] [name=customer]')==''
+ assert pg.input_value('[data-kind=work][data-i="0"] [name=customer]')==ids['customer']
  pg.select_option('[data-kind=work][data-i="0"] [name=customer]',ids['customer'])
  pg.check('[data-kind=work][data-i="0"] [data-pick]')
  pg.evaluate("""()=>{const p=IDBObjectStore.prototype,old=p.put;p.put=function(v,...a){if(this.name==='meta'&&v.key==='assistant_task_v1'&&v.value.status==='applying'){p.put=old;throw Error('TEST task lock failure')}return old.call(this,v,...a)}}""")

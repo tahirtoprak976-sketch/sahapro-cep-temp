@@ -3,7 +3,7 @@ import {isActive} from './core.js';
 import {foldTr} from './parser.js';
 import {analyzeMessage} from './message-engine.js';
 import {vehicleNamed} from './assistant-rules.js';
-import {customerSpans} from './money-roles.js';
+import {customerSpans,moneyMentions} from './money-roles.js';
 import {openJobs,jobFor} from './job-core.js';
 import {isMachineKind,vehicleTypeInfo} from './vehicle-type-core.js';
 export const CONFIDENCE=Object.freeze({CERTAIN:'KESIN',INFERRED:'CIKARIM',UNKNOWN:'BILINMIYOR'});
@@ -37,8 +37,8 @@ function reference(d,store,id,text,type){
 export function fillWorkEvidence(r,{d,text,hasUnknownName=false,negative=false}={}){
  r._fieldEvidence={};
  if(r.guessed){
-  const parsed=analyzeMessage({text},d).rows,vehicleNumbers=String(live(d,'vehicles').find(v=>v.id===r.vehicle_id)?.name||'').match(/\d+/g)||[];
-  if(parsed.length===1&&parsed[0].evidence?.quantity?.via==='quantity_unit'&&Number(parsed[0].quantity)===Number(r.quantity)&&parsed[0].unit===r.unit&&!vehicleNumbers.includes(String(r.quantity))){
+  const parsed=analyzeMessage({text},d).rows;
+  if(parsed.length===1&&parsed[0].evidence?.quantity?.via==='quantity_unit'&&Number(parsed[0].quantity)===Number(r.quantity)&&parsed[0].unit===r.unit){
    r.guessed=false;r._fieldEvidence.quantity=certain(r.quantity,'Satırdaki açık miktar ve birim','literal_quantity');
    for(let i=r.issues.length-1;i>=0;i--)if(/^Miktar .*mesajda yazmıyor/.test(r.issues[i]))r.issues.splice(i,1);
   }
@@ -108,40 +108,61 @@ export function confidenceReady(row,kind='work'){
  if(kind==='fuel'&&row.source==='Müşteri Verdi')fields.push('customer_id');
  if(kind==='collection'&&row.method==='Havale')fields.push('bank_account_id');
  if(kind==='expense'&&row.payment_method==='Personel Ödedi')fields.push('paid_by');
- if((kind==='expense'||kind==='maintenance')&&row.credit)fields.push('supplier_id');
+ if(['expense','maintenance','tank'].includes(kind)&&row.credit)fields.push('supplier_id');
  if(kind==='maintenance'&&row.credit)fields.push('cost');
  return fields.every(k=>row.fieldConfidence[k]?.level!==CONFIDENCE.UNKNOWN&&row.fieldConfidence[k]?.value!=null&&row.fieldConfidence[k]?.value!=='');
 }
-// A quoted row may omit a shared date or its WhatsApp header. Keep date evidence scoped.
-function dateEvidence(value,text,fullMessage,today,dateUnsure){
- if(!value||dateUnsure)return unknown('Tarih doğrulanmalı');
+// Message rows and receipt text are independent evidence sources. Never search their concatenation.
+function dateCandidates(text,today){
  const months=['ocak','subat','mart','nisan','mayis','haziran','temmuz','agustos','eylul','ekim','kasim','aralik'];
- const scope=String(text||''),whole=String(fullMessage||scope),pos=whole.indexOf(scope);
- const line=scope&&pos>=0?whole.slice(whole.lastIndexOf('\n',pos)+1,pos+scope.length):scope;
- const isoDate=(yy,mm,dd)=>{const v=`${yy.length===2?'20'+yy:yy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v?v:null;};
- const dates=s=>{
-  const found=[];
-  for(const v of String(s).matchAll(/(?<!\d)(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})(?!\d)/g))found.push(isoDate(v[1],v[2],v[3]));
-  for(const v of String(s).matchAll(/(?<!\d)(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4}|\d{2})(?!\d)/g))found.push(isoDate(v[3],v[2],v[1]));
-  for(const v of foldTr(s).matchAll(/(?<!\d)(\d{1,2})\s+([a-z]+)\s+(\d{4})(?!\d)/g)){const mi=months.indexOf(v[2]);if(mi>=0)found.push(isoDate(v[3],mi+1,v[1]));}
-  return unique(found.filter(Boolean));
+ const iso=(y,m,d)=>{const value=`${String(y).length===2?'20'+y:y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`,dt=new Date(value+'T12:00:00Z');return !Number.isNaN(+dt)&&dt.toISOString().slice(0,10)===value?value:null;};
+ const parse=(s,dayBase=today)=>{
+  const exact=[],partial=[],f=foldTr(s);
+  for(const v of s.matchAll(/(?<!\d)(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})(?!\d)/g))exact.push(iso(v[1],v[2],v[3]));
+  for(const v of s.matchAll(/(?<!\d)(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4}|\d{2})(?!\d)/g))exact.push(iso(v[3],v[2],v[1]));
+  for(const v of f.matchAll(/(?<!\d)(\d{1,2})\s+([a-z]+)(?:\s+(\d{4}))?(?![a-z])/g)){const m=months.indexOf(v[2]);if(m>=0)(v[3]?exact:partial).push(iso(v[3]||dayBase.slice(0,4),m+1,v[1]));}
+  if(contains(s,'bugün'))exact.push(dayBase);
+  if(contains(s,'dün')){const dt=new Date(dayBase+'T12:00:00Z');dt.setUTCDate(dt.getUTCDate()-1);exact.push(dt.toISOString().slice(0,10));}
+  return {values:unique((exact.length?exact:partial).filter(Boolean)),level:exact.length?CONFIDENCE.CERTAIN:CONFIDENCE.INFERRED,hint:exact.length>0||partial.length>0||/\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}|\b(?:bugun|dun|yarin|pazartesi|sali|carsamba|persembe|cuma|cumartesi|pazar)\b/.test(f)};
  };
- const local=dates(line),global=dates(whole);
- if(local.length===1&&local[0]===value)return certain(value,'Mesajdaki tarih');
- const yesterday=new Date(today+'T12:00:00Z');yesterday.setUTCDate(yesterday.getUTCDate()-1);
- if(contains(line,'bugün')&&value===today||contains(line,'dün')&&value===yesterday.toISOString().slice(0,10))return certain(value,'Mesajdaki göreli gün');
- // A yearless row date uses the current year, explicitly labelled as an inference.
- const partial=[];
- for(const v of foldTr(line).matchAll(/(?<!\d)(\d{1,2})\s+([a-z]+)(?![a-z])/g)){const mi=months.indexOf(v[2]);if(mi>=0)partial.push(isoDate(today.slice(0,4),mi+1,v[1]));}
- if(!partial.length)for(const v of line.matchAll(/\[(\d{1,2})\/(\d{1,2})(?:\s|\])/g))partial.push(isoDate(today.slice(0,4),v[2],v[1]));
- const candidates=unique(partial.filter(Boolean));
- if(!local.length&&candidates.length===1&&candidates[0]===value)return inferred(value,'Satırdaki gün/ay ve mevcut yıl','row_date');
- if(!local.length&&!candidates.length&&global.length===1&&global[0]===value)return certain(value,'Mesajdaki tek ortak tarih');
- return value===today?inferred(value,'Tarih yazılmamış; mevcut işlem günü varsayılanı','default_date'):unknown('Eski tarih mesajda doğrulanmalı');
+ const rows=String(text||'').split(/\n(?=\[\d{1,2}[/.])/),values=[];let hint=false;
+ for(const row of rows){
+  const header=/^\[(\d{1,2})[/.](\d{1,2})(?:[/.](\d{4}|\d{2}))?[^\]]*\]/.exec(row.trim()),body=header?row.trim().slice(header[0].length):row;
+  const headerDate=header?iso(header[3]||today.slice(0,4),header[2],header[1]):null,p=parse(body,headerDate||today);hint ||= p.hint;
+  if(p.hint){for(const date of p.values)values.push({date,level:p.level});continue;}
+  if(header){hint=true;const date=iso(header[3]||today.slice(0,4),header[2],header[1]);if(date)values.push({date,level:header[3]?CONFIDENCE.CERTAIN:CONFIDENCE.INFERRED});}
+ }
+ return {values:[...new Map(values.map(v=>[v.date,v])).values()],hint};
 }
-export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,original={}}={}){
+function messageDateScope(r,kind,scope,whole,d){
+ const chunks=String(whole||'').split(/\n(?=\[\d{1,2}[/.])/);
+ if(scope&&norm(scope)!==norm(whole)){
+  const matches=chunks.filter(c=>contains(c,scope));
+  if(matches.length===1){const h=/^\[[^\]]+\]/.exec(matches[0].trim()),lines=matches[0].split('\n').filter(l=>contains(l,scope)),line=lines.length===1?lines[0]:scope;return (h&&!line.trim().startsWith(h[0])?h[0]+' ':'')+line;}
+ }
+ const amount=kind==='expense'?r.amount:null;
+ const number=String(r.liters??r.quantity??'').replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace('\\.','[.,]');
+ const unit=kind==='fuel'||kind==='tank'?'(?:litre|lt|l)(?![a-z])':r.unit==='Saat'?'saat':r.unit==='Sefer'?'sefer':null;
+ const literal=number&&unit?new RegExp('(?:^|[^0-9])'+number+'\\s*'+unit,'i'):null;
+ const hits=chunks.filter(c=>amount?moneyMentions(c).some(m=>m.n===amount):literal?.test(foldTr(c))&&(kind!=='work'||!r.vehicle_id||vehicleNamed(d,live(d,'vehicles').find(v=>v.id===r.vehicle_id)||{},c)));
+ return hits.length===1?hits[0]:String(whole||scope||'');
+}
+function dateEvidence(value,{scope,whole,photoText,today,dateUnsure,row,kind,d}){
+ const message=dateCandidates(messageDateScope(row,kind,scope,whole,d),today),photo=dateCandidates(photoText,today);
+ const m=message.values.length===1?message.values[0]:null,p=photo.values.length===1?photo.values[0]:null;
+ const conflict=!!(m&&p&&m.date!==p.date),chosen=m||p;
+ const verify=reason=>({...unknown(reason),conflict:conflict||!!(chosen&&value&&value!==chosen.date),...(chosen?{suggestedValue:chosen.date,suggestedSource:m?'message':'photo'}:{})});
+ if(conflict)return verify('Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın');
+ if(chosen){
+  if(dateUnsure||value!==chosen.date)return verify('Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı');
+  return chosen.level===CONFIDENCE.CERTAIN?certain(value,m?'Mesajdaki satır/başlık tarihi':'İlgili fişteki tarih',m?'message':'photo'):inferred(value,'Satırdaki gün/ay ve mevcut yıl','row_date');
+ }
+ if(!value||dateUnsure||message.hint||photo.hint)return verify('Tarih kanıtı belirsiz; tarihi doğrulayın');
+ return value===today?inferred(value,'Tarih yazılmamış; mevcut işlem günü varsayılanı','default_date'):verify('Eski tarih mesajda doğrulanmalı');
+}
+export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,original={},dateScope=text,photoText=''}={}){
  const f={},certainValue=(k,reason)=>{f[k]=certain(r[k],reason);};
- if('date' in r)f.date=dateEvidence(r.date,text,fullMessage,today,r.dateUnsure);
+ if('date' in r)f.date=dateEvidence(r.date,{scope:dateScope,whole:fullMessage,photoText,today,dateUnsure:r.dateUnsure,row:r,kind,d});
  if(r.fromDriver&&r.date&&!r.dateUnsure)f.date=certain(r.date,'Şoför ekranında seçilen tarih','driver');
  for(const [key,store,type]of [['customer_id','customers','customer'],['vehicle_id','vehicles','vehicle'],['personnel_id','personnel','personnel'],['site_id','sites','site'],['supplier_id','suppliers','supplier'],['bank_account_id','bank_accounts','bank'],['paid_by','personnel','personnel']])if(key in r){
   f[key]=r.fromDriver?certain(r[key],'Şoför ekranında seçilen alan','driver'):reference(d,store,r[key],text,type);
@@ -167,10 +188,11 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  if(price&&(!job||job.ambiguous)&&!r.fuelAllowance?.only_pay&&r.yard!=='out'&&(f.date?.level===CONFIDENCE.CERTAIN||!price.valid_from&&!price.valid_to)&&!price.formula&&Number.isFinite(price.price)&&price.price>0&&!r.priceUncertain&&!r.price_pending&&!r.dateUnsure){
   f.effective_unit_price=certain(price.price,'Bu iş için tek geçerli kayıtlı fiyat kuralı','price_rule');
  }
+ if(f.date?.level===CONFIDENCE.UNKNOWN){r.dateUnsure=true;if(f.date.conflict){r.dateConflict=true;(r.issues??=[]).push('Önerilen tarih mesaj/fiş ile çelişiyor; '+(f.date.suggestedValue||'doğru tarihi')+' tarihini doğrulayın?');}}
  r.fieldConfidence=f;
  r.okData=r.okData??r.ok;
  r.ok=!!r.ok&&confidenceReady(r,kind)&&!r.needsApproval&&(r.price_pending||!r.priceInfo?.ambiguous);
  return r;
 }
-export function confidenceValue(row,key,fallback){const f=row.fieldConfidence?.[key];return f?(f.level===CONFIDENCE.UNKNOWN?null:f.value):fallback;}
-export function invalidateConfidenceDate(row){if(row.fieldConfidence&&row.dateUnsure){row.fieldConfidence.date=unknown('Mesaj/fişte tarih doğrulanmalı');delete row.fieldConfidence.effective_unit_price;}}
+export function confidenceValue(row,key,fallback){const f=row.fieldConfidence?.[key];return f?(f.level===CONFIDENCE.UNKNOWN?fallback:f.value):fallback;}
+export function invalidateConfidenceDate(row){if(row.fieldConfidence&&row.dateUnsure){if(!row.fieldConfidence.date?.suggestedValue)row.fieldConfidence.date=unknown('Mesaj/fişte tarih doğrulanmalı');delete row.fieldConfidence.effective_unit_price;}}

@@ -1,0 +1,187 @@
+{
+  "messages": 72,
+  "cards": 72,
+  "silentWrong": 0,
+  "moneyGuesses": 0,
+  "mandatoryChecked": 0,
+  "checkedCorrect": 29,
+  "correctCards": 70,
+  "unnecessaryQuestions": 3,
+  "questions": 23,
+  "questionMessages": 19,
+  "shouldAskCorrect": 59,
+  "cardCountErrors": 0,
+  "fields": {
+    "customer_id": {
+      "correct": 45,
+      "total": 46
+    },
+    "vehicle_id": {
+      "correct": 40,
+      "total": 40
+    },
+    "quantity": {
+      "correct": 28,
+      "total": 29
+    },
+    "unit": {
+      "correct": 29,
+      "total": 29
+    },
+    "date": {
+      "correct": 72,
+      "total": 72
+    },
+    "unit_price": {
+      "correct": 34,
+      "total": 34
+    },
+    "amount": {
+      "correct": 24,
+      "total": 24
+    },
+    "money_role": {
+      "correct": 8,
+      "total": 8
+    },
+    "site_id": {
+      "correct": 1,
+      "total": 1
+    },
+    "price_rule": {
+      "correct": 1,
+      "total": 1
+    },
+    "personnel_id": {
+      "correct": 6,
+      "total": 6
+    },
+    "event_type": {
+      "correct": 6,
+      "total": 6
+    },
+    "liters": {
+      "correct": 13,
+      "total": 13
+    },
+    "total": {
+      "correct": 12,
+      "total": 12
+    },
+    "cost": {
+      "correct": 2,
+      "total": 2
+    },
+    "ticket_no": {
+      "correct": 4,
+      "total": 4
+    },
+    "tonnage": {
+      "correct": 4,
+      "total": 4
+    },
+    "duplicate": {
+      "correct": 4,
+      "total": 4
+    },
+    "link": {
+      "correct": 2,
+      "total": 2
+    },
+    "suggested_date": {
+      "correct": 4,
+      "total": 4
+    }
+  },
+  "failures": [
+    {
+      "id": "work-quantity-invented",
+      "problems": [
+        "0: yanlış quantity",
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "work-duplicate-name",
+      "problems": [
+        "0: yanlış customer_id"
+      ]
+    },
+    {
+      "id": "work-parent-wrong",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "work-injection",
+      "problems": [
+        "0: işaret false / true",
+        "gereksiz soru/alan istemi"
+      ]
+    },
+    {
+      "id": "collection-promise",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-offer",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-work-total",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-invented",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "collection-negated",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "expense-no-amount",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "expense-photo-wrong",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "expense-cross-photo",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "maintenance-invented-cost",
+      "problems": [
+        "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "questions-unnecessary",
+      "problems": [
+        "gereksiz soru/alan istemi"
+      ]
+    }
+  ],
+  "checkedCorrectRate": 0.4027777777777778,
+  "unnecessaryQuestionRate": 0.13043478260869565,
+  "questionsPerMessage": 0.3194444444444444
+}

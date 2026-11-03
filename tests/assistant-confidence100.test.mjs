@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {validatePlan,validateExtras} from '../js/assistant-core.js';
-import {cards,cases,replay} from './assistant-gold/replay.mjs';
+import {cards,cases,replay,measure,gate,confidenceCases} from './assistant-gold/replay.mjs';
 const today='2026-11-02',message='02.11.2026 JCB 3CX 2 saat çalıştı';
 const work={date:today,vehicle_id:'TEST_V',work_type:'Makine Çalışması',quantity:2,unit:'Saat'};
 const previous={id:'TEST_W',date:today,customer_id:'TEST_C',vehicle_id:'TEST_V',work_type:'Makine Çalışması',quantity:1,unit:'Saat'};
@@ -24,7 +24,7 @@ test('iki gerçek şantiye sahibi veya müşteri arasında sessiz seçim yok',()
  const d={...cards,sites:[...cards.sites,{id:'TEST_S2',name:'Kuzey Şantiyesi',customer_id:'TEST_B'}]};const r=row(d,'02.11.2026 Kuzey Şantiyesi JCB 3CX 2 saat çalıştı');assert.equal(r.ok,false);assert.equal(r.fieldConfidence?.customer_id?.level,'BILINMIYOR');
  const twin=row(cards,'02.11.2026 Ortak Yapı JCB 3CX 2 saat çalıştı',{customer_id:'TEST_TWIN1'});assert.equal(twin.ok,false);assert.equal(twin.fieldConfidence?.customer_id?.value,null);
 });
-test('bilinmeyen miktar boş gösterilir; modelin güven etiketi yetki değildir',()=>{
+test('bilinmeyen miktar kesinleşmez; modelin güven etiketi yetki değildir',()=>{
  const r=row(cards,'02.11.2026 Alfa İnşaat JCB 3CX çalıştı',{customer_id:'TEST_C',fieldConfidence:{quantity:{level:'KESIN',value:2}}});
  assert.equal(r.ok,false);assert.equal(r.fieldConfidence?.quantity?.level,'BILINMIYOR');assert.equal(r.fieldConfidence?.quantity?.value,null);
 });
@@ -74,7 +74,15 @@ test('açık toplu tarih WhatsApp başlığını geçer; çıkarımlı tarih sü
  const batch=row(cards,'Bütün işler 7 Eylül 2026 tarihine ait. Fiyatlar beklesin.\n[5/9 18:00] Şoför: '+quote,{customer_id:'TEST_C',date:'2026-09-05',quote});assert.equal(batch.date,'2026-09-07');assert.equal(batch.fieldConfidence.date.level,'KESIN');assert.equal(batch.price_pending,true);
  const partial=row({...cards,price_book:[{id:'TEST_TIMED',customer_id:'TEST_C',unit:'Saat',price:2500,active:true,valid_from:'2026-10-01',valid_to:'2026-10-31'}]},'22 Ekim '+quote,{customer_id:'TEST_C',date:'2026-10-22',quote});assert.equal(partial.fieldConfidence.date.level,'CIKARIM');assert.equal(partial.fieldConfidence.effective_unit_price,undefined);assert.equal(partial.unit_price,null);
 });
-test('satırdaki açık 20 saat makine koduyla karışmaz; kanıtsız sayı boş kalır',()=>{
+test('satırdaki açık 20 saat makine koduyla karışmaz; kanıtsız sayı kesinleşmez',()=>{
  const text='02.11.2026 Alfa İnşaat JCB 3CX 20 saat çalıştı';const r=row(cards,text,{customer_id:'TEST_C',quantity:20,quote:'Alfa İnşaat JCB 3CX 20 saat çalıştı'});assert.equal(r.fieldConfidence.quantity.value,20);assert.equal(r.fieldConfidence.quantity.level,'KESIN');assert.equal(r.guessed,false);
  const invented=row(cards,'02.11.2026 Alfa İnşaat JCB 3CX çalıştı',{customer_id:'TEST_C',quantity:20});assert.equal(invented.fieldConfidence.quantity.value,null);assert.equal(invented.ok,false);
+});
+
+test('dokuz yeni tarih/fotoğraf/rakamlı araç sınavı: alanlar ve işaretler birebir doğru',()=>{
+ const measured=measure(confidenceCases);assert.equal(confidenceCases.length,9);assert.ok(gate(measured));assert.deepEqual(measured.failures,[]);
+});
+
+test('eski WhatsApp başlığındaki dün gönderenin gününe göre hesaplanır',()=>{
+ const r=row(cards,'[07/09/2026 18:00] Şoför: Dün Alfa İnşaat JCB 3CX 2 saat çalıştı',{customer_id:'TEST_C',date:today});assert.equal(r.ok,false);assert.equal(r.fieldConfidence.date.suggestedValue,'2026-09-06');
 });

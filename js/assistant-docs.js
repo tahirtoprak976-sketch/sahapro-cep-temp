@@ -399,7 +399,7 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
       else w.issues.push(`Fiş tarihi ${tDate(t).split("-").reverse().join(".")}, iş tarihi farklı`);
     }
     // Fiş, mesajda yazmayan tarihi ve aracı teyit eder (fişteki plaka / tarih okunmuş ve doğrulanmış)
-    if (w.dateUnsure && tDate(t) && w.date === tDate(t)) {
+    if (w.dateUnsure && !w.dateConflict && tDate(t) && w.date === tDate(t)) {
       w.dateUnsure = false;
       if(w.fieldConfidence)w.fieldConfidence.date={value:w.date,level:'KESIN',reason:'Doğrulanan fiş tarihi',source:'ticket'};
       w.issues = w.issues.filter((x) => !/İş tarihi mesajda yazmıyor/.test(x));

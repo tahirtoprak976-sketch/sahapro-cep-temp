@@ -1185,9 +1185,9 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "price" ? !c._priceReview
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
-    if (k === 'expense' || k === 'maintenance') {
-      const row = v[k==='expense'?'expenses':'maintenance'][Number(c.dataset.i)];
-      if(row.credit&&!val(c,'supplier')){openReviewCard(c);return toast('Veresiye için esnafı doğrulayın veya peşin ödendi seçimini açıkça yapın. Hiçbir kart kaydedilmedi.','err');}
+    if (['expense','maintenance','tank'].includes(k)) {
+      const row = v[k==='expense'?'expenses':k==='tank'?'tankIn':'maintenance'][Number(c.dataset.i)];
+      if(row.credit&&!val(c,'supplier')&&(k!=='tank'||val(c,'tank_pay')!=='paid')){openReviewCard(c);return toast('Veresiye için esnafı doğrulayın veya peşin ödendi seçimini açıkça yapın. Hiçbir kart kaydedilmedi.','err');}
     }
     if (k === 'work') {
       const row = v.works[Number(c.dataset.i)];

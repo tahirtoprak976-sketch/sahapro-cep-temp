@@ -1,9 +1,12 @@
 // Measurement only: real application validators, no storage and no provider requests.
-import {readFileSync} from 'node:fs';
+import {readFileSync,existsSync} from 'node:fs';
 import {validatePlan,validateExtras} from '../../js/assistant-core.js';
 import {validateTickets} from '../../js/assistant-docs.js';
 import {untrustedWorkPlan} from '../../js/assistant-batch.js';
+const confidenceModule=new URL('../../js/assistant-confidence.js',import.meta.url);
+const confidenceProjection=existsSync(confidenceModule)?(await import(confidenceModule)).confidenceValue:(_row,_key,value)=>value;
 export const cases=JSON.parse(readFileSync(new URL('./cases.json',import.meta.url)));
+export const confidenceCases=JSON.parse(readFileSync(new URL('./confidence-cases.json',import.meta.url)));
 export const cards=JSON.parse(readFileSync(new URL('./cards.json',import.meta.url)));
 const groups={work:'works',expense:'expenses',fuel:'fuel',fuelout:'fuelOut',tank:'tankIn',collection:'collections',personnel:'personnel',maintenance:'maintenance',ticket:'tickets'};
 const moneyFields=new Set(['amount','unit_price','total','cost','dump_cost']);
@@ -15,7 +18,7 @@ export function replay(c,response=c.recordedResponse){
  const out=validatePlan(plan,opts);
  Object.assign(out,validateExtras(plan,{...opts,photoTexts:out.photoTexts}));
  out.tickets=validateTickets(plan,{...opts,photoTexts:out.photoTexts});
- const actual=Object.entries(groups).flatMap(([kind,group])=>(out[group]||[]).map(row=>({kind,checked:!!row.ok,fields:{...row,...Object.fromEntries(Object.entries(row.fieldConfidence||{}).filter(([k])=>k!=='effective_unit_price'&&k!=='payment_option').map(([k,v])=>[k,v.level==='BILINMIYOR'?null:v.value])),duplicate:!!row.dup,price_rule:row.priceInfo?.candidates?.length===1?row.priceInfo.candidates[0].id:null,money_role:row.roles?.map(r=>({price_quote:'offer',negative:'negated'}[r]||r))[0]??null}})));
+ const actual=Object.entries(groups).flatMap(([kind,group])=>(out[group]||[]).map(row=>({kind,checked:!!row.ok,fields:{...row,...Object.fromEntries(Object.entries(row.fieldConfidence||{}).filter(([k])=>k!=='effective_unit_price'&&k!=='payment_option').map(([k,v])=>[k,confidenceProjection(row,k,row[k])])),duplicate:!!row.dup,suggested_date:row.fieldConfidence?.date?.suggestedValue,price_rule:row.priceInfo?.candidates?.length===1?row.priceInfo.candidates[0].id:null,money_role:row.roles?.map(r=>({price_quote:'offer',negative:'negated'}[r]||r))[0]??null}})));
  const prompts=[...new Set([...(out.questions||[]),...actual.flatMap(r=>(r.fields.issues||[]).filter(prompt))])];
  return {actual,prompts};
 }

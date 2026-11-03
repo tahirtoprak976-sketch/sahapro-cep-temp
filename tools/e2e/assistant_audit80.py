@@ -73,7 +73,7 @@ with sync_playwright() as pw:
  patch=True;send('Lütfen diğer işin bilgilerini tekrar değerlendir');patch=False;native=False
  # P1 does not display an invented quantity from the model. The user confirms it explicitly; all original manual-edit assertions remain.
  if not a.baseline_proof:
-  assert pg.input_value('[data-kind=work][data-i="1"] [name=quantity]')==''
+  assert pg.input_value('[data-kind=work][data-i="1"] [name=quantity]')=='4' and pg.locator('[data-kind=work][data-i="1"] [data-field-confidence=quantity]').get_attribute('data-level')=='BILINMIYOR'
   pg.fill('[data-kind=work][data-i="1"] [name=quantity]','4')
  results['manualEditsSurviveModelPatch']=pg.input_value('[data-kind=work][data-i="0"] [name=unit_price]')=='1750' and pg.input_value('[data-kind=work][data-i="0"] [name=description]')=='TEST kart düzeltmesi' and pg.input_value('[data-kind=work][data-i="1"] [name=quantity]')=='4'
  assert results['manualEditsInActiveTask'] is (not a.baseline_proof),results

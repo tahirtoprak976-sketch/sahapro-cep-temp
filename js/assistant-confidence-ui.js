@@ -1,7 +1,7 @@
 import {CONFIDENCE,confidenceValue} from './assistant-confidence.js';
 const groups={work:'works',expense:'expenses',fuel:'fuel',fuelout:'fuelOut',tank:'tankIn',collection:'collections',maintenance:'maintenance',personnel:'personnel'};
 const raw={customer:'customer_id',vehicle:'vehicle_id',site:'site_id',personnel:'personnel_id',fuel_customer:'customer_id',bank:'bank_account_id',supplier:'supplier_id',pay:'payment_option'};
-const labels={KESIN:'Kesin',CIKARIM:'Çıkarım',BILINMIYOR:'Bilinmiyor'};
+const labels={KESIN:'Kesin',CIKARIM:'Çıkarım',BILINMIYOR:'Doğrulayın'};
 function badge(el,field,info){
  const label=el.closest('.field')?.querySelector('label');if(!label||!info)return;
  let b=label.querySelector('[data-field-confidence]');if(!b){b=document.createElement('span');b.dataset.fieldConfidence=field;label.append(' ',b);}
@@ -14,8 +14,9 @@ export function mountConfidenceInputs(out,v){
   for(const el of card.querySelectorAll('[name]')){
    const field=raw[el.name]||el.name,info=r.fieldConfidence[field];if(!info||el.type==='checkbox')continue;
    const value=confidenceValue(r,field,el.value);el.value=value??'';badge(el,field,info);
+   if(info.suggestedValue&&String(info.suggestedValue)!==el.value){const b=document.createElement('button');b.type='button';b.className='btn sm';b.dataset.confidenceSuggest=field;b.textContent='Önerilen tarih: '+info.suggestedValue.split('-').reverse().join('.');b.onclick=()=>{el.value=info.suggestedValue;el.dispatchEvent(new Event('change',{bubbles:true}));b.remove();};el.after(b);}
   }
-  if(r.credit&&r.fieldConfidence.supplier_id?.level===CONFIDENCE.UNKNOWN){
+  if(['expense','maintenance'].includes(card.dataset.kind)&&r.credit){
    const supplier=card.querySelector('[name=supplier]');if(supplier?.options[0]?.value==='')supplier.options[0].textContent='— Esnafı doğrulayın —';
    const paid=document.createElement('button');paid.type='button';paid.className='btn sm';paid.dataset.confidencePaid='';paid.textContent='Peşin ödendi; esnaf borcu yazma';supplier?.after(paid);
    paid.onclick=()=>{r.credit=false;if(supplier)supplier.value='';paid.textContent='Peşin gider seçildi; Kaydet ile uygulanır';paid.disabled=true;};
@@ -27,7 +28,8 @@ export function mountConfidenceInputs(out,v){
   const edited=ev=>{
    const el=ev.target;if(!el.matches('input[name],select[name],textarea[name]'))return;
    const field=raw[el.name]||el.name;if(el.type==='checkbox')return;
-   if(el.name==='supplier')r.credit=!!el.value;
+   if(el.name==='supplier'&&el.value)r.credit=true;
+   if(el.name==='pay'&&el.value)r.credit=false;
    if(r.fieldConfidence[field])r.fieldConfidence[field]={value:el.value||null,level:el.value?CONFIDENCE.CERTAIN:CONFIDENCE.UNKNOWN,reason:el.value?'Sizin açık düzeltmeniz':'Alan boş',source:'user'};if(r.fieldConfidence[field])badge(el,field,r.fieldConfidence[field]);
    // Never leave a registered-price label attached to a changed price context.
    if(['customer','site','vehicle','work_type','unit','date','material','unit_price'].includes(el.name)){

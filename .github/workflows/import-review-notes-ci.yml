@@ -116,6 +116,11 @@ jobs:
         run: |
           node tests/assistant-gold/prove-confidence.mjs /tmp/solo-confidence100-measurement.json
           python3 tools/e2e/verify_confidence_test_assertions.py
+          node tests/assistant-gold/run.mjs --confidence --report /tmp/solo-confidence100-expanded.json
+
+      - name: Reproduce the mixed-photo regression on unchanged v99 and pre-fix PR sources
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/prove_confidence_photo.py
 
       - name: Verify installed v3.9.99 to confidence release preservation
         run: |
@@ -743,6 +748,7 @@ jobs:
           path: |
             /tmp/solo-confidence100/*
             /tmp/solo-confidence100-measurement.json
+            /tmp/solo-confidence100-expanded.json
             /tmp/solo-assistant99/*
             /tmp/assistant-gold-browser/*
             /tmp/solo-report-clarity/*.png

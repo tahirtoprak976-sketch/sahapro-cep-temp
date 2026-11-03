@@ -5,7 +5,7 @@
   "moneyGuesses": 0,
   "mandatoryChecked": 0,
   "checkedCorrect": 24,
-  "correctCards": 57,
+  "correctCards": 61,
   "unnecessaryQuestions": 3,
   "questions": 19,
   "questionMessages": 15,
@@ -21,15 +21,15 @@
       "total": 32
     },
     "quantity": {
-      "correct": 23,
-      "total": 23
-    },
-    "unit": {
       "correct": 22,
       "total": 23
     },
+    "unit": {
+      "correct": 23,
+      "total": 23
+    },
     "date": {
-      "correct": 59,
+      "correct": 63,
       "total": 63
     },
     "unit_price": {
@@ -91,22 +91,16 @@
   },
   "failures": [
     {
-      "id": "work-feb31",
-      "problems": [
-        "0: yanlış date"
-      ]
-    },
-    {
-      "id": "work-future",
-      "problems": [
-        "0: yanlış date"
-      ]
-    },
-    {
       "id": "work-quantity-invented",
       "problems": [
-        "0: yanlış unit",
+        "0: yanlış quantity",
         "gerekli soru/alan istemi yok"
+      ]
+    },
+    {
+      "id": "work-duplicate-name",
+      "problems": [
+        "0: yanlış customer_id"
       ]
     },
     {
@@ -153,12 +147,6 @@
       ]
     },
     {
-      "id": "customer-fuel-reversed",
-      "problems": [
-        "0: yanlış date"
-      ]
-    },
-    {
       "id": "expense-no-amount",
       "problems": [
         "gerekli soru/alan istemi yok"
@@ -177,12 +165,6 @@
       ]
     },
     {
-      "id": "expense-invalid-date",
-      "problems": [
-        "0: yanlış date"
-      ]
-    },
-    {
       "id": "maintenance-invented-cost",
       "problems": [
         "gerekli soru/alan istemi yok"
@@ -192,12 +174,6 @@
       "id": "questions-unnecessary",
       "problems": [
         "gereksiz soru/alan istemi"
-      ]
-    },
-    {
-      "id": "work-real-price-ambiguity",
-      "problems": [
-        "0: yanlış customer_id"
       ]
     }
   ],

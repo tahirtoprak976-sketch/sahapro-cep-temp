@@ -55,7 +55,7 @@ with sync_playwright() as p:
  p2.goto(U+'index.html#/akilli-asistan');p2.wait_for_selector('[data-ask]');p2.fill('[data-msg]',MSG);p2.click('[data-ask]');p2.wait_for_selector('[data-kind=fuel][data-i="1"]')
  # P1 leaves unproven row-specific vehicle references blank; explicit user confirmation retains this source-note test's original save assertions.
  for i,key in [(0,'v'),(1,'v2')]:
-  control=p2.locator(f'[data-kind=fuel][data-i="{i}"] [name=vehicle]');assert control.input_value()=='';control.select_option(ids2[key])
+  control=p2.locator(f'[data-kind=fuel][data-i="{i}"] [name=vehicle]');assert control.input_value()==ids2[key];control.select_option(ids2[key])
  for card in p2.locator('[data-kind=work],[data-kind=fuel]').all():card.locator('[data-pick]').check()
  p2.click('[data-save]');p2.wait_for_function("()=>document.querySelector('[data-new-chat]')&&!document.querySelector('[data-new-chat]').disabled")
  saved=p2.evaluate("""async()=>{const d=await import('./js/db.js'),B=await import('./js/backup.js'),P=await import('./js/pro.js'),C=await import('./js/core.js');const all=await d.dumpAll(),names=Object.fromEntries(['vehicles','customers','personnel'].map(k=>[k,Object.fromEntries(all[k].map(r=>[r.id,r.name]))]));return {works:all.work_records,fuel:all.fuel_records,remaining:C.calcTankBalance(all.fuel_tank_movements).remaining,public:all.work_records.map(r=>JSON.stringify(P.recordSpec('work_records',r,names,'customer'))),backup:await B.fullBackup(d,{attachments:'base64'})}}""")
