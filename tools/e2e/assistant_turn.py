@@ -1,10 +1,11 @@
 """Actual assistant UI with deterministic mocked Gemini replies. No real AI/messages.
 Checks the input sent, correction context, cards, photos and double-submit lock.
 """
-import json,sys
+import json,sys,os,time
+from pathlib import Path
 from io import BytesIO
 from PIL import Image
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 U=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8841/'
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
@@ -18,7 +19,8 @@ with sync_playwright() as p:
   if http_error:route.fulfill(status=400,content_type='application/json',body=json.dumps({'error':{'message':'TEST request failure','status':'INVALID_ARGUMENT'}}));return
   route.fulfill(status=200,content_type='application/json',body=json.dumps({'candidates':[{'content':{'parts':[{'text':json.dumps(reply)}]},'finishReason':'STOP'}]}))
  c.route('https://generativelanguage.googleapis.com/**',mock)
- pg=c.new_page();errors=[];pg.on('pageerror',lambda e:errors.append(str(e)))
+ pg=c.new_page();errors=[];console_errors=[];pg.on('pageerror',lambda e:errors.append(str(e)))
+ pg.on('console',lambda msg:console_errors.append({'type':msg.type,'text':msg.text,'location':msg.location}) if msg.type=='error' else None)
  pg.goto(U+'index.html#/musteriler');pg.wait_for_selector('[data-customer-directory]');pg.evaluate('async()=>await navigator.serviceWorker.ready')
  if not pg.evaluate('!!navigator.serviceWorker.controller'):
   pg.reload();pg.wait_for_selector('[data-customer-directory]')
@@ -88,7 +90,32 @@ with sync_playwright() as p:
  http_error=True;pg.fill('[data-msg]','TEST Leda TEST Makine 1 sefer moloz');pg.click('[data-ask]');pg.locator('[data-out]').get_by_text('TEST request failure',exact=False).wait_for();pg.wait_for_function("()=>!document.querySelector('[data-ask]').disabled")
  assert pg.input_value('[data-msg]')=='TEST Leda TEST Makine 1 sefer moloz' and pg.locator('[data-msg]').is_enabled()
  http_error=False;reply=work(ids['d'],1);send('TEST Leda TEST Makine 1 sefer moloz');assert snapshot()==before
- c.set_offline(True);pg.reload();pg.wait_for_selector('[data-msg]');pg.fill('[data-msg]','Ödemelerim');pg.click('[data-ask]');pg.wait_for_selector('[data-answer]');c.set_offline(False)
+ # Diagnostics only: preserve every original action, selector, assertion and 30s timeout.
+ offline_console_start=len(console_errors);offline_phase='set_offline'
+ try:
+  c.set_offline(True)
+  offline_phase='reload';pg.reload()
+  offline_phase='wait_message';pg.wait_for_selector('[data-msg]')
+  offline_phase='fill_message';pg.fill('[data-msg]','Ödemelerim')
+  offline_phase='click_ask';pg.click('[data-ask]')
+  offline_phase='wait_answer';pg.wait_for_selector('[data-answer]')
+  c.set_offline(False)
+ except PlaywrightTimeoutError as failure:
+  try:
+   folder=Path(os.environ.get('ASSISTANT_TURN_DIAGNOSTICS','/tmp/solo-assistant-turn-diagnostics'))/str(time.time_ns());folder.mkdir(parents=True,exist_ok=True)
+   diagnostic={'phase':offline_phase,'exception':str(failure),'page_errors':list(errors),'console_errors':list(console_errors),'offline_console_errors':console_errors[offline_console_start:],'capture_errors':{}}
+   try:pg.screenshot(path=str(folder/'screen.png'),full_page=True,timeout=5000)
+   except Exception as capture_error:diagnostic['capture_errors']['screenshot']=str(capture_error)
+   try:output=pg.locator('[data-out]').inner_text(timeout=5000)
+   except Exception as capture_error:output='';diagnostic['capture_errors']['data_out']=str(capture_error)
+   (folder/'data-out.txt').write_text(output,encoding='utf-8');diagnostic['data_out']=output
+   try:
+    diagnostic['browser']=pg.evaluate("""()=>{const controller=navigator.serviceWorker.controller,button=document.querySelector('[data-ask]');return {url:location.href,ready_state:document.readyState,online:navigator.onLine,controller:controller?{scriptURL:controller.scriptURL,state:controller.state}:null,has_controller:!!controller,ask_disabled:button?.disabled??null,answer_count:document.querySelectorAll('[data-answer]').length,view_ready:document.querySelector('#screen')?.dataset.viewReady??null}}""")
+   except Exception as capture_error:diagnostic['capture_errors']['service_worker']=str(capture_error)
+   (folder/'diagnostics.json').write_text(json.dumps(diagnostic,ensure_ascii=False,indent=2),encoding='utf-8')
+   print('ASSISTANT_TURN_OFFLINE_DIAGNOSTICS '+str(folder/'diagnostics.json'),flush=True)
+  except Exception as capture_error:print('ASSISTANT_TURN_DIAGNOSTIC_CAPTURE_ERROR '+str(capture_error),flush=True)
+  raise
  assert snapshot()==before and not errors,errors
  print('PASS failed request preserves input/unlocks retry; real SW offline local command works and no uncaught browser errors occur',flush=True)
  c.close();b.close()

@@ -127,6 +127,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 18e78cda6ecdfea6e149772c380037bbae8c6fba
 
       - name: Run browser suites with only isolated synthetic data
+        id: browser_validation
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
         run: |
           set -euo pipefail
@@ -146,23 +147,47 @@ jobs:
                       raise
                   time.sleep(0.5)
           PY
+          mkdir -p /tmp/solo-assistant-turn-diagnostics
+          for attempt in {1..10}; do
+            echo "::group::assistant_turn standalone $attempt/10"
+            if ASSISTANT_TURN_DIAGNOSTICS="/tmp/solo-assistant-turn-diagnostics/standalone-$attempt" /tmp/solo-e2e-venv/bin/python tools/e2e/assistant_turn.py http://localhost:8841/ 2>&1 | tee "/tmp/solo-assistant-turn-diagnostics/standalone-$attempt.log"; then
+              echo "PASS assistant_turn standalone $attempt/10"
+            else
+              echo '::endgroup::'
+              echo "FAIL assistant_turn standalone $attempt/10; stopped without retry"
+              exit 1
+            fi
+            echo '::endgroup::'
+          done
+          echo 'ASSISTANT_TURN_STANDALONE RESULT passed=10 failed=0'
           failed=0
           suites=(assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
-            if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
+            if ASSISTANT_TURN_DIAGNOSTICS="/tmp/solo-assistant-turn-diagnostics/full-$suite" /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
               echo "PASS $suite"
             else
               failed=$((failed + 1))
               echo "FAIL $suite"
+              echo '::endgroup::'
+              exit 1
             fi
             echo '::endgroup::'
           done
           echo "BROWSER RESULT suites=${#suites[@]} passed=$((${#suites[@]} - failed)) failed=$failed"
           test "$failed" -eq 0
 
-      - name: Verify missing-price guards with real UI and IndexedDB
+      - name: Retain assistant-turn standalone logs and timeout diagnostics
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: assistant-turn-diagnostics-${{ github.sha }}
+          path: /tmp/solo-assistant-turn-diagnostics/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Verify missing-price guards with real UI and IndexedDB
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           python3 -m http.server 8843 --bind 127.0.0.1 > /tmp/solo-price-http.log 2>&1 &
@@ -184,7 +209,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/hakedis_price_probe.py http://localhost:8843/ --require-fixed
 
       - name: Check synchronized history assertions against the unchanged baseline
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-baseline-XXXXXX)
@@ -217,163 +242,163 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/operation_history.py
 
       - name: Verify installed live v3.9.98 to finance-safe v3.9.99 preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 20612ee8af15ca8823bca705df8acf7c1f56b063
 
       - name: Verify real installed-baseline to release service-worker upgrade
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 89ed872f1543f4240db8ea4e8e2fd4806e0d6422
 
       - name: Verify installed v3.9.70 to candidate upgrade preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 1098cf571c800f4f3109f00179adc5aa78efecc0
 
       - name: Verify installed v3.9.71 to candidate upgrade preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 32e42155bc58c7a52daa152f66acb04e2ae7f110
 
       - name: Verify installed v3.9.72 to dump-cost candidate upgrade preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref fbfb32c9ea3c6faffa439e210918f0384a167e41
 
       - name: Verify installed v3.9.73 schema6 to historical-review schema7 preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_review_notes.py --source-root . --baseline-ref 79b60e5111bbf9807e8e8f3618ff2e4f4ca8dccd
 
       - name: Verify installed v3.9.74 schema7 to candidate preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 57da7b2a0a5372f74cbb486ffc88eb2a2ea76fcc
 
       - name: Verify installed live v3.9.75 to workflow release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e8dd2c019d99b3d7b213e2e51d4de457b2300bca
 
       - name: Verify installed live v3.9.77 to principal-VAT release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 243e3050e09aff33d6e2b030d31b8bf13403effd
 
       - name: Verify installed live v3.9.78 to finance audit release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 6c75c4e5e99b2c75cd71653e01a6a0d7e88fa8c3
 
       - name: Verify installed live v3.9.79 to assistant audit preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref c060530996e5162a07ed268944f30ab51df57ebc
 
       - name: Verify installed live v3.9.80 to assistant files release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 13179ed5c8ea89b6680337cf23559e20a3e98bfb
 
       - name: Verify installed live v3.9.81 to assistant review release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref a9b2ce55b4286e24ab8d7035ea7dcc2f9c939551
 
       - name: Verify installed live v3.9.82 to preparation release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref f6c060ae2868d97bddc30ec2ac990f317aee1849
 
       - name: Verify installed live v3.9.83 to integrity release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref a68a655a668f397c55000235e45b23e31cff1b75
 
       - name: Verify installed live v3.9.84 to digital-slip work release preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e964e2af2ca88a091bd4a605f57f230a825035e6
 
       - name: Verify installed live v3.9.85 to dump-card merge preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 91c3aa666923da9a1f4f77601a28de4b983852a9
 
       - name: Verify installed live v3.9.86 to work-day review preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 08885e449df2f7e038f27f169e9403bb2e5a41aa
 
       - name: Verify installed live v3.9.87 to integrity review preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 66da1caaed0437c1e0673ac96c17b5b00efbaaf8
 
       - name: Verify installed live v3.9.88 to fleet document countdown preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref ad6e5b47dee4fa6aff9bc0006d22ae75664de86c
 
       - name: Verify installed live v3.9.89 to maintenance history preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e583a2f75fb3795af0a414bb204df77926213612
 
       - name: Verify installed live v3.9.90 to purchased parts preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 522b58f4932b0e68246cba87a7e50529eb3b4a8e
 
       - name: Verify installed live v3.9.91 to conversation workspace preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 8f266a2039f83c6acabe15c6ab71d83fdf5862d1
 
       - name: Verify installed live v3.9.92 to scoped tariff preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 392e18c288bc9e5f850e86962a8187babf6f20b6
 
       - name: Verify installed live v3.9.93 to task capacity preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref b7def098d54a3fb74a3470e267f836f75bc24977
 
       - name: Verify installed live v3.9.97 to large assistant batch preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref d5bfe21d19202bbe22db5e74fc27d699655e1683
 
       - name: Reproduce 20-work stop with photos on unchanged v3.9.97
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           large_baseline=$(mktemp -d /tmp/solo-large97-XXXXXX)
@@ -384,13 +409,13 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/assistant_large_batch.py http://localhost:8876/ --baseline-proof --artifacts /tmp/solo-large97-baseline
 
       - name: Verify installed live v3.9.96 to shared vehicle taxonomy preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref a771f0b6f39b4c3c1b44e44c1e2d5c752ccd2bf3
 
       - name: Reproduce vehicle taxonomy faults on unchanged v3.9.96
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           vehicle_baseline=$(mktemp -d /tmp/solo-taxonomy96-XXXXXX)
@@ -401,13 +426,13 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/vehicle_type_audit.py http://localhost:8872/ --baseline-proof --artifacts /tmp/solo-taxonomy96-baseline
 
       - name: Verify installed live v3.9.95 to vehicle-price compatibility preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref d0d9518855746420f24a54231d1ba5b9f358c387
 
       - name: Reproduce generic Kamyonet rejection on unchanged v3.9.95
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           vehicle_baseline=$(mktemp -d /tmp/solo-vehicle95-XXXXXX)
@@ -418,13 +443,13 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/price_vehicle_type.py http://localhost:8865/ --baseline-proof --artifacts /tmp/solo-vehicle95-baseline
 
       - name: Verify installed live v3.9.94 to actual price application and finance preservation
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 5844a191ad11ce7ed5e0de03c1ba89b6f921beb4
 
       - name: Reproduce unmodified existing prices and November zero dashboard on v3.9.94
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           application_baseline=$(mktemp -d /tmp/solo-application94-XXXXXX)
@@ -435,7 +460,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/price_application_finance.py http://localhost:8864/ --baseline-proof --artifacts /tmp/solo-application94-baseline
 
       - name: Reproduce full-task block and duplicate warning on unchanged v3.9.93
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           task_baseline=$(mktemp -d /tmp/solo-task93-XXXXXX)
@@ -446,7 +471,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/assistant_capacity.py http://localhost:8862/ --baseline-proof --artifacts /tmp/solo-task93-baseline
 
       - name: Reproduce unscoped tariff on unchanged v3.9.92
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           price_baseline=$(mktemp -d /tmp/solo-price92-XXXXXX)
@@ -457,7 +482,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/price_scope.py http://localhost:8860/ --baseline-proof --artifacts /tmp/solo-price92-baseline
 
       - name: Reproduce purchased parts visibility and invalid warranty on unchanged v3.9.90
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           parts_baseline=$(mktemp -d /tmp/solo-parts90-XXXXXX)
@@ -481,7 +506,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/parts_purchase_history.py http://localhost:8858/ --baseline-proof --artifacts /tmp/solo-parts90-baseline
 
       - name: Reproduce maintenance visibility, source photo and servicing clock defects on unchanged v3.9.89
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           maintenance_baseline=$(mktemp -d /tmp/solo-maintenance89-XXXXXX)
@@ -505,7 +530,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/maintenance_expense_history.py http://localhost:8857/ --baseline-proof --artifacts /tmp/solo-maintenance89-baseline
 
       - name: Reproduce eight write-boundary findings on unchanged live v3.9.87
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-integrity87-XXXXXX)
@@ -529,7 +554,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/integrity_review88.py http://localhost:8856/ --baseline-proof --artifacts /tmp/solo-integrity88-baseline
 
       - name: Reproduce standalone signed slip missing from customer jobs on unchanged v3.9.84
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-digital-slip84-XXXXXX)
@@ -553,7 +578,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/digital_slip_work.py http://localhost:8855/ --baseline-proof --artifacts /tmp/solo-digital-slip85-baseline
 
       - name: Reproduce the integrity findings on unchanged live v3.9.83
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-integrity83-XXXXXX)
@@ -579,7 +604,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/tank_atomic84.py http://localhost:8854/ --baseline-proof --artifacts /tmp/solo-tank84-baseline
 
       - name: Reproduce assistant defects on unchanged live v3.9.79
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-assistant-baseline-XXXXXX)
@@ -603,7 +628,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/assistant_audit80.py http://localhost:8851/ --baseline-proof --artifacts /tmp/solo-assistant-audit80-baseline
 
       - name: Reproduce financial identity and race defects on unchanged v3.9.78
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-finance79-baseline-XXXXXX)
@@ -627,7 +652,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/finance_audit79.py http://localhost:8850/ --baseline-proof --artifacts /tmp/solo-finance79-baseline
 
       - name: Reproduce all three redteam findings on unchanged v3.9.74
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-redteam-baseline-XXXXXX)
@@ -655,7 +680,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/redteam_finance.py http://localhost:8846/ --baseline-proof --artifacts /tmp/solo-redteam-baseline
 
       - name: Reproduce dump-cost defects on unchanged v3.9.72
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-dump-baseline-XXXXXX)
@@ -681,7 +706,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/dump_cost_reliability.py http://localhost:8845/ --baseline-proof
 
       - name: Reproduce finance and contract defects on unchanged v3.9.71
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-finance-baseline-XXXXXX)
@@ -707,7 +732,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/contract_extra_rates.py http://localhost:8844/ --baseline-proof
 
       - name: Reproduce old draft collision and diagnose missing-price risk on unchanged v3.9.70 only
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-clarity-baseline-XXXXXX)
@@ -733,7 +758,7 @@ jobs:
           /tmp/solo-e2e-venv/bin/python tools/e2e/hakedis_price_probe.py http://localhost:8842/
 
       - name: Verify the test files stayed unchanged
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
           set -euo pipefail
           sha256sum --check /tmp/solo-tests.sha256
@@ -741,7 +766,7 @@ jobs:
           git -c safe.directory="$GITHUB_WORKSPACE" diff --exit-code -- tests tools/e2e
 
       - name: Retain synthetic visual evidence for review
-        if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2, official tag verified
         with:
           name: solo-synthetic-visual-evidence-${{ github.sha }}
