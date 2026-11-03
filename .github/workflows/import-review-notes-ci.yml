@@ -115,6 +115,7 @@ jobs:
       - name: Measure confidence filling against unchanged v3.9.99
         run: |
           node tests/assistant-gold/prove-confidence.mjs /tmp/solo-confidence100-measurement.json
+          python3 tools/e2e/verify_confidence_test_assertions.py
 
       - name: Verify installed v3.9.99 to confidence release preservation
         run: |

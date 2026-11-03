@@ -1,6 +1,7 @@
 // Phone-side evidence only. Model confidence, counts and explanations are never authority.
 import {isActive} from './core.js';
 import {foldTr} from './parser.js';
+import {analyzeMessage} from './message-engine.js';
 import {vehicleNamed} from './assistant-rules.js';
 import {customerSpans} from './money-roles.js';
 import {openJobs,jobFor} from './job-core.js';
@@ -35,6 +36,13 @@ function reference(d,store,id,text,type){
 // Resolve only a missing/previously guessed customer, never override a conflicting real candidate.
 export function fillWorkEvidence(r,{d,text,hasUnknownName=false,negative=false}={}){
  r._fieldEvidence={};
+ if(r.guessed){
+  const parsed=analyzeMessage({text},d).rows,vehicleNumbers=String(live(d,'vehicles').find(v=>v.id===r.vehicle_id)?.name||'').match(/\d+/g)||[];
+  if(parsed.length===1&&parsed[0].evidence?.quantity?.via==='quantity_unit'&&Number(parsed[0].quantity)===Number(r.quantity)&&parsed[0].unit===r.unit&&!vehicleNumbers.includes(String(r.quantity))){
+   r.guessed=false;r._fieldEvidence.quantity=certain(r.quantity,'Satırdaki açık miktar ve birim','literal_quantity');
+   for(let i=r.issues.length-1;i>=0;i--)if(/^Miktar .*mesajda yazmıyor/.test(r.issues[i]))r.issues.splice(i,1);
+  }
+ }
  if(r.fromDriver||r.badNew||r.badQuote||r.ambiguous||r.parentMismatch||r.hinted||negative||r.new_customer)return;
  const customers=live(d,'customers'),byId=id=>customers.find(c=>c.id===id);
  if(hasUnknownName&&!live(d,'aliases').some(a=>a.active!==false&&a.target_type==='customer'&&byId(a.target_id)&&contains(String(hasUnknownName),a.alias)))return;
@@ -104,15 +112,36 @@ export function confidenceReady(row,kind='work'){
  if(kind==='maintenance'&&row.credit)fields.push('cost');
  return fields.every(k=>row.fieldConfidence[k]?.level!==CONFIDENCE.UNKNOWN&&row.fieldConfidence[k]?.value!=null&&row.fieldConfidence[k]?.value!=='');
 }
+// A quoted row may omit a shared date or its WhatsApp header. Keep date evidence scoped.
+function dateEvidence(value,text,fullMessage,today,dateUnsure){
+ if(!value||dateUnsure)return unknown('Tarih doğrulanmalı');
+ const months=['ocak','subat','mart','nisan','mayis','haziran','temmuz','agustos','eylul','ekim','kasim','aralik'];
+ const scope=String(text||''),whole=String(fullMessage||scope),pos=whole.indexOf(scope);
+ const line=scope&&pos>=0?whole.slice(whole.lastIndexOf('\n',pos)+1,pos+scope.length):scope;
+ const isoDate=(yy,mm,dd)=>{const v=`${yy.length===2?'20'+yy:yy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;return /^\d{4}-\d{2}-\d{2}$/.test(v)&&!Number.isNaN(Date.parse(v+'T12:00:00Z'))&&new Date(v+'T12:00:00Z').toISOString().slice(0,10)===v?v:null;};
+ const dates=s=>{
+  const found=[];
+  for(const v of String(s).matchAll(/(?<!\d)(\d{4})[.\/-](\d{1,2})[.\/-](\d{1,2})(?!\d)/g))found.push(isoDate(v[1],v[2],v[3]));
+  for(const v of String(s).matchAll(/(?<!\d)(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4}|\d{2})(?!\d)/g))found.push(isoDate(v[3],v[2],v[1]));
+  for(const v of foldTr(s).matchAll(/(?<!\d)(\d{1,2})\s+([a-z]+)\s+(\d{4})(?!\d)/g)){const mi=months.indexOf(v[2]);if(mi>=0)found.push(isoDate(v[3],mi+1,v[1]));}
+  return unique(found.filter(Boolean));
+ };
+ const local=dates(line),global=dates(whole);
+ if(local.length===1&&local[0]===value)return certain(value,'Mesajdaki tarih');
+ const yesterday=new Date(today+'T12:00:00Z');yesterday.setUTCDate(yesterday.getUTCDate()-1);
+ if(contains(line,'bugün')&&value===today||contains(line,'dün')&&value===yesterday.toISOString().slice(0,10))return certain(value,'Mesajdaki göreli gün');
+ // A yearless row date uses the current year, explicitly labelled as an inference.
+ const partial=[];
+ for(const v of foldTr(line).matchAll(/(?<!\d)(\d{1,2})\s+([a-z]+)(?![a-z])/g)){const mi=months.indexOf(v[2]);if(mi>=0)partial.push(isoDate(today.slice(0,4),mi+1,v[1]));}
+ if(!partial.length)for(const v of line.matchAll(/\[(\d{1,2})\/(\d{1,2})(?:\s|\])/g))partial.push(isoDate(today.slice(0,4),v[2],v[1]));
+ const candidates=unique(partial.filter(Boolean));
+ if(!local.length&&candidates.length===1&&candidates[0]===value)return inferred(value,'Satırdaki gün/ay ve mevcut yıl','row_date');
+ if(!local.length&&!candidates.length&&global.length===1&&global[0]===value)return certain(value,'Mesajdaki tek ortak tarih');
+ return value===today?inferred(value,'Tarih yazılmamış; mevcut işlem günü varsayılanı','default_date'):unknown('Eski tarih mesajda doğrulanmalı');
+}
 export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,original={}}={}){
  const f={},certainValue=(k,reason)=>{f[k]=certain(r[k],reason);};
- if('date' in r){
-  const parts=String(r.date||'').split('-'),[y,m,day]=parts,months=['ocak','subat','mart','nisan','mayis','haziran','temmuz','agustos','eylul','ekim','kasim','aralik'];
-  const dates=r.date?[r.date,`${day}.${m}.${y}`,`${Number(day)}.${Number(m)}.${y}`,`${day}/${m}/${String(y).slice(-2)}`,`${Number(day)}/${Number(m)}/${String(y).slice(-2)}`,`${Number(day)} ${months[Number(m)-1]} ${y}`]:[];
-  const yesterday=new Date(today+'T12:00:00Z');yesterday.setUTCDate(yesterday.getUTCDate()-1);
-  const explicit=dates.some(x=>contains(text,x))||contains(text,'bugün')&&r.date===today||contains(text,'dün')&&r.date===yesterday.toISOString().slice(0,10);
-  f.date=r.date&&!r.dateUnsure?(explicit?certain(r.date,'Mesajdaki tarih'):r.date===today?inferred(r.date,'Tarih yazılmamış; mevcut işlem günü varsayılanı','default_date'):unknown('Eski tarih mesajda doğrulanmalı')):unknown('Tarih doğrulanmalı');
- }
+ if('date' in r)f.date=dateEvidence(r.date,text,fullMessage,today,r.dateUnsure);
  if(r.fromDriver&&r.date&&!r.dateUnsure)f.date=certain(r.date,'Şoför ekranında seçilen tarih','driver');
  for(const [key,store,type]of [['customer_id','customers','customer'],['vehicle_id','vehicles','vehicle'],['personnel_id','personnel','personnel'],['site_id','sites','site'],['supplier_id','suppliers','supplier'],['bank_account_id','bank_accounts','bank'],['paid_by','personnel','personnel']])if(key in r){
   f[key]=r.fromDriver?certain(r[key],'Şoför ekranında seçilen alan','driver'):reference(d,store,r[key],text,type);

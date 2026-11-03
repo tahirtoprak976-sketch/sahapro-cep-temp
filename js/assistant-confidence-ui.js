@@ -35,7 +35,7 @@ export function mountConfidenceInputs(out,v){
     if(priceInput&&!priceInput.value)badge(priceInput,'unit_price',{level:CONFIDENCE.UNKNOWN,reason:'Fiyat önizlemesinden güncel kuralı kontrol edin'});
    }
   };
-  card.addEventListener('input',edited);card.addEventListener('change',edited);
+  card.addEventListener('input',edited,true);card.addEventListener('change',edited,true);
  }
 }
 export function inferenceReason(row){return [...new Set(Object.values(row.fieldConfidence||{}).filter(f=>f.level===CONFIDENCE.INFERRED&&f.source!=='user').map(f=>f.reason))].join(' · ');}

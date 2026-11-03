@@ -62,3 +62,19 @@ test('tek açık iş şantiyesi çıkarımdır; kapalı ve çoklu işler sessiz 
  const many=row({...cards,sites:[site('TEST_OPEN','Açık'),site('TEST_OPEN2','Açık')]},text,{customer_id:'TEST_C'});assert.equal(many.site_id,null);
  const closed=row({...cards,sites:[site('TEST_CLOSED','Kapandı')]},text,{customer_id:'TEST_C'});assert.equal(closed.site_id,null);
 });
+test('alıntının dışındaki ortak tarih ve yıl yazılmayan satır bağlamı kaybolmaz',()=>{
+ const quote='Alfa İnşaat JCB 3CX 2 saat çalıştı';
+ const exact=row(cards,'02.11.2026 '+quote,{customer_id:'TEST_C',quote});assert.equal(exact.fieldConfidence.date.level,'KESIN');assert.equal(exact.fieldConfidence.date.value,today);
+ const partial=row(cards,'[22/10 18:00] Şoför: '+quote,{customer_id:'TEST_C',date:'2026-10-22',quote});assert.equal(partial.fieldConfidence.date.level,'CIKARIM');assert.equal(partial.fieldConfidence.date.value,'2026-10-22');
+ const named=row(cards,'22 Ekim Perşembe '+quote,{customer_id:'TEST_C',date:'2026-10-22',quote});assert.equal(named.fieldConfidence.date.level,'CIKARIM');
+ const conflict=row(cards,'[22/10 18:00] Şoför: '+quote,{customer_id:'TEST_C',date:'2026-10-21',quote});assert.equal(conflict.fieldConfidence.date.level,'BILINMIYOR');assert.equal(conflict.ok,false);
+});
+test('açık toplu tarih WhatsApp başlığını geçer; çıkarımlı tarih süreli para kuralını kesinleştirmez',()=>{
+ const quote='Alfa İnşaat JCB 3CX 2 saat çalıştı';
+ const batch=row(cards,'Bütün işler 7 Eylül 2026 tarihine ait. Fiyatlar beklesin.\n[5/9 18:00] Şoför: '+quote,{customer_id:'TEST_C',date:'2026-09-05',quote});assert.equal(batch.date,'2026-09-07');assert.equal(batch.fieldConfidence.date.level,'KESIN');assert.equal(batch.price_pending,true);
+ const partial=row({...cards,price_book:[{id:'TEST_TIMED',customer_id:'TEST_C',unit:'Saat',price:2500,active:true,valid_from:'2026-10-01',valid_to:'2026-10-31'}]},'22 Ekim '+quote,{customer_id:'TEST_C',date:'2026-10-22',quote});assert.equal(partial.fieldConfidence.date.level,'CIKARIM');assert.equal(partial.fieldConfidence.effective_unit_price,undefined);assert.equal(partial.unit_price,null);
+});
+test('satırdaki açık 20 saat makine koduyla karışmaz; kanıtsız sayı boş kalır',()=>{
+ const text='02.11.2026 Alfa İnşaat JCB 3CX 20 saat çalıştı';const r=row(cards,text,{customer_id:'TEST_C',quantity:20,quote:'Alfa İnşaat JCB 3CX 20 saat çalıştı'});assert.equal(r.fieldConfidence.quantity.value,20);assert.equal(r.fieldConfidence.quantity.level,'KESIN');assert.equal(r.guessed,false);
+ const invented=row(cards,'02.11.2026 Alfa İnşaat JCB 3CX çalıştı',{customer_id:'TEST_C',quantity:20});assert.equal(invented.fieldConfidence.quantity.value,null);assert.equal(invented.ok,false);
+});

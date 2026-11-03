@@ -43,6 +43,8 @@ En büyük grup finansal onaydır: otomatik açılmadı. Fiyat belirsizliği iki
 
 ## Tekrar çalıştırma
 
-`node tests/assistant-gold/prove-confidence.mjs` değişmemiş v3.9.99 kaynaklarını arşivleyip aynı ölçümü ve aynı yeni testleri çalıştırır. Eski sürümde eksikler görünür; adayda 12 odaklı Node kontrolü ve 9 gerçek ekran senaryosu doğrulanır. Yerel tests/gold ayrı raporlanır; eski finansal taban kanıtı da CI'de tutulur.
+`node tests/assistant-gold/prove-confidence.mjs` değişmemiş v3.9.99 kaynaklarını arşivleyip aynı ölçümü ve aynı yeni testleri çalıştırır. Eski sürümde eksikler görünür; adayda 15 odaklı Node kontrolü ve 9 gerçek ekran senaryosu doğrulanır. Yerel tests/gold ayrı raporlanır; eski finansal taban kanıtı da CI'de tutulur.
 
 Gerçek telefon, gerçek Gemini ve gerçek WhatsApp bu sentetik testlerde sınanmadı. Sağlayıcı, sunucu, ücretli servis veya YZ2 değişikliği yoktur.
+
+Eski dört tarayıcı testindeki tüm özgün assert ifadeleri AST karşılaştırmasıyla korundu. Yeni kurala göre boşalan alanlar için kullanıcı seçimi eklendi; kanıtsız araç/müşteri ve modelin uydurduğu miktarın önce boş olduğu ayrıca doğrulanır. Son kayıt, bakiye, görev kilidi, iptal ve sıfır yazma beklentileri değiştirilmedi.
