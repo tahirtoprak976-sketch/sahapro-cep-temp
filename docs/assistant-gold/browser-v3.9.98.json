@@ -1,0 +1,32 @@
+[
+  {
+    "id": "collection-20bin",
+    "category": "a",
+    "checked": false,
+    "businessRecordsUnchanged": true
+  },
+  {
+    "id": "staff-cash-delivery",
+    "category": "b",
+    "checked": true,
+    "businessRecordsUnchanged": true
+  },
+  {
+    "id": "staff-advance",
+    "category": "c",
+    "checked": true,
+    "businessRecordsUnchanged": true
+  },
+  {
+    "id": "customer-fuel-out",
+    "category": "d",
+    "checked": true,
+    "businessRecordsUnchanged": true
+  },
+  {
+    "id": "customer-tank-in",
+    "category": "e",
+    "checked": true,
+    "businessRecordsUnchanged": true
+  }
+]
