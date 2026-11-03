@@ -1,3 +1,4 @@
+import {fillWorkEvidence,annotateConfidence} from './assistant-confidence.js';
 import {isMachineKind,canonicalVehicleType,vehicleTypeRequested} from "./vehicle-type-core.js";
 import {assertAssistantPlan,rowEvidence,PLAN_LIMITS} from './assistant-safety.js';
 import {recordLocalText} from './record-notes.js';
@@ -649,6 +650,10 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
         }
       }
     }
+    r.issues=issues;
+    const evidenceText=w.quote&&quoteFound(w.quote,message)?String(w.quote):message;
+    if(!w.quote||quoteFound(w.quote,message))fillWorkEvidence(r,{d,text:evidenceText,hasUnknownName:nameInMessage(d,evidenceText),negative:negatives.some(n=>n.alias&&quoteFound(n.alias,evidenceText))});
+    if(explicitChild?.id===r.customer_id)(r._fieldEvidence??={}).customer_id={value:r.customer_id,level:'KESIN',reason:'Mesajdaki Alt firma (Ana firma) ve kayıtlı bağlantı',source:'parent_link'};
     // Kaynak alıntı: varsa mesajda birebir geçmeli
     r.source_quote = String(w.quote || "").slice(0, 8000);
     r.quote = String(w.quote || "").slice(0, 200);
@@ -704,6 +709,10 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
         price: r.price_pending ? "fiyat bekliyor — kullanıcı talimatı" : r.unit_price ? "mesajdan" : r.priceInfo?.summary ? "fiyat listesinden" : null,
       };
     }
+    annotateConfidence(r,'work',{d,fullMessage:message,text:w.quote&&quoteFound(w.quote,message)?String(w.quote):message,today,original:w});
+    if(r.fieldConfidence.customer_id?.level==='CIKARIM')r.src.customer='çıkarım — '+r.fieldConfidence.customer_id.reason;
+    if(r.fieldConfidence.vehicle_id?.level==='CIKARIM')r.src.vehicle='çıkarım — '+r.fieldConfidence.vehicle_id.reason;
+    r.ai={...r.ai,customer_id:r.customer_id,site_id:r.site_id,vehicle_id:r.vehicle_id};
     out.works.push(r);
   }
 
@@ -847,6 +856,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     out.fuel.push(r);
   }
   out.questions = [...new Set([...out.questions, ...(Array.isArray(plan.questions) ? plan.questions : []).map(String)])];
+  for(const [group,kind]of Object.entries({expenses:'expense',fuel:'fuel',fuelOut:'fuelout',tankIn:'tank'}))for(const [i,row]of (out[group]||[]).entries())annotateConfidence(row,kind,{d,text:[row.source_quote||message,row.photo!=null?photoTexts[row.photo]||'':''].filter(Boolean).join('\n'),today,original:plan[group==='tankIn'?'tank_in':group]?.[i]||{}});
   out.newCustomers = [...newNames.values()];
   out.photoTexts = photoTexts;
   return out;
@@ -1097,6 +1107,7 @@ export function validateExtras(plan, { message = "", d, today = todayStr(), phot
     // Silme ve düzeltme varsayılan olarak işaretsiz gelir: kullanıcı bilerek işaretler
     out.edits.push({ store: x.store, id: rec.id, rec, changes, remove, reason: String(x.reason || "").slice(0, 200) || "Asistan düzeltmesi", issues, ok: false });
   }
+  for(const group of ['collections','personnel','maintenance'])for(const [i,row]of out[group].entries())annotateConfidence(row,group==='collections'?'collection':group,{d,text:[row.source_quote||message,row.photo!=null?photoTexts[row.photo]||'':''].filter(Boolean).join('\n'),today,original:plan[group]?.[i]||{}});
   return out;
 }
 

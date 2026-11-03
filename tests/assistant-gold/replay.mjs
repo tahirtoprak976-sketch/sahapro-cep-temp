@@ -15,7 +15,7 @@ export function replay(c,response=c.recordedResponse){
  const out=validatePlan(plan,opts);
  Object.assign(out,validateExtras(plan,{...opts,photoTexts:out.photoTexts}));
  out.tickets=validateTickets(plan,{...opts,photoTexts:out.photoTexts});
- const actual=Object.entries(groups).flatMap(([kind,group])=>(out[group]||[]).map(row=>({kind,checked:!!row.ok,fields:{...row,duplicate:!!row.dup,price_rule:row.priceInfo?.candidates?.length===1?row.priceInfo.candidates[0].id:null,money_role:row.roles?.map(r=>({price_quote:'offer',negative:'negated'}[r]||r))[0]??null}})));
+ const actual=Object.entries(groups).flatMap(([kind,group])=>(out[group]||[]).map(row=>({kind,checked:!!row.ok,fields:{...row,...Object.fromEntries(Object.entries(row.fieldConfidence||{}).filter(([k])=>k!=='effective_unit_price'&&k!=='payment_option').map(([k,v])=>[k,v.level==='BILINMIYOR'?null:v.value])),duplicate:!!row.dup,price_rule:row.priceInfo?.candidates?.length===1?row.priceInfo.candidates[0].id:null,money_role:row.roles?.map(r=>({price_quote:'offer',negative:'negated'}[r]||r))[0]??null}})));
  const prompts=[...new Set([...(out.questions||[]),...actual.flatMap(r=>(r.fields.issues||[]).filter(prompt))])];
  return {actual,prompts};
 }
@@ -40,6 +40,12 @@ export function measure(input=cases,responses=null){
     const approved=Object.hasOwn(e.fields,key)?[e.fields[key]]:[];
     // Other explicit amounts in this same source still cannot authorize this field.
     if(!approved.some(x=>eq(v,x))){m.moneyGuesses++;problems.push(`${i}.${key}: kanıtlanmamış para ${v}`);}
+   }
+   const effective=a.fields.fieldConfidence?.effective_unit_price?.value;
+   if(effective!=null){
+    const ruleId=e.fields.price_rule,rule=({...cards,...c.cardsPatch}.price_book||[]).find(p=>p.id===ruleId);
+    const approved=Object.hasOwn(e.fields,'effective_unit_price')?e.fields.effective_unit_price:rule?.price;
+    if(!eq(effective,approved)){m.moneyGuesses++;problems.push(`${i}.effective_unit_price: kayıtta doğrulanmamış fiyat ${effective}`);}
    }
    if(bad.length || a.checked && !e.checked && !e.mandatoryUnchecked){if(a.checked)m.silentWrong++;problems.push(`${i}: yanlış ${bad.length?bad.join(','):'onaysız işaret'}`);}
    else if(!(e.mandatoryUnchecked&&a.checked)){m.correctCards++;if(a.checked)m.checkedCorrect++;}

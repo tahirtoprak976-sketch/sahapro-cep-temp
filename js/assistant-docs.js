@@ -1,3 +1,4 @@
+import {invalidateConfidenceDate,confidenceReady} from './assistant-confidence.js';
 import {VEHICLE_TYPES,canonicalVehicleType,vehicleTypeInText,vehicleTypeMatches,genericVehicleType,documentVehicleType} from "./vehicle-type-core.js";
 // Asistan — fotoğraftan döküm/kantar fişi ve araç/personel belgesi (bitiş tarihi) okuma. SAF katman.
 // Kural aynı: fiş numarası, tonaj, tarih ve plaka FOTOĞRAFIN YAZISINDA geçmeli; geçmeyen satır işaretsiz gelir.
@@ -362,7 +363,7 @@ export function materialKind(text) {
 export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = null } = {}) {
   // Mesajda hiç tarih / gün ifadesi yoksa işin tarihi tahmindir (Gemini bugünü yazmış olabilir)
   const noDateInMsg = message != null && !datesInText(message).size && !/(?<!\p{L})(dün|dun|bugün|bugun|evvelsi|önceki gün|pazartesi|salı|sali|çarşamba|carsamba|perşembe|persembe|cuma|cumartesi|pazar|sabah|akşam|aksam|\d{1,2}\s*(ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik))(?!\p{L})/iu.test(message);
-  if (noDateInMsg) for (const w of v.works || []) w.dateUnsure = true;
+  if (noDateInMsg) for (const w of v.works || []) if(!w.fromDriver) w.dateUnsure = true;
   const works = v.works || [];
   if (!works.length) return v;
   // Aynı plaka iki ayrı kartta olabilir (ör. "34GAM627" adlı kart + plakası 34 GAM 627 olan "Bayram Tır"): kart değil plaka karşılaştırılır
@@ -400,15 +401,18 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
     // Fiş, mesajda yazmayan tarihi ve aracı teyit eder (fişteki plaka / tarih okunmuş ve doğrulanmış)
     if (w.dateUnsure && tDate(t) && w.date === tDate(t)) {
       w.dateUnsure = false;
+      if(w.fieldConfidence)w.fieldConfidence.date={value:w.date,level:'KESIN',reason:'Doğrulanan fiş tarihi',source:'ticket'};
       w.issues = w.issues.filter((x) => !/İş tarihi mesajda yazmıyor/.test(x));
       w.issues.push(`Tarih fişten alındı (${tDate(t).split("-").reverse().join(".")})`);
     }
     if (w.vehicleGuess && t.vehicle_id && sameVeh(w.vehicle_id, t.vehicle_id)) {
       w.vehicleGuess = false;
+      if(w.fieldConfidence)w.fieldConfidence.vehicle_id={value:w.vehicle_id,level:'KESIN',reason:'Doğrulanan fiş plakası',source:'ticket'};
       w.issues = w.issues.filter((x) => !/^Araç ".*" mesajda yazmıyor/.test(x));
     }
+    invalidateConfidenceDate(w);
     if ("ok" in w)
-      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup && !w.priceUncertain && !w.parentMismatch);
+      w.ok = !!((w.customer_id || w.new_customer) && w.vehicle_id && w.work_type && w.unit && w.quantity && !w.guessed && !w.hinted && !w.badQuote && !w.ambiguous && !w.badNew && !w.vehicleGuess && !w.dateUnsure && !w.customerGuess && !w.typeDoubt && !w.pasteDup && !w.splitDup && !w.priceUncertain && !w.parentMismatch && confidenceReady(w));
     if (w.unit === "Ton" && t.tonnage && Math.abs((Number(w.quantity) || 0) - w.tonnage) > 0.05) w.issues.push(`Fişte ${w.tonnage} ton yazıyor, işte ${w.quantity} ton`);
     w.merged_ticket = true;
   }

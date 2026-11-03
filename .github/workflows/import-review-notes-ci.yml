@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - feat/assistant-confidence-100
       - feat/assistant-gold-99
       - dot/import-review-notes
       - dot/solo-simplification
@@ -111,6 +112,14 @@ jobs:
           node tests/assistant-gold/prove-baseline.mjs /tmp/solo-assistant99-baseline.json
           node tests/assistant-gold/run.mjs --report /tmp/solo-assistant99-candidate.json
 
+      - name: Measure confidence filling against unchanged v3.9.99
+        run: |
+          node tests/assistant-gold/prove-confidence.mjs /tmp/solo-confidence100-measurement.json
+
+      - name: Verify installed v3.9.99 to confidence release preservation
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 18e78cda6ecdfea6e149772c380037bbae8c6fba
+
       - name: Run browser suites with only isolated synthetic data
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
         run: |
@@ -132,7 +141,7 @@ jobs:
                   time.sleep(0.5)
           PY
           failed=0
-          suites=(assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
+          suites=(assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -731,6 +740,8 @@ jobs:
         with:
           name: solo-synthetic-visual-evidence-${{ github.sha }}
           path: |
+            /tmp/solo-confidence100/*
+            /tmp/solo-confidence100-measurement.json
             /tmp/solo-assistant99/*
             /tmp/assistant-gold-browser/*
             /tmp/solo-report-clarity/*.png
