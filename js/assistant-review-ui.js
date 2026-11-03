@@ -1,3 +1,4 @@
+import {inferenceReason} from './assistant-confidence-ui.js';
 import {esc,qs,fmtTL,trDate,fmtNum} from './ui.js';
 import {readDraftRows,draftMissing,DRAFT_FIELDS} from './assistant-workflow.js';
 import {detailedAssistant,DETAIL_PREFERENCE} from './assistant-page-ui.js';
@@ -24,7 +25,7 @@ export function bindAssistantReview(ctx,out,v,d){
   const workflows=readDraftRows(out,v,d);
   return cards.filter(c=>c.isConnected).map(card=>{const kind=card.dataset.kind,index=Number(card.dataset.i),r=v[groups[kind]]?.[index]||{},draft=workflows.find(w=>w.kind===kind&&w.index===index),pick=qs('[data-pick]',card);
    const issueText=[...card.querySelectorAll('[data-row-issues],[data-fuelout-issues]')].map(el=>el.textContent.trim()).filter(Boolean).join(' · ');
-   return {card,kind,index,label:labels[kind]||'Kayıt',selected:!!pick?.checked,disabled:!!pick?.disabled,saved:card.dataset.saved==='1',missing:draft?draftMissing(draft):[],issues:!!issueText,issueText,duplicate:!!r.driverDup||/mükerrer|zaten kayıtlı|daha önce kaydedil/i.test(issueText),r};});
+   return {card,kind,index,label:labels[kind]||'Kayıt',selected:!!pick?.checked,disabled:!!pick?.disabled,saved:card.dataset.saved==='1',missing:[...(draft?draftMissing(draft):[]),...(kind==='work'&&r.priceInfo?.ambiguous&&!r.priceQuestion?['unit_price']:[])],issues:!!issueText,issueText,duplicate:!!r.driverDup||/mükerrer|zaten kayıtlı|daha önce kaydedil/i.test(issueText),r};});
  };
  const value=(card,name)=>{const e=qs('[name="'+name+'"]',card);if(!e)return '';return e.tagName==='SELECT'?(e.value?e.selectedOptions[0]?.textContent||'':''):e.type==='checkbox'?e.checked:e.value;};
  const renderRow=row=>{
@@ -35,12 +36,13 @@ export function bindAssistantReview(ctx,out,v,d){
   const quantity=value(card,kind==='fuel'||kind==='fuelout'||kind==='tank'?'liters':'quantity');
   if(quantity!==''&&Number.isFinite(Number(quantity)))parts.push(fmtNum(Number(quantity))+' '+(value(card,'unit')||(['fuel','fuelout','tank'].includes(kind)?'L':'')));
   if(['collection','expense'].includes(kind)){const amount=value(card,'amount');parts.push(amount!==''?fmtTL(Number(amount))+' ₺':'Tutar eksik');}
-  if(kind==='work')parts.push(value(card,'price_pending')?'Fiyat bekliyor':value(card,'unit_price')!==''?'Birim fiyat '+fmtTL(Number(value(card,'unit_price')))+' ₺':'Fiyat kayıt sırasında kontrol edilir');
+  if(kind==='work')parts.push(value(card,'price_pending')?'Fiyat bekliyor':value(card,'unit_price')!==''?'Birim fiyat '+fmtTL(Number(value(card,'unit_price')))+' ₺':r.fieldConfidence?.effective_unit_price?'Kayıtlı fiyat '+fmtTL(Number(r.fieldConfidence.effective_unit_price.value))+' ₺':'Fiyat kayıt sırasında kontrol edilir');
   if(!parts.length)parts.push(...fields(['name','title','description','ticket_no','doc_no']));
   const summary=qs('[data-record-summary]',card);if(summary)summary.innerHTML=`<b>${esc(parts.join(' · ')||r.description||row.label)}</b><span class="assistant-record-state">${row.saved?'Kaydedildi':row.missing.length?'Eksik: '+esc(row.missing.map(k=>DRAFT_FIELDS[k]).join(', ')):row.duplicate?'Olası mükerrer':row.issues?'Kontrol gerekiyor':'Ayrıntıları kontrol et'} <span aria-hidden="true">⌄</span></span>`;
   let warning=qs('[data-review-warning]',card);
   if(!warning){warning=document.createElement('div');warning.className='small assistant-record-warning';warning.dataset.reviewWarning='';card.insertBefore(warning,qs('[data-record-details]',card));}
   warning.textContent=row.issueText;warning.hidden=!row.issueText;
+  let reason=qs('[data-confidence-reason]',card);if(!reason){reason=document.createElement('div');reason.dataset.confidenceReason='';reason.className='small muted';card.insertBefore(reason,qs('[data-record-details]',card));}const why=inferenceReason(r);reason.textContent=why?'Çıkarım: '+why:'';reason.hidden=!why;
  };
  let updating=false;
  const update=()=>{if(updating||!panel.isConnected)return;updating=true;try{const rows=read(),totals=reviewTotals(rows);qs('[data-review-counts]',panel).textContent=`${totals.total} kayıt · ${totals.selected} seçili · ${totals.review} kontrol bekliyor${totals.duplicates?' · '+totals.duplicates+' olası mükerrer':''}`;

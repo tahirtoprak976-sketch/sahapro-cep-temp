@@ -1,3 +1,4 @@
+import {confidenceReady} from './assistant-confidence.js';
 // Explicit user instructions only. Quoted chat messages and model flags cannot set batch policy.
 import { foldTr } from './parser.js';
 import { calcTankBalance, isActive, todayStr } from './core.js';
@@ -50,7 +51,7 @@ export function bulkWorkReady(row,data){
  if(row.kind!=='work'||row.saved||row.disabled)return false;
  const blocked=['fromDriver','driver_entry_id','driverDup','unverified','rejectedSource','guessed','hinted','badQuote','badNew','vehicleGuess','dateUnsure','customerGuess','typeDoubt','pasteDup','ambiguous','priceUncertain','parentMismatch'];
  const reviewed=data?.ok===true||data?._workflowWasReady===true||data?._workflowCompleted===true&&!data.issues?.length;
- return !!data&&reviewed&&!blocked.some(k=>data[k])&&(data.price_pending||!data.priceInfo?.ambiguous);
+ return !!data&&reviewed&&confidenceReady(data,'work')&&!blocked.some(k=>data[k])&&(data.price_pending||!data.priceInfo?.ambiguous);
 }
 // Explicit per-card user choices survive a later model revision. Quoted/group messages cannot set them.
 export function readRowPricePolicy(message,index){

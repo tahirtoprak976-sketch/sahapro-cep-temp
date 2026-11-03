@@ -1,3 +1,4 @@
+import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
 import {priceVehicleContext} from "./core.js";
 import * as priceCore from "./price-rule-core.js";
 import {assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
@@ -1006,6 +1007,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${issues(r)}</div>`)
       .join("") +
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked || v.partDocuments?.length ? "" : fallbackHtml(v, d, message));
+  mountConfidenceInputs(out,v);
   for(const b of qsa('[data-part-document-open]',out))b.onclick=async()=>{
     if(b.disabled)return;b.disabled=true;
     try{const row=v.partDocuments[Number(b.dataset.partDocumentOpen)],file=files[row.photo];if(!file)throw Error('Orijinal belgeyi yeniden seçin; yalnız model yanıtıyla kayıt yapılmaz.');
@@ -1027,6 +1029,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     for (const card of qsa('.card[data-kind="work"]', out)) {
       const box = qs("[data-price-preview]", card), r0 = v.works[Number(card.dataset.i)] || {};
       const show = () => {
+        clearRuleConfidence(card,r0);
         const g = (n) => qs(`[name=${n}]`, card)?.value || "";
         r0.price_pending=!!qs('[name=price_pending]',card)?.checked;
         if(r0.price_pending){card.dataset.priceAmb='';box.innerHTML='<b>Fiyat bekliyor</b> · Bu işin fiyatı boş kalacak; kayıtlı fiyat ve güncel anlaşmalar otomatik uygulanmayacak.';return;}
@@ -1041,6 +1044,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         const jpNote = jp ? `<div class="small">📐 ${esc(jp.text)}</div>` : "";
         const dateSure = !(r0.dateUnsure && g("date") === r0.date);
         const dec = priceDecision((d.price_book || []).filter(isActive), priceVehicleContext({ unit: g("unit"), customer_id: cust || null, site_id: site, vehicle_id: veh?.id || null, work_type: g("work_type"), date: g("date"), material: g("material") || null },veh), { dateSure });
+        paintRuleConfidence(card,r0,dec);
         card.dataset.priceAmb = dec.ambiguous ? "1" : "";
         box.innerHTML = dec.rule ? `💰 <b>Fiyat listesinden</b> — ${esc(priceSummary(dec.rule, { date: g("date"), quantity: q, unit: g("unit") }))}${r0.fuelAllowance?.only_pay ? " · <b>Bu müşteride ücret yalnız mazot: hakedişe 0 ₺ yazılır</b>" : ""}`
           : dec.ambiguous ? `❓ <b>Fiyat seçimi gerekli:</b> ${esc(dec.reason)} — kaydederken sorulacak`
@@ -1181,6 +1185,10 @@ async function save(ctx, out, v, d, { message, files }) {
       : k === "price" ? !c._priceReview
       : k === "card" ? !val(c, "name").trim() || (v.cards[Number(c.dataset.i)].kind === "sites" && !val(c, "customer"))
       : false;
+    if (['expense','maintenance','tank'].includes(k)) {
+      const row = v[k==='expense'?'expenses':k==='tank'?'tankIn':'maintenance'][Number(c.dataset.i)];
+      if(row.credit&&!val(c,'supplier')&&(k!=='tank'||val(c,'tank_pay')!=='paid')){openReviewCard(c);return toast('Veresiye için esnafı doğrulayın veya peşin ödendi seçimini açıkça yapın. Hiçbir kart kaydedilmedi.','err');}
+    }
     if (k === 'work') {
       const row = v.works[Number(c.dataset.i)];
       if (row.priceUncertain && !(Number(val(c,'unit_price'))>0) && !qs('[name=price_pending]',c)?.checked) {

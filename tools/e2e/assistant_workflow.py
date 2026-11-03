@@ -66,6 +66,9 @@ with sync_playwright() as p:
  send('tahsilat tutarı 6.000 TL');assert pg.input_value('[data-kind=collection] [name=amount]')=='6000' and state()==multi and len(calls)==1
  send('tarih 31.02.2026');assert state()==multi and pg.input_value('[data-kind=work][data-i="0"] [name=date]')==ids['date']
  print('PASS model-created 2 works + collection completed offline; ambiguous quantity asks target, ordinal changes only second work; cash stays separate; invalid date writes nothing and never calls model',flush=True)
+ # Explicit user confirmation resolves real multi-customer controls before testing unrelated preflight failures.
+ assert pg.input_value('[data-kind=work][data-i="0"] [name=customer]')==ids['a'] and pg.input_value('[data-kind=collection] [name=customer]')==ids['z']
+ pg.select_option('[data-kind=work][data-i="0"] [name=customer]',ids['a']);pg.select_option('[data-kind=collection] [name=customer]',ids['z'])
  # Selected-card preflight checks all cards before the first write, using current DB references.
  pg.check('[data-kind=work][data-i="0"] [data-pick]');pg.check('[data-kind=collection] [data-pick]');pg.fill('[data-kind=collection] [name=date]','');pg.click('[data-save]');pg.locator('.toast').get_by_text('Tarih alanını tamamlayın.',exact=False).wait_for();assert state()==multi
  pg.fill('[data-kind=collection] [name=date]',ids['date'])

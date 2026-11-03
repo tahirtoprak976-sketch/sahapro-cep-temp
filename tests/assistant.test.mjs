@@ -25,7 +25,7 @@ v = validatePlan({ works: [{ customer_id: 'YOK', vehicle_id: 'YOK', work_type: '
 assert.equal(v.works[0].customer_id, null); assert.equal(v.works[0].vehicle_id, null); assert.equal(v.works[0].work_type, null); assert.equal(v.works[0].unit, null);
 // gider: tutar fiş metninde olmalı; veresiye esnaf ister
 v = validatePlan({ photo_texts: ['SİPARİŞ FİŞİ\nTOPLAM 500,00'], expenses: [{ amount: 500, category: 'Lastik', photo: 0, credit: true, supplier_id: 'S' }, { amount: 900, category: 'Lastik', photo: 0 }] }, { message: 'lastikçi fişi', d, today, photoCount: 1 });
-assert.equal(v.expenses[0].ok, true); assert.equal(v.expenses[0].amount, 500); assert.equal(v.expenses[0].photo, 0);
+assert.equal(v.expenses[0].okData, true); assert.equal(v.expenses[0].ok, false); assert.equal(v.expenses[0].fieldConfidence.supplier_id.level,'BILINMIYOR'); assert.equal(v.expenses[0].amount, 500); assert.equal(v.expenses[0].photo, 0);
 assert.equal(v.expenses[1].ok, false);
 v = validatePlan({ expenses: [{ amount: 500, credit: true }] }, { message: 'Mesut 500 veresiye', d, today });
 assert.equal(v.expenses[0].ok, false);

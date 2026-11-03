@@ -1,0 +1,1079 @@
+{
+  "version": "v3.9.99",
+  "messages": 63,
+  "unchecked": 41,
+  "flags": {
+    "needsApproval": 21,
+    "priceUncertain": 3,
+    "customerGuess": 2,
+    "dateUnsure": 2,
+    "ambiguous": 2,
+    "ownerMismatch": 2,
+    "guessed": 1,
+    "parentMismatch": 1,
+    "blocked": 1,
+    "dup": 1,
+    "stockShort": 0,
+    "badQuote": 0,
+    "vehicleGuess": 0,
+    "hinted": 0,
+    "typeDoubt": 0,
+    "splitDup": 0,
+    "pasteDup": 0
+  },
+  "rows": [
+    {
+      "id": "work-price-and-partial-payment",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 2000,
+          "money_role": "payment",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "work-feb31",
+      "kind": "work",
+      "flags": [
+        "dateUnsure"
+      ],
+      "issues": [
+        "Tarih 2026-02-31 doğrulanamadı; doğru tarihi seçin."
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-future",
+      "kind": "work",
+      "flags": [
+        "dateUnsure"
+      ],
+      "issues": [
+        "Tarih 2030-01-01 doğrulanamadı; doğru tarihi seçin."
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-quantity-invented",
+      "kind": "work",
+      "flags": [
+        "guessed"
+      ],
+      "issues": [
+        "Miktar 2 mesajda yazmıyor (tahmin) — onaylayın"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": null,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-missing-vehicle",
+      "kind": "work",
+      "flags": [],
+      "issues": [
+        "Araç seçilmeli"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": null,
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-unknown-customer",
+      "kind": "work",
+      "flags": [],
+      "issues": [
+        "Müşteri seçilmeli"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": null,
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-same-day-unique",
+      "kind": "work",
+      "flags": [
+        "customerGuess"
+      ],
+      "issues": [
+        "Müşteri mesajda yazmıyor; bu araç son günlerde bu müşteriye çalıştı → \"Alfa İnşaat\" önerildi — doğruysa işaretleyin"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": true,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-site-unique",
+      "kind": "work",
+      "flags": [
+        "customerGuess"
+      ],
+      "issues": [
+        "Müşteri mesajda yazmıyor; \"Kuzey Şantiyesi\" şantiyesi → \"Alfa İnşaat\" önerildi — doğruysa işaretleyin"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null,
+          "site_id": "TEST_SITE"
+        },
+        "checked": true,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-duplicate-name",
+      "kind": "work",
+      "flags": [
+        "ambiguous"
+      ],
+      "issues": [
+        "Kime çalışıldı belli değil — Ortak Yapı / Ortak Yapı. Doğru müşteriyi seçin"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": null,
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-parent-wrong",
+      "kind": "work",
+      "flags": [
+        "parentMismatch"
+      ],
+      "issues": [
+        "Mesajdaki \"Çatıcı\" kayıtlı alt firmadır; ana firma yerine önerildi. Borç bu alt firmaya aittir; müşteriyi kontrol edip işaretleyin."
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_SUB",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-injection",
+      "kind": "work",
+      "flags": [
+        "priceUncertain"
+      ],
+      "issues": [
+        "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+        "Mesajdaki fiyat bu işe kesin bağlanamadı; birim fiyatı doğrulayın."
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": true,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "collection-20bin",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 20000,
+          "money_role": "payment",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-promise",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "20.000 TL mesajda ödeme olarak geçmiyor (ödeme sözü) — tahsilat yazılmaz"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 20000,
+          "money_role": "promise",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-offer",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "20.000 TL mesajda ödeme olarak geçmiyor (fiyat teklifi) — tahsilat yazılmaz"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 20000,
+          "money_role": "offer",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-work-total",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "20.000 TL mesajda ödeme olarak geçmiyor (işin toplam bedeli) — tahsilat yazılmaz"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 20000,
+          "money_role": "total",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-staff-held",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 20000,
+          "money_role": "payment",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-invented",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Tutar 9999 mesajda yazmıyor"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-negated",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "20.000 TL mesajda ödeme olarak geçmiyor (ödenmedi) — tahsilat yazılmaz"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 20000,
+          "money_role": "negated",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "collection-partial",
+      "kind": "collection",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Tahsilat: tutarı ve müşteriyi kontrol edip işaretleyin"
+      ],
+      "expected": {
+        "kind": "collection",
+        "fields": {
+          "customer_id": "TEST_C",
+          "amount": 2000,
+          "money_role": "payment",
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "staff-cash-delivery",
+      "kind": "personnel",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "personnel",
+        "fields": {
+          "personnel_id": "TEST_P",
+          "event_type": "Kasa Teslimi",
+          "amount": 2000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "b"
+      }
+    },
+    {
+      "id": "staff-cash-not-delivered",
+      "kind": "personnel",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "personnel",
+        "fields": {
+          "personnel_id": "TEST_P",
+          "event_type": "Tahsilat",
+          "amount": 2000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "a"
+      }
+    },
+    {
+      "id": "staff-advance",
+      "kind": "personnel",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "personnel",
+        "fields": {
+          "personnel_id": "TEST_P",
+          "event_type": "Avans",
+          "amount": 2000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "c"
+      }
+    },
+    {
+      "id": "staff-expense-payment",
+      "kind": "personnel",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "personnel",
+        "fields": {
+          "personnel_id": "TEST_P",
+          "event_type": "Personel Gideri",
+          "amount": 3000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "c"
+      }
+    },
+    {
+      "id": "staff-advance-no-amount",
+      "kind": "personnel",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Tutar 9999 mesajda yazmıyor",
+        "Tutar yok; tutarı girin"
+      ],
+      "expected": {
+        "kind": "personnel",
+        "fields": {
+          "personnel_id": "TEST_P",
+          "event_type": "Avans",
+          "amount": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "c"
+      }
+    },
+    {
+      "id": "staff-injection",
+      "kind": "personnel",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "personnel",
+        "fields": {
+          "personnel_id": "TEST_P",
+          "event_type": "Avans",
+          "amount": 2000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "c"
+      }
+    },
+    {
+      "id": "customer-tank-in",
+      "kind": "tank",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "tank",
+        "fields": {
+          "customer_id": "TEST_C",
+          "liters": 100,
+          "total": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "e"
+      }
+    },
+    {
+      "id": "customer-tank-no-price",
+      "kind": "tank",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "tank",
+        "fields": {
+          "customer_id": "TEST_C",
+          "liters": 80,
+          "total": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "e"
+      }
+    },
+    {
+      "id": "customer-fuel-out",
+      "kind": "fuelout",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "fuelout",
+        "fields": {
+          "customer_id": "TEST_C",
+          "liters": 20,
+          "unit_price": 50,
+          "total": 1000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "d"
+      }
+    },
+    {
+      "id": "customer-fuel-no-price",
+      "kind": "fuelout",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [
+        "Müşteriye yazılacak litre fiyatı veya toplam bedel mesajda yok; tutarı girin"
+      ],
+      "expected": {
+        "kind": "fuelout",
+        "fields": {
+          "customer_id": "TEST_C",
+          "liters": 20,
+          "unit_price": null,
+          "total": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "d"
+      }
+    },
+    {
+      "id": "customer-fuel-total",
+      "kind": "fuelout",
+      "flags": [
+        "needsApproval"
+      ],
+      "issues": [],
+      "expected": {
+        "kind": "fuelout",
+        "fields": {
+          "customer_id": "TEST_C",
+          "liters": 20,
+          "unit_price": 50,
+          "total": 1000,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": "d"
+      }
+    },
+    {
+      "id": "customer-fuel-reversed",
+      "kind": "fuelout",
+      "flags": [
+        "needsApproval",
+        "blocked"
+      ],
+      "issues": [
+        "Mazotu alan müşteriyi seçin; benzer adlarda tahmin yapılmadı",
+        "Verilen litre mesajda açıkça bulunamadı",
+        "Teslim tarihini kontrol edip girin",
+        "Müşteriye yazılacak litre fiyatı veya toplam bedel mesajda yok; tutarı girin",
+        "Bu yol yalnız kendi depomuzdan müşterinin forkliftine teslim içindir; kaynağı ve teslim yönünü mesajda netleştirin"
+      ],
+      "expected": {
+        "kind": "fuelout",
+        "fields": {
+          "customer_id": null,
+          "liters": null,
+          "unit_price": null,
+          "total": null,
+          "date": ""
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "expense-no-amount",
+      "kind": "expense",
+      "flags": [],
+      "issues": [
+        "Tutar 500 mesajda/fişte görünmüyor"
+      ],
+      "expected": {
+        "kind": "expense",
+        "fields": {
+          "amount": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "expense-photo-wrong",
+      "kind": "expense",
+      "flags": [],
+      "issues": [
+        "Tutar 900 mesajda/fişte görünmüyor"
+      ],
+      "expected": {
+        "kind": "expense",
+        "fields": {
+          "amount": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "expense-cross-photo",
+      "kind": "expense",
+      "flags": [],
+      "issues": [
+        "Tutar 900 mesajda/fişte görünmüyor"
+      ],
+      "expected": {
+        "kind": "expense",
+        "fields": {
+          "amount": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "expense-invalid-date",
+      "kind": "expense",
+      "flags": [],
+      "issues": [
+        "Tarih 2026-02-31 doğrulanamadı; doğru tarihi seçin."
+      ],
+      "expected": {
+        "kind": "expense",
+        "fields": {
+          "amount": 500,
+          "date": ""
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "expense-unknown-payer",
+      "kind": "expense",
+      "flags": [],
+      "issues": [
+        "Kim ödedi? Seçin"
+      ],
+      "expected": {
+        "kind": "expense",
+        "fields": {
+          "amount": 500,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "maintenance-invented-cost",
+      "kind": "maintenance",
+      "flags": [],
+      "issues": [
+        "Tutar 3000 mesajda/fişte yazmıyor"
+      ],
+      "expected": {
+        "kind": "maintenance",
+        "fields": {
+          "vehicle_id": "TEST_V",
+          "cost": null,
+          "date": "2026-11-02"
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "ticket-duplicate",
+      "kind": "ticket",
+      "flags": [
+        "dup"
+      ],
+      "issues": [
+        "Bu fiş numarası zaten kayıtlı"
+      ],
+      "expected": {
+        "kind": "ticket",
+        "fields": {
+          "ticket_no": "A 133427",
+          "date": "2026-11-01",
+          "vehicle_id": "TEST_TRUCK",
+          "tonnage": 24.85,
+          "duplicate": true
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "ticket-ambiguous-work",
+      "kind": "ticket",
+      "flags": [],
+      "issues": [
+        "Aynı gün bu aracın 2 sefer işi var — fişin hangi işe ait olduğunu seçin"
+      ],
+      "expected": {
+        "kind": "ticket",
+        "fields": {
+          "ticket_no": "A 133427",
+          "date": "2026-11-01",
+          "vehicle_id": "TEST_TRUCK",
+          "tonnage": 24.85,
+          "duplicate": false,
+          "link": ""
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-real-price-ambiguity",
+      "kind": "work",
+      "flags": [
+        "priceUncertain",
+        "ambiguous",
+        "ownerMismatch"
+      ],
+      "issues": [
+        "Kime çalışıldı belli değil — Beta Hafriyat / Alfa İnşaat. Doğru müşteriyi seçin",
+        "2.500 TL birim fiyatı mesajda Beta Hafriyat için yazılmış; bu iş Alfa İnşaat — fiyat BOŞ bırakıldı",
+        "Fiyat listesinde bu iş için kural yok — fiyat boş kalır"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    },
+    {
+      "id": "work-price-owned-by-other",
+      "kind": "work",
+      "flags": [
+        "priceUncertain",
+        "ownerMismatch"
+      ],
+      "issues": [
+        "2.500 TL birim fiyatı mesajda Beta Hafriyat için yazılmış; bu iş Alfa İnşaat — fiyat BOŞ bırakıldı",
+        "Fiyat listesinde bu iş için kural yok — fiyat boş kalır"
+      ],
+      "expected": {
+        "kind": "work",
+        "fields": {
+          "customer_id": "TEST_C",
+          "vehicle_id": "TEST_V",
+          "quantity": 2,
+          "unit": "Saat",
+          "date": "2026-11-02",
+          "unit_price": null
+        },
+        "checked": false,
+        "mandatoryUnchecked": null
+      }
+    }
+  ],
+  "measurement": {
+    "messages": 63,
+    "cards": 63,
+    "silentWrong": 0,
+    "moneyGuesses": 0,
+    "mandatoryChecked": 0,
+    "checkedCorrect": 22,
+    "correctCards": 61,
+    "unnecessaryQuestions": 3,
+    "questions": 19,
+    "questionMessages": 15,
+    "shouldAskCorrect": 50,
+    "cardCountErrors": 0,
+    "fields": {
+      "customer_id": {
+        "correct": 39,
+        "total": 40
+      },
+      "vehicle_id": {
+        "correct": 32,
+        "total": 32
+      },
+      "quantity": {
+        "correct": 22,
+        "total": 23
+      },
+      "unit": {
+        "correct": 23,
+        "total": 23
+      },
+      "date": {
+        "correct": 63,
+        "total": 63
+      },
+      "unit_price": {
+        "correct": 28,
+        "total": 28
+      },
+      "amount": {
+        "correct": 23,
+        "total": 23
+      },
+      "money_role": {
+        "correct": 8,
+        "total": 8
+      },
+      "site_id": {
+        "correct": 1,
+        "total": 1
+      },
+      "price_rule": {
+        "correct": 1,
+        "total": 1
+      },
+      "personnel_id": {
+        "correct": 6,
+        "total": 6
+      },
+      "event_type": {
+        "correct": 6,
+        "total": 6
+      },
+      "liters": {
+        "correct": 11,
+        "total": 11
+      },
+      "total": {
+        "correct": 11,
+        "total": 11
+      },
+      "cost": {
+        "correct": 2,
+        "total": 2
+      },
+      "ticket_no": {
+        "correct": 4,
+        "total": 4
+      },
+      "tonnage": {
+        "correct": 4,
+        "total": 4
+      },
+      "duplicate": {
+        "correct": 4,
+        "total": 4
+      },
+      "link": {
+        "correct": 2,
+        "total": 2
+      }
+    },
+    "failures": [
+      {
+        "id": "work-quantity-invented",
+        "problems": [
+          "0: yanlış quantity",
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "work-same-day-unique",
+        "problems": [
+          "0: işaret false / true"
+        ]
+      },
+      {
+        "id": "work-site-unique",
+        "problems": [
+          "0: işaret false / true"
+        ]
+      },
+      {
+        "id": "work-duplicate-name",
+        "problems": [
+          "0: yanlış customer_id"
+        ]
+      },
+      {
+        "id": "work-parent-wrong",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "work-injection",
+        "problems": [
+          "0: işaret false / true",
+          "gereksiz soru/alan istemi"
+        ]
+      },
+      {
+        "id": "collection-promise",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "collection-offer",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "collection-work-total",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "collection-invented",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "collection-negated",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "expense-no-amount",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "expense-photo-wrong",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "expense-cross-photo",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "maintenance-invented-cost",
+        "problems": [
+          "gerekli soru/alan istemi yok"
+        ]
+      },
+      {
+        "id": "questions-unnecessary",
+        "problems": [
+          "gereksiz soru/alan istemi"
+        ]
+      }
+    ],
+    "checkedCorrectRate": 0.3492063492063492,
+    "unnecessaryQuestionRate": 0.15789473684210525,
+    "questionsPerMessage": 0.30158730158730157
+  }
+}
