@@ -1,3 +1,4 @@
+import {bulkWorkReady} from '../js/assistant-batch.js';
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {validatePlan,validateExtras} from '../js/assistant-core.js';
@@ -85,4 +86,9 @@ test('dokuz yeni tarih/fotoğraf/rakamlı araç sınavı: alanlar ve işaretler 
 
 test('eski WhatsApp başlığındaki dün gönderenin gününe göre hesaplanır',()=>{
  const r=row(cards,'[07/09/2026 18:00] Şoför: Dün Alfa İnşaat JCB 3CX 2 saat çalıştı',{customer_id:'TEST_C',date:today});assert.equal(r.ok,false);assert.equal(r.fieldConfidence.date.suggestedValue,'2026-09-06');
+});
+
+test('başka alan düzeltildiğinde Hazır seç bilinmeyen birimi otomatik onaylamaz',()=>{
+ const r=row(cards,'02.11.2026 Alfa İnşaat JCB 3CX 2 saat çalıştı',{customer_id:'TEST_C',unit:'Sefer'}),edited={...r,_workflowCompleted:true};assert.equal(r.ok,false);assert.equal(bulkWorkReady({kind:'work'},edited),false);
+ edited.fieldConfidence={...edited.fieldConfidence,unit:{value:'Saat',level:'KESIN',source:'user'}};assert.equal(bulkWorkReady({kind:'work'},edited),true);
 });

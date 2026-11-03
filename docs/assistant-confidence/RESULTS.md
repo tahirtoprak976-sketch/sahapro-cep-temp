@@ -52,8 +52,10 @@ Tarih kanıtı mesaj satırı/başlığında ve ilgili fotoğrafta ayrı aranır
 - `node tests/assistant-gold/prove-confidence.mjs`: değişmemiş v3.9.99 kaynaklarıyla aynı ölçüm ve odaklı testler; adayla karşılaştırma.
 - `node tests/assistant-gold/run.mjs`: değişmemiş63 örnek. `--confidence`: yeni9 dahil72 örnek.
 - `python tools/e2e/prove_confidence_photo.py`: aynı, değiştirilmemiş assistant_large_batch testini v3.9.99 ve onarım öncesi PR commit6faebb1 üzerinde çalıştırır. Canlı99 geçer; eski PR100 iş aşamasını geçip fotoğraflı25 kartın kayıt sonucunda düşer. Aday aynı özgün testte tüm100+25 kontrollerini geçmelidir.
-- 17 odaklı Node kontrolü ve16 gerçek ekran senaryosu: önerilerin görünür/işaretsiz kalması, eksik alanın boşluğu, tarih önerisinin yalnız ilgili alanı değiştirmesi, KDV/fiyat kaynağı, veresiye ön kontrolü ve Kaydet öncesi sıfır yazma.
+- 18 odaklı Node kontrolü ve16 gerçek ekran senaryosu: önerilerin görünür/işaretsiz kalması, eksik alanın boşluğu, tarih önerisinin yalnız ilgili alanı değiştirmesi, KDV/fiyat kaynağı, veresiye ön kontrolü ve Kaydet öncesi sıfır yazma.
 - Eski dört tarayıcı testinin tüm özgün assert ifadeleri AST karşılaştırmasıyla korunur. Önceki boş alan ek kontrolleri son kullanıcı talimatına göre görünür öneri/Doğrulayın olarak güncellendi. Son kayıt, bakiye, görev kilidi, iptal ve sıfır yazma beklentileri değiştirilmedi.
 - Yerel tests/gold ayrıca raporlanır:80 mesaj,0 yanlış. Tüm Node dosyaları,75 tarayıcı suiti ve30 yükseltme senaryosu CI kapısıdır.
 
 Gerçek telefon, gerçek Gemini ve gerçek WhatsApp bu sentetik testlerde sınanmadı.
+
+Hazır iş kartlarını seç düğmesi de alan güvenini kontrol eder. Başka alanı düzeltmek bilinmeyen birimi otomatik onaylamaz; ilgili alan kullanıcı tarafından doğrulanana kadar kart otomatik seçilmez.
