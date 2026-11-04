@@ -2,6 +2,8 @@
 const CACHE = "sahapro-solo-v3-20261103-assistant-confidence-100";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
+  "./js/assistant-source-context.js",
+  "./js/assistant-questions.js",
   "./js/assistant-confidence.js",
   "./js/assistant-confidence-ui.js",
   "./js/finance-period.js",
