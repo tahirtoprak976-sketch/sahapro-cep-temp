@@ -1,0 +1,5223 @@
+{
+  "version": "v3.10.00",
+  "mode": "assistant-validation",
+  "realGemini": false,
+  "proposalOrigin": {
+    "version": "SAHAPRO SOLO v3.10.00",
+    "baseCommit": "59b571c71937ae46c70148cad1f72217c1d83c28",
+    "origin": "unchanged local parser -> untrusted plan bridge",
+    "realGemini": false,
+    "oracleUsed": false
+  },
+  "categories": {
+    "Tek seferde 20 mesaj": {
+      "messages": 1,
+      "expectedCards": 38,
+      "actualCards": 35,
+      "readyCorrect": 6,
+      "unnecessaryQuestions": 17,
+      "missedQuestions": 2,
+      "wrongFields": 73,
+      "missingCards": 3,
+      "extraCards": 0,
+      "silentWrong": 2
+    }
+  },
+  "totals": {
+    "messages": 1,
+    "expectedCards": 38,
+    "actualCards": 35,
+    "readyCorrect": 6,
+    "unnecessaryQuestions": 17,
+    "missedQuestions": 2,
+    "wrongFields": 73,
+    "missingCards": 3,
+    "extraCards": 0,
+    "silentWrong": 2
+  },
+  "failureReasons": {
+    "date": 16,
+    "vehicle": 4,
+    "personnel": 5,
+    "quantity": 5,
+    "unit": 2,
+    "note": 2,
+    "quarry": 2,
+    "material": 15,
+    "customer": 4,
+    "customer_level": 1,
+    "dump": 8,
+    "site": 7,
+    "price": 1,
+    "description": 1
+  },
+  "details": [
+    {
+      "id": "r00_tumu",
+      "category": "Tek seferde 20 mesaj",
+      "messages": 1,
+      "expectedCards": 38,
+      "actualCards": 35,
+      "readyCorrect": 6,
+      "unnecessaryQuestions": 17,
+      "missedQuestions": 2,
+      "wrongFields": [
+        {
+          "expectedRow": 4,
+          "actualRow": 30,
+          "field": "date",
+          "want": "2026-10-31",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 4,
+          "actualRow": 30,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_EKS14",
+          "got": null
+        },
+        {
+          "expectedRow": 6,
+          "actualRow": 5,
+          "field": "date",
+          "want": "2026-10-31",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 7,
+          "actualRow": 6,
+          "field": "date",
+          "want": "2026-10-31",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 8,
+          "actualRow": 7,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Nazım",
+          "got": "TEST_REAL_PERSON_Orhan"
+        },
+        {
+          "expectedRow": 8,
+          "actualRow": 7,
+          "field": "quantity",
+          "want": 1,
+          "got": null
+        },
+        {
+          "expectedRow": 8,
+          "actualRow": 7,
+          "field": "unit",
+          "want": "Yevmiye",
+          "got": null
+        },
+        {
+          "expectedRow": 8,
+          "actualRow": 7,
+          "field": "note",
+          "want": "pazar mesaisi (personel ücreti; müşteri fiyatı değişmez)",
+          "got": ""
+        },
+        {
+          "expectedRow": 9,
+          "actualRow": 8,
+          "field": "quarry",
+          "want": "TEST_REAL_quarries_OZTEPE",
+          "got": null
+        },
+        {
+          "expectedRow": 9,
+          "actualRow": 8,
+          "field": "material",
+          "want": "taş",
+          "got": ""
+        },
+        {
+          "expectedRow": 9,
+          "actualRow": 8,
+          "field": "note",
+          "want": "pazar mesaisi",
+          "got": ""
+        },
+        {
+          "expectedRow": 11,
+          "actualRow": 9,
+          "field": "customer",
+          "want": "new:İmrek Mustafa",
+          "got": null
+        },
+        {
+          "expectedRow": 11,
+          "actualRow": 9,
+          "field": "quarry",
+          "want": "TEST_REAL_quarries_ENTA",
+          "got": null
+        },
+        {
+          "expectedRow": 11,
+          "actualRow": 9,
+          "field": "material",
+          "want": "mıcır",
+          "got": ""
+        },
+        {
+          "expectedRow": 12,
+          "actualRow": 10,
+          "field": "date",
+          "want": "2026-11-02",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 12,
+          "actualRow": 10,
+          "field": "customer_level",
+          "want": "ÇIKARIM (Cerrahpaşa şantiyesi AYK Mimarlık'ın)",
+          "got": "BILINMIYOR"
+        },
+        {
+          "expectedRow": 12,
+          "actualRow": 10,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 12,
+          "actualRow": 10,
+          "field": "dump",
+          "want": "TEST_REAL_DUMP_OWN",
+          "got": null
+        },
+        {
+          "expectedRow": 13,
+          "actualRow": 11,
+          "field": "date",
+          "want": "2026-11-02",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 13,
+          "actualRow": 11,
+          "field": "customer",
+          "want": "TEST_REAL_CUSTOMER_AYK",
+          "got": null
+        },
+        {
+          "expectedRow": 13,
+          "actualRow": 11,
+          "field": "site",
+          "want": "TEST_REAL_SITE_CERRAH",
+          "got": null
+        },
+        {
+          "expectedRow": 13,
+          "actualRow": 11,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 13,
+          "actualRow": 11,
+          "field": "dump",
+          "want": "TEST_REAL_dump_sites_BOLUCA",
+          "got": null
+        },
+        {
+          "expectedRow": 16,
+          "actualRow": 13,
+          "field": "material",
+          "want": "çöp",
+          "got": ""
+        },
+        {
+          "expectedRow": 19,
+          "actualRow": 14,
+          "field": "date",
+          "want": "2026-10-30",
+          "got": "2026-11-02"
+        },
+        {
+          "expectedRow": 19,
+          "actualRow": 14,
+          "field": "quantity",
+          "want": 1,
+          "got": null
+        },
+        {
+          "expectedRow": 19,
+          "actualRow": 14,
+          "field": "material",
+          "want": "moloz",
+          "got": ""
+        },
+        {
+          "expectedRow": 19,
+          "actualRow": 14,
+          "field": "dump",
+          "want": "TEST_REAL_DUMP_OWN",
+          "got": null
+        },
+        {
+          "expectedRow": 20,
+          "actualRow": 16,
+          "field": "quantity",
+          "want": 1,
+          "got": 10.2026
+        },
+        {
+          "expectedRow": 20,
+          "actualRow": 16,
+          "field": "material",
+          "want": "çöp",
+          "got": ""
+        },
+        {
+          "expectedRow": 20,
+          "actualRow": 16,
+          "field": "dump",
+          "want": "TEST_REAL_DUMP_OWN",
+          "got": null
+        },
+        {
+          "expectedRow": 21,
+          "actualRow": 18,
+          "field": "date",
+          "want": "2026-11-02",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 21,
+          "actualRow": 18,
+          "field": "quantity",
+          "want": 1,
+          "got": 2
+        },
+        {
+          "expectedRow": 21,
+          "actualRow": 18,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 21,
+          "actualRow": 18,
+          "field": "dump",
+          "want": "TEST_REAL_DUMP_OWN",
+          "got": null
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "date",
+          "want": "2026-11-02",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "customer",
+          "want": "TEST_REAL_CUSTOMER_AYK",
+          "got": "new:Mimar Kemal"
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "site",
+          "want": "TEST_REAL_SITE_CERRAH",
+          "got": null
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR2",
+          "got": "TEST_REAL_VEHICLE_KMYT"
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Kadir",
+          "got": "TEST_REAL_PERSON_Selim"
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 22,
+          "actualRow": 22,
+          "field": "dump",
+          "want": "TEST_REAL_dump_sites_BOLUCA",
+          "got": null
+        },
+        {
+          "expectedRow": 24,
+          "actualRow": 20,
+          "field": "date",
+          "want": "2026-11-02",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 24,
+          "actualRow": 20,
+          "field": "site",
+          "want": "new:Cemal Duman'ın evinin arkası",
+          "got": null
+        },
+        {
+          "expectedRow": 26,
+          "actualRow": 21,
+          "field": "material",
+          "want": "moloz",
+          "got": ""
+        },
+        {
+          "expectedRow": 27,
+          "actualRow": 17,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 27,
+          "actualRow": 17,
+          "field": "site",
+          "want": "Mimar Kemal 53",
+          "got": null
+        },
+        {
+          "expectedRow": 27,
+          "actualRow": 17,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_KMYT",
+          "got": null
+        },
+        {
+          "expectedRow": 27,
+          "actualRow": 17,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Selim",
+          "got": "TEST_REAL_PERSON_Kadir"
+        },
+        {
+          "expectedRow": 27,
+          "actualRow": 17,
+          "field": "material",
+          "want": "moloz",
+          "got": ""
+        },
+        {
+          "expectedRow": 28,
+          "actualRow": 23,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 28,
+          "actualRow": 23,
+          "field": "site",
+          "want": "Mimar Kemal 53",
+          "got": null
+        },
+        {
+          "expectedRow": 28,
+          "actualRow": 23,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 29,
+          "actualRow": 24,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 29,
+          "actualRow": 24,
+          "field": "dump",
+          "want": "TEST_REAL_DUMP_OWN",
+          "got": null
+        },
+        {
+          "expectedRow": 30,
+          "actualRow": 25,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 30,
+          "actualRow": 25,
+          "field": "customer",
+          "want": "TEST_REAL_CUSTOMER_AYK",
+          "got": "TEST_REAL_CUSTOMER_ERKAN"
+        },
+        {
+          "expectedRow": 30,
+          "actualRow": 25,
+          "field": "site",
+          "want": "TEST_REAL_SITE_CERRAH",
+          "got": null
+        },
+        {
+          "expectedRow": 30,
+          "actualRow": 25,
+          "field": "material",
+          "want": "hafriyat",
+          "got": ""
+        },
+        {
+          "expectedRow": 30,
+          "actualRow": 25,
+          "field": "dump",
+          "want": "TEST_REAL_dump_sites_BOLUCA",
+          "got": null
+        },
+        {
+          "expectedRow": 31,
+          "actualRow": 33,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 31,
+          "actualRow": 33,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR",
+          "got": null
+        },
+        {
+          "expectedRow": 33,
+          "actualRow": 27,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 34,
+          "actualRow": 28,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Nazım",
+          "got": "TEST_REAL_PERSON_Orhan"
+        },
+        {
+          "expectedRow": 34,
+          "actualRow": 28,
+          "field": "material",
+          "want": "hafriyat yükleme",
+          "got": ""
+        },
+        {
+          "expectedRow": 34,
+          "actualRow": 28,
+          "field": "price",
+          "want": "Sözleşmeye dahil (0 ₺)",
+          "got": null
+        },
+        {
+          "expectedRow": 35,
+          "actualRow": 15,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        },
+        {
+          "expectedRow": 35,
+          "actualRow": 15,
+          "field": "site",
+          "want": "Mimar Kemal 53 (takma ad: göl sokak 53)",
+          "got": null
+        },
+        {
+          "expectedRow": 35,
+          "actualRow": 15,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Nazım",
+          "got": "TEST_REAL_PERSON_Kadir"
+        },
+        {
+          "expectedRow": 35,
+          "actualRow": 15,
+          "field": "quantity",
+          "want": 2.5,
+          "got": 1
+        },
+        {
+          "expectedRow": 35,
+          "actualRow": 15,
+          "field": "unit",
+          "want": "Saat",
+          "got": "Sefer"
+        },
+        {
+          "expectedRow": 35,
+          "actualRow": 15,
+          "field": "description",
+          "want": "toprak yükleme",
+          "got": "1 sefer moloz depoya döküldü"
+        },
+        {
+          "expectedRow": 36,
+          "actualRow": 34,
+          "field": "date",
+          "want": "2026-11-03",
+          "got": "2026-10-29"
+        }
+      ],
+      "missingCards": 3,
+      "extraCards": 0,
+      "silentWrong": 2,
+      "questions": [
+        {
+          "field": "work_type",
+          "actualRows": [
+            1,
+            2,
+            5,
+            8,
+            10,
+            11,
+            14,
+            16,
+            19,
+            20,
+            24,
+            25,
+            27,
+            29
+          ]
+        },
+        {
+          "field": "vehicle",
+          "actualRows": [
+            2,
+            15,
+            17
+          ]
+        },
+        {
+          "field": "quantity",
+          "actualRows": [
+            7,
+            14,
+            28
+          ]
+        },
+        {
+          "field": "unit",
+          "actualRows": [
+            7,
+            28
+          ]
+        },
+        {
+          "field": "customer",
+          "actualRows": [
+            9,
+            11,
+            15,
+            17,
+            23
+          ]
+        },
+        {
+          "field": "vehicle",
+          "actualRows": [
+            30,
+            33,
+            34
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            5
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            6
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            10
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            11
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            15
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            17
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            18
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            20
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            22
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            23
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            25
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            27
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            30
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            33
+          ]
+        },
+        {
+          "field": "date",
+          "actualRows": [
+            34
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "vehicle",
+          "expectedRows": [
+            2
+          ]
+        },
+        {
+          "field": "date",
+          "expectedRows": [
+            10
+          ]
+        },
+        {
+          "field": "customer",
+          "expectedRows": [
+            11
+          ]
+        },
+        {
+          "field": "quantity",
+          "expectedRows": [
+            15
+          ]
+        },
+        {
+          "field": "customer",
+          "expectedRows": [
+            27,
+            28
+          ]
+        },
+        {
+          "field": "vehicle",
+          "expectedRows": [
+            35,
+            36
+          ]
+        },
+        {
+          "field": "customer",
+          "expectedRows": [
+            35
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": true,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 2,
+          "checked": false,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 3,
+          "checked": false,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 30,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "vehicle"
+          ]
+        },
+        {
+          "actualRow": 4,
+          "checked": true,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 5,
+          "checked": false,
+          "wrongFields": [
+            "date"
+          ]
+        },
+        {
+          "actualRow": 6,
+          "checked": false,
+          "wrongFields": [
+            "date"
+          ]
+        },
+        {
+          "actualRow": 7,
+          "checked": false,
+          "wrongFields": [
+            "personnel",
+            "quantity",
+            "unit",
+            "note"
+          ]
+        },
+        {
+          "actualRow": 8,
+          "checked": false,
+          "wrongFields": [
+            "quarry",
+            "material",
+            "note"
+          ]
+        },
+        null,
+        {
+          "actualRow": 9,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "quarry",
+            "material"
+          ]
+        },
+        {
+          "actualRow": 10,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "customer_level",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 11,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "customer",
+            "site",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 12,
+          "checked": true,
+          "wrongFields": []
+        },
+        null,
+        {
+          "actualRow": 13,
+          "checked": true,
+          "wrongFields": [
+            "material"
+          ]
+        },
+        null,
+        {
+          "actualRow": 31,
+          "checked": true,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 14,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "quantity",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 16,
+          "checked": false,
+          "wrongFields": [
+            "quantity",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 18,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "quantity",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 22,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "customer",
+            "site",
+            "vehicle",
+            "personnel",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 19,
+          "checked": false,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 20,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "site"
+          ]
+        },
+        {
+          "actualRow": 32,
+          "checked": true,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 21,
+          "checked": true,
+          "wrongFields": [
+            "material"
+          ]
+        },
+        {
+          "actualRow": 17,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "site",
+            "vehicle",
+            "personnel",
+            "material"
+          ]
+        },
+        {
+          "actualRow": 23,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "site",
+            "material"
+          ]
+        },
+        {
+          "actualRow": 24,
+          "checked": false,
+          "wrongFields": [
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 25,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "customer",
+            "site",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 33,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "vehicle"
+          ]
+        },
+        {
+          "actualRow": 26,
+          "checked": true,
+          "wrongFields": []
+        },
+        {
+          "actualRow": 27,
+          "checked": false,
+          "wrongFields": [
+            "date"
+          ]
+        },
+        {
+          "actualRow": 28,
+          "checked": false,
+          "wrongFields": [
+            "personnel",
+            "material",
+            "price"
+          ]
+        },
+        {
+          "actualRow": 15,
+          "checked": false,
+          "wrongFields": [
+            "date",
+            "site",
+            "personnel",
+            "quantity",
+            "unit",
+            "description"
+          ]
+        },
+        {
+          "actualRow": 34,
+          "checked": false,
+          "wrongFields": [
+            "date"
+          ]
+        },
+        {
+          "actualRow": 29,
+          "checked": false,
+          "wrongFields": []
+        }
+      ],
+      "actual": [
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "personnel_id": "TEST_REAL_PERSON_Kadir",
+          "work_type": "Manitou Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "",
+          "description": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Kadir Yılmaz",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [],
+          "_fieldEvidence": {},
+          "source_quote": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "quote": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+            "work_type": "Manitou Çalışması",
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": true,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-10-29",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_KENTA",
+              "level": "KESIN",
+              "reason": "Kayıtlı tek takma ad",
+              "source": "alias"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Kadir",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Manitou Çalışması",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı araç kartındaki çalışma türü",
+              "source": "vehicle_type"
+            },
+            "description": {
+              "value": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-30",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "personnel_id": "TEST_REAL_PERSON_Sinan",
+          "work_type": null,
+          "quantity": 2.5,
+          "unit": "Saat",
+          "note": "",
+          "description": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Sinan Abi",
+          "vehicleNote": "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+            "İş türü seçilmeli"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "quote": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LENA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+            "work_type": null,
+            "quantity": 2.5,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-10-30",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LENA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Sinan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 2.5,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-30",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": null,
+          "personnel_id": "TEST_REAL_PERSON_Hakan",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "",
+          "description": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Babam = Hakan abi",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç seçilmeli",
+            "İş türü seçilmeli"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "quote": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LENA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": null,
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": null,
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-10-30",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LENA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Hakan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek personel adı",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-31",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "personnel_id": "TEST_REAL_PERSON_Nazım",
+          "work_type": "Makine Çalışması",
+          "quantity": 1,
+          "unit": "Yevmiye",
+          "note": "\"tam gün\" yevmiye olarak önerildi; onay gerekli",
+          "description": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Nazım Abi",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "customerGuess": true,
+          "mentions": {},
+          "issues": [
+            "Müşteri mesajda yazmıyor; \"Park Vista Sitesi\" şantiyesi → \"Berkay Bey\" önerildi — doğruysa işaretleyin"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "quote": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_PARKVISTA",
+            "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+            "work_type": "Makine Çalışması",
+            "quantity": 1,
+            "unit": "Yevmiye"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-10-31",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tek ve deterministik eşleşme bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_EKS14",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Nazım",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Yevmiye",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Makine Çalışması",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı iş makinesi ve çalışma birimi",
+              "source": "vehicle_type"
+            },
+            "description": {
+              "value": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-31",
+          "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "İş türü makine saatine göre JCB Çalışması önerildi; doğrulayın",
+          "description": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [],
+          "_fieldEvidence": {},
+          "source_quote": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "quote": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+            "work_type": "JCB Çalışması",
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": true,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-10-31",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_YILDIZ",
+              "level": "KESIN",
+              "reason": "Kayıtlı tek takma ad",
+              "source": "alias"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_JCB",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Orhan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "JCB Çalışması",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı araç kartındaki çalışma türü",
+              "source": "vehicle_type"
+            },
+            "description": {
+              "value": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": null,
+          "quantity": 2,
+          "unit": "Saat",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Orhan Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Orhan Operatör'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-10-31 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "quote": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_PARKVISTA",
+            "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+            "work_type": null,
+            "quantity": 2,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-10-31",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_BERKAY",
+              "level": "KESIN",
+              "reason": "Mesajdaki adın tek kayıtlı eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_JCB",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Orhan",
+              "level": "KESIN",
+              "reason": "Miktar/birimle eşleşen satırların tek kayıtlı göndereni",
+              "source": "sender_row"
+            },
+            "site_id": {
+              "value": "TEST_REAL_SITE_PARKVISTA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 2,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_HAMIDIYE",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": "Tesviye",
+          "quantity": 1.5,
+          "unit": "Saat",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Orhan Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Orhan Operatör'in zimmetli aracı alındı",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-10-31 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "quote": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_HAMIDIYE",
+            "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+            "work_type": "Tesviye",
+            "quantity": 1.5,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-10-31",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_ERKAN",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_JCB",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Orhan",
+              "level": "KESIN",
+              "reason": "Miktar/birimle eşleşen satırların tek kayıtlı göndereni",
+              "source": "sender_row"
+            },
+            "site_id": {
+              "value": "TEST_REAL_SITE_HAMIDIYE",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1.5,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Tesviye",
+              "level": "KESIN",
+              "reason": "Mesaj/fiş doğrulamasından",
+              "source": "message"
+            },
+            "description": {
+              "value": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-01",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": "Makine Çalışması",
+          "quantity": null,
+          "unit": null,
+          "note": "",
+          "description": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Birim seçilmeli",
+            "Miktar yok"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "quote": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_PARKVISTA",
+            "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+            "work_type": "Makine Çalışması",
+            "quantity": null,
+            "unit": null
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "dateUnsure": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tarih kanıtı belirsiz; tarihi doğrulayın",
+              "source": "none",
+              "conflict": false
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_BERKAY",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_EKS14",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Birden fazla gerçek kart adayı",
+              "source": "none"
+            },
+            "site_id": {
+              "value": "TEST_REAL_SITE_PARKVISTA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "unit": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Birim bulunamadı",
+              "source": "none"
+            },
+            "work_type": {
+              "value": "Makine Çalışması",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-01",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+          "personnel_id": "TEST_REAL_PERSON_Bekir",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "",
+          "description": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Bekir Tırcı",
+          "vehicleNote": "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+            "İş türü seçilmeli"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "quote": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_PARKVISTA",
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tarih kanıtı belirsiz; tarihi doğrulayın",
+              "source": "none",
+              "conflict": false
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_BERKAY",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Bekir",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": "TEST_REAL_SITE_PARKVISTA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-02",
+          "customer_id": null,
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+          "personnel_id": "TEST_REAL_PERSON_Bekir",
+          "work_type": "Mıcır Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "",
+          "description": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Bekir Tırcı",
+          "vehicleNote": "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+            "Müşteri seçilmeli"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "quote": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "ai": {
+            "customer_id": null,
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+            "work_type": "Mıcır Nakliye",
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": null,
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Bekir",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Mıcır Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_AYK",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_CERRAH",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+          "personnel_id": "TEST_REAL_PERSON_Bekir",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "Cerahpaşa 1sefer harfiyat santiye",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Bekir Tırcı",
+          "vehicleNote": "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "customerGuess": true,
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Müşteri mesajda yazmıyor; \"Cerrahpaşa\" şantiyesi → \"AYK Mimarlık\" önerildi — doğruysa işaretleyin",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-02 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "Cerahpaşa 1sefer harfiyat santiye",
+          "quote": "Cerahpaşa 1sefer harfiyat santiye",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_AYK",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_CERRAH",
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajda açık yazmıyor — doğrulayın",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-02",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tek ve deterministik eşleşme bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "Cerahpaşa 1sefer harfiyat santiye",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": null,
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+          "personnel_id": "TEST_REAL_PERSON_Bekir",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "1sefer buluca döküm",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Bekir Tırcı",
+          "vehicleNote": "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "buluca",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Müşteri seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-02 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "1sefer buluca döküm",
+          "quote": "1sefer buluca döküm",
+          "ai": {
+            "customer_id": null,
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": null,
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-02",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "1sefer buluca döküm",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-02",
+          "customer_id": "TEST_REAL_CUSTOMER_NATURA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "",
+          "description": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [],
+          "_fieldEvidence": {},
+          "source_quote": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "quote": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_NATURA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+            "work_type": "JCB Çalışması",
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": true,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_NATURA",
+              "level": "KESIN",
+              "reason": "Mesajdaki adın tek kayıtlı eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_JCB",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Orhan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "JCB Çalışması",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı araç kartındaki çalışma türü",
+              "source": "vehicle_type"
+            },
+            "description": {
+              "value": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-02",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "personnel_id": "TEST_REAL_PERSON_Selim",
+          "work_type": "Çöp Nakliye",
+          "quantity": 4,
+          "unit": "Sefer",
+          "note": "",
+          "description": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Selim Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "quote": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+            "work_type": "Çöp Nakliye",
+            "quantity": 4,
+            "unit": "Sefer"
+          },
+          "ok": true,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LALE12",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_KMYT",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Selim",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 4,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Çöp Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-02",
+          "customer_id": "TEST_REAL_CUSTOMER_MURAT",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_TARABYA",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "personnel_id": "TEST_REAL_PERSON_Kadir",
+          "work_type": null,
+          "quantity": null,
+          "unit": "Sefer",
+          "note": "Araç adedi sefer olarak önerildi; onay gerekli",
+          "description": "[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan ",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Kadir Yılmaz",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "İş türü seçilmeli",
+            "Miktar yok"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan",
+          "quote": "[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_MURAT",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_TARABYA",
+            "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+            "work_type": null,
+            "quantity": null,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_MURAT",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_KMYT",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Kadir",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "unit": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Birim için mesaj/kayıt dayanağı yok",
+              "source": "none"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan ",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": null,
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": null,
+          "personnel_id": "TEST_REAL_PERSON_Kadir",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "1 sefer moloz depoya döküldü",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Kadir Yılmaz",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç seçilmeli",
+            "Müşteri seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-02 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "1 sefer moloz depoya döküldü",
+          "quote": "1 sefer moloz depoya döküldü",
+          "ai": {
+            "customer_id": null,
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": null,
+            "work_type": "Moloz Nakliye",
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": null,
+            "vehicle": null,
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-02",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Moloz Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "1 sefer moloz depoya döküldü",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-31",
+          "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "personnel_id": "TEST_REAL_PERSON_Kadir",
+          "work_type": null,
+          "quantity": 10.2026,
+          "unit": "Sefer",
+          "note": "Araç adedi sefer olarak önerildi; onay gerekli",
+          "description": "31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden ",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Kadir Yılmaz",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "guessed": false,
+          "mentions": {},
+          "issues": [
+            "İş türü seçilmeli"
+          ],
+          "_fieldEvidence": {
+            "quantity": {
+              "value": 10.2026,
+              "level": "KESIN",
+              "reason": "Satırdaki açık miktar ve birim",
+              "source": "literal_quantity"
+            }
+          },
+          "source_quote": "31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden",
+          "quote": "31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+            "work_type": null,
+            "quantity": 10.2026,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-10-31",
+              "level": "KESIN",
+              "reason": "Mesajdaki satır/başlık tarihi",
+              "source": "message"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_YILDIZ",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_KMYT",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 10.2026,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "unit": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Birim için mesaj/kayıt dayanağı yok",
+              "source": "none"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden ",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": null,
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": null,
+          "personnel_id": "TEST_REAL_PERSON_Kadir",
+          "work_type": "Çöp Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "1 sefer çöp depoya döküldü",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Kadir Yılmaz",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç seçilmeli",
+            "Müşteri seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-10-31 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "1 sefer çöp depoya döküldü",
+          "quote": "1 sefer çöp depoya döküldü",
+          "ai": {
+            "customer_id": null,
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": null,
+            "work_type": "Çöp Nakliye",
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": null,
+            "vehicle": null,
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-10-31",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Çöp Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "1 sefer çöp depoya döküldü",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_AYK",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_CERRAH",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR2",
+          "personnel_id": "TEST_REAL_PERSON_Kadir",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": 2,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Kadir Yılmaz",
+          "from_place": "",
+          "to_place": "bolluca",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-02 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+          "quote": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_AYK",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_CERRAH",
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR2",
+            "work_type": "Hafriyat Nakliye",
+            "quantity": 2,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajda açık yazmıyor — doğrulayın",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-02",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR2",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 2,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Hafriyat Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-02",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "personnel_id": "TEST_REAL_PERSON_Sinan",
+          "work_type": null,
+          "quantity": 3,
+          "unit": "Saat",
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin",
+          "description": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Sinan Abi",
+          "vehicleNote": "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+            "İş türü seçilmeli"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "quote": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LENA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+            "work_type": null,
+            "quantity": 3,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LENA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Sinan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 3,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_VELI",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "personnel_id": "TEST_REAL_PERSON_Sinan",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Sinan Abi",
+          "vehicleNote": "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-02 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "quote": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_VELI",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-02",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_VELI",
+              "level": "KESIN",
+              "reason": "Mesajdaki adın tek kayıtlı eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-03",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "personnel_id": "TEST_REAL_PERSON_Selim",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "",
+          "description": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Selim Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "quote": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+            "work_type": "Moloz Nakliye",
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": true,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-03",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LALE12",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_KMYT",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Selim",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Moloz Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": null,
+          "new_customer": "Mimar Kemal",
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "personnel_id": "TEST_REAL_PERSON_Selim",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "Mimar Kemal 53 numaradan 1 sefer moloz ",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Selim Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "new_customer_text": "Mimar Kemal",
+          "customerGuess": true,
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı",
+            "Müşteri belirtilmemiş; mesajdaki \"Mimar Kemal\" yeni müşteri olarak önerildi — doğruysa işaretleyin",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-03 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "Mimar Kemal 53 numaradan 1 sefer moloz",
+          "quote": "Mimar Kemal 53 numaradan 1 sefer moloz",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": null,
+            "new_customer": "Mimar Kemal",
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+            "work_type": "Moloz Nakliye",
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-03",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tek ve deterministik eşleşme bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_KMYT",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Moloz Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "Mimar Kemal 53 numaradan 1 sefer moloz ",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": null,
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "personnel_id": "TEST_REAL_PERSON_Selim",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": 2,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "2 sefer hafriyat alındı",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Selim Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Selim Operatör'in zimmetli aracı alındı",
+            "Müşteri seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-03 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "2 sefer hafriyat alındı",
+          "quote": "2 sefer hafriyat alındı",
+          "ai": {
+            "customer_id": null,
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+            "work_type": "Hafriyat Nakliye",
+            "quantity": 2,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": null,
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-03",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_KMYT",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 2,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "Hafriyat Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "2 sefer hafriyat alındı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-03",
+          "customer_id": "TEST_REAL_CUSTOMER_AYK",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_CERRAH",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+          "personnel_id": "TEST_REAL_PERSON_Bekir",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "",
+          "description": "[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye ",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Bekir Tırcı",
+          "vehicleNote": "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "customerGuess": true,
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Müşteri mesajda yazmıyor; \"Cerrahpaşa\" şantiyesi → \"AYK Mimarlık\" önerildi — doğruysa işaretleyin"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye",
+          "quote": "[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_AYK",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_CERRAH",
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajda açık yazmıyor — doğrulayın",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-03",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tek ve deterministik eşleşme bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Bekir",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye ",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+          "personnel_id": "TEST_REAL_PERSON_Bekir",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "1sefer boluca dökum  peşın hakan abi gonderdi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Bekir Tırcı",
+          "vehicleNote": "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "customerGuess": true,
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Bekir Tırcı'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Müşteri mesajda yazmıyor; mesajdaki ad benziyor → \"Erkan\" önerildi — doğruysa işaretleyin",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-03 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "1sefer boluca dökum  peşın hakan abi gonderdi",
+          "quote": "1sefer boluca dökum  peşın hakan abi gonderdi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_TIR",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Sefer"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-03",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Tek ve deterministik eşleşme bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_TIR",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Sefer",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "1sefer boluca dökum  peşın hakan abi gonderdi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-03",
+          "customer_id": "TEST_REAL_CUSTOMER_SADIK",
+          "new_customer": null,
+          "site_id": "TEST_REAL_SITE_KEMER",
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "",
+          "description": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [],
+          "_fieldEvidence": {},
+          "source_quote": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "quote": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_SADIK",
+            "new_customer": null,
+            "site_id": "TEST_REAL_SITE_KEMER",
+            "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+            "work_type": "JCB Çalışması",
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": true,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-03",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_SADIK",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_JCB",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Orhan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": "TEST_REAL_SITE_KEMER",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": "JCB Çalışması",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı araç kartındaki çalışma türü",
+              "source": "vehicle_type"
+            },
+            "description": {
+              "value": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-10-29",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin · Metindeki tarihler çelişiyor; gerçek tarihi seçin",
+          "description": "Kentorman mıcır tesviye 1saat",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "vehicleNote": "Araç yazılmamış; gönderen Orhan Operatör'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Orhan Operatör'in zimmetli aracı alındı",
+            "İş türü seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-03 tarihini doğrulayın?"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "Kentorman mıcır tesviye 1saat",
+          "quote": "Kentorman mıcır tesviye 1saat",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-03",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_KENTA",
+              "level": "KESIN",
+              "reason": "Kayıtlı tek takma ad",
+              "source": "alias"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_JCB",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesajda kesin kart eşleşmesi yok",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "Kentorman mıcır tesviye 1saat",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-03",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "personnel_id": "TEST_REAL_PERSON_Orhan",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": null,
+          "unit": null,
+          "note": "",
+          "description": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Orhan Operatör",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Birim seçilmeli",
+            "Miktar yok"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "quote": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_U36",
+            "work_type": "Hafriyat Nakliye",
+            "quantity": null,
+            "unit": null
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "mesajdan",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-03",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LALE12",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_U36",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "personnel_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Birden fazla gerçek kart adayı",
+              "source": "none"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "unit": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Birim bulunamadı",
+              "source": "none"
+            },
+            "work_type": {
+              "value": "Hafriyat Nakliye",
+              "level": "KESIN",
+              "reason": "Mesajdaki iş ifadesi",
+              "source": "message"
+            },
+            "description": {
+              "value": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "fromDriver": false,
+          "date": "2026-11-03",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "new_customer": null,
+          "site_id": null,
+          "new_site": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "personnel_id": "TEST_REAL_PERSON_Sinan",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "note": "",
+          "description": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "material": "",
+          "dump_site_id": null,
+          "quarry_id": null,
+          "new_quarry": null,
+          "new_dump_site": null,
+          "unit_price": null,
+          "dump_cost": null,
+          "price_pending": false,
+          "reporter": "Sinan Abi",
+          "vehicleNote": "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+          "from_place": "",
+          "to_place": "",
+          "slip_no": "",
+          "mentions": {},
+          "issues": [
+            "Araç yazılmamış; gönderen Sinan Abi'in zimmetli aracı alındı",
+            "İş türü seçilmeli"
+          ],
+          "_fieldEvidence": {},
+          "source_quote": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "quote": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "priceInfo": {
+            "ambiguous": false,
+            "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+            "candidates": [],
+            "summary": ""
+          },
+          "ai": {
+            "customer_id": "TEST_REAL_CUSTOMER_LENA",
+            "new_customer": null,
+            "site_id": null,
+            "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+            "work_type": null,
+            "quantity": 1,
+            "unit": "Saat"
+          },
+          "ok": false,
+          "fuelAllowance": null,
+          "src": {
+            "customer": "mesajdan",
+            "vehicle": "çıkarım — Kayıtlı gönderenin zimmetli aracı",
+            "price": null
+          },
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-03",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": "TEST_REAL_CUSTOMER_LENA",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "CIKARIM",
+              "reason": "Kayıtlı gönderenin zimmetli aracı",
+              "source": "assignment"
+            },
+            "personnel_id": {
+              "value": "TEST_REAL_PERSON_Sinan",
+              "level": "KESIN",
+              "reason": "Mesajdaki tek kart eşleşmesi",
+              "source": "message"
+            },
+            "site_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "unit_price": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "dump_cost": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "quantity": {
+              "value": 1,
+              "level": "KESIN",
+              "reason": "Mesajda doğrulanan miktar",
+              "source": "message"
+            },
+            "unit": {
+              "value": "Saat",
+              "level": "KESIN",
+              "reason": "Mesajda açık çalışma birimi",
+              "source": "message"
+            },
+            "work_type": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "İş türü doğrulanamadı",
+              "source": "none"
+            },
+            "description": {
+              "value": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "work"
+        },
+        {
+          "source_quote": "150lt mazot alındı şantiyeden",
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "liters": 150,
+          "total": null,
+          "photo": null,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "issues": [
+            "Araç seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-10-31 tarihini doğrulayın?"
+          ],
+          "ok": false,
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-10-31",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "liters": {
+              "value": 150,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "fuel"
+        },
+        {
+          "source_quote": "[2/11 19:45] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden",
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "liters": 38,
+          "total": null,
+          "photo": null,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "issues": [],
+          "ok": true,
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_U36",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "liters": {
+              "value": 38,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "fuel"
+        },
+        {
+          "source_quote": "[2/11 20:07] Sinan Abi: Manitou 140 litre mazot depodan alındı",
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "liters": 140,
+          "total": null,
+          "photo": null,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "issues": [],
+          "ok": true,
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-02",
+              "level": "CIKARIM",
+              "reason": "Satırdaki gün/ay ve mevcut yıl",
+              "source": "row_date"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "KESIN",
+              "reason": "Mesajdaki kayıtlı araç",
+              "source": "message"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "liters": {
+              "value": 140,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "fuel"
+        },
+        {
+          "source_quote": "Şantiyeden 150 litre mazot aldım",
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "liters": 150,
+          "total": null,
+          "photo": null,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "issues": [
+            "Araç seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-03 tarihini doğrulayın?"
+          ],
+          "ok": false,
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-03",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "liters": {
+              "value": 150,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "fuel"
+        },
+        {
+          "source_quote": "1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden",
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "liters": 3,
+          "total": null,
+          "photo": null,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "issues": [
+            "Araç seçilmeli",
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-03 tarihini doğrulayın?"
+          ],
+          "ok": false,
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-03",
+              "suggestedSource": "message"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "liters": {
+              "value": 3,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": false,
+          "kind": "fuel"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Gemini yanıtı yok; planlar v3.10.00 yerel ayrıştırıcısından kaydedildi.",
+    "Lale kamyonet sözleşmesinin sayısal fiyatı fixture’da yok; TL uydurulmadı, bu fiyat değeri ölçülmedi.",
+    "Soru sayıları mevcut grup/missing alan katmanından türetildi; henüz gerçek ekran testi değildir."
+  ]
+}

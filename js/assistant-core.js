@@ -1,3 +1,4 @@
+import {prepareSourcePlan,sourceProof,OPERATIONAL_RULES} from './assistant-source-context.js';
 import {fillWorkEvidence,annotateConfidence} from './assistant-confidence.js';
 import {isMachineKind,canonicalVehicleType,vehicleTypeRequested} from "./vehicle-type-core.js";
 import {assertAssistantPlan,rowEvidence,PLAN_LIMITS} from './assistant-safety.js';
@@ -274,6 +275,7 @@ export function assistantSystem(rules = "") {
   const extra = String(rules || "").trim().slice(0, 6000);
   return [
     "Sen Muratoğlu Hafriyat (hafriyat, kamyon nakliye, iş makinesi) şirketinin kayıt asistanısın.",
+    "İŞLETME SAHİBİNİN ONAYLI KURALLARI (kart/alias eşleşmeleri kayıtlardan doğrulanır):\n"+OPERATIONAL_RULES.map((rule,i)=>(i+1)+". "+rule).join("\n"),
     "Sana şirketin kartları (müşteri, şantiye, araç, personel, esnaf/tedarikçi), takma adlar ve son işler verilir.",
     "Kullanıcının mesajını ve varsa fiş fotoğraflarını okuyup kaydedilecek işleri, giderleri ve yakıtları çıkar.",
     'Akü/lastik/filtre gibi YEDEK PARÇA garanti belgesi veya faturası varsa part_documents dizisine yaz: {photo,kind:"warranty"|"invoice",text,part_name,brand,model,seller,invoice_no,serial_numbers:[her seri ayrı],quantity,unit_price,total,price_basis:"gross"|"net"|"unknown",purchase_date,warranty_start,warranty_until,warranty_months,plate,evidence:{alan_adı:belgeden birebir satır}}. Garanti belgesi gider veya araç/personel evrakı değildir; aynı fotoğrafı expenses/documents/tickets içine tekrar yazma. Üretim tarihi alış/garanti başlangıcı değildir. Yazmayan tarih/seri/fiyat null; süreyi tarihe çevirme. Ham metni kendi text alanında koru. Bu öneri parça kontrol ekranından onaylanır.',
@@ -417,6 +419,7 @@ export function parenthesizedSubcontractor(d, text) {
 export function validatePlan(plan, { message = "", d, today = todayStr(), photoCount = 0, negatives = [] } = {}) {
   assertAssistantPlan(plan ?? {});
   const out = { works: [], expenses: [], fuel: [], fuelOut: [], questions: [], newCustomers: [] };
+  plan=prepareSourcePlan(plan||{},{message,d,today});assertAssistantPlan(plan);
   const batchPolicy=readBatchPolicy(message,today);
   out.batchPolicy=batchPolicy;
   plan = plan && typeof plan === "object" ? plan : {};
@@ -653,6 +656,22 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.issues=issues;
     const evidenceText=w.quote&&quoteFound(w.quote,message)?String(w.quote):message;
     if(!w.quote||quoteFound(w.quote,message))fillWorkEvidence(r,{d,text:evidenceText,hasUnknownName:nameInMessage(d,evidenceText),negative:negatives.some(n=>n.alias&&quoteFound(n.alias,evidenceText))});
+    const operational=sourceProof(w);
+    if(operational&&!fromDriver){
+      if(operational.includedWork)r.contractIncluded=true;
+      if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya birden fazla tarih çelişiyor',source:'source_row'};issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}
+      const provenSite=(d.sites||[]).find(s=>s.id===operational.fields.site_id?.value&&s.customer_id===r.customer_id);
+      if(provenSite&&!r.site_id){r.site_id=provenSite.id;r.siteHint=null;for(let i=issues.length-1;i>=0;i--)if(/^Şantiye .*mesajda yazmıyor/.test(issues[i]))issues.splice(i,1);}
+      for(const [field,info]of Object.entries(operational.fields))if(r[field]===info.value)r._fieldEvidence[field]=info;
+      if(operational.fields.quantity?.value===r.quantity&&r.quantity!=null){r.guessed=false;for(let i=issues.length-1;i>=0;i--)if(/^Miktar .*mesajda yazmıyor/.test(issues[i]))issues.splice(i,1);}
+      if(operational.fields.customer_id?.value===r.customer_id&&r.customer_id&&!r.ambiguous&&!r.parentMismatch)r.customerGuess=false;
+      if(operational.unknownVehicle){r.vehicleGuess=true;r._fieldEvidence.vehicle_id={value:null,level:'BILINMIYOR',reason:operational.unknownVehicle+' kartlarda yok; araç seçin',source:'source_row',rejected:true};r.unknownVehicleLabel=operational.unknownVehicle;}
+      if(operational.unknownCustomer){r.unknownCustomerLabel=operational.unknownCustomer;if(r.customer_id||r.new_customer){r.customerGuess=true;r._fieldEvidence.customer_id={value:null,level:'BILINMIYOR',reason:'Bu yerin müşterisi kayıtlardan doğrulanamadı',source:'source_row',rejected:true};}}
+      if(operational.place){r.place=operational.place;r.description+=(r.description?' · ':'')+'Yer: '+operational.place;}
+      if(operational.dateMismatch){r.calendarConflict=true;r.dateUnsure=true;issues.push('Model tarihi mesaj tarihiyle çelişti; '+r.date+' tarihini doğrulayın?');}
+      if(operational.weekdayConflict){r.calendarConflict=true;r.dateUnsure=true;issues.push('Tarih ile gün adı çelişiyor; '+r.date+' tarihini doğrulayın?');}
+      if(r.unit==='Sefer'&&!r.material){r.sourceNeedsMaterial=true;issues.push('Bu seferin malzemesini doğrulayın?');}
+    }
     if(batchPolicy.date&&!fromDriver&&!batchPolicy.dateIssue)(r._fieldEvidence??={}).date={value:r.date,level:'KESIN',reason:'Mesajdaki açık toplu iş tarihi',source:'batch_date'};
     if(explicitChild?.id===r.customer_id)(r._fieldEvidence??={}).customer_id={value:r.customer_id,level:'KESIN',reason:'Mesajdaki Alt firma (Ana firma) ve kayıtlı bağlantı',source:'parent_link'};
     // Kaynak alıntı: varsa mesajda birebir geçmeli
@@ -697,7 +716,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt && !r.priceUncertain && !r.parentMismatch);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt && !r.priceUncertain && !r.parentMismatch && !r.calendarConflict && !r.sourceNeedsMaterial);
     r.fuelAllowance = r.price_pending?null:fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     // Alan kaynakları (kartta görünür): mesajdan / kayıtlı takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından
     {
@@ -721,7 +740,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
   // Mesajda bir kez yazılan süre/miktar birden fazla işe yazılmışsa (tek süre bölünmüş): işaretsiz gelir
   {
     const counts = numberCounts(message), used = new Map();
-    for (const r of out.works) if (!r.fromDriver && r.quantity && !r.guessed && counts.has(r.quantity)) used.set(r.quantity, [...(used.get(r.quantity) || []), r]);
+    for (const r of out.works) if (!r.fromDriver && !r._fieldEvidence?.quantity && r.quantity && !r.guessed && counts.has(r.quantity)) used.set(r.quantity, [...(used.get(r.quantity) || []), r]);
     for (const [q, rows] of used) if (rows.length > counts.get(q)) for (const r of rows) {
       r.ok = false; r.splitDup = true;
       r.issues.push(`Mesajda ${String(q).replace(".", ",")} bir kez geçiyor ama ${rows.length} işe yazıldı — tek süre/miktar bölünmüş olabilir; doğru olanı işaretleyin`);
@@ -852,6 +871,8 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (r.liters > stock) { r.stockShort = true; issues.push(`Depoda kayıtlı ${Math.max(0, Math.round(stock))} L var; gerçek depo girişini veya başlangıç stokunu kontrol edin. İşleri yakıttan ayrı kaydedebilirsiniz.`); }
       else stock -= r.liters;
     }
+    const operational=sourceProof(f);
+    if(operational){if(operational.dateMismatch||operational.weekdayConflict){r.calendarConflict=true;r.dateUnsure=true;issues.push('Model tarihi veya gün adı mesaj tarihiyle çelişti; '+r.date+' tarihini doğrulayın?');}if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}r._fieldEvidence=Object.fromEntries(Object.entries(operational.fields).filter(([key,v])=>r[key]===v.value));if(operational.dateIssue)r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya çelişkili',source:'source_row'};if(operational.unknownVehicle){r._fieldEvidence.vehicle_id={value:null,level:'BILINMIYOR',reason:operational.unknownVehicle+' kartlarda yok; araç seçin',source:'source_row',rejected:true};r.unknownVehicleLabel=operational.unknownVehicle;}}
     r.issues = issues;
     r.ok = !!(r.date && r.vehicle_id && r.liters && !issues.length && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));
     out.fuel.push(r);

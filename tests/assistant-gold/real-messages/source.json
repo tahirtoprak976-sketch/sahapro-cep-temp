@@ -1,0 +1,877 @@
+{
+ "title": "SAHAPRO gerçek mesaj sınavı (takma adlı) — işletme sahibi onaylı, 04.11.2026",
+ "today_for_test": "2026-11-04",
+ "year": 2026,
+ "kaynak": "İşletmenin WhatsApp grubundan 20 gerçek mesaj; isimler/adresler/plaka takma ad, yazım ve hatalar korundu. Beklentiler Claude tarafından çözüldü, işletme sahibinin cevaplarıyla düzeltildi.",
+ "how_to_use": [
+  "Mesaj metni header + ': ' + message olarak, WhatsApp satırı gibi verilir.",
+  "Beklenmeyen alanlar ölçülmez; None = boş kalmalı ve sorulmalı (tahmin = yanlış).",
+  "checked yazılmamışsa: tüm zorunlu alanlar KESİN/para dışı ÇIKARIM ise kart hazır gelebilir.",
+  "Canlı Gemini ölçümü yalnız bu takma adlı metinle yapılır; deterministik mod için yanıtlar kaydedilir."
+ ],
+ "business_rules": [
+  "\"Şantiye\" bu işletmede KENDİ DEPOMUZ ve depodaki mazot tankıdır. \"1 sefer şantiye\" = depoya döküm. \"Şantiyeden mazot alındı/aldım\" = bizim depo tankından yakıt (depo stoku düşer). Müşterinin verdiği mazot DEĞİLDİR.",
+  "Gönderen kişi işi yapan personeldir; araç yazılmamışsa gönderenin zimmetli aracı ÇIKARIM olarak alınır (gerekçesiyle). Zimmetli aracı olmayan gönderende araç tahmin edilmez.",
+  "Hakan abi / \"Babam\" patrondur. \"Hakan abi gönderdi, ödeme onda\" ve \"peşin Hakan abi gönderdi\" ödemeyle patronun ilgilendiğini söyler: tahsilat kartı AÇILMAZ, borç Hakan abiye YAZILMAZ, işin müşterisi şantiyenin müşterisidir.",
+  "\"Pazar mesaisi\" müşteri fiyatını değiştirmez; işe personel ücreti notu olarak düşülür.",
+  "Lale Yokuşu 12 müşterisinde kamyonet sefer başı fiyat var; U36/ekskavatör yüklemesi sözleşmeye dahildir (0 ₺). Bu işlerde fiyat sorulmaz.",
+  "Satırdaki açık tarih (\"30.10 2026\", \"31.10.2026\", \"31 Ekim\") mesaj başlığındaki tarihten önceliklidir. Tarih ile gün adı çelişirse (\"31 Ekim Perşembe\") tarih esas alınır, tek kısa uyarı/soru gösterilir.",
+  "Farklı kişilerin aynı gün aynı şantiyeye yazdığı benzer seferler (Bekir ve Kadir, Cerrahpaşa 2/11) AYRI işlerdir; mükerrer sayılmaz. Mükerrer kontrolü aynı araç + aynı gün + aynı iş ile yapılır.",
+  "\"mazot tankı yüklendi\" bir yük taşıma işidir; yakıt kaydı açılmaz.",
+  "Süre yazmayan saatlik işte süre sorulur; tahmin edilmez. \"tam gün\" = 1 yevmiye. \"2buçuk saat\" = 2,5 saat.",
+  "Küçük yakıt miktarları (3 L) şüpheli diye engellenmez.",
+  "Takma adlar: Yıldız Oto = Yıldız İnşaat; Kentorman = Kenta Evleri; Göl sokak 53 = Mimar Kemal 53."
+ ],
+ "fixture": {
+  "not": "Hepsi TEST/takma ad. Kimlikler serbestçe uyarlanabilir; anlamlar korunmalı.",
+  "personnel": [
+   {
+    "id": "Kadir",
+    "name": "Kadir Yılmaz"
+   },
+   {
+    "id": "Sinan",
+    "name": "Sinan Abi"
+   },
+   {
+    "id": "Hakan",
+    "name": "Babam = Hakan abi"
+   },
+   {
+    "id": "Nazım",
+    "name": "Nazım Abi"
+   },
+   {
+    "id": "Orhan",
+    "name": "Orhan Operatör"
+   },
+   {
+    "id": "Bekir",
+    "name": "Bekir Tırcı"
+   },
+   {
+    "id": "Selim",
+    "name": "Selim Operatör"
+   }
+  ],
+  "personnel_notes": {
+   "Kadir": "Kadir Yılmaz (patronun oğlu; kendi çalıştığı işi kendisi yazar)",
+   "Sinan": "Sinan Abi (Manitou operatörü)",
+   "Hakan": "Babam = Hakan abi (patron; müşteri DEĞİL)",
+   "Nazım": "Nazım Abi (14 tonluk ekskavatör ve U36 operatörü)",
+   "Orhan": "Orhan Operatör (JCB kepçe ve Forklift)",
+   "Bekir": "Bekir Tırcı (tır şoförü)",
+   "Selim": "Selim Operatör (kamyonet)"
+  },
+  "vehicles": [
+   {
+    "id": "MANITOU",
+    "name": "Manitou",
+    "type": "Manitou",
+    "assignee": "Sinan"
+   },
+   {
+    "id": "EKS14",
+    "name": "14 Ton Ekskavatör",
+    "type": "Ekskavatör",
+    "assignee": "Nazım",
+    "aliases": [
+     "14 tonluk makine"
+    ]
+   },
+   {
+    "id": "U36",
+    "name": "U36",
+    "type": "Mini Ekskavatör",
+    "assignee": "Nazım"
+   },
+   {
+    "id": "JCB",
+    "name": "JCB",
+    "type": "JCB",
+    "assignee": "Orhan",
+    "aliases": [
+     "jcb kepce",
+     "jcb kepçe"
+    ]
+   },
+   {
+    "id": "FORK",
+    "name": "Forklift",
+    "type": "Forklift",
+    "assignee": null
+   },
+   {
+    "id": "TIR",
+    "name": "Tır",
+    "type": "Tır",
+    "assignee": "Bekir"
+   },
+   {
+    "id": "KMYT",
+    "name": "Kamyonet",
+    "type": "Kamyonet",
+    "assignee": "Selim"
+   },
+   {
+    "id": "TIR2",
+    "name": "34FZ2491",
+    "plate": "34FZ2491",
+    "type": "Tır",
+    "assignee": null
+   }
+  ],
+  "vehicle_unknown_note": "\"1 tonluk makine\" kartlarda YOK; hangi makine olduğu sorulmalı, tahmin edilmemeli.",
+  "customers": [
+   {
+    "id": "KENTA",
+    "name": "Kenta Evleri",
+    "aliases": [
+     "kenta evleri",
+     "Kentorman"
+    ]
+   },
+   {
+    "id": "LENA",
+    "name": "Lena"
+   },
+   {
+    "id": "BERKAY",
+    "name": "Berkay Bey",
+    "sites": [
+     {
+      "id": "PARKVISTA",
+      "name": "Park Vista Sitesi"
+     }
+    ]
+   },
+   {
+    "id": "YILDIZ",
+    "name": "Yıldız İnşaat",
+    "aliases": [
+     "Yıldız Oto",
+     "yıldız oto"
+    ]
+   },
+   {
+    "id": "ERKAN",
+    "name": "Erkan",
+    "sites": [
+     {
+      "id": "HAMIDIYE",
+      "name": "Hamidiye su yanı"
+     }
+    ]
+   },
+   {
+    "id": "METE",
+    "name": "Hurdacı Mete",
+    "sites": [
+     {
+      "id": "BAU",
+      "name": "Bahçeşehir Üniversitesi"
+     }
+    ]
+   },
+   {
+    "id": "AYK",
+    "name": "AYK Mimarlık",
+    "sites": [
+     {
+      "id": "CERRAH",
+      "name": "Cerrahpaşa"
+     }
+    ]
+   },
+   {
+    "id": "NATURA",
+    "name": "Natura Peyzaj",
+    "aliases": [
+     "natura peysaj"
+    ]
+   },
+   {
+    "id": "ZIRAAT",
+    "name": "Ziraat Bankası Göktürk Yönetimi",
+    "aliases": [
+     "göktürk ziraat bankası"
+    ]
+   },
+   {
+    "id": "LALE12",
+    "name": "Lale Yokuşu 12",
+    "deal": {
+     "basis": "Sefer",
+     "unit": "Kamyonet seferi",
+     "note": "Kamyonet sefer başı fiyat; ekskavatör/U36 yüklemesi DAHİL (0 ₺, Sözleşmeye dahil)"
+    }
+   },
+   {
+    "id": "MURAT",
+    "name": "Murat Bey",
+    "sites": [
+     {
+      "id": "TARABYA",
+      "name": "Tarabya"
+     }
+    ]
+   },
+   {
+    "id": "VELI",
+    "name": "Veli Müteahhit"
+   },
+   {
+    "id": "SADIK",
+    "name": "Sadık Abi",
+    "sites": [
+     {
+      "id": "KEMER",
+      "name": "Kemerburgaz"
+     }
+    ]
+   }
+  ],
+  "customers_missing_note": "\"imrek mustafa\" (Arnavutköy) ve \"Mimar Kemal 53 / Göl sokak 53\" müşterisi kartlarda YOK: yeni müşteri önerisi ya da soru beklenir; benzer ada sessizce bağlanmaz. \"Göl sokak 53\" = \"Mimar Kemal 53\" (aynı yer).",
+  "quarries": [
+   {
+    "id": "OZTEPE",
+    "name": "Öztepe Taş Ocağı",
+    "aliases": [
+     "öztepetaşocagı"
+    ]
+   },
+   {
+    "id": "ENTA",
+    "name": "Enta",
+    "aliases": [
+     "entadan"
+    ]
+   }
+  ],
+  "dump_sites": [
+   {
+    "id": "BOLUCA",
+    "name": "Boluca Döküm",
+    "aliases": [
+     "buluca",
+     "boluca",
+     "bolluca"
+    ]
+   }
+  ],
+  "own_yard": {
+   "name": "Depo",
+   "aliases": [
+    "şantiye",
+    "santiye",
+    "şantıye",
+    "depo",
+    "depoya"
+   ],
+   "fuel_tank": true,
+   "tank_stock_l": 1000
+  }
+ },
+ "cases": [
+  {
+   "id": "r01",
+   "header": "[29/10 23:35] Kadir Yılmaz",
+   "message": "Manitou kenta evleri 1 saat profil indirildi",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-29",
+     "customer": "KENTA",
+     "vehicle": "MANITOU",
+     "personnel": "Kadir",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "profil indirildi"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r02",
+   "header": "[30/10 21:31] Sinan Abi",
+   "message": "Lena 2.5 saat cam verildi",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-30",
+     "customer": "LENA",
+     "vehicle": "MANITOU",
+     "vehicle_level": "ÇIKARIM (gönderenin zimmetli aracı)",
+     "personnel": "Sinan",
+     "quantity": 2.5,
+     "unit": "Saat",
+     "description": "cam verildi"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r03",
+   "header": "[30/10 23:10] Babam",
+   "message": "Lena 1 saat mutfaklara çalıştı",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-30",
+     "customer": "LENA",
+     "vehicle": null,
+     "personnel": "Hakan",
+     "quantity": 1,
+     "unit": "Saat",
+     "checked": false
+    }
+   ],
+   "should_ask": [
+    "Hangi makineyle çalışıldı?"
+   ]
+  },
+  {
+   "id": "r04",
+   "header": "[31/10 17:52] Nazım Abi",
+   "message": "14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün. 150lt mazot alındı şantiyeden",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-31",
+     "customer": "BERKAY",
+     "site": "PARKVISTA",
+     "vehicle": "EKS14",
+     "personnel": "Nazım",
+     "quantity": 1,
+     "unit": "Yevmiye",
+     "description": "dere çalışması"
+    },
+    {
+     "kind": "fuel",
+     "source": "Depo Tankı",
+     "date": "2026-10-31",
+     "vehicle": "EKS14",
+     "liters": 150
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r05",
+   "header": "[31/10 20:03] Orhan Operator",
+   "message": "Jcb kepce yıldız oto cop yukleme 1 saat\nPark vista sitesi berkay beye  taş tasıma 2 saat\nHamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-31",
+     "customer": "YILDIZ",
+     "vehicle": "JCB",
+     "personnel": "Orhan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "çöp yükleme"
+    },
+    {
+     "kind": "work",
+     "date": "2026-10-31",
+     "customer": "BERKAY",
+     "site": "PARKVISTA",
+     "vehicle": "JCB",
+     "personnel": "Orhan",
+     "quantity": 2,
+     "unit": "Saat",
+     "description": "taş taşıma"
+    },
+    {
+     "kind": "work",
+     "date": "2026-10-31",
+     "customer": "ERKAN",
+     "site": "HAMIDIYE",
+     "vehicle": "JCB",
+     "personnel": "Orhan",
+     "quantity": 1.5,
+     "unit": "Saat",
+     "description": "asfalt serme tesviye"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r06",
+   "header": "[1/11 18:27] Nazım Abi",
+   "message": "14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma. Pazar mesaisi.",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-01",
+     "customer": "BERKAY",
+     "site": "PARKVISTA",
+     "vehicle": "EKS14",
+     "personnel": "Nazım",
+     "quantity": 1,
+     "unit": "Yevmiye",
+     "note": "pazar mesaisi (personel ücreti; müşteri fiyatı değişmez)"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r07",
+   "header": "[1/11 18:30] Bekir Tırcı",
+   "message": "Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-01",
+     "customer": "BERKAY",
+     "site": "PARKVISTA",
+     "vehicle": "TIR",
+     "personnel": "Bekir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "quarry": "OZTEPE",
+     "material": "taş",
+     "note": "pazar mesaisi"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r08",
+   "header": "[1/11 23:58] Sinan Abi",
+   "message": "31 Ekim Perşembe \n\nBahçeşehir Üniversitesi hurdacı mete'ye 1 saat mazot tankı yüklendi",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-31",
+     "customer": "METE",
+     "site": "BAU",
+     "vehicle": "MANITOU",
+     "personnel": "Sinan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "mazot tankı yüklendi",
+     "checked": false
+    }
+   ],
+   "must_not": [
+    "yakıt kartı"
+   ],
+   "should_ask": [
+    "31 Ekim Cumartesi, Perşembe yazılmış — 31 Ekim mi? (öneri: 31.10.2026)"
+   ]
+  },
+  {
+   "id": "r09",
+   "header": "[2/11 17:30] Bekir Tırcı",
+   "message": "Entadan 1sefer mıcır  arnavutkoy imrek mustafa \n\nCerahpaşa 1sefer harfiyat santiye \n1sefer buluca döküm \nHakan abi gonderdi ödeme onda",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "new:İmrek Mustafa",
+     "vehicle": "TIR",
+     "personnel": "Bekir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "quarry": "ENTA",
+     "material": "mıcır",
+     "checked": false
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "AYK",
+     "site": "CERRAH",
+     "customer_level": "ÇIKARIM (Cerrahpaşa şantiyesi AYK Mimarlık'ın)",
+     "vehicle": "TIR",
+     "personnel": "Bekir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "dump": "Depo (iç döküm)"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "AYK",
+     "site": "CERRAH",
+     "vehicle": "TIR",
+     "personnel": "Bekir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "dump": "BOLUCA"
+    }
+   ],
+   "must_not": [
+    "tahsilat kartı",
+    "Hakan abi müşteri olarak"
+   ],
+   "should_ask": [
+    "İmrek Mustafa yeni müşteri mi?"
+   ]
+  },
+  {
+   "id": "r10",
+   "header": "[2/11 18:37] Orhan Operator",
+   "message": "Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat \nForklift göktürk ziraat bankası otoparkdan pano tasındı",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "NATURA",
+     "vehicle": "JCB",
+     "personnel": "Orhan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "cüruf yüklendi nakliyeciye"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "ZIRAAT",
+     "vehicle": "FORK",
+     "personnel": "Orhan",
+     "quantity": null,
+     "unit": "Saat",
+     "description": "pano taşındı",
+     "checked": false
+    }
+   ],
+   "should_ask": [
+    "Forklift pano taşıma kaç saat sürdü? (işletme sahibinin cevabı: 1 saat)"
+   ]
+  },
+  {
+   "id": "r11",
+   "header": "[2/11 18:40] Selim Operatör",
+   "message": "Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "LALE12",
+     "vehicle": "KMYT",
+     "personnel": "Selim",
+     "quantity": 4,
+     "unit": "Sefer",
+     "material": "çöp",
+     "price": "sözleşmedeki kamyonet sefer fiyatı"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r12",
+   "header": "[2/11 19:45] Nazım Abi",
+   "message": "U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "LALE12",
+     "vehicle": "U36",
+     "personnel": "Nazım",
+     "quantity": null,
+     "material": "hafriyat yükleme",
+     "price": "Sözleşmeye dahil (0 ₺)"
+    },
+    {
+     "kind": "fuel",
+     "source": "Depo Tankı",
+     "date": "2026-11-02",
+     "vehicle": "U36",
+     "liters": 38
+    }
+   ],
+   "should_ask": [
+    "(isteğe bağlı, yalnız maliyet için) U36 kaç saat çalıştı? — fiyat sorulmaz"
+   ]
+  },
+  {
+   "id": "r13",
+   "header": "[2/11 20:02] Kadir Yılmaz",
+   "message": "30.10 2026 kamyonet murat bey tarabyadan 1 sefer moloz depoya döküldü\n31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden 1 sefer çöp depoya döküldü\n02.11.2026\n34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-10-30",
+     "customer": "MURAT",
+     "site": "TARABYA",
+     "vehicle": "KMYT",
+     "personnel": "Kadir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "moloz",
+     "dump": "Depo (iç döküm)"
+    },
+    {
+     "kind": "work",
+     "date": "2026-10-31",
+     "customer": "YILDIZ",
+     "vehicle": "KMYT",
+     "personnel": "Kadir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "çöp",
+     "dump": "Depo (iç döküm)"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "AYK",
+     "site": "CERRAH",
+     "vehicle": "TIR2",
+     "personnel": "Kadir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "dump": "Depo (iç döküm)"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "AYK",
+     "site": "CERRAH",
+     "vehicle": "TIR2",
+     "personnel": "Kadir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "dump": "BOLUCA"
+    }
+   ],
+   "must_not": [
+    "r09 ile mükerrer uyarısı (farklı araç ve kişi)",
+    "başlık tarihi 2/11'i ilk iki satıra yazmak"
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r14",
+   "header": "[2/11 20:04] Sinan Abi",
+   "message": "Lena 3 saat kum çimento ve tuğla verildi \n\nCemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "LENA",
+     "vehicle": "MANITOU",
+     "personnel": "Sinan",
+     "quantity": 3,
+     "unit": "Saat",
+     "description": "kum çimento ve tuğla verildi"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-02",
+     "customer": "VELI",
+     "site": "new:Cemal Duman'ın evinin arkası",
+     "vehicle": "MANITOU",
+     "personnel": "Sinan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "ytong verildi"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r15",
+   "header": "[2/11 20:07] Sinan Abi",
+   "message": "Manitou 140 litre mazot depodan alındı",
+   "expected": [
+    {
+     "kind": "fuel",
+     "source": "Depo Tankı",
+     "date": "2026-11-02",
+     "vehicle": "MANITOU",
+     "liters": 140
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r16",
+   "header": "[3/11 18:19] Selim Operatör",
+   "message": "Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı \nMimar Kemal 53 numaradan 1 sefer moloz 2 sefer hafriyat alındı",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "LALE12",
+     "vehicle": "KMYT",
+     "personnel": "Selim",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "moloz"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": null,
+     "site": "Mimar Kemal 53",
+     "vehicle": "KMYT",
+     "personnel": "Selim",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "moloz",
+     "checked": false
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": null,
+     "site": "Mimar Kemal 53",
+     "vehicle": "KMYT",
+     "personnel": "Selim",
+     "quantity": 2,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "checked": false
+    }
+   ],
+   "should_ask": [
+    "Mimar Kemal 53 kimin işi? (tek soru; iki kart için)"
+   ]
+  },
+  {
+   "id": "r17",
+   "header": "[3/11 18:38] Bekir Tırcı",
+   "message": "Cerahpaşa  1 sefer şantıye 1sefer boluca dökum  peşın hakan abi gonderdi\n\nŞantiyeden 150 litre mazot aldım",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "AYK",
+     "site": "CERRAH",
+     "vehicle": "TIR",
+     "personnel": "Bekir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "dump": "Depo (iç döküm)"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "AYK",
+     "site": "CERRAH",
+     "vehicle": "TIR",
+     "personnel": "Bekir",
+     "quantity": 1,
+     "unit": "Sefer",
+     "material": "hafriyat",
+     "dump": "BOLUCA"
+    },
+    {
+     "kind": "fuel",
+     "source": "Depo Tankı",
+     "date": "2026-11-03",
+     "vehicle": "TIR",
+     "liters": 150
+    }
+   ],
+   "must_not": [
+    "tahsilat kartı (\"peşin\" tutarsız)",
+    "müşterinin verdiği mazot"
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r18",
+   "header": "[3/11 20:15] Orhan Operator",
+   "message": "Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat \nKentorman mıcır tesviye 1saat",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "SADIK",
+     "site": "KEMER",
+     "vehicle": "JCB",
+     "personnel": "Orhan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "demir taşıma"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "KENTA",
+     "customer_level": "takma ad: Kentorman",
+     "vehicle": "JCB",
+     "personnel": "Orhan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "mıcır tesviye"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r19",
+   "header": "[3/11 23:21] Nazım Abi",
+   "message": "U36 Lale yokuşu 12 hafriyat yükleme yapıldı. 1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "LALE12",
+     "vehicle": "U36",
+     "personnel": "Nazım",
+     "quantity": null,
+     "material": "hafriyat yükleme",
+     "price": "Sözleşmeye dahil (0 ₺)"
+    },
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": null,
+     "site": "Mimar Kemal 53 (takma ad: göl sokak 53)",
+     "vehicle": null,
+     "personnel": "Nazım",
+     "quantity": 2.5,
+     "unit": "Saat",
+     "description": "toprak yükleme",
+     "checked": false
+    },
+    {
+     "kind": "fuel",
+     "source": "Depo Tankı",
+     "date": "2026-11-03",
+     "vehicle": null,
+     "liters": 3,
+     "checked": false
+    }
+   ],
+   "should_ask": [
+    "\"1 tonluk makine\" hangi araç?",
+    "Mimar Kemal 53 kimin işi?"
+   ]
+  },
+  {
+   "id": "r20",
+   "header": "[3/11 23:25] Sinan Abi",
+   "message": "Lena 1 saat fayans indirildi",
+   "expected": [
+    {
+     "kind": "work",
+     "date": "2026-11-03",
+     "customer": "LENA",
+     "vehicle": "MANITOU",
+     "personnel": "Sinan",
+     "quantity": 1,
+     "unit": "Saat",
+     "description": "fayans indirildi"
+    }
+   ],
+   "should_ask": []
+  },
+  {
+   "id": "r00_tumu",
+   "note": "Yukarıdaki 20 mesajın WhatsApp'tan TEK SEFERDE yapıştırılmış hâli. Beklenen: r01–r20 kartlarının toplamı (38 kart: 33 iş + 5 yakıt), mükerrer yok, sorular tek kutuda ve birleştirilmiş (Mimar Kemal 53 bir kez sorulur).",
+   "message": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi\n[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi\n[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı\n[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün. 150lt mazot alındı şantiyeden\n[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat\nPark vista sitesi berkay beye  taş tasıma 2 saat\nHamidiye su yanı erkan asfalt serme tesviye 1.5 saat\n[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma. Pazar mesaisi.\n[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi\n[1/11 23:58] Sinan Abi: 31 Ekim Perşembe \n\nBahçeşehir Üniversitesi hurdacı mete'ye 1 saat mazot tankı yüklendi\n[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa \n\nCerahpaşa 1sefer harfiyat santiye \n1sefer buluca döküm \nHakan abi gonderdi ödeme onda\n[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat \nForklift göktürk ziraat bankası otoparkdan pano tasındı\n[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı\n[2/11 19:45] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden\n[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan 1 sefer moloz depoya döküldü\n31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden 1 sefer çöp depoya döküldü\n02.11.2026\n34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm\n[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi \n\nCemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi\n[2/11 20:07] Sinan Abi: Manitou 140 litre mazot depodan alındı\n[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı \nMimar Kemal 53 numaradan 1 sefer moloz 2 sefer hafriyat alındı\n[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye 1sefer boluca dökum  peşın hakan abi gonderdi\n\nŞantiyeden 150 litre mazot aldım\n[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat \nKentorman mıcır tesviye 1saat\n[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı. 1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden\n[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi"
+  }
+ ]
+}

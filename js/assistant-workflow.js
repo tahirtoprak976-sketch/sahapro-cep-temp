@@ -68,6 +68,15 @@ export function resolveDraftReply(message,rows,today=todayStr()){
  for(const [name,pattern] of aliases){const m=new RegExp(`^(?:${pattern})\\s*[:=]?\\s+(.+)$`).exec(f);if(m){field=name;value=m[1];explicit=true;break;}}
  let possible=rows.filter(r=>!scoped.kind||r.kind===scoped.kind).map(r=>({...r}));
  if(scoped.index!=null){const i=scoped.index===-1?Math.max(...possible.map(r=>r.index)):scoped.index;possible=possible.filter(r=>r.index===i);}
+ // A bare number never means a numbered select option or a money value.
+ if(/^\d+(?:[.,]\d+)?$/.test(f)){
+  const n=parseTrNumber(f);if(!(n>0))return {type:'clarify',message:'Miktar sıfırdan büyük olmalı.'};
+  const targets=possible.filter(r=>r.kind==='work'&&(draftMissing(r).includes('quantity')||r.r?.fieldConfidence?.quantity?.level==='BILINMIYOR'));
+  const choices=targets.map(r=>({key:r.key,label:r.label,question_id:r.key+':quantity',updates:{quantity:n}}));
+  if(choices.length===1)return {type:'apply',...choices[0]};
+  if(choices.length>1)return {type:'choose',message:'Hangi iş için?',choices};
+  return {type:'clarify',message:'Bu sayı için açık bir miktar/süre sorusu yok. Seçenekli soruları ilgili düğmeye dokunarak cevaplayın.'};
+ }
  if(possible.some(r=>Object.entries(r.options).some(([name,opts])=>draftMissing(r).includes(name)&&opts.some(o=>[o.value,o.label,...(o.aliases||[])].some(x=>key(x)===key(scoped.body)))))){field=null;value=null;explicit=false;}
  const qty=/^(\d+(?:[.,]\d+)?)\s*(sefer|saat|sa|ton|yevmiye|adet|litre|lt)[.!]?$/u.exec(field==='quantity'?value:f);
  if(!qty&&!['description','material'].includes(field)&&/\d[\d.,]*\s*(?:sefer|saat|ton|yevmiye|litre|lt)\b/u.test(f))return null;
@@ -117,7 +126,7 @@ export function readDraftRows(out,v,d){
    fields[el.name]=el.type==='checkbox'?el.checked:el.value;
    if(el.tagName==='SELECT')options[el.name]=[...el.options].filter(o=>o.value).map(o=>({value:o.value,label:o.textContent,aliases:el.name==='vehicle'?[(d.vehicles||[]).find(x=>x.id===o.value)?.plate||'']:[]}));
   }
-  return [{key:kind+':'+index,kind,index,label:def.label+' '+(index+1),fields,options,selected:!!qs('[data-pick]',card)?.checked,saved:card.dataset.saved==='1',disabled:!!qs('[data-pick]',card)?.disabled}];
+  return [{r:data,key:kind+':'+index,kind,index,label:def.label+' '+(index+1),fields,options,selected:!!qs('[data-pick]',card)?.checked,saved:card.dataset.saved==='1',disabled:!!qs('[data-pick]',card)?.disabled}];
  });
 }
 export function applyDraftPlan(plan,row,updates){
@@ -189,9 +198,11 @@ export function bindDraftWorkflow(out,v,d){
    if(f==='customer'){data.customer_id=String(value).startsWith('new:')?null:value;data.new_customer=String(value).startsWith('new:')?value.slice(4):null;if(data.customer_id)data.new_customer_parent_id=null;data.customerGuess=false;}
    if(f==='quantity')data.guessed=false;
    if(f==='vehicle')data.vehicleGuess=false;
-   if(f==='date')data.dateUnsure=false;
+   if(f==='date'){data.dateUnsure=false;data.calendarConflict=false;data.dateConflict=false;}
+   if(f==='material')data.sourceNeedsMaterial=false;
+   if(data.fieldConfidence?.[raw])data.fieldConfidence[raw]={level:'KESIN',value,reason:'Kullanıcı bu alanı doğruladı',source:'user_answer'};
   }
-  const settled={date:/İş tarihi mesajda yazmıyor|^Toplu iş tarihini|^Tarih .*doğrulanamadı|^Tarih (?:yok|seçilmeli)/,customer:/^Müşteri (?:seçilmeli|belirtilmemiş|mesajda yazmıyor)/,vehicle:/^Araç (?:seçilmeli|")/,work_type:/^İş türü seçilmeli/,quantity:/^Miktar (?:yok|[\d.,]+ mesajda)/,unit:/^Birim seçilmeli/,amount:/^Tutar (?:yok|[\d.,]+ mesajda)/};
+  const settled={date:/^Mesajdaki tarih geçersiz veya çelişkili|^Tarih ile gün adı çelişiyor|^Model tarihi mesaj tarihiyle çelişti|^Model tarihi veya gün adı mesaj tarihiyle çelişti|İş tarihi mesajda yazmıyor|^Toplu iş tarihini|^Tarih .*doğrulanamadı|^Tarih (?:yok|seçilmeli)/,customer:/^Müşteri (?:seçilmeli|belirtilmemiş|mesajda yazmıyor)/,vehicle:/^Araç (?:seçilmeli|")/,work_type:/^İş türü seçilmeli/,quantity:/^Miktar (?:yok|[\d.,]+ mesajda)/,unit:/^Birim seçilmeli/,amount:/^Tutar (?:yok|[\d.,]+ mesajda)/};
   data.issues=(data.issues||[]).filter(issue=>!Object.keys(change.updates).some(field=>settled[field]?.test(issue)));
   const warnings=card.querySelector('[data-row-issues]');if(warnings)warnings.textContent=data.issues.length?'⚠ '+data.issues.join(' · '):'';
   data._workflowCompleted=true;

@@ -766,7 +766,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + (v.driverPhotoReselect ? `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Paketin dosyalarını yeniden seç${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/jpeg,image/png,image/webp" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : v.driverPhotoClear ? '<button class="btn block" data-drvclear>Bu mesajın eklerini kaldır ve yeniden hazırla</button>' : "") : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
-    [...new Set(v.questions)].map((q) => notice("info", "Soru: " + q)).join("") +
+    '<div data-model-questions>'+[...new Set(v.questions)].map((q) => notice("info", "Soru: " + q)).join("")+'</div>' +
     v.memory
       .map((r, i) => `<div class="card" data-kind="memory" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧠 Hafızaya ekle</b></label>
