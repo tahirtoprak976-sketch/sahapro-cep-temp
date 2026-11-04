@@ -204,5 +204,5 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  r.ok=!!r.ok&&confidenceReady(r,kind)&&!r.needsApproval&&(r.price_pending||!r.priceInfo?.ambiguous);
  return r;
 }
-export function confidenceValue(row,key,fallback){const f=row.fieldConfidence?.[key];return f?(f.rejected?null:f.level===CONFIDENCE.UNKNOWN?fallback:f.value):fallback;}
+export function confidenceValue(row,key,fallback){const f=row.fieldConfidence?.[key];return f?(f.level===CONFIDENCE.UNKNOWN?fallback:f.value):fallback;}
 export function invalidateConfidenceDate(row){if(row.fieldConfidence&&row.dateUnsure){if(!row.fieldConfidence.date?.suggestedValue)row.fieldConfidence.date=unknown('Mesaj/fişte tarih doğrulanmalı');delete row.fieldConfidence.effective_unit_price;}}
