@@ -47,29 +47,41 @@ export function bindAssistantReview(ctx,out,v,d){
   warning.textContent=row.issueText;warning.hidden=!row.issueText;
   let reason=qs('[data-confidence-reason]',card);if(!reason){reason=document.createElement('div');reason.dataset.confidenceReason='';reason.className='small muted';card.insertBefore(reason,qs('[data-record-details]',card));}const why=inferenceReason(r);reason.textContent=why?'Çıkarım: '+why:'';reason.hidden=!why;
  };
- const questionDrafts=new Map();
+ const questionDrafts=new Map(),unitDrafts=new Map();
+ let questionSignature=null,latestQuestions=[],latestRows=[];
+ // Tek dinleyici: kutu yeniden çizilse de her zaman en güncel soru ve satırlar kullanılır.
+ questionBox.addEventListener('input',ev=>{const input=ev.target.closest?.('[data-question-value]');if(input)questionDrafts.set(input.dataset.questionValue,input.value);const unit=ev.target.closest?.('[data-question-unit]');if(unit)unitDrafts.set(unit.dataset.questionUnit,unit.value);});
+ questionBox.addEventListener('click',ev=>{
+  if(ev.target.closest?.('[data-question-reply]')){qs('[data-msg]',ctx.root)?.focus();return;}
+  const button=ev.target.closest?.('[data-answer]');if(!button)return;
+  const questions=latestQuestions,rows=latestRows;
+  const q=questions.find(q=>q.key===button.dataset.answer),oi=button.dataset.option;if(!q)return;const target=rows.find(r=>r.key===q.targets[0].key);
+  const value=oi==='value'?(questionDrafts.get(q.key)??q.suggested??''):target?.options[q.field]?.[Number(oi)]?.value;
+  if(value===''||value==null)return;
+  for(const t of q.targets){const row=rows.find(r=>r.key===t.key);if(!row)continue;
+   // A shared answer is offered only for the same explicitly unresolved subject.
+   if(row.options[q.field]&&!row.options[q.field].some(o=>o.value===value))continue;
+   const updates={[q.field]:value};
+   if(q.fields?.includes('unit')){const unit=questionBox.querySelector('[data-question-unit="'+CSS.escape(q.key)+'"]')?.value;if(!unit)return;updates.unit=unit;}
+   v._workflow?.apply({key:t.key,updates},q.label+': '+value);
+  }
+  questionDrafts.delete(q.key);unitDrafts.delete(q.key);questionSignature=null;update();
+ });
  let updating=false;
  const update=()=>{if(updating||!panel.isConnected)return;updating=true;try{const rows=read(),totals=reviewTotals(rows);qs('[data-review-counts]',panel).textContent=`${totals.total} kayıt · ${totals.selected} seçili · ${totals.review} kontrol bekliyor${totals.duplicates?' · '+totals.duplicates+' olası mükerrer':''}`;
   qs('[data-review-expand]',panel).textContent=expanded?'Ayrıntıları kapat':'Tüm ayrıntıları aç';
   const questions=[...assistantQuestions(rows),...[...new Set(v.questions||[])].map((text,i)=>({key:'message:'+i,field:'message',label:text,targets:[]}))];questionBox.hidden=!questions.length;
+  // Soru kutusu yalnız soru kümesi değişince yeniden çizilir: başka bir alandaki "change" olayı Uygula tıklamasının ortasında düğmeyi değiştirmesin.
+  latestQuestions=questions;latestRows=rows;
+  const signature=JSON.stringify([questions.length,questions.slice(0,3).map(q=>[q.key,q.label,q.targets.map(t=>t.key),(rows.find(r=>r.key===q.targets[0]?.key)?.options[q.field]||[]).map(o=>[o.value,o.label]),q.suggested??null,q.fields,q.optional,(rows.find(r=>r.key===q.targets[0]?.key)?.options.unit||[]).map(o=>[o.value,o.label])])]);
+  if(signature!==questionSignature){questionSignature=signature;
   questionBox.innerHTML=questions.length?'<h3>Eksikleri birlikte tamamlayalım</h3>'+questions.slice(0,3).map((q,i)=>{
    if(q.field==='message')return `<p>${esc(q.label)} <button type="button" class="btn sm" data-question-reply>Mesajla cevapla</button></p>`;
    const target=rows.find(r=>r.key===q.targets[0].key),opts=target?.options[q.field]||[],suggested=q.suggested;
-   return `<div data-question="${esc(q.key)}"><p>${esc(q.label)} <span class="muted">(${q.targets.map(t=>(labels[t.kind]||t.kind)+' '+(t.index+1)).join(', ')})</span></p>${opts.map((o,j)=>`<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="${j}">${esc(o.label)}</button>`).join('')}${!opts.length?`<input data-question-value="${esc(q.key)}" type="${q.field==='date'?'date':['quantity','liters','unit_price','amount'].includes(q.field)?'number':'text'}" value="${esc(questionDrafts.get(q.key)??suggested??'')}" aria-label="${esc(q.label)}"><button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="value">Uygula</button>`:''}</div>`;
+   return `<div data-question="${esc(q.key)}"><p>${esc(q.label)} <span class="muted">(${q.targets.map(t=>(labels[t.kind]||t.kind)+' '+(t.index+1)).join(', ')})</span></p>${opts.map((o,j)=>`<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="${j}">${esc(o.label)}</button>`).join('')}${!opts.length?`<input data-question-value="${esc(q.key)}" type="${q.field==='date'?'date':['quantity','liters','unit_price','amount'].includes(q.field)?'number':'text'}" value="${esc(questionDrafts.get(q.key)??suggested??'')}" aria-label="${esc(q.label)}">${q.fields?.includes('unit')?`<select data-question-unit="${esc(q.key)}" aria-label="Birim">${(target?.options.unit||[]).map(o=>`<option value="${esc(o.value)}" ${o.value===(unitDrafts.get(q.key)||target.fields.unit||target.r.unit)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`:''}<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="value">Uygula</button>`:''}</div>`;
   }).join('')+(questions.length>3?`<p class="small">${questions.length-3} soru daha var; bu cevaplardan sonra sırayla gösterilecek.</p>`:''):'';
-  for(const input of questionBox.querySelectorAll('[data-question-value]'))input.oninput=()=>questionDrafts.set(input.dataset.questionValue,input.value);
-  for(const button of questionBox.querySelectorAll('[data-question-reply]'))button.onclick=()=>qs('[data-msg]',ctx.root)?.focus();
-  for(const button of questionBox.querySelectorAll('[data-answer]'))button.onclick=()=>{
-   const q=questions.find(q=>q.key===button.dataset.answer),oi=button.dataset.option;if(!q)return;const target=rows.find(r=>r.key===q.targets[0].key);
-   const value=oi==='value'?(questionDrafts.get(q.key)??q.suggested??''):target.options[q.field][Number(oi)].value;
-   if(value==='')return;
-   for(const t of q.targets){const row=rows.find(r=>r.key===t.key);if(!row)continue;
-    // A shared answer is offered only for the same explicitly unresolved subject.
-    if(row.options[q.field]&&!row.options[q.field].some(o=>o.value===value))continue;
-    v._workflow?.apply({key:t.key,updates:{[q.field]:value}},q.label+': '+value);
-   }
-   questionDrafts.delete(q.key);update();
-  };
+  }
+
 
   for(const row of rows)renderRow(row);
   const save=qs('[data-save]',out);if(save&&!save.disabled)save.textContent=totals.selected?'Onayla ve '+totals.selected+' kaydı kaydet':'Kaydetmek için kayıt seç';

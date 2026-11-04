@@ -11,12 +11,14 @@ export function assistantQuestions(rows){
   }
   if(r.calendarConflict||r.dateConflict)fields.add('date');
   if(r.sourceNeedsMaterial)fields.add('material');
+  const combined=row.kind==='work'&&fields.has('quantity');
+  if(combined)fields.delete('unit');
   for(const field of fields){
    const hint=field==='customer'?r.unknownCustomerLabel:field==='vehicle'?r.unknownVehicleLabel:null;
    const key=hint?field+':'+hint:row.kind+':'+row.index+':'+field;
-   const q=groups.get(key)||{key,field,label:hint?hint+' — '+(label[field]||field):label[field]||field,targets:[],suggested:r.fieldConfidence?.[raw[field]||field]?.suggestedValue??(field==='date'&&r.calendarConflict?r.date:null)};
+   const q=groups.get(key)||{key,field,fields:combined&&field==='quantity'?['quantity','unit']:[field],optional:!!(field==='quantity'&&r.contractIncluded),priority:({vehicle:0,customer:1,date:2}[field]??(field==='quantity'&&r.contractIncluded?9:4)),label:hint?hint+' — '+(label[field]||field):(field==='quantity'&&row.kind==='work'?(r.unit==='Saat'?'Miktar / süre: Kaç saat?':r.unit==='Sefer'?'Miktar: Kaç sefer?':'Miktar / süre: Kaç saat / sefer?'):label[field]||field),targets:[],suggested:r.fieldConfidence?.[raw[field]||field]?.suggestedValue??(field==='date'&&r.calendarConflict?r.date:null)};
    q.targets.push({kind:row.kind,index:row.index,key:row.key||row.kind+':'+row.index});groups.set(key,q);
   }
  }
- return [...groups.values()];
+ return [...groups.values()].sort((a,b)=>a.priority-b.priority);
 }

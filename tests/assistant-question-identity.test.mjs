@@ -8,3 +8,13 @@ assert.equal(JSON.stringify([a,b]),snapshot);
 reply=resolveDraftReply('2',[row(0,3)]);assert.equal(reply.type,'clarify');assert.equal(reply.updates,undefined);
 reply=resolveDraftReply('ikinci iş 2',[a,b]);assert.equal(reply.key,'work:1');assert.deepEqual(reply.updates,{quantity:2});
 console.log('bare numbers only answer open quantity questions; select options require tap; question/card/field identity PASS');
+
+const {assistantQuestions}=await import('../js/assistant-questions.js');
+const queue=assistantQuestions([
+ {kind:'work',index:0,missing:['quantity','unit'],fields:{},r:{contractIncluded:true}},
+ {kind:'work',index:1,missing:['quantity','unit','date','customer','vehicle'],fields:{},r:{}},
+]);
+assert.deepEqual(queue.slice(0,3).map(q=>q.field),['vehicle','customer','date']);
+const combined=queue.filter(q=>q.field==='quantity');assert.equal(combined.length,2);assert.ok(combined.every(q=>JSON.stringify(q.fields)==='["quantity","unit"]'));
+assert.equal(queue.at(-1).optional,true);assert.equal(queue.at(-1).targets[0].index,0);assert.equal(queue.some(q=>q.field==='unit'),false);
+console.log('blocking questions first; quantity + unit together; included-work duration last PASS');

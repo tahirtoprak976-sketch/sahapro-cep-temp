@@ -93,7 +93,7 @@ export function sourceCandidates(message,d,today){
     if(vehicle)fields.vehicle_id=explicitVehicles.length?CERTAIN(vehicle.id,'Satırdaki kayıtlı araç'):INFERRED(vehicle.id,'Gönderenin zimmetli aracı / aynı mesaj araç bağlamı');
     if(customer)fields.customer_id=cs.length?CERTAIN(customer.id,'Satırdaki tek müşteri eşleşmesi'):INFERRED(customer.id,inheritedSite?'Şantiyenin kayıtlı müşterisi':'Aynı iş bloğunun müşteri bağlamı');
     if(inheritedSite)fields.site_id=ss.length?CERTAIN(inheritedSite.id,'Satırdaki kayıtlı şantiye'):INFERRED(inheritedSite.id,'Aynı sefer bloğunun şantiyesi');
-    row[PROOF]={sender:line.sender,unknownVehicle:unknownVehicle?unknownMachine[0]:null,unknownCustomer:place53?'Mimar Kemal 53':newCustomer,place:place53?'Mimar Kemal 53':null,weekdayConflict:line.weekdayConflict,fields};works.push(row);
+    row[PROOF]={sender:line.sender,unknownVehicle:unknownVehicle?unknownMachine[0]:null,unknownCustomer:place53?'Mimar Kemal 53':newCustomer,place:place53?'Mimar Kemal 53':null,weekdayConflict:line.weekdayConflict,includedWork:norm(customer?.name)==='lale yokusu 12'&&/hafriyat yukle/.test(n)&&/u36|ekskavator/.test(norm((vehicle?.name||'')+' '+(vehicle?.type||''))),fields};works.push(row);
    }
   }
  }

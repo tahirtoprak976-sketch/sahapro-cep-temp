@@ -658,6 +658,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     if(!w.quote||quoteFound(w.quote,message))fillWorkEvidence(r,{d,text:evidenceText,hasUnknownName:nameInMessage(d,evidenceText),negative:negatives.some(n=>n.alias&&quoteFound(n.alias,evidenceText))});
     const operational=sourceProof(w);
     if(operational&&!fromDriver){
+      if(operational.includedWork)r.contractIncluded=true;
       const provenSite=(d.sites||[]).find(s=>s.id===operational.fields.site_id?.value&&s.customer_id===r.customer_id);
       if(provenSite&&!r.site_id){r.site_id=provenSite.id;r.siteHint=null;for(let i=issues.length-1;i>=0;i--)if(/^Şantiye .*mesajda yazmıyor/.test(issues[i]))issues.splice(i,1);}
       for(const [field,info]of Object.entries(operational.fields))if(r[field]===info.value)r._fieldEvidence[field]=info;
