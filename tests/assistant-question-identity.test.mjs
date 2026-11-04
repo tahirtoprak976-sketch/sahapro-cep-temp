@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {resolveDraftReply} from '../js/assistant-workflow.js';
+const row=(index,q=null)=>({key:'work:'+index,kind:'work',index,label:'İş '+(index+1),fields:{date:'2026-11-04',customer:'C',vehicle:'V',work_type:'Makine Çalışması',quantity:q,unit:'Saat'},options:{customer:[{value:'2',label:'İkinci müşteri'}]}});
+let a=row(0),b=row(1);const snapshot=JSON.stringify([a,b]);
+let reply=resolveDraftReply('2',[a]);assert.equal(reply.type,'apply');assert.equal(reply.question_id,'work:0:quantity');assert.deepEqual(reply.updates,{quantity:2});
+reply=resolveDraftReply('2',[a,b]);assert.equal(reply.type,'choose');assert.equal(reply.message,'Hangi iş için?');assert.deepEqual(reply.choices.map(x=>x.question_id),['work:0:quantity','work:1:quantity']);
+assert.equal(JSON.stringify([a,b]),snapshot);
+reply=resolveDraftReply('2',[row(0,3)]);assert.equal(reply.type,'clarify');assert.equal(reply.updates,undefined);
+reply=resolveDraftReply('ikinci iş 2',[a,b]);assert.equal(reply.key,'work:1');assert.deepEqual(reply.updates,{quantity:2});
+console.log('bare numbers only answer open quantity questions; select options require tap; question/card/field identity PASS');

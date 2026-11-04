@@ -27,6 +27,9 @@ with sync_playwright() as w:
    assert page.locator('[data-kind=work]').count()==2
    first=page.locator('[data-kind=work][data-i="0"]');second=page.locator('[data-kind=work][data-i="1"]');first.locator('[data-record-details]').evaluate('e=>e.open=true');first.locator('[name=description]').fill('TEST preserve manual edit');before_first=first.locator('[name=customer]').input_value()
    q=box.locator('[data-question]').filter(has_text='Miktar');assert q.count()==1;q.locator('input').fill('2');q.locator('[data-answer]').click()
+   observed={'quantity':second.locator('[name=quantity]').input_value(),'checked':second.locator('[data-pick]').is_checked(),'errors':errors,'questions':box.inner_text()}
+   if observed['quantity']!='2' or observed['checked']:
+    Path('/tmp/solo-questions101').mkdir(exist_ok=True);page.screenshot(path='/tmp/solo-questions101/failed-answer.png',full_page=True);Path('/tmp/solo-questions101/failed-answer.json').write_text(json.dumps(observed,ensure_ascii=False,indent=2));print(json.dumps(observed,ensure_ascii=False),flush=True)
    assert second.locator('[name=quantity]').input_value()=='2' and not second.locator('[data-pick]').is_checked()
    assert first.locator('[name=description]').input_value()=='TEST preserve manual edit' and first.locator('[name=customer]').input_value()==before_first
   if case_id=='r19':

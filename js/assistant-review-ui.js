@@ -47,6 +47,7 @@ export function bindAssistantReview(ctx,out,v,d){
   warning.textContent=row.issueText;warning.hidden=!row.issueText;
   let reason=qs('[data-confidence-reason]',card);if(!reason){reason=document.createElement('div');reason.dataset.confidenceReason='';reason.className='small muted';card.insertBefore(reason,qs('[data-record-details]',card));}const why=inferenceReason(r);reason.textContent=why?'Çıkarım: '+why:'';reason.hidden=!why;
  };
+ const questionDrafts=new Map();
  let updating=false;
  const update=()=>{if(updating||!panel.isConnected)return;updating=true;try{const rows=read(),totals=reviewTotals(rows);qs('[data-review-counts]',panel).textContent=`${totals.total} kayıt · ${totals.selected} seçili · ${totals.review} kontrol bekliyor${totals.duplicates?' · '+totals.duplicates+' olası mükerrer':''}`;
   qs('[data-review-expand]',panel).textContent=expanded?'Ayrıntıları kapat':'Tüm ayrıntıları aç';
@@ -54,19 +55,20 @@ export function bindAssistantReview(ctx,out,v,d){
   questionBox.innerHTML=questions.length?'<h3>Eksikleri birlikte tamamlayalım</h3>'+questions.slice(0,3).map((q,i)=>{
    if(q.field==='message')return `<p>${esc(q.label)} <button type="button" class="btn sm" data-question-reply>Mesajla cevapla</button></p>`;
    const target=rows.find(r=>r.key===q.targets[0].key),opts=target?.options[q.field]||[],suggested=q.suggested;
-   return `<div data-question="${i}"><p>${esc(q.label)} <span class="muted">(${q.targets.map(t=>(labels[t.kind]||t.kind)+' '+(t.index+1)).join(', ')})</span></p>${opts.map((o,j)=>`<button type="button" class="btn sm" data-answer="${i}:${j}">${esc(o.label)}</button>`).join('')}${!opts.length?`<input data-question-value="${i}" type="${q.field==='date'?'date':['quantity','liters','unit_price','amount'].includes(q.field)?'number':'text'}" value="${esc(suggested??'')}" aria-label="${esc(q.label)}"><button type="button" class="btn sm" data-answer="${i}:value">Uygula</button>`:''}</div>`;
+   return `<div data-question="${esc(q.key)}"><p>${esc(q.label)} <span class="muted">(${q.targets.map(t=>(labels[t.kind]||t.kind)+' '+(t.index+1)).join(', ')})</span></p>${opts.map((o,j)=>`<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="${j}">${esc(o.label)}</button>`).join('')}${!opts.length?`<input data-question-value="${esc(q.key)}" type="${q.field==='date'?'date':['quantity','liters','unit_price','amount'].includes(q.field)?'number':'text'}" value="${esc(questionDrafts.get(q.key)??suggested??'')}" aria-label="${esc(q.label)}"><button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="value">Uygula</button>`:''}</div>`;
   }).join('')+(questions.length>3?`<p class="small">${questions.length-3} soru daha var; bu cevaplardan sonra sırayla gösterilecek.</p>`:''):'';
+  for(const input of questionBox.querySelectorAll('[data-question-value]'))input.oninput=()=>questionDrafts.set(input.dataset.questionValue,input.value);
   for(const button of questionBox.querySelectorAll('[data-question-reply]'))button.onclick=()=>qs('[data-msg]',ctx.root)?.focus();
   for(const button of questionBox.querySelectorAll('[data-answer]'))button.onclick=()=>{
-   const [qi,oi]=button.dataset.answer.split(':'),q=questions[Number(qi)],target=rows.find(r=>r.key===q.targets[0].key);
-   const value=oi==='value'?questionBox.querySelector(`[data-question-value="${qi}"]`).value:target.options[q.field][Number(oi)].value;
+   const q=questions.find(q=>q.key===button.dataset.answer),oi=button.dataset.option;if(!q)return;const target=rows.find(r=>r.key===q.targets[0].key);
+   const value=oi==='value'?(questionDrafts.get(q.key)??q.suggested??''):target.options[q.field][Number(oi)].value;
    if(value==='')return;
    for(const t of q.targets){const row=rows.find(r=>r.key===t.key);if(!row)continue;
     // A shared answer is offered only for the same explicitly unresolved subject.
     if(row.options[q.field]&&!row.options[q.field].some(o=>o.value===value))continue;
     v._workflow?.apply({key:t.key,updates:{[q.field]:value}},q.label+': '+value);
    }
-   update();
+   questionDrafts.delete(q.key);update();
   };
 
   for(const row of rows)renderRow(row);
@@ -74,7 +76,7 @@ export function bindAssistantReview(ctx,out,v,d){
  }finally{updating=false;}};
  qs('[data-review-expand]',panel).onclick=()=>{expanded=!expanded;for(const c of cards)qs('[data-record-details]',c)?.toggleAttribute('open',expanded);try{localStorage.setItem(DETAIL_PREFERENCE,expanded?'expanded':'compact');}catch{}update();};
  qs('[data-review-compose]',panel).onclick=()=>{const msg=qs('[data-msg]',ctx.root);msg.focus();};
- out.addEventListener('input',ev=>{if(!questionBox.contains(ev.target))update();});out.addEventListener('change',ev=>{if(!questionBox.contains(ev.target))update();});out.addEventListener('click',()=>queueMicrotask(update));update();
+ out.addEventListener('input',ev=>{if(!questionBox.contains(ev.target))update();});out.addEventListener('change',ev=>{if(!questionBox.contains(ev.target))update();});out.addEventListener('click',ev=>{if(!questionBox.contains(ev.target))queueMicrotask(update);});update();
  // Existing live validation can change warnings without dispatching an input event.
  const watched=cards.flatMap(c=>[...c.querySelectorAll('[data-row-issues],[data-fuelout-issues]')]);
  const obs=new MutationObserver(()=>{if(!out.isConnected)obs.disconnect();else update();});for(const el of watched)obs.observe(el,{childList:true,subtree:true,characterData:true});
