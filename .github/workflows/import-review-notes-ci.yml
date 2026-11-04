@@ -142,7 +142,7 @@ jobs:
             echo 'Baseline unexpectedly passed the registered-sender date regression'
             exit 1
           fi
-          rg 'Invalid body date cannot fall back to a checked header date' /tmp/solo-source-date-baseline.log
+          grep -F 'Invalid body date cannot fall back to a checked header date' /tmp/solo-source-date-baseline.log
 
       - name: Measure pseudonymized owner corpus separately from Gemini
         run: |
