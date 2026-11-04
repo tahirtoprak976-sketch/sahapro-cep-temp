@@ -1,0 +1,4132 @@
+{
+  "version": "v3.10.00",
+  "mode": "local-parser",
+  "realGemini": false,
+  "proposalOrigin": {
+    "version": "SAHAPRO SOLO v3.10.00",
+    "baseCommit": "59b571c71937ae46c70148cad1f72217c1d83c28",
+    "origin": "unchanged local parser -> untrusted plan bridge",
+    "realGemini": false,
+    "oracleUsed": false
+  },
+  "categories": {
+    "Gönderen ve tek iş": {
+      "messages": 4,
+      "expectedCards": 4,
+      "actualCards": 4,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 5,
+      "missedQuestions": 0,
+      "wrongFields": 7,
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 1
+    },
+    "Yakıt / yük ayrımı": {
+      "messages": 3,
+      "expectedCards": 4,
+      "actualCards": 3,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 1,
+      "wrongFields": 4,
+      "missingCards": 1,
+      "extraCards": 0,
+      "silentWrong": 0
+    },
+    "Çok iş / eşleşme": {
+      "messages": 3,
+      "expectedCards": 7,
+      "actualCards": 7,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 4,
+      "missedQuestions": 0,
+      "wrongFields": 11,
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 3
+    },
+    "Mesai": {
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": 4,
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0
+    },
+    "Sefer / döküm / patron": {
+      "messages": 4,
+      "expectedCards": 11,
+      "actualCards": 5,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 6,
+      "missedQuestions": 0,
+      "wrongFields": 25,
+      "missingCards": 6,
+      "extraCards": 0,
+      "silentWrong": 0
+    },
+    "Eksik / ortak bilgi": {
+      "messages": 3,
+      "expectedCards": 8,
+      "actualCards": 6,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 3,
+      "missedQuestions": 4,
+      "wrongFields": 19,
+      "missingCards": 2,
+      "extraCards": 0,
+      "silentWrong": 1
+    },
+    "Sözleşme": {
+      "messages": 2,
+      "expectedCards": 3,
+      "actualCards": 2,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": 4,
+      "missingCards": 1,
+      "extraCards": 0,
+      "silentWrong": 0
+    }
+  },
+  "totals": {
+    "messages": 20,
+    "expectedCards": 38,
+    "actualCards": 28,
+    "readyCorrect": 0,
+    "unnecessaryQuestions": 24,
+    "missedQuestions": 5,
+    "wrongFields": 74,
+    "missingCards": 10,
+    "extraCards": 0,
+    "silentWrong": 5
+  },
+  "failureReasons": {
+    "personnel": 23,
+    "vehicle": 14,
+    "vehicle_level": 1,
+    "customer": 6,
+    "site": 6,
+    "source": 4,
+    "quantity": 1,
+    "unit": 1,
+    "note": 2,
+    "quarry": 2,
+    "material": 9,
+    "customer_level": 2,
+    "dump": 2,
+    "price": 1
+  },
+  "details": [
+    {
+      "id": "r01",
+      "category": "Gönderen ve tek iş",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Kadir",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 1,
+      "questions": [],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": true,
+          "wrongFields": [
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-10-29",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "site_id": null,
+          "work_type": "Manitou Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "raw_message": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_MANITOU",
+                "name": "Manitou",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 28,
+                    "end": 35
+                  },
+                  "text": "Manitou",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_KENTA",
+                "name": "Kenta Evleri",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 36,
+                    "end": 48
+                  },
+                  "text": "kenta evleri",
+                  "via": "alias"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Kadir",
+                "name": "Kadir Yılmaz",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 26
+                  },
+                  "text": "Kadir Yılmaz",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 49,
+                "end": 55
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r01",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": true,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r02",
+      "category": "Gönderen ve tek iş",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_MANITOU",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle_level",
+          "want": "ÇIKARIM (gönderenin zimmetli aracı)",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Sinan",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "work_type",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "vehicle",
+            "vehicle_level",
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-10-30",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "work_type": null,
+          "quantity": 2.5,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "raw_message": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LENA",
+                "name": "Lena",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 25,
+                    "end": 29
+                  },
+                  "text": "Lena",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Sinan",
+                "name": "Sinan Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 23
+                  },
+                  "text": "Sinan Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 30,
+                "end": 38
+              },
+              "text": "2.5 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 2.5 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r02",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r03",
+      "category": "Gönderen ve tek iş",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 1,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Hakan",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "work_type",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "vehicle",
+          "expectedRows": [
+            0
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-10-30",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "raw_message": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LENA",
+                "name": "Lena",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 21,
+                    "end": 25
+                  },
+                  "text": "Lena",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Hakan",
+                "name": "Babam = Hakan abi",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 19
+                  },
+                  "text": "Babam",
+                  "via": "spelling_candidate"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 26,
+                "end": 32
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r03",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r04",
+      "category": "Yakıt / yük ayrımı",
+      "messages": 1,
+      "expectedCards": 2,
+      "actualCards": 2,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "customer",
+          "want": "TEST_REAL_CUSTOMER_BERKAY",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "site",
+          "want": "TEST_REAL_SITE_PARKVISTA",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Nazım",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "source",
+          "want": "Depo Tankı",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "customer",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "source",
+          "actualRows": [
+            1
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "site",
+            "personnel"
+          ]
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "source"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-10-31",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "customer_id": null,
+          "site_id": null,
+          "work_type": "Makine Çalışması",
+          "quantity": 1,
+          "unit": "Yevmiye",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "raw_message": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "notes": [
+            "\"tam gün\" yevmiye olarak önerildi; onay gerekli"
+          ],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_EKS14",
+                "name": "14 Ton Ekskavatör",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 25,
+                    "end": 41
+                  },
+                  "text": "14 tonluk makine",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_PARKVISTA",
+                "name": "Park Vista Sitesi",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 47,
+                    "end": 52
+                  },
+                  "text": "vista",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Nazım",
+                "name": "Nazım Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 23
+                  },
+                  "text": "Nazım Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 85,
+                "end": 92
+              },
+              "text": "tam gün",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: tam gün"
+          },
+          "inference_confirmed": false,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r04",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": "\"tam gün\" yevmiye olarak önerildi; onay gerekli"
+        },
+        {
+          "date": "2026-10-31",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "customer_id": null,
+          "site_id": null,
+          "work_type": null,
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": 150,
+          "description": "150lt mazot alındı şantiyeden",
+          "raw_message": "150lt mazot alındı şantiyeden",
+          "notes": [],
+          "kind": "fuel",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_EKS14",
+                "name": "14 Ton Ekskavatör",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 25,
+                    "end": 41
+                  },
+                  "text": "14 tonluk makine",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_PARKVISTA",
+                "name": "Park Vista Sitesi",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 47,
+                    "end": 52
+                  },
+                  "text": "vista",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Nazım",
+                "name": "Nazım Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 23
+                  },
+                  "text": "Nazım Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 94,
+                "end": 99
+              },
+              "text": "150lt",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 150lt"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r04",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": 150,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r05",
+      "category": "Çok iş / eşleşme",
+      "messages": 1,
+      "expectedCards": 3,
+      "actualCards": 3,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 1,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Orhan",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Orhan",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Orhan",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 2,
+      "questions": [
+        {
+          "field": "work_type",
+          "actualRows": [
+            1
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": true,
+          "wrongFields": [
+            "personnel"
+          ]
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "personnel"
+          ]
+        },
+        {
+          "actualRow": 2,
+          "checked": true,
+          "wrongFields": [
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-10-31",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+          "site_id": null,
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "raw_message": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "notes": [
+            "İş türü makine saatine göre JCB Çalışması önerildi; doğrulayın"
+          ],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_JCB",
+                "name": "JCB",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 30,
+                    "end": 39
+                  },
+                  "text": "Jcb kepce",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_YILDIZ",
+                "name": "Yıldız İnşaat",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 40,
+                    "end": 50
+                  },
+                  "text": "yıldız oto",
+                  "via": "alias"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_PARKVISTA",
+                "name": "Park Vista Sitesi",
+                "via": "context_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 70,
+                    "end": 87
+                  },
+                  "text": "Park vista sitesi",
+                  "via": "exact_name"
+                }
+              },
+              {
+                "id": "TEST_REAL_SITE_HAMIDIYE",
+                "name": "Hamidiye su yanı",
+                "via": "context_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 119,
+                    "end": 135
+                  },
+                  "text": "Hamidiye su yanı",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Orhan",
+                "name": "Orhan Operatör",
+                "via": "ascii_fold",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 28
+                  },
+                  "text": "Orhan Operator",
+                  "via": "ascii_fold"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 63,
+                "end": 69
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r05",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": true,
+          "liters": null,
+          "source": null,
+          "note": "İş türü makine saatine göre JCB Çalışması önerildi; doğrulayın"
+        },
+        {
+          "date": "2026-10-31",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "work_type": null,
+          "quantity": 2,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "raw_message": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_JCB",
+                "name": "JCB",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 30,
+                    "end": 39
+                  },
+                  "text": "Jcb kepce",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_BERKAY",
+                "name": "Berkay Bey",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 18,
+                    "end": 29
+                  },
+                  "text": "berkay beye",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_PARKVISTA",
+                "name": "Park Vista Sitesi",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 0,
+                    "end": 17
+                  },
+                  "text": "Park vista sitesi",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Orhan",
+                "name": "Orhan Operatör",
+                "via": "ascii_fold",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 28
+                  },
+                  "text": "Orhan Operator",
+                  "via": "ascii_fold"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 112,
+                "end": 118
+              },
+              "text": "2 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 2 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r05",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-31",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+          "site_id": "TEST_REAL_SITE_HAMIDIYE",
+          "work_type": "Tesviye",
+          "quantity": 1.5,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "raw_message": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_JCB",
+                "name": "JCB",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 30,
+                    "end": 39
+                  },
+                  "text": "Jcb kepce",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_ERKAN",
+                "name": "Erkan",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 17,
+                    "end": 22
+                  },
+                  "text": "erkan",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_HAMIDIYE",
+                "name": "Hamidiye su yanı",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 0,
+                    "end": 16
+                  },
+                  "text": "Hamidiye su yanı",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Orhan",
+                "name": "Orhan Operatör",
+                "via": "ascii_fold",
+                "evidence": {
+                  "span": {
+                    "start": 14,
+                    "end": 28
+                  },
+                  "text": "Orhan Operator",
+                  "via": "ascii_fold"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 163,
+                "end": 171
+              },
+              "text": "1.5 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1.5 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 2,
+          "source_message_id": "r05",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": true,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r06",
+      "category": "Mesai",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Nazım",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "quantity",
+          "want": 1,
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "unit",
+          "want": "Yevmiye",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "note",
+          "want": "pazar mesaisi (personel ücreti; müşteri fiyatı değişmez)",
+          "got": ""
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "quantity",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "unit",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "personnel",
+            "quantity",
+            "unit",
+            "note"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-01",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "work_type": "Makine Çalışması",
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "raw_message": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_EKS14",
+                "name": "14 Ton Ekskavatör",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 40
+                  },
+                  "text": "14 tonluk makine",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_BERKAY",
+                "name": "Berkay Bey",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 59,
+                    "end": 69
+                  },
+                  "text": "berkay bey",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_PARKVISTA",
+                "name": "Park Vista Sitesi",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 41,
+                    "end": 58
+                  },
+                  "text": "Park vista sitesi",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Nazım",
+                "name": "Nazım Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Nazım Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": null,
+            "unit_price": null
+          },
+          "field_sources": {},
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r06",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r07",
+      "category": "Sefer / döküm / patron",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Bekir",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "quarry",
+          "want": "TEST_REAL_quarries_OZTEPE",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "material",
+          "want": "taş",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "note",
+          "want": "pazar mesaisi",
+          "got": ""
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "work_type",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "vehicle",
+            "personnel",
+            "quarry",
+            "material",
+            "note"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-01",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "raw_message": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_BERKAY",
+                "name": "Berkay Bey",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 71,
+                    "end": 81
+                  },
+                  "text": "berkay bey",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_PARKVISTA",
+                "name": "Park Vista Sitesi",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 53,
+                    "end": 70
+                  },
+                  "text": "park vista sitesi",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Bekir",
+                "name": "Bekir Tırcı",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 24
+                  },
+                  "text": "Bekir Tırcı",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 41,
+                "end": 48
+              },
+              "text": "1 sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r07",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r08",
+      "category": "Yakıt / yük ayrımı",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 0,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 1,
+      "wrongFields": [],
+      "missingCards": 1,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [],
+      "expectedQuestions": [
+        {
+          "field": "date",
+          "expectedRows": [
+            0
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        null
+      ],
+      "actual": []
+    },
+    {
+      "id": "r09",
+      "category": "Sefer / döküm / patron",
+      "messages": 1,
+      "expectedCards": 3,
+      "actualCards": 3,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "customer",
+          "want": "new:İmrek Mustafa",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Bekir",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "quarry",
+          "want": "TEST_REAL_quarries_ENTA",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "material",
+          "want": "mıcır",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "customer",
+          "want": "TEST_REAL_CUSTOMER_AYK",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "site",
+          "want": "TEST_REAL_SITE_CERRAH",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "customer_level",
+          "want": "ÇIKARIM (Cerrahpaşa şantiyesi AYK Mimarlık'ın)",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Bekir",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "material",
+          "want": "hafriyat",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "dump",
+          "want": "TEST_REAL_DUMP_OWN",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "customer",
+          "want": "TEST_REAL_CUSTOMER_AYK",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "site",
+          "want": "TEST_REAL_SITE_CERRAH",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Bekir",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "material",
+          "want": "hafriyat",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "dump",
+          "want": "TEST_REAL_dump_sites_BOLUCA",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "customer",
+          "actualRows": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "field": "work_type",
+          "actualRows": [
+            1,
+            2
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "customer",
+          "expectedRows": [
+            0
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "vehicle",
+            "personnel",
+            "quarry",
+            "material"
+          ]
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "site",
+            "customer_level",
+            "vehicle",
+            "personnel",
+            "material",
+            "dump"
+          ]
+        },
+        {
+          "actualRow": 2,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "site",
+            "vehicle",
+            "personnel",
+            "material",
+            "dump"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": null,
+          "site_id": null,
+          "work_type": "Mıcır Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "raw_message": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_CERRAH",
+                "name": "Cerrahpaşa",
+                "via": "context_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 75,
+                    "end": 84
+                  },
+                  "text": "Cerahpaşa",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Bekir",
+                "name": "Bekir Tırcı",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 24
+                  },
+                  "text": "Bekir Tırcı",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 34,
+                "end": 40
+              },
+              "text": "1sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r09",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": null,
+          "site_id": null,
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "Cerahpaşa 1sefer harfiyat santiye",
+          "raw_message": "Cerahpaşa 1sefer harfiyat santiye",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_CERRAH",
+                "name": "Cerrahpaşa",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 0,
+                    "end": 9
+                  },
+                  "text": "Cerahpaşa",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Bekir",
+                "name": "Bekir Tırcı",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 24
+                  },
+                  "text": "Bekir Tırcı",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 85,
+                "end": 91
+              },
+              "text": "1sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r09",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": null,
+          "site_id": null,
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "dump_area": "buluca",
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "1sefer buluca döküm",
+          "raw_message": "1sefer buluca döküm",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_CERRAH",
+                "name": "Cerrahpaşa",
+                "via": "context_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 75,
+                    "end": 84
+                  },
+                  "text": "Cerahpaşa",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Bekir",
+                "name": "Bekir Tırcı",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 24
+                  },
+                  "text": "Bekir Tırcı",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 110,
+                "end": 116
+              },
+              "text": "1sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 2,
+          "source_message_id": "r09",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r10",
+      "category": "Eksik / ortak bilgi",
+      "messages": 1,
+      "expectedCards": 2,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 1,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Orhan",
+          "got": null
+        }
+      ],
+      "missingCards": 1,
+      "extraCards": 0,
+      "silentWrong": 1,
+      "questions": [],
+      "expectedQuestions": [
+        {
+          "field": "quantity",
+          "expectedRows": [
+            1
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": true,
+          "wrongFields": [
+            "personnel"
+          ]
+        },
+        null
+      ],
+      "actual": [
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "customer_id": "TEST_REAL_CUSTOMER_NATURA",
+          "site_id": null,
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "raw_message": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_JCB",
+                "name": "JCB",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 38
+                  },
+                  "text": "Jcb kepce",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_NATURA",
+                "name": "Natura Peyzaj",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 39,
+                    "end": 55
+                  },
+                  "text": "natura peysajdan",
+                  "via": "alias"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Orhan",
+                "name": "Orhan Operatör",
+                "via": "ascii_fold",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Orhan Operator",
+                  "via": "ascii_fold"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 83,
+                "end": 89
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r10",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": true,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r11",
+      "category": "Sözleşme",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 1,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_KMYT",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Selim",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "material",
+          "want": "çöp",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "vehicle",
+            "personnel",
+            "material"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Çöp Nakliye",
+          "quantity": 4,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "raw_message": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_KMYT",
+                "name": "Kamyonet",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 39
+                  },
+                  "text": "Kamyonetle",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 40,
+                    "end": 54
+                  },
+                  "text": "lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Selim",
+                "name": "Selim Operatör",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Selim Operatör",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 59,
+                "end": 66
+              },
+              "text": "4 sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 4 sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r11",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r12",
+      "category": "Sözleşme",
+      "messages": 1,
+      "expectedCards": 2,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 1,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 1,
+          "actualRow": 0,
+          "field": "source",
+          "want": "Depo Tankı",
+          "got": null
+        }
+      ],
+      "missingCards": 1,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "source",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        null,
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "source"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Hafriyat Nakliye",
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": 38,
+          "description": "[2/11 19:45] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden",
+          "raw_message": "[2/11 19:45] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden",
+          "notes": [],
+          "kind": "fuel",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_U36",
+                "name": "U36",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 27
+                  },
+                  "text": "U36",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 28,
+                    "end": 42
+                  },
+                  "text": "Lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Nazım",
+                "name": "Nazım Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Nazım Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 60,
+                "end": 64
+              },
+              "text": "38lt",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 38lt"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r12",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": 38,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r13",
+      "category": "Sefer / döküm / patron",
+      "messages": 1,
+      "expectedCards": 4,
+      "actualCards": 0,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [],
+      "missingCards": 4,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        null,
+        null,
+        null,
+        null
+      ],
+      "actual": []
+    },
+    {
+      "id": "r14",
+      "category": "Çok iş / eşleşme",
+      "messages": 1,
+      "expectedCards": 2,
+      "actualCards": 2,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_MANITOU",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Sinan",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "site",
+          "want": "new:Cemal Duman'ın evinin arkası",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_MANITOU",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Sinan",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0,
+            1
+          ]
+        },
+        {
+          "field": "work_type",
+          "actualRows": [
+            0,
+            1
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "vehicle",
+            "personnel"
+          ]
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "site",
+            "vehicle",
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "work_type": null,
+          "quantity": 3,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "raw_message": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "notes": [
+            "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+          ],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LENA",
+                "name": "Lena",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 28
+                  },
+                  "text": "Lena",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Sinan",
+                "name": "Sinan Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Sinan Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 29,
+                "end": 35
+              },
+              "text": "3 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 3 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r14",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+        },
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_VELI",
+          "site_id": null,
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "raw_message": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_VELI",
+                "name": "Veli Müteahhit",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 44
+                  },
+                  "text": "veli müteahhite",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Sinan",
+                "name": "Sinan Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Sinan Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 112,
+                "end": 118
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r14",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r15",
+      "category": "Yakıt / yük ayrımı",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": []
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-02",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "customer_id": null,
+          "site_id": null,
+          "work_type": "Manitou Çalışması",
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": 140,
+          "description": "[2/11 20:07] Sinan Abi: Manitou 140 litre mazot depodan alındı",
+          "raw_message": "[2/11 20:07] Sinan Abi: Manitou 140 litre mazot depodan alındı",
+          "notes": [],
+          "kind": "fuel",
+          "fuel_source": "Depo Tankı",
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_MANITOU",
+                "name": "Manitou",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 31
+                  },
+                  "text": "Manitou",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "customer_id": [],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Sinan",
+                "name": "Sinan Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Sinan Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 32,
+                "end": 41
+              },
+              "text": "140 litre",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 140 litre"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r15",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": 140,
+          "source": "Depo Tankı",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r16",
+      "category": "Eksik / ortak bilgi",
+      "messages": 1,
+      "expectedCards": 3,
+      "actualCards": 3,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 1,
+      "missedQuestions": 1,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_KMYT",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Selim",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "material",
+          "want": "moloz",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "customer",
+          "want": null,
+          "got": "TEST_REAL_CUSTOMER_LALE12"
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "site",
+          "want": "Mimar Kemal 53",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_KMYT",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Selim",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "material",
+          "want": "moloz",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "customer",
+          "want": null,
+          "got": "TEST_REAL_CUSTOMER_LALE12"
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "site",
+          "want": "Mimar Kemal 53",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_KMYT",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Selim",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 2,
+          "field": "material",
+          "want": "hafriyat",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "customer",
+          "expectedRows": [
+            1,
+            2
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "vehicle",
+            "personnel",
+            "material"
+          ]
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "site",
+            "vehicle",
+            "personnel",
+            "material"
+          ]
+        },
+        {
+          "actualRow": 2,
+          "checked": false,
+          "wrongFields": [
+            "customer",
+            "site",
+            "vehicle",
+            "personnel",
+            "material"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "raw_message": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_KMYT",
+                "name": "Kamyonet",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 39
+                  },
+                  "text": "Kamyonetle",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 40,
+                    "end": 54
+                  },
+                  "text": "lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Selim",
+                "name": "Selim Operatör",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Selim Operatör",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 59,
+                "end": 66
+              },
+              "text": "1 sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r16",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "Mimar Kemal 53 numaradan 1 sefer moloz ",
+          "raw_message": "Mimar Kemal 53 numaradan 1 sefer moloz",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_KMYT",
+                "name": "Kamyonet",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 39
+                  },
+                  "text": "Kamyonetle",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 40,
+                    "end": 54
+                  },
+                  "text": "lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Selim",
+                "name": "Selim Operatör",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Selim Operatör",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 106,
+                "end": 113
+              },
+              "text": "1 sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r16",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Hafriyat Nakliye",
+          "quantity": 2,
+          "unit": "Sefer",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "2 sefer hafriyat alındı",
+          "raw_message": "2 sefer hafriyat alındı",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_KMYT",
+                "name": "Kamyonet",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 39
+                  },
+                  "text": "Kamyonetle",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 40,
+                    "end": 54
+                  },
+                  "text": "lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Selim",
+                "name": "Selim Operatör",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Selim Operatör",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 120,
+                "end": 127
+              },
+              "text": "2 sefer",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 2 sefer"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 2,
+          "source_message_id": "r16",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r17",
+      "category": "Sefer / döküm / patron",
+      "messages": 1,
+      "expectedCards": 3,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 2,
+          "actualRow": 0,
+          "field": "source",
+          "want": "Depo Tankı",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_TIR",
+          "got": null
+        }
+      ],
+      "missingCards": 2,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "source",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        null,
+        null,
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "source",
+            "vehicle"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": null,
+          "site_id": null,
+          "work_type": null,
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": 150,
+          "description": "Şantiyeden 150 litre mazot aldım",
+          "raw_message": "Şantiyeden 150 litre mazot aldım",
+          "notes": [],
+          "kind": "fuel",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_CERRAH",
+                "name": "Cerrahpaşa",
+                "via": "spelling_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 26,
+                    "end": 35
+                  },
+                  "text": "Cerahpaşa",
+                  "via": "spelling_candidate"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Bekir",
+                "name": "Bekir Tırcı",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 24
+                  },
+                  "text": "Bekir Tırcı",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 111,
+                "end": 120
+              },
+              "text": "150 litre",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 150 litre"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r17",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": 150,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r18",
+      "category": "Çok iş / eşleşme",
+      "messages": 1,
+      "expectedCards": 2,
+      "actualCards": 2,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 1,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Orhan",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "customer_level",
+          "want": "takma ad: Kentorman",
+          "got": null
+        },
+        {
+          "expectedRow": 1,
+          "actualRow": 1,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Orhan",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 1,
+      "questions": [
+        {
+          "field": "work_type",
+          "actualRows": [
+            1
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": true,
+          "wrongFields": [
+            "personnel"
+          ]
+        },
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "customer_level",
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "customer_id": "TEST_REAL_CUSTOMER_SADIK",
+          "site_id": "TEST_REAL_SITE_KEMER",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "raw_message": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_JCB",
+                "name": "JCB",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 38
+                  },
+                  "text": "Jcb kepce",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_SADIK",
+                "name": "Sadık Abi",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 51,
+                    "end": 60
+                  },
+                  "text": "sadık abi",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_KEMER",
+                "name": "Kemerburgaz",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 39,
+                    "end": 50
+                  },
+                  "text": "kemerburgaz",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Orhan",
+                "name": "Orhan Operatör",
+                "via": "ascii_fold",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Orhan Operator",
+                  "via": "ascii_fold"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 74,
+                "end": 80
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r18",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": true,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "site_id": "TEST_REAL_SITE_KEMER",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "Kentorman mıcır tesviye 1saat",
+          "raw_message": "Kentorman mıcır tesviye 1saat",
+          "notes": [
+            "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+          ],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_JCB",
+                "name": "JCB",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 29,
+                    "end": 38
+                  },
+                  "text": "Jcb kepce",
+                  "via": "alias"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_KENTA",
+                "name": "Kenta Evleri",
+                "via": "alias",
+                "evidence": {
+                  "span": {
+                    "start": 0,
+                    "end": 9
+                  },
+                  "text": "Kentorman",
+                  "via": "alias"
+                }
+              }
+            ],
+            "site_id": [
+              {
+                "id": "TEST_REAL_SITE_KEMER",
+                "name": "Kemerburgaz",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 39,
+                    "end": 50
+                  },
+                  "text": "kemerburgaz",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Orhan",
+                "name": "Orhan Operatör",
+                "via": "ascii_fold",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 27
+                  },
+                  "text": "Orhan Operator",
+                  "via": "ascii_fold"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 106,
+                "end": 111
+              },
+              "text": "1saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r18",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+        }
+      ]
+    },
+    {
+      "id": "r19",
+      "category": "Eksik / ortak bilgi",
+      "messages": 1,
+      "expectedCards": 3,
+      "actualCards": 2,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 2,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Nazım",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "material",
+          "want": "hafriyat yükleme",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "price",
+          "want": "Sözleşmeye dahil (0 ₺)",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 1,
+          "field": "source",
+          "want": "Depo Tankı",
+          "got": null
+        },
+        {
+          "expectedRow": 2,
+          "actualRow": 1,
+          "field": "vehicle",
+          "want": null,
+          "got": "TEST_REAL_VEHICLE_U36"
+        }
+      ],
+      "missingCards": 1,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "quantity",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "unit",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "source",
+          "actualRows": [
+            1
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "vehicle",
+          "expectedRows": [
+            1,
+            2
+          ]
+        },
+        {
+          "field": "customer",
+          "expectedRows": [
+            1
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "personnel",
+            "material",
+            "price"
+          ]
+        },
+        null,
+        {
+          "actualRow": 1,
+          "checked": false,
+          "wrongFields": [
+            "source",
+            "vehicle"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Hafriyat Nakliye",
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "raw_message": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_U36",
+                "name": "U36",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 27
+                  },
+                  "text": "U36",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 28,
+                    "end": 42
+                  },
+                  "text": "Lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Nazım",
+                "name": "Nazım Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Nazım Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": null,
+            "unit_price": null
+          },
+          "field_sources": {},
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r19",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "work_type": "Yükleme",
+          "quantity": null,
+          "unit": null,
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": 3,
+          "description": "1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden",
+          "raw_message": "1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden",
+          "notes": [],
+          "kind": "fuel",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [
+              {
+                "id": "TEST_REAL_VEHICLE_U36",
+                "name": "U36",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 27
+                  },
+                  "text": "U36",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LALE12",
+                "name": "Lale Yokuşu 12",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 28,
+                    "end": 42
+                  },
+                  "text": "Lale yokuşu 12",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Nazım",
+                "name": "Nazım Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Nazım Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 138,
+                "end": 141
+              },
+              "text": "3lt",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 3lt"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 1,
+          "source_message_id": "r19",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": 3,
+          "source": null,
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "r20",
+      "category": "Gönderen ve tek iş",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 2,
+      "missedQuestions": 0,
+      "wrongFields": [
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "vehicle",
+          "want": "TEST_REAL_VEHICLE_MANITOU",
+          "got": null
+        },
+        {
+          "expectedRow": 0,
+          "actualRow": 0,
+          "field": "personnel",
+          "want": "TEST_REAL_PERSON_Sinan",
+          "got": null
+        }
+      ],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "vehicle",
+          "actualRows": [
+            0
+          ]
+        },
+        {
+          "field": "work_type",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": [
+            "vehicle",
+            "personnel"
+          ]
+        }
+      ],
+      "actual": [
+        {
+          "date": "2026-11-03",
+          "personnel_id": null,
+          "vehicle_id": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "dump_area": null,
+          "quarry": null,
+          "slip_status": null,
+          "fuel_liters": null,
+          "description": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "raw_message": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "notes": [],
+          "kind": "work",
+          "fuel_source": null,
+          "unit_price": null,
+          "kdv_rate": null,
+          "kdv_included": null,
+          "candidates": {
+            "vehicle_id": [],
+            "customer_id": [
+              {
+                "id": "TEST_REAL_CUSTOMER_LENA",
+                "name": "Lena",
+                "via": "exact_name",
+                "evidence": {
+                  "span": {
+                    "start": 24,
+                    "end": 28
+                  },
+                  "text": "Lena",
+                  "via": "exact_name"
+                }
+              }
+            ],
+            "site_id": [],
+            "personnel_id": [
+              {
+                "id": "TEST_REAL_PERSON_Sinan",
+                "name": "Sinan Abi",
+                "via": "role_candidate",
+                "evidence": {
+                  "span": {
+                    "start": 13,
+                    "end": 22
+                  },
+                  "text": "Sinan Abi",
+                  "via": "exact_name"
+                }
+              }
+            ]
+          },
+          "evidence": {
+            "quantity": {
+              "span": {
+                "start": 29,
+                "end": 35
+              },
+              "text": "1 saat",
+              "via": "quantity_unit"
+            },
+            "unit_price": null
+          },
+          "field_sources": {
+            "quantity": "Kaynak: 1 saat"
+          },
+          "inference_confirmed": true,
+          "engine_version": "sahapro-parse/4",
+          "source_row": 0,
+          "source_message_id": "r20",
+          "include": true,
+          "duplicate_checked": false,
+          "ok": false,
+          "liters": null,
+          "source": null,
+          "note": ""
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Gemini yanıtı yok; planlar v3.10.00 yerel ayrıştırıcısından kaydedildi.",
+    "Lale kamyonet sözleşmesinin sayısal fiyatı fixture’da yok; TL uydurulmadı, bu fiyat değeri ölçülmedi.",
+    "Soru sayıları mevcut grup/missing alan katmanından türetildi; henüz gerçek ekran testi değildir."
+  ]
+}

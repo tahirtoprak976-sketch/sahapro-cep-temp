@@ -1,3 +1,4 @@
+import referenceCatalog from '../data/reference-dump-sites.json' with {type:'json'};
 import {dumpReceiptRows,companyDumpReceipt} from "./dump-ledger-core.js";
 import { isActive } from "./core.js";
 import { resolveWorkTonnage } from "./work-tonnage.js";
@@ -7,9 +8,7 @@ export {loadTon, DEFAULT_LOAD_TON};
 const live = (d, s) => (d[s] || []).filter(isActive);
 const fold = (s) => String(s || "").toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ı/g, "i");
 const r2 = (n) => Math.round(n * 100) / 100;
-export const OFFICIAL_DUMPS = [
-  {key:"bolluca",name:"Bolluca",fee:160}, {key:"cebeci",name:"Cebeci",fee:210}, {key:"istac",name:"İSTAÇ Döküm",fee:235},
-];
+export const OFFICIAL_DUMPS = referenceCatalog.official_dumps;
 export const FEE_UNITS = ["Ton", "Sefer"];
 
 // Only saved assumptions may price saved work. Never backfill a historical load from today's card.

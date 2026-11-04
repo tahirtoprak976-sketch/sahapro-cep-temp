@@ -1,3 +1,4 @@
+import referenceCatalog from '../data/reference-dump-sites.json' with {type:'json'};
 import {sharedDumpBalance,dumpReceiptRows} from "./dump-ledger-core.js";
 // Döküm sahası ön ödemeli hesap — SAF katman.
 // Döküm sahasına önce para yatırılır (barkod alınır), her dökümde hesaptan düşer.
@@ -28,8 +29,8 @@ export function depositSiteOf(d, e) {
 
 // ---- Döküm faturası (İSTAÇ vb.) ----
 // Fatura gider DEĞİLDİR: para hesaba yatırılırken ödendi, maliyet dökümde yazılıyor. Fatura, sahanın gerçek düştüğü tutarı/tonu gösterir → mutabakat.
-// Aynı firma (İSTAÇ) birden çok sahayı faturalar; saha, faturadaki yer adından (ör. ARNAVUTKÖY/BOĞAZKÖY → Bolluca) ayrılır.
-const PLACE_HINTS = { bolluca: ["bolluca", "boğazköy", "arnavutköy"], cebeci: ["cebeci", "sultangazi"] };
+// Aynı firma birden çok sahayı faturalar; saha, kayıtlı fatura yeri diğer adlarından ayrılır.
+const PLACE_HINTS = referenceCatalog.invoice_place_hints;
 const DUMP_WORDS = /döküm|dokum|hafriyat|toprak|kazı|pasa|istaç|istac|moloz/;
 export const DUMP_INVOICE = "Döküm Faturası";
 export function tonOfItems(items) {

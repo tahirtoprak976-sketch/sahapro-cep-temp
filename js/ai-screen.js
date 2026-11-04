@@ -8,7 +8,7 @@ const SAMPLES = [
   "Ahmet Bey 34 ABC 123 6 gidiş yaptı moloz",
   "kepçe bütün gün Leda Yeşilpınar'da çalıştı",
   "34 ABC 123 Firma F Eyüp altı kere gitti hafriyat",
-  "jcb sabahtan akşama kadar Bahçeşehir Ahmet Bey",
+  "jcb sabahtan akşama kadar Şantiye A Müşteri A",
   "34EC1353 Gümüş Yapı on iki tur moloz",
   "Öztürk Kağıthane 34 ABC 123 dört tur hafriyat",
   "34 ABC 123 Ahmet beyin işinde 3 kere döktü",

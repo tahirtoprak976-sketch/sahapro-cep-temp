@@ -68,6 +68,8 @@ export function senderPersonnel(d, reporter, text) {
   if (!n || n.length < 3) return null;
   if (!(` ${norm(text)} `).includes(` ${n.split(" ")[0]}`)) return null; // ad mesajda/başlıkta geçmeli
   const ps = live(d, "personnel");
+  const aliased=ps.filter(p=>live(d,"aliases").some(a=>a.active!==false&&a.target_type==="personnel"&&a.target_id===p.id&&norm(a.alias)===n));
+  if(aliased.length)return aliased.length===1?aliased[0]:null;
   // Aynı adlı birden fazla kart olabilir (ilk kurulum kartı + sonradan açılan): zimmetli aracı olan öne
   const pick = (arr) => arr.find((p) => p.vehicle_id) || arr[0] || null;
   const exact = ps.filter((p) => norm(p.name) === n);

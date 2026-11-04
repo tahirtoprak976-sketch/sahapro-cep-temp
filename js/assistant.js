@@ -534,7 +534,9 @@ export async function screen(ctx) {
       plan=priceCore.normalizePriceActionPlan(plan,d);
       assertAssistantPlan(plan);
       if(agentResult)agentResult={...agentResult,plan};
-      const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives });
+      const savedRules=effectiveRules(await db.metaGet("assistant_rules"));
+      const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives, rules:savedRules });
+      v._businessRulesSnapshot=savedRules;
       v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
       if (drvRejected.length) {
@@ -544,7 +546,7 @@ export async function screen(ctx) {
         if (restSkipped) v.restSkipped = true;
       }
       if (drvSecWarn.length) v.driverSecWarn = [...new Set(drvSecWarn.map((x) => `${x.p.n || "Şoför"}: ${x.warn}`))];
-      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts,photoCount:images.length }));
+      Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts,photoCount:images.length,rules:savedRules }));
       if(localStarter)for(const group of Object.keys(localStarter))for(const row of v[group]||[]){row.date='';row.ok=false;}
       if (drvPlan) {
         const seen = drv.seenDriverIds(d);
@@ -766,7 +768,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     (v.driverPhotoWarn ? notice("warn", "📷 " + v.driverPhotoWarn) + (v.driverPhotoReselect ? `<label class="btn primary block" style="margin:-4px 0 10px;cursor:pointer">📷 Paketin dosyalarını yeniden seç${v.driverPhotoNeed > 1 ? ` (${v.driverPhotoNeed} tane, gönderdiği sırayla)` : ""}<input type="file" accept="image/jpeg,image/png,image/webp" ${v.driverPhotoNeed > 1 ? "multiple" : ""} data-drvph hidden></label>` : v.driverPhotoClear ? '<button class="btn block" data-drvclear>Bu mesajın eklerini kaldır ve yeniden hazırla</button>' : "") : "") +
     (v.heard ? `<div class="card"><div class="strong small">🎤 Gemini'nin duyduğu</div><div style="white-space:pre-wrap;margin-top:6px">${esc(v.heard)}</div><div class="muted tiny" style="margin-top:6px">Rakamlar bu metinle kontrol edildi. Yanlış duyduysa mesaj kutusuna düzeltip tekrar gönderin.</div></div>` : "") +
     (v.audioMissing ? notice("warn", "Ses kaydı anlaşılamadı. Daha yakından ve sessiz bir yerde tekrar kaydedin.") : "") +
-    [...new Set(v.questions)].map((q) => notice("info", "Soru: " + q)).join("") +
+    '<div data-model-questions>'+[...new Set(v.questions)].map((q) => notice("info", "Soru: " + q)).join("")+'</div>' +
     v.memory
       .map((r, i) => `<div class="card" data-kind="memory" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>🧠 Hafızaya ekle</b></label>
@@ -1152,6 +1154,7 @@ async function save(ctx, out, v, d, { message, files }) {
     .sort((a, b) => (["card", "memory", "tank", "price", "action", "setting"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price", "action", "setting"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const workflowRows=v._workflow?.read().filter(r=>r.selected)||[];
+  if(v._businessRulesSnapshot!==undefined&&v._businessRulesSnapshot!==effectiveRules(await db.metaGet("assistant_rules")))throw Error("Asistan kuralları değişti. Kaydetmeden önce mesajı yeniden kontrol edin.");
   const preflightData=await db.dumpAll();
   for(const card of cards){
     if(card.dataset.kind==='price'){
@@ -1719,7 +1722,7 @@ async function save(ctx, out, v, d, { message, files }) {
           // Ödeme: kartta seçilen (personel cebinden ödediyse iade bekler, maaşla geri ödenir)
           const pay = val(c, "pay") || (r.driver_pay === "cep" && r.driver_pid ? "p:" + r.driver_pid : "Şirket Ödedi");
           const payer = pay.startsWith("p:") ? pay.slice(2) : null;
-          // "Bolluca'ya 50.000 yatırdım" → döküm sahası ön ödemeli hesabına yükleme (gider sayılmaz, dökümde düşer)
+          // "döküm sahasına 50.000 yatırdım" → döküm sahası ön ödemeli hesabına yükleme (gider sayılmaz, dökümde düşer)
           const dsite = (await import("./dump-account.js")).depositSiteOf(fresh, { category: f.category, company: val(c, "company"), description: expenseNote.description });
           if(!dsite && /döküm|dokum/i.test(f.category) && (await import("./dump-account.js")).dumpDepositIntent({description:expenseNote.description})) {
             toast("Para yüklemesinin döküm sahası belli değil. Ortak Döküm Hesaplarından doğru sahayı seçerek kaydedin; gider yazılmadı.","err");continue;

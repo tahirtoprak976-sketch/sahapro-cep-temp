@@ -1,3 +1,5 @@
+import {businessRules,withBusinessRules} from './assistant-business-rules.js';
+import {effectiveRules} from './assistant-rules.js';
 import { prepareAttachment } from "./attachment-safety.js";
 import { attachmentHTML } from "./attachment-ui.js";
 import { startActivity } from "./update-safety.js";
@@ -1619,6 +1621,8 @@ async function settings(ctx) {
     persisted = false;
   }
 
+  const assistantPreferences=businessRules(await db.metaGet("assistant_rules"));
+  const personnelOptions=(data.personnel||[]).filter(isActive);
   const company = (await db.metaGet("company_profile")) || {};
   const backupPw = !!(await db.metaGet("backup_pw"));
   const CO = { title: "Ticari ünvan", tax_no: "Vergi no", tax_office: "Vergi dairesi", mersis_no: "MERSİS no", trade_reg_no: "Ticaret sicil no", nace: "Faaliyet kodu (NACE)", address: "Adres" };
@@ -1630,6 +1634,14 @@ async function settings(ctx) {
     <div class="section-title">🏢 Şirket bilgileri</div>
     <div class="card"><div class="tiny muted" style="margin-bottom:6px">Vergi levhası, faaliyet belgesi, sicil gazetesi gibi şirket evrakını Akıllı Asistan'a fotoğrafla gönderin; buradaki bilgiler belgeden doldurulur. Elle de düzeltebilirsiniz.</div>
       <form data-coform>${Object.entries(CO).map(([k, t]) => `<div class="field"><label>${esc(t)}</label><input name="${k}" value="${esc(company[k] || "")}"></div>`).join("")}<button type="submit" class="btn block">Şirket bilgilerini kaydet</button></form></div>
+    <div class="section-title">Asistan işletme kuralları</div>
+    <form class="card" data-assistant-business>
+      <label class="history-check"><input type="checkbox" name="yard_is_own" ${assistantPreferences.yardIsOwn?'checked':''}> Tek başına “şantiye” kendi depomuzu ifade eder</label>
+      <div class="field"><label>Patronun personel kartı</label><select name="boss_personnel_id"><option value="">Seçilmedi</option>${personnelOptions.map(p=>`<option value="${esc(p.id)}" ${p.id===assistantPreferences.bossPersonnelId?'selected':''}>${esc(p.name)}</option>`).join('')}</select></div>
+      <label class="history-check"><input type="checkbox" name="sunday_personnel_note" ${assistantPreferences.sundayPersonnelNote?'checked':''}> Pazar mesaisi personel ücret notudur; müşteri fiyatını değiştirmez</label>
+      <p class="small muted">Depo kartı Kendi Depo ekranında, müşteri ve şantiye diğer adları Alias Listesi’nde, sözleşme kapsamı şantiye kartında düzenlenir.</p>
+      <button class="btn block" type="submit">Asistan kurallarını kaydet</button>
+    </form>
     <div class="section-title">Yedekleme</div>
     <div class="card">
       <div data-backup-last>${kv("Son yedek dosyası işlemi", lastBackup ? new Date(lastBackup).toLocaleString("tr-TR") + " (" + (backupAgeDays(lastBackup) === 0 ? "bugün" : backupAgeDays(lastBackup) + " gün önce") + ")" : "Hiç yedek yok")}</div>
@@ -1714,6 +1726,13 @@ async function settings(ctx) {
     if (again !== pw) return toast("Şifreler aynı değil", "err");
     await db.metaSet("backup_pw", pw);
     toast("Yedek şifresi kondu — sonraki yedekler şifreli", "ok"); ctx.reload();
+  });
+  qs('[data-assistant-business]',root)?.addEventListener('submit',async event=>{
+    event.preventDefault();const form=event.currentTarget,id=form.elements.boss_personnel_id.value;
+    if(id&&!(await db.listActive('personnel')).some(p=>p.id===id))return toast('Personel kartı değişti; yeniden seçin','err');
+    try{const prefs={yardIsOwn:form.elements.yard_is_own.checked,bossPersonnelId:id||null,sundayPersonnelNote:form.elements.sunday_personnel_note.checked};
+      await db.metaUpdate('assistant_rules',saved=>{const value=withBusinessRules(effectiveRules(saved),prefs);if(value.length>6000)throw Error('Asistan kural metni çok uzun; önce metni kısaltın.');return value;});toast('Asistan işletme kuralları kaydedildi','ok');
+    }catch(error){toast(error.message,'err');}
   });
   qs("[data-coform]", root)?.addEventListener("submit", async (ev) => {
     ev.preventDefault();

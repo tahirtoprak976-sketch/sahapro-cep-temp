@@ -84,7 +84,7 @@ export function applyYard(d, fields) {
   return { ...fields, site_id: null, price_snapshot: { unit_price: 0, kdv_rate: 0, kdv_included: false, amount: 0, price_source: "İç iş (kendi depo)", snapshot_at: new Date().toISOString() } };
 }
 
-// Mesaj kendi depodan çıkışı mı anlatıyor? ("şantiyeden 2 sefer çöp İBB", "depodan boluca")
+// Mesaj kendi depodan çıkışı mı anlatıyor? ("şantiyeden 2 sefer çöp İBB", "depodan döküm sahasına")
 export const FROM_YARD = /(?:^|\s)(?:santiyeden|depodan|sahadan|depomuzdan|depodaki|stoktan|stoktaki|depodakini|bizim (?:depo|saha)dan|bizim (?:depo|saha)daki)(?:\s|$)/;
 // Kesin çıkış ifadeleri: "depodaki stoktan", "depodan" — müşteri adı yazılmış olsa bile iç iştir ("şantiyeden" ise müşterinin şantiyesi olabilir)
 export const FROM_YARD_STRONG = /(?:^|\s)(?:depodan|depomuzdan|depodaki|stoktan|stoktaki|bizim depo(?:dan|daki))(?:\s|$)/;

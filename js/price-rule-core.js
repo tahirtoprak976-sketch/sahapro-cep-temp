@@ -149,7 +149,7 @@ export function validatePriceRules(plan, { message = "", d } = {}) {
   }
   return out;
 }
-// Yer adı (döküm sahası / ocak) mesajda anıldı mı: "Bolluca'ya", "göktürk dolguya"
+// Yer adı (döküm sahası / ocak) mesajda anıldı mı: "döküm sahasına", "göktürk dolguya"
 const PLACE_STOP = new Set(["dokum", "sahasi", "saha", "dolgu", "dolgusu", "depo", "alani", "ocak", "ocagi", "son", "durak"]);
 export function placeNamed(p, text) {
   const mw = words(text);
@@ -157,7 +157,7 @@ export function placeNamed(p, text) {
   return tw.length > 0 && said(tw[0], mw);
 }
 
-// Whole distinctive site name, including number: "Tarabya" matches "Tarabyadan";
+// Whole distinctive site name, including number: a registered place matches its inflected form;
 // "Kemer No 53" never silently selects "Kemer No 54".
 export function siteNamed(site,text) {
   const mw=words(text), tw=words(site.name).filter(w=>!["santiye","santiyesi","santiye­si","no"].includes(w));

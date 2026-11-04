@@ -1,0 +1,211 @@
+[
+  {
+    "expectedRow": 21,
+    "result": {
+      "actualRow": 20,
+      "checked": true,
+      "wrongFields": [
+        "dump"
+      ]
+    },
+    "actual": {
+      "fromDriver": false,
+      "date": "2026-11-02",
+      "customer_id": "TEST_REAL_CUSTOMER_AYK",
+      "new_customer": null,
+      "site_id": "TEST_REAL_SITE_CERRAH",
+      "new_site": null,
+      "vehicle_id": "TEST_REAL_VEHICLE_TIR2",
+      "personnel_id": "TEST_REAL_PERSON_Kadir",
+      "work_type": "Hafriyat Nakliye",
+      "quantity": 1,
+      "unit": "Sefer",
+      "note": "",
+      "description": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+      "material": "hafriyat",
+      "dump_site_id": "TEST_REAL_dump_sites_BOLUCA",
+      "quarry_id": null,
+      "new_quarry": null,
+      "new_dump_site": null,
+      "unit_price": null,
+      "dump_cost": null,
+      "price_pending": false,
+      "reporter": "Kadir Yılmaz",
+      "from_place": "",
+      "to_place": "Boluca Döküm",
+      "slip_no": "",
+      "mentions": {},
+      "issues": [],
+      "_fieldEvidence": {
+        "date": {
+          "value": "2026-11-02",
+          "level": "CIKARIM",
+          "reason": "Satırdaki iş tarihi / WhatsApp başlığı",
+          "source": "source_context"
+        },
+        "personnel_id": {
+          "value": "TEST_REAL_PERSON_Kadir",
+          "level": "KESIN",
+          "reason": "WhatsApp göndereni",
+          "source": "sender_row"
+        },
+        "work_type": {
+          "value": "Hafriyat Nakliye",
+          "level": "CIKARIM",
+          "reason": "İşin birimi ve kayıtlı araç türü",
+          "source": "source_context"
+        },
+        "unit": {
+          "value": "Sefer",
+          "level": "KESIN",
+          "reason": "Satırdaki çalışma birimi",
+          "source": "source_row"
+        },
+        "dump_site_id": {
+          "value": "TEST_REAL_dump_sites_BOLUCA",
+          "level": "KESIN",
+          "reason": "Satırdaki açık sefer dağılımı ve kayıtlı döküm yeri",
+          "source": "source_row"
+        },
+        "to_place": {
+          "value": "Boluca Döküm",
+          "level": "KESIN",
+          "reason": "Satırdaki açık sefer dağılımı",
+          "source": "source_row"
+        },
+        "quantity": {
+          "value": 1,
+          "level": "KESIN",
+          "reason": "Satırdaki açık miktar / tam gün",
+          "source": "source_row"
+        },
+        "vehicle_id": {
+          "value": "TEST_REAL_VEHICLE_TIR2",
+          "level": "KESIN",
+          "reason": "Satırdaki kayıtlı araç",
+          "source": "source_row"
+        },
+        "customer_id": {
+          "value": "TEST_REAL_CUSTOMER_AYK",
+          "level": "CIKARIM",
+          "reason": "Şantiyenin kayıtlı müşterisi",
+          "source": "source_context"
+        },
+        "site_id": {
+          "value": "TEST_REAL_SITE_CERRAH",
+          "level": "KESIN",
+          "reason": "Satırdaki kayıtlı şantiye",
+          "source": "source_row"
+        }
+      },
+      "guessed": false,
+      "customerGuess": false,
+      "source_quote": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+      "quote": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+      "priceInfo": {
+        "ambiguous": false,
+        "reason": "Fiyat listesinde bu iş için kural yok — fiyat boş kalır",
+        "candidates": [],
+        "summary": ""
+      },
+      "ai": {
+        "customer_id": "TEST_REAL_CUSTOMER_AYK",
+        "new_customer": null,
+        "site_id": "TEST_REAL_SITE_CERRAH",
+        "vehicle_id": "TEST_REAL_VEHICLE_TIR2",
+        "work_type": "Hafriyat Nakliye",
+        "quantity": 1,
+        "unit": "Sefer"
+      },
+      "ok": true,
+      "fuelAllowance": null,
+      "src": {
+        "customer": "çıkarım — Şantiyenin kayıtlı müşterisi",
+        "vehicle": "mesajdan",
+        "price": null
+      },
+      "fieldConfidence": {
+        "date": {
+          "value": "2026-11-02",
+          "level": "CIKARIM",
+          "reason": "Satırdaki iş tarihi / WhatsApp başlığı",
+          "source": "source_context"
+        },
+        "customer_id": {
+          "value": "TEST_REAL_CUSTOMER_AYK",
+          "level": "CIKARIM",
+          "reason": "Şantiyenin kayıtlı müşterisi",
+          "source": "source_context"
+        },
+        "vehicle_id": {
+          "value": "TEST_REAL_VEHICLE_TIR2",
+          "level": "KESIN",
+          "reason": "Satırdaki kayıtlı araç",
+          "source": "source_row"
+        },
+        "personnel_id": {
+          "value": "TEST_REAL_PERSON_Kadir",
+          "level": "KESIN",
+          "reason": "WhatsApp göndereni",
+          "source": "sender_row"
+        },
+        "site_id": {
+          "value": "TEST_REAL_SITE_CERRAH",
+          "level": "KESIN",
+          "reason": "Satırdaki kayıtlı şantiye",
+          "source": "source_row"
+        },
+        "work_type": {
+          "value": "Hafriyat Nakliye",
+          "level": "KESIN",
+          "reason": "Mesajdaki iş ifadesi",
+          "source": "message"
+        },
+        "unit": {
+          "value": "Sefer",
+          "level": "KESIN",
+          "reason": "Mesajda açık çalışma birimi",
+          "source": "message"
+        },
+        "dump_site_id": {
+          "value": "TEST_REAL_dump_sites_BOLUCA",
+          "level": "KESIN",
+          "reason": "Satırdaki açık sefer dağılımı ve kayıtlı döküm yeri",
+          "source": "source_row"
+        },
+        "to_place": {
+          "value": "Boluca Döküm",
+          "level": "KESIN",
+          "reason": "Satırdaki açık sefer dağılımı",
+          "source": "source_row"
+        },
+        "quantity": {
+          "value": 1,
+          "level": "KESIN",
+          "reason": "Mesajda doğrulanan miktar",
+          "source": "message"
+        },
+        "unit_price": {
+          "value": null,
+          "level": "BILINMIYOR",
+          "reason": "Bilgi bulunamadı",
+          "source": "none"
+        },
+        "dump_cost": {
+          "value": null,
+          "level": "BILINMIYOR",
+          "reason": "Bilgi bulunamadı",
+          "source": "none"
+        },
+        "description": {
+          "value": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+          "level": "KESIN",
+          "reason": "Mevcut doğrulama kuralından",
+          "source": "message"
+        }
+      },
+      "okData": true,
+      "kind": "work"
+    }
+  }
+]
