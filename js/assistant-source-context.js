@@ -19,22 +19,34 @@ export function registeredMatches(d,store,text){
  const found=live(d,store).filter(r=>compact(r.name).length>=3&&t.includes(compact(r.name))||live(d,'aliases').some(a=>a.active!==false&&a.target_type===singular&&a.target_id===r.id&&compact(a.alias).length>=3&&t.includes(compact(a.alias))));
  return found;
 }
-function sourceDate(text,fallback,today){
- let date=null,explicit=false;const n=foldTr(text);
- for(const m of text.matchAll(/(?<!\d)(\d{1,2})[./](\d{1,2})(?:[. /]+)(\d{4})(?!\d)/g)){date=iso(m[3],m[2],m[1]);explicit=true;}
- for(const m of n.matchAll(/(?<!\d)(\d{1,2})\s*([a-z]+)(?:\s+(\d{4}))?/g)){const month=months.indexOf(m[2]);if(month>=0){date=iso(m[3]||today.slice(0,4),month+1,m[1]);explicit=true;}}
+function sourceDate(text,fallback,today,anchor=fallback){
+ const dates=[],spans=[];let explicit=false,invalid=false;const n=foldTr(text);
+ const add=value=>{explicit=true;if(value)dates.push(value);else invalid=true;};
+ for(const m of text.matchAll(/(?<!\d)(\d{1,2})[./](\d{1,2})(?:[. /]+)(\d{4})(?!\d)/g)){spans.push([m.index,m.index+m[0].length]);add(iso(m[3],m[2],m[1]));}
+ for(const m of text.matchAll(/(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)/g)){spans.push([m.index,m.index+m[0].length]);add(iso(m[1],m[2],m[3]));}
+ for(const m of text.matchAll(/(?<!\d)(\d{1,2})[./](\d{1,2})(?:[./](\d{4}|\d{2}))?(?![\d./])/g)){
+  if(spans.some(([start,end])=>m.index>=start&&m.index<end)||/^\s*(?:saat|sefer|yevmiye|gun|litre|lt|l|ton|adet|tl|lira|bin|milyon|₺)(?![a-z])/u.test(foldTr(text.slice(m.index+m[0].length))))continue;
+  add(iso(m[3]?(m[3].length===2?'20'+m[3]:m[3]):today.slice(0,4),m[2],m[1]));
+ }
+ for(const m of n.matchAll(/(?<!\d)(\d{1,2})\s*([a-z]+)(?:\s+(\d{4}))?/g)){const month=months.indexOf(m[2]);if(month>=0)add(iso(m[3]||today.slice(0,4),month+1,m[1]));}
+ for(const m of n.matchAll(/(?:^|[^a-z])(evvelsi gun|evvelki gun|onceki gun|dunku|dun|bugunku|bugun|yarin)(?![a-z])/g)){
+  const offsets={'evvelsi gun':-2,'evvelki gun':-2,'onceki gun':-2,dunku:-1,dun:-1,bugunku:0,bugun:0,yarin:1};
+  const dt=anchor?new Date(anchor+'T12:00:00Z'):null;if(dt&&!Number.isNaN(+dt)){dt.setUTCDate(dt.getUTCDate()+offsets[m[1]]);add(dt.toISOString().slice(0,10));}else add(null);
+ }
+ const values=unique(dates);if(values.length>1)invalid=true;
+ const date=invalid?null:values[0]||fallback;
  const dayNames=['pazar','pazartesi','sali','carsamba','persembe','cuma','cumartesi'],said=dayNames.findIndex(w=>new RegExp('(?:^|[^a-z])'+w+'(?:$|[^a-z])').test(n));
- return {date:date||fallback,explicit,weekdayConflict:!!(date&&said>=0&&new Date(date+'T12:00:00Z').getUTCDay()!==said)};
+ return {date,explicit,invalid,weekdayConflict:!!(date&&said>=0&&new Date(date+'T12:00:00Z').getUTCDay()!==said)};
 }
 function linesFor(message,d,today){
- const result=[];let sender=null,date=today,header='',weekdayConflict=false;
+ const result=[];let sender=null,date=today,anchor=today,dateIssue=false,header='',weekdayConflict=false;
  for(const original of message.split(/\r?\n/)){
   let text=original;const m=/^\[(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?[^\]]*\]\s*([^:]+):\s*(.*)$/.exec(original);
-  if(m){sender=senderPersonnel(d,m[4],original);date=iso(m[3]?.length===2?'20'+m[3]:m[3]||today.slice(0,4),m[2],m[1])||today;header=original.slice(0,original.length-m[5].length);text=m[5];weekdayConflict=false;}
+  if(m){sender=senderPersonnel(d,m[4],original);date=iso(m[3]?.length===2?'20'+m[3]:m[3]||today.slice(0,4),m[2],m[1]);anchor=date;dateIssue=!date;header=original.slice(0,original.length-m[5].length);text=m[5];weekdayConflict=false;}
   if(!sender||!text.trim())continue;
-  const dt=sourceDate(text,date,today);if(dt.explicit){date=dt.date;weekdayConflict=dt.weekdayConflict;}
+  const dt=sourceDate(text,date,today,anchor);if(dt.explicit){date=dt.date;dateIssue=dt.invalid;weekdayConflict=dt.weekdayConflict;}
   if(!/[\p{L}]/u.test(text)||/^\s*\d{1,2}[./]\d{1,2}[. /]+\d{4}\s*$/.test(text))continue;
-  result.push({text,original,header,sender,date,weekdayConflict});
+  result.push({text,original,header,sender,date,dateIssue,weekdayConflict});
  }
  return result;
 }
@@ -75,7 +87,7 @@ export function sourceCandidates(message,d,today){
    const fuels=[...text.matchAll(FUEL_QUANTITY)];
    if(fuels.length&&/mazot|yakit|motorin/.test(n)&&/alindi|aldim|aldi|doldur/.test(n))for(const q of fuels){
     const row={date:line.date,vehicle_id:vehicle?.id||null,liters:Number(q[1].replace(',','.')),source:/santiye|depodan/.test(n)?'Depo Tankı':undefined,quote:text};
-    row[PROOF]={sender:line.sender,unknownVehicle:unknownVehicle?unknownMachine[0]:null,fields:{date:INFERRED(line.date,'WhatsApp satırının tarihi'),...(vehicle?{vehicle_id:explicitVehicles.length?CERTAIN(vehicle.id,'Satırdaki kayıtlı araç'):INFERRED(vehicle.id,'Aynı gönderenin araç bağlamı / zimmeti')}:{}),liters:CERTAIN(row.liters,'Satırdaki açık litre')}};fuel.push(row);
+    row[PROOF]={sender:line.sender,dateIssue:line.dateIssue,weekdayConflict:line.weekdayConflict,unknownVehicle:unknownVehicle?unknownMachine[0]:null,fields:{date:INFERRED(line.date,'WhatsApp satırının tarihi'),...(vehicle?{vehicle_id:explicitVehicles.length?CERTAIN(vehicle.id,'Satırdaki kayıtlı araç'):INFERRED(vehicle.id,'Aynı gönderenin araç bağlamı / zimmeti')}:{}),liters:CERTAIN(row.liters,'Satırdaki açık litre')}};fuel.push(row);
    }
    let quantities=[...text.matchAll(WORK_QUANTITY)].map(q=>({quantity:num(q[1]),unit:/sefer/i.test(q[2])?'Sefer':/saat/i.test(q[2])?'Saat':'Yevmiye',at:q.index,end:q.index+q[0].length}));
    if(!quantities.length&&/tam gun|yevmiye calis/.test(n))quantities=[{quantity:1,unit:'Yevmiye',at:0,end:0}];
@@ -93,7 +105,7 @@ export function sourceCandidates(message,d,today){
     if(vehicle)fields.vehicle_id=explicitVehicles.length?CERTAIN(vehicle.id,'Satırdaki kayıtlı araç'):INFERRED(vehicle.id,'Gönderenin zimmetli aracı / aynı mesaj araç bağlamı');
     if(customer)fields.customer_id=cs.length?CERTAIN(customer.id,'Satırdaki tek müşteri eşleşmesi'):INFERRED(customer.id,inheritedSite?'Şantiyenin kayıtlı müşterisi':'Aynı iş bloğunun müşteri bağlamı');
     if(inheritedSite)fields.site_id=ss.length?CERTAIN(inheritedSite.id,'Satırdaki kayıtlı şantiye'):INFERRED(inheritedSite.id,'Aynı sefer bloğunun şantiyesi');
-    row[PROOF]={sender:line.sender,unknownVehicle:unknownVehicle?unknownMachine[0]:null,unknownCustomer:place53?'Mimar Kemal 53':newCustomer,place:place53?'Mimar Kemal 53':null,weekdayConflict:line.weekdayConflict,includedWork:norm(customer?.name)==='lale yokusu 12'&&/hafriyat yukle/.test(n)&&/u36|ekskavator/.test(norm((vehicle?.name||'')+' '+(vehicle?.type||''))),fields};works.push(row);
+    row[PROOF]={sender:line.sender,dateIssue:line.dateIssue,weekdayConflict:line.weekdayConflict,unknownVehicle:unknownVehicle?unknownMachine[0]:null,unknownCustomer:place53?'Mimar Kemal 53':newCustomer,place:place53?'Mimar Kemal 53':null,weekdayConflict:line.weekdayConflict,includedWork:norm(customer?.name)==='lale yokusu 12'&&/hafriyat yukle/.test(n)&&/u36|ekskavator/.test(norm((vehicle?.name||'')+' '+(vehicle?.type||''))),fields};works.push(row);
    }
   }
  }

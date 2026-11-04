@@ -202,7 +202,7 @@ export function bindDraftWorkflow(out,v,d){
    if(f==='material')data.sourceNeedsMaterial=false;
    if(data.fieldConfidence?.[raw])data.fieldConfidence[raw]={level:'KESIN',value,reason:'Kullanıcı bu alanı doğruladı',source:'user_answer'};
   }
-  const settled={date:/^Tarih ile gün adı çelişiyor|^Model tarihi mesaj tarihiyle çelişti|İş tarihi mesajda yazmıyor|^Toplu iş tarihini|^Tarih .*doğrulanamadı|^Tarih (?:yok|seçilmeli)/,customer:/^Müşteri (?:seçilmeli|belirtilmemiş|mesajda yazmıyor)/,vehicle:/^Araç (?:seçilmeli|")/,work_type:/^İş türü seçilmeli/,quantity:/^Miktar (?:yok|[\d.,]+ mesajda)/,unit:/^Birim seçilmeli/,amount:/^Tutar (?:yok|[\d.,]+ mesajda)/};
+  const settled={date:/^Mesajdaki tarih geçersiz veya çelişkili|^Tarih ile gün adı çelişiyor|^Model tarihi mesaj tarihiyle çelişti|^Model tarihi veya gün adı mesaj tarihiyle çelişti|İş tarihi mesajda yazmıyor|^Toplu iş tarihini|^Tarih .*doğrulanamadı|^Tarih (?:yok|seçilmeli)/,customer:/^Müşteri (?:seçilmeli|belirtilmemiş|mesajda yazmıyor)/,vehicle:/^Araç (?:seçilmeli|")/,work_type:/^İş türü seçilmeli/,quantity:/^Miktar (?:yok|[\d.,]+ mesajda)/,unit:/^Birim seçilmeli/,amount:/^Tutar (?:yok|[\d.,]+ mesajda)/};
   data.issues=(data.issues||[]).filter(issue=>!Object.keys(change.updates).some(field=>settled[field]?.test(issue)));
   const warnings=card.querySelector('[data-row-issues]');if(warnings)warnings.textContent=data.issues.length?'⚠ '+data.issues.join(' · '):'';
   data._workflowCompleted=true;

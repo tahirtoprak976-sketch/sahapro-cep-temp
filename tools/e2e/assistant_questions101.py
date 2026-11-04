@@ -7,9 +7,13 @@ root=Path(__file__).resolve().parents[2];base=(sys.argv[1] if len(sys.argv)>1 el
 assert urlparse(base).hostname in ('localhost','127.0.0.1')
 fixture=json.loads(subprocess.check_output(['node','--input-type=module','-e',"import {fixture} from './tests/assistant-gold/real-messages/fixture.mjs';console.log(JSON.stringify(fixture()))"],cwd=root))
 source=json.loads((root/'tests/assistant-gold/real-messages/source.json').read_text());recorded=json.loads((root/'tests/assistant-gold/real-messages/recorded-v3.10.00.json').read_text())['responses']
+extra=[{'id':'invalid-date','header':'[04/11/2026 18:00] Sinan Abi','message':'31.02.2026 Lena 2 saat cam verildi'},{'id':'relative-day','header':'[04/11/2026 18:00] Sinan Abi','message':'Dün Lena 2 saat cam verildi'}]
+for case in extra:
+ recorded[case['id']]={'works':[{'date':'2026-11-04','customer_id':next(c['id'] for c in fixture['customers'] if c['name']=='Lena'),'vehicle_id':next(v['id'] for v in fixture['vehicles'] if v['name']=='Manitou'),'quantity':2,'unit':'Saat','work_type':'Manitou Çalışması','quote':case['message']}],'fuel':[]}
+source['cases'].extend(extra)
 with sync_playwright() as w:
  browser=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
- for case_id in ['r10','r19','r00_tumu']:
+ for case_id in ['r10','r19','r00_tumu','invalid-date','relative-day']:
   case=next(c for c in source['cases'] if c['id']==case_id);text=(case.get('header','')+': ' if case.get('header') else '')+case['message']
   context=browser.new_context(viewport={'width':390,'height':850});context.add_init_script("localStorage.setItem('sp_role','boss')");page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
   def route(r):
@@ -36,6 +40,12 @@ with sync_playwright() as w:
    assert page.locator('[data-kind=fuel] [name=liters]').input_value()=='3'
    assert page.locator('[data-kind=fuel] [name=vehicle]').input_value()=='' and not page.locator('[data-kind=fuel] [data-pick]').is_checked()
    assert box.inner_text().count('1tonluk makine — Hangi araç?')==1
+  if case_id in ['invalid-date','relative-day']:
+   card=page.locator('[data-kind=work][data-i="0"]');assert not card.locator('[data-pick]').is_checked();assert box.locator('[data-question="work:0:date"]').count()==1
+   if case_id=='invalid-date':
+    assert card.locator('[data-field-confidence=date]').get_attribute('data-level')=='BILINMIYOR'
+    q=box.locator('[data-question="work:0:date"]');q.locator('input').fill('2026-02-28');q.locator('[data-answer]').click();assert card.locator('[name=date]').input_value()=='2026-02-28' and not card.locator('[data-pick]').is_checked()
+   else:assert card.locator('[name=date]').input_value()=='2026-11-03'
   if case_id=='r00_tumu':assert page.locator('.assistant-record').count()==38
   assert page.evaluate("async()=>await(await import('./js/db.js')).dumpAll()") == before
   assert not errors,errors

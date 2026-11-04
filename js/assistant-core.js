@@ -659,6 +659,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const operational=sourceProof(w);
     if(operational&&!fromDriver){
       if(operational.includedWork)r.contractIncluded=true;
+      if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya birden fazla tarih çelişiyor',source:'source_row'};issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}
       const provenSite=(d.sites||[]).find(s=>s.id===operational.fields.site_id?.value&&s.customer_id===r.customer_id);
       if(provenSite&&!r.site_id){r.site_id=provenSite.id;r.siteHint=null;for(let i=issues.length-1;i>=0;i--)if(/^Şantiye .*mesajda yazmıyor/.test(issues[i]))issues.splice(i,1);}
       for(const [field,info]of Object.entries(operational.fields))if(r[field]===info.value)r._fieldEvidence[field]=info;
@@ -871,7 +872,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       else stock -= r.liters;
     }
     const operational=sourceProof(f);
-    if(operational){r._fieldEvidence=Object.fromEntries(Object.entries(operational.fields).filter(([key,v])=>r[key]===v.value));if(operational.unknownVehicle){r._fieldEvidence.vehicle_id={value:null,level:'BILINMIYOR',reason:operational.unknownVehicle+' kartlarda yok; araç seçin',source:'source_row',rejected:true};r.unknownVehicleLabel=operational.unknownVehicle;}}
+    if(operational){if(operational.dateMismatch||operational.weekdayConflict){r.calendarConflict=true;r.dateUnsure=true;issues.push('Model tarihi veya gün adı mesaj tarihiyle çelişti; '+r.date+' tarihini doğrulayın?');}if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}r._fieldEvidence=Object.fromEntries(Object.entries(operational.fields).filter(([key,v])=>r[key]===v.value));if(operational.dateIssue)r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya çelişkili',source:'source_row'};if(operational.unknownVehicle){r._fieldEvidence.vehicle_id={value:null,level:'BILINMIYOR',reason:operational.unknownVehicle+' kartlarda yok; araç seçin',source:'source_row',rejected:true};r.unknownVehicleLabel=operational.unknownVehicle;}}
     r.issues = issues;
     r.ok = !!(r.date && r.vehicle_id && r.liters && !issues.length && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));
     out.fuel.push(r);

@@ -20,3 +20,19 @@ const questions=assistantQuestions([a,b]);assert.equal(questions.length,1);asser
 assert.equal(assistantQuestions([a,{...b,r:{unknownCustomerLabel:'Başka yer'}}]).length,2);
 assert.equal(assistantQuestions([{...a,saved:true}]).length,0);
 console.log('20 real pseudonymized messages + combined: no silent error, no invented money, no missing/extra cards; field-scoped questions PASS');
+
+// Source-context evidence must never turn invalid/relative dates into a checked today card.
+for(const kind of ['work','fuel']){
+ const body=kind==='work'?'Lena 2 saat cam verildi':'Manitou depodan 3 litre mazot aldı';
+ const rows=(text)=>{const out=validatePlan({works:[],fuel:[]},{d:fixture(),message:text,today:'2026-11-04'});return out[kind==='work'?'works':'fuel'];};
+ const invalid=rows('[04/11/2026 18:00] Sinan Abi: 31.02.2026 '+body)[0];assert.equal(invalid.ok,false,'Invalid body date cannot fall back to a checked header date');assert.equal(invalid.fieldConfidence.date.level,'BILINMIYOR');
+ const shortInvalid=rows('[04/11/2026 18:00] Sinan Abi: 31/02 '+body)[0];assert.equal(shortInvalid.ok,false);
+ const shortOld=rows('[04/11/2026 18:00] Sinan Abi: 07.09.25 '+body)[0];assert.equal(shortOld.date,'2025-09-07');
+ const yesterday=rows('[04/11/2026 18:00] Sinan Abi: Dün '+body)[0];assert.equal(yesterday.date,'2026-11-03');
+ const d=fixture(),proposal={date:'2026-11-04',vehicle_id:d.vehicles.find(v=>v.name==='Manitou').id,quote:'Dün '+body,...(kind==='work'?{customer_id:d.customers.find(c=>c.name==='Lena').id,quantity:2,unit:'Saat',work_type:'Manitou Çalışması'}:{liters:3,source:'Depo Tankı'})};
+ const mismatch=validatePlan({works:[],fuel:[],[kind==='work'?'works':'fuel']:[proposal]},{d,message:'[04/11/2026 18:00] Sinan Abi: Dün '+body,today:'2026-11-04'})[kind==='work'?'works':'fuel'][0];assert.equal(mismatch.date,'2026-11-03');assert.equal(mismatch.ok,false,'Conflicting model date must remain unchecked even when phone evidence supplies the correct date');
+ const oldHeader=rows('[07/09/2026 18:00] Sinan Abi: Dün '+body)[0];assert.equal(oldHeader.date,'2026-09-06');
+ const invalidHeader=rows('[31/02/2026 18:00] Sinan Abi: '+body)[0];assert.equal(invalidHeader.ok,false);
+ const conflict=rows('[04/11/2026 18:00] Sinan Abi: 01.11.2026 ve 02.11.2026 '+body)[0];assert.equal(conflict.ok,false);
+}
+console.log('registered sender: invalid body/header and contradictory dates stay unchecked; relative day uses header date PASS');
