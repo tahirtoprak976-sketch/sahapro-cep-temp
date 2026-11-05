@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {align} from './assistant-gold/real-messages/measure.mjs';
+import {id} from './assistant-gold/real-messages/fixture.mjs';
+const expected=[{kind:'work',quantity:1,material:'hafriyat',dump:'Depo'},{kind:'work',quantity:1,material:'hafriyat',dump:'DEST'}];
+const actual=[{kind:'work',quantity:1,material:'hafriyat',dump_site_id:id('DUMP','OWN'),ok:false},{kind:'work',quantity:1,material:'hafriyat',dump_site_id:id('dump_sites','DEST'),ok:true}];
+assert.deepEqual(align(expected,actual,{}),[0,1]);
+assert.deepEqual(align(expected,[...actual].reverse(),{}),[1,0],'Reordering identical trips must not invent a wrong destination');
+const materials=[{kind:'work',quantity:1,material:'kum'},{kind:'work',quantity:1,material:'moloz'}];
+assert.deepEqual(align(materials,[{...materials[1]},{...materials[0]}],{}),[1,0]);
+assert.deepEqual(align([{kind:'fuel'}],[{kind:'work'}],{}),[-1]);
+console.log('measurement alignment: destination/material and row-order invariance PASS');

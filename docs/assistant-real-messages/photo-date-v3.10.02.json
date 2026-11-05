@@ -1,0 +1,476 @@
+{
+  "version": "SAHAPRO SOLO v3.10.02",
+  "mode": "assistant-validation",
+  "sampleSet": "synthetic-photo-date",
+  "realGemini": false,
+  "proposalOrigin": {
+    "origin": "synthetic canned proposals",
+    "realGemini": false,
+    "oracleUsed": false
+  },
+  "categories": {
+    "Fotoğraf/tarih (sentetik)": {
+      "messages": 4,
+      "expectedCards": 4,
+      "actualCards": 4,
+      "readyCorrect": 1,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": 0,
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0
+    }
+  },
+  "totals": {
+    "messages": 4,
+    "expectedCards": 4,
+    "actualCards": 4,
+    "readyCorrect": 1,
+    "unnecessaryQuestions": 0,
+    "missedQuestions": 0,
+    "wrongFields": 0,
+    "missingCards": 0,
+    "extraCards": 0,
+    "silentWrong": 0
+  },
+  "failureReasons": {},
+  "details": [
+    {
+      "id": "photo-registered-fuel-conflict",
+      "category": "Fotoğraf/tarih (sentetik)",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "date",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "date",
+          "expectedRows": [
+            0
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": []
+        }
+      ],
+      "actual": [
+        {
+          "source_quote": "Manitou depodan 3 litre mazot aldı",
+          "date": "2026-11-04",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "liters": 3,
+          "total": null,
+          "photo": 0,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "_fieldEvidence": {
+            "date": {
+              "value": "2026-11-04",
+              "level": "CIKARIM",
+              "reason": "WhatsApp satırının tarihi",
+              "source": "source_context"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "KESIN",
+              "reason": "Satırdaki kayıtlı araç",
+              "source": "source_row"
+            },
+            "liters": {
+              "value": 3,
+              "level": "KESIN",
+              "reason": "Satırdaki açık litre",
+              "source": "source_row"
+            }
+          },
+          "issues": [
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-04 tarihini doğrulayın?"
+          ],
+          "ok": false,
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-04",
+              "suggestedSource": "message",
+              "photoConflict": true
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "KESIN",
+              "reason": "Satırdaki kayıtlı araç",
+              "source": "source_row"
+            },
+            "liters": {
+              "value": 3,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "fuel"
+        }
+      ]
+    },
+    {
+      "id": "photo-registered-fuel-consistent",
+      "category": "Fotoğraf/tarih (sentetik)",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 1,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [],
+      "expectedQuestions": [],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": true,
+          "wrongFields": []
+        }
+      ],
+      "actual": [
+        {
+          "source_quote": "Manitou depodan 3 litre mazot aldı",
+          "date": "2026-11-04",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "liters": 3,
+          "total": null,
+          "photo": 0,
+          "km": null,
+          "machine_hours": null,
+          "source": "Depo Tankı",
+          "customer_id": null,
+          "stockShort": false,
+          "_fieldEvidence": {
+            "date": {
+              "value": "2026-11-04",
+              "level": "CIKARIM",
+              "reason": "WhatsApp satırının tarihi",
+              "source": "source_context"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "KESIN",
+              "reason": "Satırdaki kayıtlı araç",
+              "source": "source_row"
+            },
+            "liters": {
+              "value": 3,
+              "level": "KESIN",
+              "reason": "Satırdaki açık litre",
+              "source": "source_row"
+            }
+          },
+          "issues": [],
+          "ok": true,
+          "fieldConfidence": {
+            "date": {
+              "value": "2026-11-04",
+              "level": "CIKARIM",
+              "reason": "WhatsApp satırının tarihi",
+              "source": "source_context"
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "vehicle_id": {
+              "value": "TEST_REAL_VEHICLE_MANITOU",
+              "level": "KESIN",
+              "reason": "Satırdaki kayıtlı araç",
+              "source": "source_row"
+            },
+            "liters": {
+              "value": 3,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "total": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Bilgi bulunamadı",
+              "source": "none"
+            },
+            "source": {
+              "value": "Depo Tankı",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "fuel"
+        }
+      ]
+    },
+    {
+      "id": "photo-registered-expense-conflict",
+      "category": "Fotoğraf/tarih (sentetik)",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "date",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "date",
+          "expectedRows": [
+            0
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": []
+        }
+      ],
+      "actual": [
+        {
+          "source_quote": "Lastik 500 TL aldık",
+          "date": "2026-11-04",
+          "amount": 500,
+          "category": "Lastik",
+          "company": "",
+          "vehicle_id": null,
+          "supplier_id": null,
+          "credit": false,
+          "photo": 0,
+          "note": "",
+          "payment_method": null,
+          "paid_by": null,
+          "detail": null,
+          "issues": [
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-04 tarihini doğrulayın?"
+          ],
+          "ok": false,
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-04",
+              "suggestedSource": "message",
+              "photoConflict": true
+            },
+            "vehicle_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "supplier_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "paid_by": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "amount": {
+              "value": 500,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "category": {
+              "value": "Lastik",
+              "level": "KESIN",
+              "reason": "Mevcut doğrulama kuralından",
+              "source": "message"
+            }
+          },
+          "okData": true,
+          "kind": "expense"
+        }
+      ]
+    },
+    {
+      "id": "photo-registered-tank-conflict",
+      "category": "Fotoğraf/tarih (sentetik)",
+      "messages": 1,
+      "expectedCards": 1,
+      "actualCards": 1,
+      "readyCorrect": 0,
+      "unnecessaryQuestions": 0,
+      "missedQuestions": 0,
+      "wrongFields": [],
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0,
+      "questions": [
+        {
+          "field": "date",
+          "actualRows": [
+            0
+          ]
+        }
+      ],
+      "expectedQuestions": [
+        {
+          "field": "date",
+          "expectedRows": [
+            0
+          ]
+        }
+      ],
+      "rowsByExpected": [
+        {
+          "actualRow": 0,
+          "checked": false,
+          "wrongFields": []
+        }
+      ],
+      "actual": [
+        {
+          "source_quote": "Depoya 100 litre mazot 5000 TL aldık",
+          "date": "2026-11-04",
+          "liters": 100,
+          "total": 5000,
+          "note": "",
+          "unit_price": 50,
+          "supplier_id": null,
+          "credit": false,
+          "customer_id": null,
+          "photo": 0,
+          "detail": null,
+          "company": "",
+          "irsaliye_no": "",
+          "issues": [
+            "Önerilen tarih mesaj/fiş ile çelişiyor; 2026-11-04 tarihini doğrulayın?"
+          ],
+          "okData": true,
+          "needsApproval": false,
+          "ok": false,
+          "dateUnsure": true,
+          "dateConflict": true,
+          "fieldConfidence": {
+            "date": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın",
+              "source": "none",
+              "conflict": true,
+              "suggestedValue": "2026-11-04",
+              "suggestedSource": "message",
+              "photoConflict": true
+            },
+            "customer_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "supplier_id": {
+              "value": null,
+              "level": "BILINMIYOR",
+              "reason": "Kart bulunamadı",
+              "source": "none"
+            },
+            "total": {
+              "value": 5000,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "unit_price": {
+              "value": 50,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            },
+            "liters": {
+              "value": 100,
+              "level": "KESIN",
+              "reason": "Mesaj/ilgili fişte doğrulanan sayı",
+              "source": "message"
+            }
+          },
+          "kind": "tank"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Gemini yanıtı yok; planlar v3.10.00 yerel ayrıştırıcısından kaydedildi.",
+    "Sözleşmede yalnız açık TEST ücreti vardır; gerçek ücret değildir ve nonzero ücret doğruluğu puanlanmaz.",
+    "Soru sayıları mevcut grup/missing alan katmanından türetildi; henüz gerçek ekran testi değildir."
+  ]
+}

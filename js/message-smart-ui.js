@@ -375,7 +375,7 @@ export async function messageWorkbench(ctx, d, m, tools) {
     const row =
       rows[Number(button.closest("[data-review-row]").dataset.reviewRow)];
     const dialog = ui.sheet(
-      `<h2>Yeni Müşteri Ekle</h2><form data-new-customer-form>${fText("Müşteri / firma adı", "name", "", { ph: "Örnek: Muharrem Arnavutköy" })}${fText("Yetkili (opsiyonel)", "contact", "")}${fText("Telefon (opsiyonel)", "phone", "", { type: "tel" })}</form><p class="notice">Müşteri kartı ve ekrandaki kontrol taslağı birlikte kaydedilir. İş veya ödeme oluşmaz. Aynı adlı tek bir müşteri varsa mevcut kart seçilir.</p><p data-new-customer-error class="message-issues" role="alert" hidden></p><div class="row"><button class="btn" data-customer-cancel>Vazgeç</button><button class="btn primary" data-customer-save>Kaydet ve Seç</button></div>`,
+      `<h2>Yeni Müşteri Ekle</h2><form data-new-customer-form>${fText("Müşteri / firma adı", "name", "", { ph: "Örnek: Müşteri A" })}${fText("Yetkili (opsiyonel)", "contact", "")}${fText("Telefon (opsiyonel)", "phone", "", { type: "tel" })}</form><p class="notice">Müşteri kartı ve ekrandaki kontrol taslağı birlikte kaydedilir. İş veya ödeme oluşmaz. Aynı adlı tek bir müşteri varsa mevcut kart seçilir.</p><p data-new-customer-error class="message-issues" role="alert" hidden></p><div class="row"><button class="btn" data-customer-cancel>Vazgeç</button><button class="btn primary" data-customer-save>Kaydet ve Seç</button></div>`,
       { modal: true },
     );
     const error = qs("[data-new-customer-error]", dialog),

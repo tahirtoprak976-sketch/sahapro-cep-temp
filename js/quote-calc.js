@@ -27,7 +27,7 @@ export async function screen(ctx) {
     appbar("Teklif Asistanı", "fiyat verirken maliyet + geçmiş fiyat") +
     `<div style="height:10px"></div>
     <div class="card">
-      <div class="field"><label>🎤 Anlatın (isteğe bağlı) — Gemini formu doldurur</label><textarea data-msg rows="2" placeholder="Ör: Ahmet Yapı Kağıthane'den Bolluca'ya 20 sefer hafriyat soruyor, 34GAM627 ile"></textarea></div>
+      <div class="field"><label>🎤 Anlatın (isteğe bağlı) — Gemini formu doldurur</label><textarea data-msg rows="2" placeholder="Ör: Müşteri A şantiyeden döküm sahasına 20 sefer hafriyat soruyor, 34GAM627 ile"></textarea></div>
       <button class="btn block" data-fill>🤖 Formu doldur</button><div data-fillout></div>
     </div>
     <div class="card" data-form>

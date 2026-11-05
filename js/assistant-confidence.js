@@ -155,7 +155,7 @@ function dateEvidence(value,{scope,whole,photoText,today,dateUnsure,row,kind,d})
  const m=message.values.length===1?message.values[0]:null,p=photo.values.length===1?photo.values[0]:null;
  const conflict=!!(m&&p&&m.date!==p.date),chosen=m||p;
  const verify=reason=>({...unknown(reason),conflict:conflict||!!(chosen&&value&&value!==chosen.date),...(chosen?{suggestedValue:chosen.date,suggestedSource:m?'message':'photo'}:{})});
- if(conflict)return verify('Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın');
+ if(conflict)return {...verify('Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın'),photoConflict:true};
  if(chosen){
   if(dateUnsure||value!==chosen.date)return verify('Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı');
   return chosen.level===CONFIDENCE.CERTAIN?certain(value,m?'Mesajdaki satır/başlık tarihi':'İlgili fişteki tarih',m?'message':'photo'):inferred(value,'Satırdaki gün/ay ve mevcut yıl','row_date');
@@ -186,7 +186,7 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  if(r.yard==='out'&&r.customer_id)f.customer_id=inferred(r.customer_id,'Kendi depodan çıkış için kayıtlı iç iş müşterisi','own_yard');
  if(r.vehicleGuess)f.vehicle_id=unknown('Araç eşleşmesi doğrulanmalı');
  if(r.vehicleNote&&!r.vehicleGuess&&r.vehicle_id)f.vehicle_id=inferred(r.vehicle_id,'Kayıtlı gönderenin zimmetli aracı','assignment');
- for(const [k,v]of Object.entries(r._fieldEvidence||{}))f[k]=v;
+ for(const [k,v]of Object.entries(r._fieldEvidence||{})){if(k==='date'&&f.date?.conflict&&(v.source!=='batch_date'||f.date.photoConflict))continue;f[k]=v;}
  for(const k of ['amount','cost','total','unit_price','dump_cost','liters','hours_days'])if(k in r)certainValue(k,'Mesaj/ilgili fişte doğrulanan sayı');
  if('quantity'in r)f.quantity=r.guessed?unknown('Miktar için mesajda kanıt yok'):certain(r.quantity,'Mesajda doğrulanan miktar');
  if('unit'in r)f.unit=unitEvidence(r,d,text);
@@ -198,11 +198,12 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  if(price&&(!job||job.ambiguous)&&!r.fuelAllowance?.only_pay&&r.yard!=='out'&&(f.date?.level===CONFIDENCE.CERTAIN||!price.valid_from&&!price.valid_to)&&!price.formula&&Number.isFinite(price.price)&&price.price>0&&!r.priceUncertain&&!r.price_pending&&!r.dateUnsure){
   f.effective_unit_price=certain(price.price,'Bu iş için tek geçerli kayıtlı fiyat kuralı','price_rule');
  }
+ if(r.sourceUncertain)f.source=unknown('Yakıt kaynağı bu satır için doğrulanmalı');
  if(f.date?.level===CONFIDENCE.UNKNOWN){r.dateUnsure=true;if(f.date.conflict){r.dateConflict=true;(r.issues??=[]).push('Önerilen tarih mesaj/fiş ile çelişiyor; '+(f.date.suggestedValue||'doğru tarihi')+' tarihini doğrulayın?');}}
  r.fieldConfidence=f;
  r.okData=r.okData??r.ok;
  r.ok=!!r.ok&&confidenceReady(r,kind)&&!r.needsApproval&&(r.price_pending||!r.priceInfo?.ambiguous);
  return r;
 }
-export function confidenceValue(row,key,fallback){const f=row.fieldConfidence?.[key];return f?(f.level===CONFIDENCE.UNKNOWN?fallback:f.value):fallback;}
+export function confidenceValue(row,key,fallback){const f=row.fieldConfidence?.[key];return f?(f.rejected?null:f.level===CONFIDENCE.UNKNOWN?fallback:f.value):fallback;}
 export function invalidateConfidenceDate(row){if(row.fieldConfidence&&row.dateUnsure){if(!row.fieldConfidence.date?.suggestedValue)row.fieldConfidence.date=unknown('Mesaj/fişte tarih doğrulanmalı');delete row.fieldConfidence.effective_unit_price;}}

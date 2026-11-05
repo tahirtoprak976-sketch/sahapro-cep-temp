@@ -16,6 +16,10 @@ with sync_playwright() as pw:
  pg.evaluate("""()=>{const get=IDBObjectStore.prototype.get;IDBObjectStore.prototype.get=function(key){const req=get.call(this,key);if(this.name==='meta'&&key==='assistant_draft'){IDBObjectStore.prototype.get=get;req.addEventListener('success',e=>{e.stopImmediatePropagation();window.__releaseStartupDraft=()=>req.onsuccess.call(req,e);});}return req;};}""")
  pg.goto(app+'#/akilli-asistan');pg.wait_for_function("()=>typeof window.__releaseStartupDraft==='function'")
  assert pg.is_disabled('[data-ask]')
+ # A read-only composer intentionally makes fill wait for restoration. Release
+ # that held read first; editable historical baselines retain the original race.
+ # All preservation, provider-call, selection and no-write assertions stay intact.
+ pg.evaluate("()=>{if(document.querySelector('[data-msg]').readOnly)window.__releaseStartupDraft();}")
  typed='Yeni yakıt kaydı oluştur';pg.fill('[data-msg]',typed);pg.evaluate('()=>window.__releaseStartupDraft()');pg.wait_for_function("()=>document.querySelector('[data-new-chat]')&&!document.querySelector('[data-new-chat]').disabled")
  actual=pg.input_value('[data-msg]')
  if a.baseline_proof:assert actual=='TEST saved older draft',actual

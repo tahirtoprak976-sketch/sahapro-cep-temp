@@ -1,0 +1,5 @@
+{
+  "note":"Existing reference catalog moved out of code without changing names, rates, or invoice matching. These are catalog records, not assistant exam rules.",
+  "official_dumps":[{"key":"bolluca","name":"Bolluca","fee":160},{"key":"cebeci","name":"Cebeci","fee":210},{"key":"istac","name":"İSTAÇ Döküm","fee":235}],
+  "invoice_place_hints":{"bolluca":["bolluca","boğazköy","arnavutköy"],"cebeci":["cebeci","sultangazi"]}
+}

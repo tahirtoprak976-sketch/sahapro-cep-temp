@@ -1,0 +1,10 @@
+{
+  "note": "Only synthetic TEST records. Numeric contract terms are test inputs, not the owner's real tariff. Nonzero fee accuracy is not scored.",
+  "settings": {"yardIsOwn": true, "bossPersonnelId": "Hakan", "sundayPersonnelNote": true},
+  "personnel_aliases": [{"personnel_id": "Hakan", "name": "Hakan Abi", "aliases": ["Babam", "Hakan abi"]}],
+  "sites": [
+    {"id":"UNOWNED53","name":"Mimar Kemal 53","customer_id":null,"aliases":["Göl sokak 53","Mimar Kemal 53"]},
+    {"id":"CONTRACT_SITE","name":"Lale Yokuşu 12","customer_id":"LALE12","deal":{"basis":"Sefer","status":"Açık","start_date":"2026-01-01","price":1000,"kdv_rate":20,"kdv_included":false,"scope_in":"Kamyonet seferleri; yükleme sözleşmeye dahil"}}
+  ],
+  "pseudonyms_extra": ["İmrek Mustafa", "Arnavutköy", "Cemal Duman", "Cerahpaşa", "Mimar Kemal 53", "Göl sokak 53", "Park Vista", "Hamidiye", "Bahçeşehir", "Yıldız Oto", "Kentorman"]
+}

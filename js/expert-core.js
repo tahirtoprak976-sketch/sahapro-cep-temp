@@ -17,7 +17,7 @@ export const EXPERT_KNOWLEDGE = [
   "SEKTÖR BİLGİSİ (hafriyat, kamyon/tır nakliye, iş makinesi kiralama — İstanbul):",
   "• Birimler: Sefer (kamyon/tır taşıma), Saat (ekskavatör, JCB, manitou, mini kato, vinç), Yevmiye (günlük makine/operatör), Ton (kantarlı malzeme), m³. Yarım yevmiye = 0,5. Saatlik kiralamada çoğu zaman en az 4–5 saat (yarım gün) yazılır; mola ve yolda geçen süre ayrıca konuşulur.",
   "• Kiralama şekilleri: operatörlü/operatörsüz, yakıt dahil/hariç. Makinenin şantiyeye götürülmesi (lowbed nakliye, mobilizasyon) ayrı bir kalemdir; unutulursa zarar edilir.",
-  "• 'Döküm dahil' fiyat: döküm sahası ücretini nakliyeci öder; kâr = sefer fiyatı − döküm ücreti − mazot − şoför/araç gideri. Resmi sahalar ton başı ücret alır (Bolluca 160, Cebeci 210, İSTAÇ 235 ₺/ton KDV dahil); tır ~27 ton, kamyon ~22 ton taşır. Dolgu yerleri pazarlıkla.",
+  "• 'Döküm dahil' fiyat: döküm sahası ücretini nakliyeci öder; kâr = sefer fiyatı − döküm ücreti − mazot − şoför/araç gideri. Resmi sahalar ton başı ücret alır (kayıtlı saha tarifesi ve KDV bilgisi kullanılır); tır ~27 ton, kamyon ~22 ton taşır. Dolgu yerleri pazarlıkla.",
   "• Malzeme nakliyesi (mıcır, kum, gravak): ocaktan kantar fişiyle alınır; fiyat sefer ya da ton başıdır; fişteki net ton esas.",
   "• Mazot karşılığı iş: bazı müşteriler ücreti mazotla öder (ör. Kılıç, sefer başı 75 L); her araç birkaç seferde bir kendi hakkını doğrudan deposuna alır. Bu işler TL gelir, alınan mazot da TL masraf SAYILMAZ; alacak litre olarak izlenir. Araç kârında bu işler 0 ₺ görünür: aracı yalnız TL kârına bakıp zararda sanma, mazot karşılığı litreyi de söyle.",
   "• Taşeron: ana firmanın işini yapan alt yüklenici; işi kim istediyse o öder, taşeron adı geçmiyorsa ana firma.",

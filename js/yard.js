@@ -75,7 +75,7 @@ export async function screen(ctx) {
     <div class="section-title">Nasıl kaydedilir?</div>
     <div class="card small">
       • <b>Depoya giriş:</b> kamyonetin müşteri işini normal kaydedin, <b>Döküm Sahası = ${esc(site.name)}</b> seçin. Asistan "depoya döküldü / şantiyeye döktük" ifadesini anlar.<br>
-      • <b>Depodan çıkış:</b> iş formunda müşteri yerine en alttaki <b>📦 Kendi depodan çıkış</b> seçeneği, Döküm Sahası = gittiği yer, varsa <b>Döküm maliyeti (₺)</b>. Stabilize gibi maliyetsiz çıkışta boş bırakın. Asistan "depodaki stoktan 1 sefer moloz Bolluca'ya" ifadesini anlar. Bu seferler kimseye borç yazmaz; maliyet olarak sayılır.
+      • <b>Depodan çıkış:</b> iş formunda müşteri yerine en alttaki <b>📦 Kendi depodan çıkış</b> seçeneği, Döküm Sahası = gittiği yer, varsa <b>Döküm maliyeti (₺)</b>. Stabilize gibi maliyetsiz çıkışta boş bırakın. Asistan "depodaki stoktan 1 sefer moloz döküm sahasına" ifadesini anlar. Bu seferler kimseye borç yazmaz; maliyet olarak sayılır.
     </div>
     <div class="section-title">Araç yük katsayıları (1 sefer = kaç kamyonet yükü)</div>
     <div class="card" data-factors>
