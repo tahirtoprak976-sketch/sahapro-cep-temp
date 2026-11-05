@@ -56,3 +56,5 @@ Tam Node/CI/tarayıcı/yükseltme koşuları ve yayın bu aday için tamamlanmad
 Bu değişim model başarısı artışı değildir. Dondurulmuş yerel ayrıştırıcı önerileriyle ölçüldü; gerçek Gemini değildir. Araç iş türü yalnız kayıtlı türden okunur; isimdeki marka/tip kelimeleri kullanılmaz. Genel ekskavatör mini ekskavatör sayılmaz.
 
 Yerel kontroller: 184/184 Node dosyası; r10/r19/toplu 38 kart/geçersiz tarih/göreli tarih ve düzenlenebilir işletme ayarları tarayıcıda geçti. CI tam tarayıcı ve yükseltme kapıları ayrıca zorunludur. Bir sonraki paketin hedefi 21 gereksiz soru ve toplu bağlam aktarımıdır.
+
+İlk CI denemesi: assistant_confidence100 kayıtlı fiyat senaryosu Save sırasında `effectiveRules is not defined` nedeniyle durdu. Yeni ayar preflight kontrolüne eksik fonksiyon importu eklendi. Aynı değiştirilmemiş tarayıcı testinin 16 senaryosu yerelde geçti; ikinci tam CI koşusu zorunlu.

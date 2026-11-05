@@ -1154,6 +1154,7 @@ async function save(ctx, out, v, d, { message, files }) {
     .sort((a, b) => (["card", "memory", "tank", "price", "action", "setting"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price", "action", "setting"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
   const workflowRows=v._workflow?.read().filter(r=>r.selected)||[];
+  const {effectiveRules}=await import('./assistant-rules.js');
   if(v._businessRulesSnapshot!==undefined&&v._businessRulesSnapshot!==effectiveRules(await db.metaGet("assistant_rules")))throw Error("Asistan kuralları değişti. Kaydetmeden önce mesajı yeniden kontrol edin.");
   const preflightData=await db.dumpAll();
   for(const card of cards){
