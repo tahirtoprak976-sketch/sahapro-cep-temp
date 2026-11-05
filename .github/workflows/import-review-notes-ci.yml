@@ -159,6 +159,14 @@ jobs:
           set -euo pipefail
           draft_baseline=$(mktemp -d /tmp/solo-draft-race-baseline-XXXXXX)
           git -c safe.directory="$GITHUB_WORKSPACE" archive 5840236204da8749f4faac143ca1e7b1dbbdfa63 | tar -x -C "$draft_baseline"
+          python3 - "$draft_baseline/tools/e2e/assistant_startup.py" <<'PYASSERT'
+          import ast,pathlib,sys
+          before=ast.parse(pathlib.Path(sys.argv[1]).read_text())
+          after=ast.parse(pathlib.Path('tools/e2e/assistant_startup.py').read_text())
+          checks=lambda tree:[ast.dump(node,include_attributes=False) for node in ast.walk(tree) if isinstance(node,ast.Assert)]
+          assert checks(before)==checks(after), 'Existing startup assertions must remain identical'
+          print('All existing startup test assertions are identical')
+          PYASSERT
           python3 -m http.server 8878 --bind 127.0.0.1 --directory "$draft_baseline" > /tmp/solo-draft-race-http.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$draft_baseline"' EXIT
