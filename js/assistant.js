@@ -267,9 +267,13 @@ export async function screen(ctx) {
   }
   // Yarım kalan mesaj saklanır (internet yoksa veya ekran kapanırsa kaybolmaz)
   if (!msgEl.value) {
-    const savedDraft = await db.metaGet("assistant_draft");
-    // The user may have started typing while the saved draft was being read.
-    if (!msgEl.value) msgEl.value = savedDraft || "";
+    // Taslak okunurken kutu salt-okunur: yazmaya başlanan metin, odak ile harf girişi arasında gelen eski taslağın sonuna eklenmez.
+    msgEl.readOnly = true;
+    try {
+      const savedDraft = await db.metaGet("assistant_draft");
+      // The user may have started typing while the saved draft was being read.
+      if (!msgEl.value) msgEl.value = savedDraft || "";
+    } finally { msgEl.readOnly = false; }
   }
   let draftT = null;
   msgEl.addEventListener("input", () => {

@@ -58,3 +58,7 @@ Bu değişim model başarısı artışı değildir. Dondurulmuş yerel ayrışt�
 Yerel kontroller: 184/184 Node dosyası; r10/r19/toplu 38 kart/geçersiz tarih/göreli tarih ve düzenlenebilir işletme ayarları tarayıcıda geçti. CI tam tarayıcı ve yükseltme kapıları ayrıca zorunludur. Bir sonraki paketin hedefi 21 gereksiz soru ve toplu bağlam aktarımıdır.
 
 İlk CI denemesi: assistant_confidence100 kayıtlı fiyat senaryosu Save sırasında `effectiveRules is not defined` nedeniyle durdu. Yeni ayar preflight kontrolüne eksik fonksiyon importu eklendi. Aynı değiştirilmemiş tarayıcı testinin 16 senaryosu yerelde geçti; ikinci tam CI koşusu zorunlu.
+
+## Kullanıcı teşhisi sonrası taslak yarışı onarımı
+
+5840236 üzerine sağlanan yama aynen uygulandı: assistant_draft okuması sırasında textarea readOnly, finally ile tekrar düzenlenebilir. Kalıcı assistant_draft_race tarayıcı testi gerçek IndexedDB dönüşünü testte geciktirip Playwright fill ile yarıştırır. 6/6 aday koşusunda yalnız yeni metin kalır, kilit açılır, işletme kayıtları değişmez. Aynı test değişmemiş 5840236 üzerinde readOnly korumasının yokluğundan kırmızıdır. Test eski beklentileri değiştirmez; CI'de hem eski sürüm kanıtı hem yeni tarayıcı suiti olarak çalışır. Kullanıcı devam yetkisiyle tam yayın kapıları yeniden yürütülür.
