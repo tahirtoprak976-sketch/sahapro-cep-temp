@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - fix/assistant-data-rules-102
       - feat/assistant-question-box-101
       - feat/assistant-confidence-100
       - feat/assistant-gold-99
@@ -131,18 +132,22 @@ jobs:
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 59b571c71937ae46c70148cad1f72217c1d83c28
 
+      - name: Verify briefly installed v3.10.01 to data-rules release preservation
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 04aba45f298254622e3a754e53f5063314e21ac0
+
       - name: Prove registered-sender date regression on unchanged pre-fix commit
         run: |
           set -euo pipefail
           source_baseline=$(mktemp -d /tmp/solo-source-date-baseline-XXXXXX)
           trap 'rm -rf "$source_baseline"' EXIT
           git -c safe.directory="$GITHUB_WORKSPACE" archive 89887787bdbbd2d61e440be2e8ed876de5dcbd34 | tar -x -C "$source_baseline"
-          cp tests/assistant-real-messages.test.mjs "$source_baseline/tests/"
-          if node "$source_baseline/tests/assistant-real-messages.test.mjs" > /tmp/solo-source-date-baseline.log 2>&1; then
+          cp tests/assistant-photo-date-source-regression.test.mjs "$source_baseline/tests/"
+          if node "$source_baseline/tests/assistant-photo-date-source-regression.test.mjs" > /tmp/solo-source-date-baseline.log 2>&1; then
             echo 'Baseline unexpectedly passed the registered-sender date regression'
             exit 1
           fi
-          grep -F 'Invalid body date cannot fall back to a checked header date' /tmp/solo-source-date-baseline.log
+          grep -F 'Registered sender evidence must never override a conflicting receipt date' /tmp/solo-source-date-baseline.log
 
       - name: Measure pseudonymized owner corpus separately from Gemini
         run: |

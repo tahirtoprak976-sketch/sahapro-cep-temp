@@ -33,11 +33,11 @@ function same(field,got,want){
  return got===want||typeof got==='string'&&typeof want==='string'&&norm(got)===norm(want);
 }
 // Maximum-weight one-to-one alignment; oracle is used only for scoring, never proposals.
-function align(expected,actual,d){
+export function align(expected,actual,d){
  const n=Math.max(expected.length,actual.length);if(!n)return [];
  const cost=Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>{
   if(!expected[i]||!actual[j]||expected[i].kind!==actual[j].kind)return 1000;
-  let score=100;for(const [f,w]of [['customer',15],['vehicle',12],['date',6],['quantity',5],['site',4],['material',2]])if(Object.hasOwn(expected[i],f)&&same(f,actualField(actual[j],f,d),mapExpected(f,expected[i][f])))score+=w;
+  let score=100;for(const [f,w]of [['customer',15],['vehicle',12],['date',6],['quantity',5],['site',4],['dump',4],['quarry',3],['material',2]])if(Object.hasOwn(expected[i],f)&&same(f,actualField(actual[j],f,d),mapExpected(f,expected[i][f])))score+=w;
   return 1000-score;
  }));
  const u=Array(n+1).fill(0),v=Array(n+1).fill(0),p=Array(n+1).fill(0),way=Array(n+1).fill(0);

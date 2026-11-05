@@ -1,5 +1,5 @@
 {
-  "stage": "unpublished de-memorized baseline; safety gate blocked",
+  "stage": "candidate after measurement alignment fix; local Node gate passed; CI pending",
   "realGemini": false,
   "approved_source_unchanged_from_225": true,
   "input_sha256": {
@@ -19,7 +19,7 @@
     "js/assistant-business-rules.js": "114f22832332a1a94a848c880f28946691ae3f97ca30c6e052c8737015ef2c1e",
     "js/assistant-capabilities.js": "817f3f797c9d518f6fa388c5ee5547eac90dccc01fbd128cf01f255175339a6c",
     "js/assistant-confidence-ui.js": "09621ab591f0b26dac8af3a3a7f5129813c62cbc09da7137c6f32c62a8a121d2",
-    "js/assistant-confidence.js": "6edf4ceb8729ee72eb3f3d4b369df58ac3a634a8f780d8e9f534816a3234bc22",
+    "js/assistant-confidence.js": "a7bdad94746e94dac9f2d1c3b059d8ef6411e5d708fbe32b6b5ded3ec36538cd",
     "js/assistant-conversation.js": "3e4b4f13e9c8106462355a08dc7f65865528b49750341b07724574c1a2e2becf",
     "js/assistant-core.js": "739027df56b321eab1b4d0888641d310d68df3c91d0633fa626a13387b365f30",
     "js/assistant-customer.js": "115f446a198d4cd34061c725473c8c45bbe831258ece68cd5c9b48fcdda7b282",
@@ -33,7 +33,7 @@
     "js/assistant-review-ui.js": "2d981eaac2d8d926176be152bf96fb378d001777b72c7160f0059526eaef21f0",
     "js/assistant-rules.js": "84c82d6a6af7dd41b5a3b65e2b62b703b4fb7e29b2552dc5472be58dd8bd6267",
     "js/assistant-safety.js": "7b867bc119db65849c34c88e63613e03288c4c0a6576d5aff5c08cf8e5f164af",
-    "js/assistant-source-context.js": "5358b67634b74f9f28b1f5d03c3e22c2d789a94e602b560650f3cc75f85be777",
+    "js/assistant-source-context.js": "07c60d0c63bdc981f3f9814263456d4f9e2d302ed6ccd423f23d3b0834a79f59",
     "js/assistant-task-center-ui.js": "81632addf0e0e47332a429093c2ee774467b565e3a0bb5cb796dfbdb51b6550a",
     "js/assistant-task-center.js": "7a8db39f191271727b9f2be11f8759cbec8fee6d4cc15211478841a60117e984",
     "js/assistant-task-files.js": "6cd60e67b0407838abfbf392413c792c6ec8b9f45bc8c10886174cb82951a9fa",

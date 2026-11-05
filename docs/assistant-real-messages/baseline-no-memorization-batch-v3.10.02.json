@@ -15,32 +15,31 @@
       "messages": 1,
       "expectedCards": 38,
       "actualCards": 38,
-      "readyCorrect": 14,
+      "readyCorrect": 15,
       "unnecessaryQuestions": 21,
       "missedQuestions": 0,
-      "wrongFields": 11,
+      "wrongFields": 9,
       "missingCards": 0,
       "extraCards": 0,
-      "silentWrong": 1
+      "silentWrong": 0
     }
   },
   "totals": {
     "messages": 1,
     "expectedCards": 38,
     "actualCards": 38,
-    "readyCorrect": 14,
+    "readyCorrect": 15,
     "unnecessaryQuestions": 21,
     "missedQuestions": 0,
-    "wrongFields": 11,
+    "wrongFields": 9,
     "missingCards": 0,
     "extraCards": 0,
-    "silentWrong": 1
+    "silentWrong": 0
   },
   "failureReasons": {
     "customer": 4,
     "customer_level": 1,
     "site": 2,
-    "dump": 2,
     "material": 2
   },
   "details": [
@@ -50,7 +49,7 @@
       "messages": 1,
       "expectedCards": 38,
       "actualCards": 38,
-      "readyCorrect": 14,
+      "readyCorrect": 15,
       "unnecessaryQuestions": 21,
       "missedQuestions": 0,
       "wrongFields": [
@@ -81,20 +80,6 @@
           "field": "site",
           "want": "TEST_REAL_SITE_CERRAH",
           "got": null
-        },
-        {
-          "expectedRow": 21,
-          "actualRow": 20,
-          "field": "dump",
-          "want": "TEST_REAL_DUMP_OWN",
-          "got": "TEST_REAL_dump_sites_BOLUCA"
-        },
-        {
-          "expectedRow": 22,
-          "actualRow": 19,
-          "field": "dump",
-          "want": "TEST_REAL_dump_sites_BOLUCA",
-          "got": "TEST_REAL_DUMP_OWN"
         },
         {
           "expectedRow": 29,
@@ -134,7 +119,7 @@
       ],
       "missingCards": 0,
       "extraCards": 0,
-      "silentWrong": 1,
+      "silentWrong": 0,
       "questions": [
         {
           "field": "vehicle",
@@ -475,18 +460,14 @@
           "wrongFields": []
         },
         {
-          "actualRow": 20,
-          "checked": true,
-          "wrongFields": [
-            "dump"
-          ]
-        },
-        {
           "actualRow": 19,
           "checked": false,
-          "wrongFields": [
-            "dump"
-          ]
+          "wrongFields": []
+        },
+        {
+          "actualRow": 20,
+          "checked": true,
+          "wrongFields": []
         },
         {
           "actualRow": 21,

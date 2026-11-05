@@ -1,6 +1,6 @@
-# Taslak v3.10.02 — ad ezberi kaldırıldı; yayın kapısı kapalı
+# v3.10.02 ad ezberi temizliği ve ölçüm eşleştirmesi
 
-Canlı sürüm v3.10.00 olarak korunur. Bu aday yayımlanmamıştır. İki denemede toplu setin sessiz yanlış kapısı geçmediği için Bölüm 6 gereği duruldu.
+Canlı sürüm v3.10.00; aday henüz yayımlanmadı. Önceki duruşun nedeni ölçüm eşleştirmesiydi: aynı seferlerin depo/Boluca yönleri çapraz eşleştiriliyordu. Kullanıcının incelemesi sonrası eşleştirmeye dump/quarry eklendi. Uygulama bu ölçüm hatası için değiştirilmedi. Önceki blocker JSON tarihsel kanıttır.
 
 ## Değişiklikler
 
@@ -41,3 +41,18 @@ Toplu r00/r13 parçasındaki 2 sefer (bir tanesi kendi depoya, bir tanesi başka
 ## Yapılmayan doğrulamalar
 
 Tam Node/CI/tarayıcı/yükseltme koşuları ve yayın bu aday için tamamlanmadı. Ayarlar UI’sinin ve yeni fixture veri yolunun tam tarayıcı testi ile dalın CI bağlaması tamamlanmadı. Canlı yayın v3.10.00. Gerçek telefon, gerçek Gemini, gerçek WhatsApp denenmedi. Geri çekilmiş v3.10.01 raporları tarihsel karşılaştırma olarak korunur.
+
+## Eşleştirme düzeltmesi sonrası
+
+| Ölçüm | Önce | Sonra |
+|---|---:|---:|
+| Tek tek hazır doğru | 23/38 | 23/38 |
+| Toplu hazır doğru | 14/38 | 15/38 |
+| Toplu sessiz yanlış | 1 (yanlış eşleştirme) | 0 |
+| Toplu gereksiz soru | 21 | 21 |
+| Toplu yanlış alan | 11 | 9 |
+| Kaçırılan soru | 0 | 0 |
+
+Bu değişim model başarısı artışı değildir. Dondurulmuş yerel ayrıştırıcı önerileriyle ölçüldü; gerçek Gemini değildir. Araç iş türü yalnız kayıtlı türden okunur; isimdeki marka/tip kelimeleri kullanılmaz. Genel ekskavatör mini ekskavatör sayılmaz.
+
+Yerel kontroller: 184/184 Node dosyası; r10/r19/toplu 38 kart/geçersiz tarih/göreli tarih ve düzenlenebilir işletme ayarları tarayıcıda geçti. CI tam tarayıcı ve yükseltme kapıları ayrıca zorunludur. Bir sonraki paketin hedefi 21 gereksiz soru ve toplu bağlam aktarımıdır.

@@ -1,3 +1,4 @@
+import {canonicalVehicleType} from './vehicle-type-core.js';
 import {businessRules,bossDispatch,bossNames} from './assistant-business-rules.js';
 import {jobFor,checkDeal} from './job-core.js';
 // Phone-side interpretation of registered WhatsApp senders. No writes, prices or model authority.
@@ -65,7 +66,7 @@ const MATERIALS=[['hafriyat',/hafriyat|harfiyat/],['moloz',/moloz/],['çöp',/co
 function materialIn(text){const n=norm(text);return MATERIALS.find(([,re])=>re.test(n))?.[0]||null;}
 function workType(unit,vehicle,material){
  if(unit==='Sefer')return {'hafriyat':'Hafriyat Nakliye',moloz:'Moloz Nakliye','çöp':'Çöp Nakliye','mıcır':'Mıcır Nakliye',kum:'Kum Nakliye',gravak:'Gravak Nakliye'}[material]||'Diğer';
- const name=norm((vehicle?.type||'')+' '+(vehicle?.name||''));return /manitou/.test(name)?'Manitou Çalışması':/jcb/.test(name)?'JCB Çalışması':/mini|u36/.test(name)?'Mini Kato Çalışması':'Makine Çalışması';
+ const type=canonicalVehicleType(vehicle?.type),registered=norm(vehicle?.type);return type==='Telehandler'||registered==='manitou'?'Manitou Çalışması':['JCB','Kazıcı Yükleyici'].includes(type)?'JCB Çalışması':registered==='mini ekskavator'?'Mini Kato Çalışması':'Makine Çalışması';
 }
 export function sourceCandidates(message,d,today,rulesText=''){
  const rules=businessRules(rulesText);
