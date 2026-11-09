@@ -7,6 +7,8 @@ with sync_playwright() as p:
  c.add_init_script("localStorage.setItem('sp_role','boss')")
  pg=c.new_page();errors=[];pg.on('pageerror',lambda e:errors.append(str(e)))
  pg.goto(U);pg.wait_for_timeout(1200)
+ # Explicit synthetic cards replace the former private installation catalogue.
+ pg.evaluate("""async()=>{const db=await import('./js/db.js');if(!(await db.listActive('vehicles')).length)await db.saveNew('vehicles',{name:'TEST bootstrap machine',type:'Araç/Makine'},'TEST fixture');if(!(await db.listActive('personnel')).length)await db.saveNew('personnel',{name:'TEST bootstrap operator',active:true},'TEST fixture');}""")
  result=pg.evaluate("""async()=>{
  const db=await import('./js/db.js');
  const cust=await db.saveNew('customers',{name:'Redteam TEST'},'TEST');const v=(await db.listActive('vehicles'))[0];

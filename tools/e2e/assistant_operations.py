@@ -9,6 +9,8 @@ with sync_playwright() as p:
  pg.on('pageerror',lambda e:errors.append(str(e)))
  pg.route('https://generativelanguage.googleapis.com/**',lambda r:(network.append(r.request.url),r.abort()))
  pg.goto(U);pg.wait_for_timeout(1500)
+ # Explicit synthetic cards replace the former private installation catalogue.
+ pg.evaluate("""async()=>{const db=await import('./js/db.js');if(!(await db.listActive('vehicles')).length)await db.saveNew('vehicles',{name:'TEST bootstrap machine',type:'Araç/Makine'},'TEST fixture');if(!(await db.listActive('personnel')).length)await db.saveNew('personnel',{name:'TEST bootstrap operator',active:true},'TEST fixture');}""")
  ids=pg.evaluate("""async()=>{const db=await import('./js/db.js');const sec=await import('./js/security-core.js');const core=await import('./js/core.js');await db.metaSet('sec_lock',{...(await sec.hashSecret('482917')),idle_min:30,away_min:15});const c=await db.saveNew('customers',{name:'İşlem Örnek'},'TEST');const per=await db.saveNew('personnel',{name:'Deneme Operatör'},'TEST');const v=(await db.listActive('vehicles'))[0];const works=[];for(let i=0;i<2;i++)works.push((await db.saveNew('work_records',{date:core.addDays(core.todayStr(),-1),customer_id:c.id,personnel_id:per.id,vehicle_id:v.id,work_type:'Kazı',unit:'Saat',quantity:2,price_snapshot:{unit_price:1500,kdv_rate:20,kdv_included:false,amount:3000,price_source:'Manuel'}},'TEST')).id);return {works};}""")
  pg.goto(U+'index.html#/akilli-asistan');pg.wait_for_timeout(1800)
  if pg.locator('#lock-root [data-pw]').count():

@@ -182,7 +182,7 @@ export function guessCustomer(d, text, { vehicleId = null, date = todayStr() } =
 // Mesajda büyük harfle yazılmış 2–3 kelimelik ad (kişi/firma) — personel, araç, yer, ocak, döküm yeri ya da iş kelimesi değilse
 const NOT_NAME = new Set(["tir", "kamyon", "kamyonet", "jcb", "kepce", "ekskavator", "manitou", "vinc", "sefer", "dokum", "dolgu", "hafriyat", "harfiyat", "moloz", "kum", "micir", "gravak", "toprak", "saat", "yevmiye", "santiye", "santiyeden", "santiyeye", "ocak", "ton", "bugun", "dun", "sabah", "aksam", "ocagi", "nakliye", "isi", "is", "yarim", "gun", "ve", "ile", "tl", "lira"]);
 export function nameInMessage(d, text) {
-  // personel/araç/yer kelimeleri (ad içinde geçse de atılır: "Bayram Tırcı Ahmet Bey" → "Ahmet Bey")
+  // personel/araç/yer kelimeleri (ad içinde geçse de atılır: "Şoför Müşteri Bey" → "Müşteri Bey")
   const own = new Set([...live(d, "personnel"), ...live(d, "vehicles"), ...live(d, "quarries"), ...live(d, "dump_sites"), ...live(d, "sites")].flatMap((x) => tok(x.name)).filter((w) => w.length >= 3));
   const isOwn = (w) => NOT_NAME.has(w) || [...own].some((x) => sameWord(x, w)) || /^tirci|^operator/.test(w);
   const out = [];

@@ -224,7 +224,7 @@ export function validateDocuments(plan, { d, today = todayStr(), photoTexts = []
       if (!owner && info.name) owner = list.find((p) => norm(p.name) === norm(info.name)) || null;
       if (!owner && info.name) newPerson = info;
       if (owner && (!owner.identity_number || !info.identity_number || owner.identity_number === info.identity_number) && nameMatches(owner.name, text)) upd = personUpdate(owner, info);
-      // Kartta yalnız ad varsa (ör. "Soner") ve belgede tam ad yazıyorsa: aynı kişi varsayılır ama "Yeni personel" seçeneği de sunulur
+      // Kartta yalnız ad varsa (yalnız adı) ve belgede tam ad yazıyorsa: aynı kişi varsayılır ama "Yeni personel" seçeneği de sunulur
       if (owner && info.name && !owner.identity_number && norm(owner.name).split(" ").length === 1 && norm(info.name) !== norm(owner.name)) {
         newPerson = info;
         issues.push(`Kartta "${owner.name}" yazıyor; belgede "${info.name}". Aynı kişi değilse sahibini "➕ Yeni personel" yapın`);
@@ -297,7 +297,7 @@ export function personInfo(x, text, dates = datesInText(text)) {
 }
 export function personUpdate(p, info) {
   const out = infoUpdate(p, info, ["identity_number", "birth_date", "license_class", "blood_type"]);
-  // İsim: karttaki kısa ad (ör. "Soner") belgedeki tam adın içindeyse tamamlanır
+  // İsim: karttaki kısa ad (yalnız adı) belgedeki tam adın içindeyse tamamlanır
   if (info.name && norm(info.name) !== norm(p.name) && nameMatches(p.name, info.name)) out.unshift({ k: "name", from: p.name || null, to: info.name, on: true });
   return out;
 }
@@ -366,7 +366,7 @@ export function mergeTicketsIntoWorks(v, { photoCount = 0, d = null, message = n
   if (noDateInMsg) for (const w of v.works || []) if(!w.fromDriver) w.dateUnsure = true;
   const works = v.works || [];
   if (!works.length) return v;
-  // Aynı plaka iki ayrı kartta olabilir (ör. "34GAM627" adlı kart + plakası 34 GAM 627 olan "Bayram Tır"): kart değil plaka karşılaştırılır
+  // Aynı plaka iki ayrı kartta olabilir (ör. plakası adında yazan kart + aynı plakası kayıtlı diğer kamyon): kart değil plaka karşılaştırılır
   const pk = (id) => {
     const x = d ? (d.vehicles || []).find((r) => r.id === id) : null;
     return x ? String(x.plate || x.name || "").toUpperCase().replace(/[^A-Z0-9]/g, "") : id;

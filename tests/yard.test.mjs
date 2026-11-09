@@ -7,7 +7,7 @@ const today = "2026-10-14";
 const d = {
   dump_sites: [{ id: "Y", name: "Muratoğlu Depo", own_yard: true }, { id: "BL", name: "Boluca Döküm" }],
   customers: [{ id: "IC", name: "Kendi Depo (iç iş)", internal: true }, { id: "HA", name: "Hurdacı Aydın" }, { id: "KI", name: "Kaya İnşaat" }],
-  vehicles: [{ id: "KT", name: "Kamyonet", type: "Kamyonet", plate: "34KT1" }, { id: "TR", name: "34FY2482", type: "Tır", plate: "34FY2482" }, { id: "X", name: "Bilinmez" }],
+  vehicles: [{ id: "KT", name: "Kamyonet", type: "Kamyonet", plate: "34KT1" }, { id: "TR", name: "34TST2482", type: "Tır", plate: "34TST2482" }, { id: "X", name: "Bilinmez" }],
   sites: [], personnel: [], suppliers: [], aliases: [], quarries: [],
   work_records: [
     { id: "a", date: "2026-10-10", customer_id: "HA", vehicle_id: "KT", unit: "Sefer", quantity: 5, material: "çöp", dump_site_id: "Y" },
@@ -33,7 +33,7 @@ assert.ok(yardHint("Hurdacı aydından 3 sefer çöp depoya döküldü").in);
 assert.ok(!yardHint("Kaya İnşaat 3 sefer moloz").out);
 assert.equal(yardMaterial({ material: "harfiyat" }), "Moloz / Hafriyat"); assert.equal(yardMaterial({ material: "çöp" }), "Çöp");
 // asistan: "şantiyeden … boluca" → iç iş müşterisi, işaretli; "depoya döküldü" → döküm yeri depo
-let v = validatePlan({ works: [{ date: today, vehicle_id: "TR", work_type: "Hafriyat Nakliye", quantity: 1, unit: "Sefer", dump_site_id: "BL" }] }, { message: "34FY2482 Şantiyeden 1sefer harfiyat boluca döküm", d, today });
+let v = validatePlan({ works: [{ date: today, vehicle_id: "TR", work_type: "Hafriyat Nakliye", quantity: 1, unit: "Sefer", dump_site_id: "BL" }] }, { message: "34TST2482 Şantiyeden 1sefer harfiyat boluca döküm", d, today });
 assert.equal(v.works[0].customer_id, "IC"); assert.equal(v.works[0].yard, "out"); assert.equal(v.works[0].ok, true, v.works[0].issues.join());
 v = validatePlan({ works: [{ date: today, customer_id: "HA", vehicle_id: "KT", work_type: "Çöp Nakliye", quantity: 3, unit: "Sefer" }] }, { message: "Kamyonet Hurdacı aydından 3 sefer çöp depoya döküldü", d, today });
 assert.equal(v.works[0].customer_id, "HA"); assert.equal(v.works[0].dump_site_id, "Y");
@@ -54,12 +54,14 @@ console.log("yard PASS");
 }
 {
   const { seedVehicleTypes } = await import("../js/yard-core.js");
-  const vs = [{ id: "1", name: "34GAM627", created_at: "x" }, { id: "2", name: "Kamyon", plate: "34 UL 9492", type: "Araç/Makine", created_at: "x" }, { id: "3", name: "34FY2482", type: "Kamyonet", created_at: "x" }];
+  const vs = [{ id: "1", name: "34TST627", created_at: "x" }, { id: "2", name: "Kamyon", plate: "34 TST 9492", type: "Araç/Makine", created_at: "x" }, { id: "3", name: "34TST2482", type: "Kamyonet", created_at: "x" }];
   const meta = {};
   const db = { metaGet: async (k) => meta[k], metaSet: async (k, v) => { meta[k] = v; }, getAll: async () => vs, saveExisting: async (s, r, f) => Object.assign(r, f) };
-  assert.equal(await seedVehicleTypes(db), 2);
+  // Explicit synthetic mapping tests the helper without shipping a private plate catalogue.
+  const knownTypes = {[vs[0].name]: "Tır", [vs[1].plate.replace(/ /g, "")]: "Kamyon"};
+  assert.equal(await seedVehicleTypes(db, knownTypes), 2);
   assert.deepEqual(vs.map((v) => v.type), ["Tır", "Kamyon", "Kamyonet"], "elle girilmiş tür değişmez");
-  assert.equal(await seedVehicleTypes(db), 0);
+  assert.equal(await seedVehicleTypes(db, knownTypes), 0);
   console.log("vehicle types ok");
 }
 {
@@ -70,7 +72,7 @@ console.log("yard PASS");
   const dd = {
     dump_sites: [{ id: "Y", name: "Depo", own_yard: true }, { id: "BL", name: "Bolluca", fee: 160, fee_unit: "Ton" }, { id: "GK", name: "Göktürk dolgu" }],
     customers: [{ id: "IC", name: "İç", internal: true }, { id: "KL", name: "Kılıç" }, { id: "AY", name: "Ayşe" }],
-    vehicles: [{ id: "T", name: "34GAM627", type: "Tır" }],
+    vehicles: [{ id: "T", name: "34TST627", type: "Tır" }],
     work_records: [
       { id: "i1", date: "2026-10-12", customer_id: "KL", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "Y", customer_fuel_allowance_l: 100, price_snapshot: { price_source: "Mazot karşılığı", amount: 0 } },
       { id: "i2", date: "2026-10-12", customer_id: "AY", vehicle_id: "T", unit: "Sefer", quantity: 1, dump_site_id: "Y" },
