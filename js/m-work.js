@@ -63,8 +63,6 @@ import {
 } from "./core.js";
 import { customerWorkLines } from "./business.js";
 import {
-  parseWhatsApp,
-  buildAliasIndex,
   voiceSupported,
   startVoice,
 } from "./parser.js";
@@ -1556,150 +1554,27 @@ async function slipDetail(ctx, id) {
 
 // ============ WHATSAPP AYRIŞTIRICI ============
 async function whatsapp(ctx) {
-  const { root, db } = ctx;
-  const [vehicles, customers, sites, personnel, aliases] = await Promise.all([
-    db.listActive("vehicles"),
-    db.listActive("customers"),
-    db.listActive("sites"),
-    db.listActive("personnel"),
-    db.listActive("aliases"),
-  ]);
-  const aliasIdx = buildAliasIndex(
-    aliases,
-    vehicles,
-    customers,
-    sites,
-    personnel,
-  );
-
-  root.innerHTML =
-    appbar("WhatsApp Ayrıştırıcı", "Mesajı yapıştır → taslak → sen onayla") +
-    `
-    <div class="card tap" data-go="#/whatsapp-toplu" style="border-left:4px solid #25d366;margin-top:10px"><div class="row between"><span><b>💬 WhatsApp grubunu toplu işle</b><br><span class="muted small">Grubu dışa aktarın; yalnız yeni mesajlar, fişleriyle birlikte asistana gider</span></span><span class="muted">›</span></div></div>
-    <div class="notice info"><span>ℹ</span><span>Taslaklar otomatik kaydedilmez; her birini tek tek onaylarsın. Belirsizler "KONTROL GEREKLİ" işaretlenir. Ham mesaj saklanır.</span></div>
-    <div class="slip-panel"><p>Eski mesajları tarih ve fiyat kontrolüyle aktarmak için:</p><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div class="field"><label>Mesaj metni</label><textarea data-raw style="min-height:130px" placeholder="U55 sevgi sokak ahmet bey 1 yevmiye&#10;Kamyon Müşteri A 3 sefer hafriyat"></textarea></div>
-    <div class="row" style="gap:8px;margin-bottom:12px">
-      <button class="btn primary grow" data-parse>Ayrıştır</button>
-      ${voiceSupported() ? '<button class="btn" data-voice>🎙 Sesli</button>' : ""}
-    </div>
-    <div data-out></div>`;
-
-  const rawEl = qs("[data-raw]", root);
-  const vBtn = qs("[data-voice]", root);
-  if (vBtn)
-    vBtn.addEventListener("click", () => {
-      toast("Konuşun…", "ok");
-      startVoice(
-        (t) => {
-          rawEl.value = (rawEl.value + "\n" + t).trim();
-        },
-        () => {},
-      );
-    });
-  qs("[data-parse]", root).addEventListener("click", () => {
-    const drafts = parseWhatsApp(rawEl.value, {
-      vehicles,
-      customers,
-      sites,
-      personnel,
-      aliasIdx,
-      defaultDate: todayStr(),
-    });
-    const out = qs("[data-out]", root);
-    if (!drafts.length) {
-      out.innerHTML = emptyState("💬", "Satır bulunamadı");
-      return;
-    }
-    out.innerHTML =
-      `<div class="section-title">${drafts.length} taslak</div>` +
-      drafts
-        .map(
-          (d, i) => `
-      <div class="card">
-        <div class="row between">
-          <span class="badge ${d.confidence >= 80 ? "ok" : d.confidence >= 50 ? "warn" : "danger"}">%${d.confidence} güven</span>
-          ${d.kontrol_gerekli ? '<span class="badge warn">KONTROL GEREKLİ</span>' : ""}
-        </div>
-        <div style="margin:8px 0" class="small">
-          ${kv("Tarih", trDate(d.date))}
-          ${kv("Müşteri/Şantiye", (d.customer_id ? esc((customers.find((c) => c.id === d.customer_id) || {}).name) : "—") + " / " + (d.site_id ? esc((sites.find((s) => s.id === d.site_id) || {}).name) : "—"))}
-          ${kv("Araç/Personel", (d.vehicle_id ? esc((vehicles.find((v) => v.id === d.vehicle_id) || {}).name) : "—") + " / " + (d.personnel_id ? esc((personnel.find((p) => p.id === d.personnel_id) || {}).name) : "—"))}
-          ${kv("İş", (d.work_type || "—") + " · " + (d.quantity ?? "?") + " " + (d.unit || ""))}
-          ${d.fuel_liters ? kv("Yakıt", d.fuel_liters + " Lt") : ""}
-          ${d.notes.length ? kv("Notlar", d.notes.join("; ")) : ""}
-        </div>
-        <div class="tiny muted ellipsis" style="margin-bottom:8px">Ham: ${esc(d.raw_message)}</div>
-        <div class="row" style="gap:8px">
-          <button class="btn sm grow" data-edit="${i}">Düzenle</button>
-          <button class="btn sm primary grow" data-save="${i}">Onayla & Kaydet</button>
-        </div>
-      </div>`,
-        )
-        .join("");
-    out.onclick = async (ev) => {
-      const eb = ev.target.closest("[data-edit]");
-      const sb = ev.target.closest("[data-save]");
-      if (eb) {
-        const d = drafts[Number(eb.dataset.edit)];
-        window.__prefill = {
-          date: d.date,
-          customer_id: d.customer_id,
-          site_id: d.site_id,
-          vehicle_id: d.vehicle_id,
-          personnel_id: d.personnel_id,
-          work_type: d.work_type,
-          quantity: d.quantity,
-          unit: d.unit,
-          description: d.description,
-          dump_area: d.dump_area,
-          quarry: d.quarry,
-        };
-        go("#/isler/new");
-      }
-      if (sb) {
-        const d = drafts[Number(sb.dataset.save)];
-        await db.saveNew(
-          "work_records",
-          {
-            date: d.date,
-            customer_id: d.customer_id,
-            site_id: d.site_id,
-            vehicle_id: d.vehicle_id,
-            personnel_id: d.personnel_id,
-            work_type: d.work_type || "Diğer",
-            quantity: d.quantity || 1,
-            unit: d.unit || "Adet",
-            description: d.description || "",
-            dump_area: d.dump_area || "",
-            quarry: d.quarry || "",
-            slip_status: d.slip_status,
-            raw_message: d.raw_message,
-            parse_confidence: d.confidence,
-            kontrol_gerekli: d.kontrol_gerekli,
-          },
-          "WhatsApp onay",
-        );
-        if (d.fuel_liters && d.vehicle_id) {
-          await db.saveNew(
-            "fuel_records",
-            {
-              date: d.date,
-              vehicle_id: d.vehicle_id,
-              personnel_id: d.personnel_id,
-              liters: d.fuel_liters,
-              fuel_source: "Depo Tankı",
-              receipt: "Hayır",
-              customer_billable: false,
-              description: "WhatsApp: " + d.raw_message,
-            },
-            "WhatsApp onay",
-          );
-        }
-        sb.closest(".card").style.opacity = ".4";
-        sb.disabled = true;
-        sb.textContent = "Kaydedildi ✓";
-        toast("Kaydedildi", "ok");
-      }
-    };
+  const {root,db}=ctx;
+  root.innerHTML=appbar('WhatsApp Ayrıştırıcı','İnternetsiz · iş ve yakıt ayrı kontrol kartları')+`
+    <div class="notice info"><span>ℹ</span><span>Anahtar ve internet gerekmez. Tarih ve gönderen başlığı devam satırlarında korunur. Bilinmeyen alanlar sorulur; kayıt yalnız Kaydet ile yazılır.</span></div>
+    <div class="field"><label>Mesaj metni</label><textarea data-raw data-msg rows="6" placeholder="WhatsApp mesajını tarih ve gönderen başlığıyla yapıştırın"></textarea></div>
+    <div class="row" style="gap:8px;margin-bottom:12px"><button class="btn primary grow" data-parse data-ask>Ayrıştır</button>${voiceSupported()?'<button class="btn" data-voice>🎙 Sesli</button>':''}</div>
+    <div data-offline-result data-out></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:16px"><a class="btn" href="#/whatsapp-toplu">WhatsApp grubunu toplu işle</a><a class="btn" href="#/gecmis">Geçmiş İş Aktarımı</a></div>`;
+  const input=qs('[data-raw]',root),button=qs('[data-parse]',root),out=qs('[data-out]',root);let busy=false,edited=false;
+  out.addEventListener('input',()=>{edited=true;});out.addEventListener('change',()=>{edited=true;});
+  qs('[data-voice]',root)?.addEventListener('click',()=>startVoice(t=>{input.value=(input.value+'\n'+t).trim();},()=>{}));
+  button.addEventListener('click',async()=>{
+    if(busy)return;const message=input.value.trim();if(!message)return toast('Önce mesajı yapıştırın','err');
+    if(edited&&out.querySelector('[data-kind]')&&!(await confirmDialog('Kartlar yeniden oluşturulsun mu?','Kaydetmediğiniz kart düzenlemeleri değişir. Mevcut kartları korumak için vazgeçebilirsiniz.','Yeniden ayrıştır')))return;
+    busy=true;const controls=qsa('input,textarea,button',root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
+    try {
+      const [{offlinePlan},{renderOfflinePlan},{effectiveRules}]=await Promise.all([import('./offline-whatsapp.js'),import('./assistant.js'),import('./assistant-rules.js')]);
+      const d=await db.dumpAll(),rules=effectiveRules(await db.metaGet('assistant_rules'));
+      const v=offlinePlan(message,{d,today:todayStr(),rules});if(!root.isConnected)return;
+      if(!v||!v.works.length&&!v.fuel.length){out.innerHTML=notice('info',v?._offlineNotices?.map(esc).join(' ')||'İş veya yakıt satırı bulunamadı. Tarih, ödeme notu ve başlıklar boş iş kaydına çevrilmedi.');return;}
+      await renderOfflinePlan(ctx,out,v,d,{message});edited=false;
+    }catch(e){if(root.isConnected)out.innerHTML=notice('warn',esc(e.message||'Mesaj okunamadı; yeniden deneyin.'));}
+    finally{busy=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
   });
 }
