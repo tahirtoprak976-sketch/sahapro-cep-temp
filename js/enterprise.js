@@ -1610,6 +1610,14 @@ export async function augment(ctx) {
       button("Tedarikçi Cari", "#/saticicari") +
       button("Vade", "#/yaslandirma") +
       button("Ücret/Avans", "#/ucretler");
+  const financeSlot=route==='finans'&&!id?qs('[data-finance-enterprise-tools]',root):null;
+  if(financeSlot&&links){
+    const {financeToolHTML,financeToolGroup}=await import('./finance-workspace.js');
+    const entries=[...Object.entries(MODULES).map(([r,[,label]])=>[r,label]),['maliyet','Maliyet Analizi'],['saticicari','Tedarikçi Cari'],['yaslandirma','Vade Yaşlandırma']];
+    const groups=[['Alış ve tedarikçi',['tedarikciler','alislar','odemeler','satinalma','saticicari']],['Banka ve vadeler',['bankalar','vadeler','ceksenet','yaslandirma']],['Rapor ve personel',['maliyet','ucretler','gider-kategorileri']],['Diğer işletme araçları',['bakimplani','takipler','gun-kapanis']]];
+    financeSlot.innerHTML=groups.map(([title,routes])=>financeToolGroup(title,routes.map(r=>financeToolHTML('#/'+r,entries.find(e=>e[0]===r)[1])).join(''))).join('');
+    root.dispatchEvent(new Event('finance-tools-updated'));links='';
+  }
   if (links)
     root.insertAdjacentHTML(
       "beforeend",
