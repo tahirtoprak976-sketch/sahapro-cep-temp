@@ -712,6 +712,15 @@ function summaryHtml(v, d) {
     ${todo.length ? `<div class="strong small" style="margin-top:8px">Teyit gerekenler (${todo.length})</div>${todo.map((x) => `<div class="tiny muted">${esc(x)}</div>`).join("")}` : ""}</div>`;
 }
 
+// The offline entry point shares the same review, money guards, operation IDs
+// and explicit Save path. It does not call Gemini or score local rules as AI.
+export async function renderOfflinePlan(ctx,out,v,d,{message}) {
+  v._localOnly=true;
+  render(ctx,out,v,d,{message,files:[],ms:0});
+  for(const button of qsa('[data-review-compose],[data-question-reply]',out))button.hidden=true;
+  if(v._offlineNotices?.length)out.insertAdjacentHTML('afterbegin',notice('info',v._offlineNotices.map(esc).join(' ')));
+}
+
 function render(ctx, out, v, d, { message, files, ms }) {
   // Şoförün fotoğrafı eksikse: burada seçilir, mesaj fotoğraflarla yeniden işlenir (WhatsApp'a dönmeye gerek yok)
   setTimeout(() => {
@@ -1145,7 +1154,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   for (const sel of qsa('[data-kind=doc] select[name="owner"]', out))
     sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
   v._workflow=bindDraftWorkflow(out,v,d);
-  bindBulkEntry(ctx,out,v,d,{message,files});
+  if(!v._localOnly)bindBulkEntry(ctx,out,v,d,{message,files});
   bindAssistantReview(ctx,out,v,d);
 }
 
@@ -1228,7 +1237,7 @@ async function save(ctx, out, v, d, { message, files }) {
   const { saveMessageMemory } = await import("./message-smart-db.js");
   // Kaydedilen seçim hafızaya: mesajdaki ifade → seçilen kart (bir dahaki sefere otomatik)
   const learn = async (alias, target_type, target_id, cardName) => {
-    if (!alias || !target_id) return;
+    if (v._localOnly || !alias || !target_id) return;
     const n = (x) => String(x || "").toLocaleLowerCase("tr-TR").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     if (n(alias) === n(cardName)) return;
     // "kuyucu", "camcılar" gibi yalnız meslek adı birden fazla kişiyi anlatır: hafızaya alınmaz
@@ -1665,8 +1674,9 @@ async function save(ctx, out, v, d, { message, files }) {
         done.work++;
         const wr = v.works[Number(c.dataset.i)];
         const nm = (st, id) => (d[st] || []).find((x) => x.id === id)?.name || "";
+        // Offline rule results must not become Gemini quality scores or examples.
         // Ölçüm + onaylı örnek + reddedilen eşleşme
-        try {
+        if(!v._localOnly)try {
           const m = measureCorrection(wr.ai, fields, wr.issues.length > 0);
           await db.metaSet("ai_quality", addQuality(await db.metaGet("ai_quality"), m));
           const out = `${nm("customers", customer) || "?"} | ${veh.name} | ${fields.work_type} | ${fields.quantity} ${fields.unit}`;

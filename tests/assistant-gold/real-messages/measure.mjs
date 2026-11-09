@@ -1,3 +1,4 @@
+import {offlinePlan} from '../../../js/offline-whatsapp.js';
 import {assistantQuestions} from '../../../js/assistant-questions.js';
 import {APP_VERSION} from '../../../js/core.js';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -53,13 +54,14 @@ function oldQuestions(rows){
  for(const [index,r]of rows.entries())if(r.dateConflict&&!groups.some(q=>q.field==='date'&&q.rows.includes(index+1)))groups.push({field:'date',rows:[index+1]});
  return groups.map(q=>({field:q.field,actualRows:q.rows.map(n=>n-1)}));
 }
-export function measureReal({mode='assistant-validation',batch=false,photos=false}={}){
+export function measureReal({mode='assistant-validation',batch=false,photos=false,today=source.today_for_test}={}){
  const totals=newStats(),categories={},failureReasons={},details=[];
  const inputs=photos?photoCases:batch?[{...source.cases.find(c=>c.id==='r00_tumu'),expected:cases.flatMap(c=>c.expected),originIds:cases.flatMap(c=>c.expected.map(()=>c.id))}]:cases;
  for(const c of inputs){
   const d=fixture(),text=message(c);let rows;
-  if(mode==='local-parser')rows=analyzeMessage({id:c.id,text,date:source.today_for_test},d).rows.map(r=>({...r,ok:!!(r.customer_id&&r.vehicle_id&&r.work_type&&r.quantity&&r.unit&&r.inference_confirmed),liters:r.fuel_liters,source:r.fuel_source,note:(r.notes||[]).join(' · ')}));
-  else{const out=validatePlan(structuredClone(c.recordedResponse||recordings.responses[c.id]),{d,message:text,today:source.today_for_test,rules:fixtureSettings().assistant_rules,photoCount:(c.photoTexts||[]).length});Object.assign(out,validateExtras(c.recordedResponse||recordings.responses[c.id],{d,message:text,today:source.today_for_test,rules:fixtureSettings().assistant_rules}));rows=Object.entries(kinds).flatMap(([kind,group])=>(out[group]||[]).map(r=>({...r,kind})));}
+  if(mode==='local-parser')rows=analyzeMessage({id:c.id,text,date:today},d).rows.map(r=>({...r,ok:!!(r.customer_id&&r.vehicle_id&&r.work_type&&r.quantity&&r.unit&&r.inference_confirmed),liters:r.fuel_liters,source:r.fuel_source,note:(r.notes||[]).join(' · ')}));
+  else if(mode==='offline-review'){const out=offlinePlan(text,{d,today,rules:fixtureSettings().assistant_rules});rows=Object.entries(kinds).flatMap(([kind,group])=>(out?.[group]||[]).map(r=>({...r,kind})));}
+  else{const out=validatePlan(structuredClone(c.recordedResponse||recordings.responses[c.id]),{d,message:text,today,rules:fixtureSettings().assistant_rules,photoCount:(c.photoTexts||[]).length});Object.assign(out,validateExtras(c.recordedResponse||recordings.responses[c.id],{d,message:text,today,rules:fixtureSettings().assistant_rules}));rows=Object.entries(kinds).flatMap(([kind,group])=>(out[group]||[]).map(r=>({...r,kind})));}
   const stat=newStats();stat.messages=1;stat.expectedCards=c.expected.length;stat.actualCards=rows.length;const pairs=align(c.expected,rows,d),used=new Set(pairs.filter(i=>i>=0)),wrong=[],rowsByExpected=[];
   for(const [ei,e]of c.expected.entries()){
    const ai=pairs[ei],a=ai<0?null:rows[ai];if(!a){stat.missingCards++;rowsByExpected.push(null);continue;}const errors=[];
@@ -82,6 +84,6 @@ export function measureReal({mode='assistant-validation',batch=false,photos=fals
   const label=batch?'Tek seferde 20 mesaj':c.category||category[c.id];categories[label]??=newStats();for(const k of Object.keys(totals)){totals[k]+=stat[k];categories[label][k]+=stat[k];}
   details.push({id:c.id,category:label,...stat,questions:qs,expectedQuestions:spec,rowsByExpected,wrongFields:wrong,actual:rows});
  }
- return {version:APP_VERSION,mode,sampleSet:photos?'synthetic-photo-date':'owner-pseudonymized',realGemini:false,proposalOrigin:photos?{origin:'synthetic canned proposals',realGemini:false,oracleUsed:false}:recordings.meta,categories,totals,failureReasons,details,limitations:['Gemini yanıtı yok; planlar v3.10.00 yerel ayrıştırıcısından kaydedildi.','Sözleşmede yalnız açık TEST ücreti vardır; gerçek ücret değildir ve nonzero ücret doğruluğu puanlanmaz.','Soru sayıları mevcut grup/missing alan katmanından türetildi; henüz gerçek ekran testi değildir.']};
+ return {version:APP_VERSION,mode,sampleSet:photos?'synthetic-photo-date':'owner-pseudonymized',realGemini:false,proposalOrigin:mode==='offline-review'?{origin:'phone offline reader executed deterministically',realGemini:false,oracleUsed:false}:photos?{origin:'synthetic canned proposals',realGemini:false,oracleUsed:false}:recordings.meta,categories,totals,failureReasons,details,limitations:[mode==='offline-review'?'Gemini yok; internetsiz okuyucu mevcut kayıtlarla doğrudan çalıştırıldı.':'Gemini yanıtı yok; planlar v3.10.00 yerel ayrıştırıcısından kaydedildi.','Sözleşmede yalnız açık TEST ücreti vardır; gerçek ücret değildir ve nonzero ücret doğruluğu puanlanmaz.','Soru sayıları mevcut grup/missing alan katmanından türetildi; henüz gerçek ekran testi değildir.']};
 }
-if(process.argv[1]?.endsWith('/measure.mjs')){const report=measureReal({mode:process.argv.includes('--local')?'local-parser':'assistant-validation',batch:process.argv.includes('--batch'),photos:process.argv.includes('--photos')});const at=process.argv.indexOf('--report');if(at>=0)writeFileSync(process.argv[at+1],JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({mode:report.mode,totals:report.totals,categories:report.categories,failureReasons:report.failureReasons},null,2));}
+if(process.argv[1]?.endsWith('/measure.mjs')){const clock=process.argv.indexOf('--today');const report=measureReal({...(clock>=0?{today:process.argv[clock+1]}:{}),mode:process.argv.includes('--offline')?'offline-review':process.argv.includes('--local')?'local-parser':'assistant-validation',batch:process.argv.includes('--batch'),photos:process.argv.includes('--photos')});const at=process.argv.indexOf('--report');if(at>=0)writeFileSync(process.argv[at+1],JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({mode:report.mode,totals:report.totals,categories:report.categories,failureReasons:report.failureReasons},null,2));}
