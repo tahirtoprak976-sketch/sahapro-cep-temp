@@ -703,6 +703,8 @@ export async function ensureSeeded() {
         },
       ];
       for (const s of seeds) {
+        // Missing fleet cards must not turn vehicle-specific tariffs into global prices.
+        if (Object.hasOwn(s, "vehicle_id") && !s.vehicle_id) continue;
         await put(
           "price_book",
           newRecord({

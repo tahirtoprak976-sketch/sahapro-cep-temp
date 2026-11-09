@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {SEED_VEHICLES,SEED_PERSONNEL,SEED_ALIASES,SCHEMA_VERSION} from '../js/core.js';
+import {KNOWN_VEHICLE_TYPES,seedVehicleTypes} from '../js/yard-core.js';
+assert.equal(SCHEMA_VERSION,7);
+assert.deepEqual(SEED_VEHICLES,[],'New installations must not ship a private fleet');
+assert.deepEqual(SEED_PERSONNEL,[],'New installations must not ship private staff');
+assert.deepEqual(SEED_ALIASES,[],'Private fleet aliases must come from local records');
+assert.deepEqual(KNOWN_VEHICLE_TYPES,{},'Private registration numbers must not ship as a lookup table');
+const rows=[{id:'TEST_V',name:'TEST existing vehicle',plate:'34TST001',type:'Kamyon',custom:'TEST preserved'},{id:'TEST_GENERIC',name:'TEST generic vehicle',type:'Araç/Makine'}],before=structuredClone(rows),meta={};
+const db={metaGet:async k=>meta[k],metaSet:async(k,v)=>{meta[k]=v;},getAll:async()=>rows,saveExisting:async()=>assert.fail('Opening the app must not rewrite existing vehicle cards')};
+assert.equal(await seedVehicleTypes(db),0);assert.deepEqual(rows,before);
+assert.equal(await seedVehicleTypes(db),0);assert.deepEqual(rows,before);
+console.log('public bootstrap: empty private catalogues and existing vehicle records unchanged PASS');

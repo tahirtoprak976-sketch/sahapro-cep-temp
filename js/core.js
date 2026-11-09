@@ -6,7 +6,7 @@ import {pendingFuelSummary} from './historical-fuel.js';
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.10.02";
+export const APP_VERSION = "SAHAPRO SOLO v3.10.03";
 export const SCHEMA_VERSION = 7;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
@@ -262,60 +262,11 @@ export const HAKEDIS_STATUS = ["Taslak", "Kesinleşti", "İptal"];
 export const CARI_TYPES = ["Hakedis", "Tahsilat", "Duzeltme"];
 export const OCR_STATUS = ["YOK", "BEKLIYOR", "TAMAM", "HATA"];
 
-// ---- Seed listeler ----
-export const SEED_VEHICLES = [
-  "DX225 / Yeni Makine",
-  "Sany 225",
-  "Doosan 225 / Eski Kato",
-  "DX140",
-  "14 Tonluk Kato",
-  "Uzun Bomlu",
-  "U55",
-  "U17",
-  "U36",
-  "JCB",
-  "Manitou MTX 1840",
-  "Mobil Vinç",
-  "Silindir",
-  "34UL9492",
-  "34GA2261",
-  "34FY2482",
-  "34GAM627",
-];
-export const SEED_PERSONNEL = [
-  "Tahir Toprak",
-  "Serdar",
-  "Bayram",
-  "Niyazi",
-  "Olcay",
-  "Cihan",
-  "Soner",
-  "Metin",
-  "Hüseyin",
-  "Ahmet",
-];
-// sahapro-domain alias kuralları (kullanıcı Ayarlar'dan genişletebilir)
-export const SEED_ALIASES = [
-  ["yeni makine", "DX225 / Yeni Makine"],
-  ["dx225", "DX225 / Yeni Makine"],
-  ["eski kato", "Doosan 225 / Eski Kato"],
-  ["doosan", "Doosan 225 / Eski Kato"],
-  ["4 tonluk kato", "U36"],
-  ["4 tonluk", "U36"],
-  ["u35", "U36"],
-  ["mini kato", "U55"],
-  ["6 tonluk mini kato", "U55"],
-  ["6 tonluk", "U55"],
-  ["sany", "Sany 225"],
-  ["manitou", "Manitou MTX 1840"],
-  ["mobil vinç", "Mobil Vinç"],
-  ["hiab", "Mobil Vinç"],
-  ["kırmalı hiab", "Mobil Vinç"],
-  ["jcb", "JCB"],
-  ["14 tonluk", "14 Tonluk Kato"],
-  ["uzun bomlu", "Uzun Bomlu"],
-  ["silindir", "Silindir"],
-];
+// New installations start without a business's private fleet, staff or aliases.
+// Existing IndexedDB cards are retained; these lists never delete saved records.
+export const SEED_VEHICLES = [];
+export const SEED_PERSONNEL = [];
+export const SEED_ALIASES = [];
 
 // ---- Sayı/para: kuruş tam sayı hassasiyeti ----
 export function toKurus(n) {

@@ -1265,7 +1265,7 @@ async function assistant(ctx, d) {
       "Yerel Sorgu Asistanı",
       "İşletme kayıtlarına dayalı · AI bağlantısı yok",
     ) +
-    `<form>${fArea("Sorunuz", "question")}<div class="formgrid2">${fDate("Başlangıç (opsiyonel)", "from", "", false)}${fDate("Bitiş (opsiyonel)", "to", "", false)}</div><button class="btn primary" type="submit">Kayıtlarda Ara</button></form><p class="muted">Örnek: “Tuna İnşaat cari bakiyesi”, “34UL9492 yakıt”, “Tuna İnşaat sefer toplamı”. Tarih aralığı seçmezseniz tüm kayıtlar kullanılır.</p><div data-answer></div>`;
+    `<form>${fArea("Sorunuz", "question")}<div class="formgrid2">${fDate("Başlangıç (opsiyonel)", "from", "", false)}${fDate("Bitiş (opsiyonel)", "to", "", false)}</div><button class="btn primary" type="submit">Kayıtlarda Ara</button></form><p class="muted">Örnek: “Tuna İnşaat cari bakiyesi”, “kayıtlı aracın yakıtı”, “Tuna İnşaat sefer toplamı”. Tarih aralığı seçmezseniz tüm kayıtlar kullanılır.</p><div data-answer></div>`;
   qs("form", root).onsubmit = (e) => {
     e.preventDefault();
     safe(() => {

@@ -126,14 +126,14 @@ export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workA
   return { income, dump, trips, extra: trips * tripCost, cost, result: income - cost, noFee: 0, noCost: outRows.filter((r) => r.empty).length, est: outRows.filter((r) => r.fee?.estimated).length, unpriced: inRows.filter((r) => r.unpriced).length, fuelL, ins: ins.length, outs: outs.length, tripCost, inRows, outRows };
 }
 
-// Bilinen araç türleri (işletme sahibinden): tır / kamyon — boş ya da genel türü olan karta bir kez yazılır
-export const KNOWN_VEHICLE_TYPES = { "34GAM627": "Tır", "34FY2482": "Tır", "34GA2261": "Kamyon", "34UL9492": "Kamyon" };
-export async function seedVehicleTypes(db) {
+// No private plate catalogue ships with the application. Existing card types remain intact.
+export const KNOWN_VEHICLE_TYPES = Object.freeze({});
+export async function seedVehicleTypes(db, knownTypes = KNOWN_VEHICLE_TYPES) {
   if (await db.metaGet("vehicle_types_v1")) return 0;
   const key = (s) => String(s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   let n = 0;
   for (const v of (await db.getAll("vehicles")).filter(isActive)) {
-    const t = KNOWN_VEHICLE_TYPES[key(v.plate)] || KNOWN_VEHICLE_TYPES[key(v.name)];
+    const t = knownTypes[key(v.plate)] || knownTypes[key(v.name)];
     if (t && (!v.type || /^ara[cç]\/makine$/i.test(v.type))) { await db.saveExisting("vehicles", v, { type: t }, "Araç türü (işletme sahibi)"); n++; }
   }
   await db.metaSet("vehicle_types_v1", true);

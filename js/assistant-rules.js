@@ -74,7 +74,7 @@ export function senderPersonnel(d, reporter, text) {
   const pick = (arr) => arr.find((p) => p.vehicle_id) || arr[0] || null;
   const exact = ps.filter((p) => norm(p.name) === n);
   if (exact.length) return pick(exact);
-  // "Bayram Tırcı" ↔ "Bayram": kelime başı eşleşmesi
+  // "Ad Unvan" ↔ "Ad": kelime başı eşleşmesi
   return pick(ps.filter((p) => { const m = norm(p.name); return m.length >= 3 && (n.startsWith(m + " ") || m.startsWith(n + " ")); }));
 }
 
