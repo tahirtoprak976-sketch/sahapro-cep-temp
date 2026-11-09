@@ -147,6 +147,15 @@ jobs:
           private_baseline=$(mktemp -d /tmp/solo-private-bootstrap-XXXXXX)
           trap 'rm -rf "$private_baseline"' EXIT
           git -c safe.directory="$GITHUB_WORKSPACE" archive 481d96489927abbbe6c88c890fc52a156f5744a2 | tar -x -C "$private_baseline"
+          python3 - "$private_baseline" <<'PYASSERT'
+          import ast,pathlib,sys
+          before=pathlib.Path(sys.argv[1])
+          checks=lambda text:[ast.dump(node,include_attributes=False) for node in ast.walk(ast.parse(text)) if isinstance(node,ast.Assert)]
+          for name in ['work_productivity','redteam','assistant_operations','integrity_review88']:
+              path=pathlib.Path('tools/e2e')/(name+'.py')
+              assert checks((before/path).read_text())==checks(path.read_text()), name+' expectations changed'
+          print('Four browser fixture adapters preserve every existing assertion')
+          PYASSERT
           cp tests/public-bootstrap-privacy.test.mjs "$private_baseline/tests/"
           if node "$private_baseline/tests/public-bootstrap-privacy.test.mjs" > /tmp/solo-private-bootstrap-baseline.log 2>&1; then
             echo 'Baseline unexpectedly passed private catalogue removal'
