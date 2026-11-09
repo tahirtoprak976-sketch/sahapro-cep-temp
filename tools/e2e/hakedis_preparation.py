@@ -51,7 +51,7 @@ with sync_playwright() as pw:
  assert pg.input_value('[name=prep_from]')=='2026-08-01' and pg.input_value('[name=prep_to]')=='2026-08-31';assert '60 L' in pg.locator('[data-prep-fuel]').inner_text()
  pg.goto(prep);pg.wait_for_selector('[data-prep-open-ready]');pg.click('[data-prep-open-ready]');pg.wait_for_selector('[data-chk]');assert pg.locator('[data-chk]').count()==3
  assert pg.input_value('[name=customer_id]')==ids['c'] and pg.input_value('[name=date_from]')=='2026-09-01'
- assert pg.locator('[data-chk]:checked').count()==0;pg.click('[data-ready-select]');assert pg.locator('[data-chk]:checked').count()==3 and pg.is_enabled('[data-create]');assert pg.evaluate(SNAP)==before
+ pg.check('[data-claim-vat]');assert pg.locator('[data-chk]:checked').count()==0;pg.click('[data-ready-select]');assert pg.locator('[data-chk]:checked').count()==3 and pg.is_enabled('[data-create]');assert pg.evaluate(SNAP)==before
  pg.click('[data-create]');pg.wait_for_selector('.sheet');pg.click('.sheet [data-x="0"]');pg.wait_for_selector('.sheet',state='hidden');assert pg.evaluate(SNAP)==before
  # A ticket removed after selection invalidates the readiness proposal before any claim write.
  pg.evaluate("async id=>await(await import('./js/db.js')).softDelete('documents',id,'TEST stale ticket')",ids['second']);afterDelete=pg.evaluate(SNAP)

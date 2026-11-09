@@ -582,6 +582,7 @@ async function form(ctx, d) {
         fText("Banka", "bank_name") +
         fText("IBAN", "iban") +
         fDate("Açılış Tarihi", "opening_date", date) +
+        '<p class="small muted">Bu hesaptan eski tarihli havale girecekseniz açılış tarihini o tarihe veya öncesine ayarlayın. Açılış tarihinden önce banka hareketi yazılamaz.</p>' +
         fNum("Açılış Bakiyesi (TL)", "opening_balance", 0, { step: "any" });
       save = actions.saveBank;
       break;
@@ -769,7 +770,7 @@ async function form(ctx, d) {
   }
   root.innerHTML =
     appbar((parts[2] === "edit" ? "Düzenle · " : "+ ") + title) +
-    `<form data-e-form>${html}</form><div class="actionbar"><button class="btn primary" data-e-save>Kaydet</button></div>`;
+    `<form data-e-form>${html}</form>${route==='bankalar'&&query.return_to==='cash'?'<a class="btn" href="#/finans/kasa/new?bank_return=1">Vazgeç ve tahsilata dön</a>':''}<div class="actionbar"><button class="btn primary" data-e-save>Kaydet</button></div>`;
   const formEl = qs("[data-e-form]", root);
   if (parts[2] === "edit") {
     const store = MODULES[route]?.[0];
@@ -903,6 +904,7 @@ async function form(ctx, d) {
         }
       }
       toast("Kayıt ve ilişkileri kaydedildi", "ok");
+      if(route==='bankalar'&&query.return_to==='cash'){go('#/finans/kasa/new?bank_return=1&bank_account_id='+encodeURIComponent(r.id));return;}
       go(
         "#/" +
           (MODULES[route] ? route : "bankalar") +

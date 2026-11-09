@@ -191,7 +191,7 @@ for(const linked of [
  const f=fixture({customers:seed().customers,...linked});await rejectsUnchanged(f,()=>f.softDelete('customers','C','SYNTHETIC'),'CARD_HISTORY');
 }
 {
- const f=fixture(seed());await f.saveExisting('customers',f.read('customers','C'),{active:false},'SYNTHETIC inactive');assert.equal(customerBalances(f.data()).bal.C,1200);
+ const f=fixture(seed());await f.saveExisting('customers',f.read('customers','C'),{active:false},'SYNTHETIC inactive');assert.equal(customerBalances(f.data()).bal.C,1000);
  const unused=fixture({customers:seed().customers});await unused.softDelete('customers','C','SYNTHETIC unused');assert.ok(unused.read('customers','C').deleted_at);
 }
 {

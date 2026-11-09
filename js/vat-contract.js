@@ -3,6 +3,7 @@
 // Karar notu: docs/KDV_CARI_KARAR_NOTU.md
 import { isActive, toKurus, fromKurus, kdvRateOf } from "./core.js";
 import { workForFinancialRead, claimWorkResolution } from './hakedis-finance.js';
+import {workAmount} from './collect-core.js';
 import { customerLedgerMovements } from './collect-core.js';
 const live = (d, s) => (d[s] || []).filter(isActive);
 const r2 = (n) => Math.round(n * 100) / 100;
@@ -97,7 +98,7 @@ export function customerVatBreakdowns(d) {
         const w = workById.get(row.ref_id), p = w?.price_snapshot;
         const rate = kdvRateOf(p?.kdv_rate), basisKnown = typeof p?.kdv_included === 'boolean';
         if (w && rate != null && basisKnown && !p.locked) {
-          const booked = toKurus(row.amount);
+          const booked = toKurus(workAmount(w));
           const principal = p.kdv_included ? Math.round(booked / (1 + rate / 100)) : booked;
           const vat = p.kdv_included ? booked - principal : Math.round(principal * rate / 100);
           money = {net:fromKurus(principal), kdv:fromKurus(vat), gross:fromKurus(principal + vat)};
@@ -106,7 +107,7 @@ export function customerVatBreakdowns(d) {
         // the VAT rate is missing. It is still not a complete gross amount.
         if (!money && basisKnown && p.kdv_included === false && !p.locked) net += toKurus(row.amount);
         else if (!money) netComplete = false;
-        if (money && !p.kdv_included) unpostedTax += toKurus(money.kdv);
+        if (money) unpostedTax += toKurus(money.kdv);
       } else {
         const candidates = claimById.get(row.ref_id) || [], h = candidates[0];
         if (candidates.length === 1 && claimUses.get(row.ref_id) === 1 &&

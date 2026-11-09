@@ -3,6 +3,7 @@
 // tahsilat ve eksi düzeltmeler en eski borçtan başlayarak düşülür (FIFO). Kalan her kalemin yaşı tarihinden hesaplanır.
 import { isActive, toKurus, fromKurus, todayStr, COMPANY_NAME } from "./core.js";
 import { customerMovementText } from "./statement.js";
+import {pendingPrincipal} from './hakedis-vat.js';
 import { workForFinancialRead } from './hakedis-finance.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -68,7 +69,7 @@ export function customerOpenItems(d, customerId, today = todayStr()) {
     else credit += -k;
   }
   for (const w of live(d, "work_records").filter((w) => w.customer_id === customerId && !billed.has(w.id))) {
-    const a = workAmount(w);
+    const a = pendingPrincipal(w,workAmount(w));
     if (a > 0 && w.date) debits.push({ date: w.date, k: toKurus(a), kind: "is", source_type: "Is", label: workLabel(d, w), ref: w.id });
   }
   debits.sort((a, b) => a.date.localeCompare(b.date) || a.k - b.k);
@@ -220,7 +221,7 @@ export function customerLedgerMovements(d, customerId, sources = {}) {
   );
   const out = (sources.movements ?? d.cari_movements ?? []).filter(isActive).filter((m) => m.customer_id === customerId);
   for (const w of (sources.works ?? d.work_records ?? []).filter(isActive).filter((w) => w.customer_id === customerId && !billed.has(w.id))) {
-    const a = workAmount(w);
+    const a = pendingPrincipal(w,workAmount(w));
     if (a > 0 && w.date) out.push({ id: "is:" + w.id, ref_id: w.id, date: w.date, customer_id: customerId, type: "Is", amount: a, note: workLabel(d, w), created_at: w.created_at });
   }
   return out;

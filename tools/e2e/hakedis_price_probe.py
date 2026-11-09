@@ -172,6 +172,7 @@ with sync_playwright() as p:
             # query forces a new document while retaining the same synthetic DB.
             page.goto(base + "index.html?db=" + database + "&probe_reload=" + uuid.uuid4().hex + "#/hakedis/new")
             page.wait_for_selector("[data-fetch]")
+            if page.locator("[data-claim-vat]").count():page.check("[data-claim-vat]")
             page.select_option("[name=customer_id]", ids["customer"])
             page.click("[data-fetch]")
             page.wait_for_selector('[data-chk="' + ui["paid"] + '"]')

@@ -1840,7 +1840,7 @@ async function customerDashboard(ctx, id, d) {
         ${tile(String(R.totals.works), "İş sayısı · " + (Object.entries(R.units).map(([u, q]) => fmt(q) + " " + u.toLocaleLowerCase("tr-TR")).join(", ") || "—"))}${R.totals.tonnage ? tile(fmt(R.totals.tonnage) + " ton", CR.tonnageSummaryLabel(R) + " · " + rg.label) : ""}
       </div>
       ${CR.tonnageScopeNote(R) ? ui.notice(R.totals.tonnageUnknown ? "warn" : "info", CR.tonnageScopeNote(R)) : ""}
-      ${PM.basisText ? `<div class="muted tiny">İş tutarı temeli: ${esc(PM.basisText)}. Bu tutar "KDV dahil alacak" değildir; KDV hakedişte eklenir.</div>` : ""}
+      ${PM.basisText ? `<div class="muted tiny">İş tutarı temeli: ${esc(PM.basisText)}. Bu tutar cari bakiye değildir. KDV yalnız hakedişte ayrıca seçilip kesinleştirilince cariye eklenir.</div>` : ""}
       <div class="small strong" style="margin-top:10px">Güncel durum <span class="muted tiny">(tüm zamanlar · bugün itibarıyla, dönem seçiminden bağımsız)</span></div>
       <div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-top:6px">
         ${tile(fmt(R.balanceNow) + " ₺", "Güncel TL bakiye" + (R.balanceNow > 0 ? " · müşteri borçlu" : R.balanceNow < 0 ? " · müşteri alacaklı" : "") + (PM.fuel && PM.fuel.balance > 0 ? " · mazot ayrı" : ""), R.balanceNow > 0 ? "warn" : "")}${tile(R.totals.oldestDays ? R.totals.oldestDays + " gün" : "—", "En eski açık TL alacak", R.totals.oldestDays > 60 ? "danger" : "")}

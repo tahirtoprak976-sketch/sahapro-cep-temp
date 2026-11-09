@@ -1244,3 +1244,7 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 .assistant-welcome.compact{padding:0 0 12px}.assistant-welcome.compact h2,.assistant-welcome.compact>p{display:none}.assistant-welcome.compact .assistant-starts{margin-top:0;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.assistant-welcome.compact .assistant-starts button{min-height:52px;font-size:11px;padding:8px}.assistant-welcome.compact .assistant-starts span{display:none}
 .assistant-workspace [data-draft-workflow]>b{display:none}.assistant-workspace [data-draft-reply]:empty{display:none}.assistant-workspace [data-draft-reply]{margin-top:10px;line-height:1.6}.assistant-workspace [data-draft-reply] .btn{white-space:normal;min-height:42px}
 .assistant-review-more{margin-top:12px;font-size:12px}.assistant-review-more summary{cursor:pointer;color:var(--muted);min-height:32px}.assistant-review-more .btn{margin-top:8px}.assistant-review-overview{scroll-margin-top:100px}
+
+/* Keep claim actions in normal flow so they never cover a selected job. */
+.hakedis-actions{position:static;flex-wrap:wrap;background:var(--bg);padding:8px 0;margin-bottom:16px}
+#toast-root{bottom:calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 80px)}

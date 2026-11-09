@@ -46,14 +46,14 @@ with sync_playwright() as pw:
         return {key:locator.locator('[data-cari-'+key+']').inner_text() for key in ('net','vat','gross','balance')}
     def customer(cid):return page.locator('[data-cari-customer="'+cid+'"]')
     total=values(page.locator('[data-cari-total]'))
-    assert total=={'net':'4.050,00 ₺','vat':'800,00 ₺','gross':'4.850,00 ₺','balance':'3.850,00 ₺'},total
+    assert total=={'net':'4.050,00 ₺','vat':'800,00 ₺','gross':'4.850,00 ₺','balance':'3.650,00 ₺'},total
     mixed=values(customer(ids['mixed']))
-    assert mixed=={'net':'2.000,00 ₺','vat':'400,00 ₺','gross':'2.400,00 ₺','balance':'+2.000,00 ₺'},mixed
+    assert mixed=={'net':'2.000,00 ₺','vat':'400,00 ₺','gross':'2.400,00 ₺','balance':'+1.800,00 ₺'},mixed
     assert customer(ids['mixed']).locator('[data-cari-receipts]').inner_text()=='200,00 ₺'
-    assert '200,00 ₺ KDV’si kayıtlı bakiyeye henüz eklenmedi' in customer(ids['mixed']).inner_text()
+    assert '400,00 ₺ KDV’si bakiyeye dahil değil' in customer(ids['mixed']).inner_text()
     assert values(customer(ids['claimed']))=={'net':'2.000,00 ₺','vat':'400,00 ₺','gross':'2.400,00 ₺','balance':'+1.800,00 ₺'}
     assert values(customer(ids['zero']))['vat']=='0,00 ₺'
-    assert values(customer(ids['advance']))['balance']=='-50,00 ₺'
+    assert values(customer(ids['advance']))['balance']=='-66,67 ₺'
     assert snapshot()==before,'Opening the list cannot write or reprice a record'
     layouts=[]
     for width in (320,360,390,768):
@@ -82,7 +82,7 @@ with sync_playwright() as pw:
     missing=values(customer(unknown))
     assert missing=={'net':'300,00 ₺','vat':'Kontrol gerekli','gross':'Kontrol gerekli','balance':'+300,00 ₺'},missing
     assert values(page.locator('[data-cari-total]'))['vat']=='Kontrol gerekli'
-    assert values(page.locator('[data-cari-total]'))['balance']=='4.150,00 ₺'
+    assert values(page.locator('[data-cari-total]'))['balance']=='3.950,00 ₺'
     assert not page.evaluate('!!window.__vat_xss')
     assert 'oran varsayılmadı' in customer(unknown).inner_text()
     assert snapshot()==before_unknown and not external and not errors,(external,errors)

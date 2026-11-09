@@ -1,3 +1,4 @@
+import {claimNetItems} from './hakedis-vat.js';
 // Every module delegates to one offline document engine.
 import { fmtTL, fmtNum, trDate, daySummary } from "./core.js";
 import { customerWorkLines } from "./business.js";
@@ -133,7 +134,8 @@ export function commercialSpec(t, names, tot, contract = false) {
 export async function quotePdf(t, names, tot) {
   return exportDocument(commercialSpec(t, names, tot));
 }
-export function hakedisSpec(h, names) {
+export function hakedisSpec(h, names, {unpriced=false,account=null}={}) {
+  if(unpriced)return {template:"work",title:"İş / Miktar Mutabakatı",audience:"customer",filename:"SAHAPRO_Mutabakat.pdf",orientation:"landscape",sections:[{pairs:[["Müşteri",name(names,"customers",h.customer_id)],["Şantiye",name(names,"sites",h.site_id)],["Dönem",trDate(h.date_from)+" — "+trDate(h.date_to)]]},{headers:["Tarih","İş / Şantiye","Araç","Miktar","Birim"],widths:[15,40,20,12,13],rows:customerWorkLines(h.items||[]).map(i=>[trDate(i.date),[i.site_name,i.work_type,i.material].filter(Boolean).join(" · "),i.vehicle_name,fmtNum(i.quantity),i.unit])},{text:"Yalnız yapılan iş ve miktar mutabakatıdır; fiyat onayı veya cari borç kaydı değildir."}],signatures:["İşveren Kontrolü","Yüklenici"]};
   const row = (i) => [
     trDate(i.date),
     [i.site_name, i.work_type, i.material].filter(Boolean).join(" · "),
@@ -142,7 +144,7 @@ export function hakedisSpec(h, names) {
     i.unit,
     i.formula
       ? "Vinç tarifesi"
-      : tl(i.unit_price) + (i.kdv_included ? " (KDV dahil)" : " (+KDV)"),
+      : tl(i.unit_price) + (i.kdv_included ? " (KDV dahil)" : Number(i.kdv_rate)>0 ? " (+KDV)" : " (hariç)"),
     tl(i.total),
   ];
   return {
@@ -177,10 +179,10 @@ export function hakedisSpec(h, names) {
             "Miktar",
             "Birim",
             "Fiyat",
-            "KDV Dahil Tutar",
+            "Tutar (KDV hariç)",
           ],
           widths: [13, 33, 18, 9, 9, 21, 22],
-          rows: customerWorkLines(h.items || [])
+          rows: customerWorkLines(claimNetItems(h.items))
             .filter((i) =>
               group === "Sefer" ? i.unit === "Sefer" : i.unit !== "Sefer",
             )
@@ -193,15 +195,17 @@ export function hakedisSpec(h, names) {
           ["Ara toplam", tl(h.subtotal)],
           ["KDV", tl(h.kdv_total)],
           ["Genel toplam", tl(h.grand_total)],
+
         ],
       },
+      ...(account?[{layout:"notice",text:`Müşteri toplam tahsilatı (tüm zamanlar): ${tl(account.collected)}. Müşteri güncel cari bakiyesi: ${tl(account.balance)}. Bu ödemeler belirli hakedişe dağıtılmış sayılmaz.`}]:[]),
     ],
     signatures: ["İşveren Kontrolü", "Yüklenici"],
     signatureLayout: "besideTotals",
   };
 }
-export async function hakedisPdf(h, names) {
-  return exportDocument(hakedisSpec(h, names));
+export async function hakedisPdf(h, names, options) {
+  return exportDocument(hakedisSpec(h, names, options));
 }
 export async function dailyReportPdf(date, data, names) {
   const sum = daySummary(date, data);

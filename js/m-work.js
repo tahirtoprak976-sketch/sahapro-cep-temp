@@ -504,7 +504,7 @@ async function workForm(ctx, editId) {
       Number(qs("[name=quantity]", form).value || 0) +
       extras.reduce((sum, r) => sum + Number(r.x_quantity || 0), 0);
     qs("[data-transport-total]", form).textContent =
-      `${extras.length + 1} satır · Toplam ${fmtNum(total)} sefer`;
+      `${extras.length + 1} satır · Toplam ${fmtNum(total)} ${esc(qs('[name=unit]',root)?.value||'Sefer')}`;
     qs("[data-save]", root).textContent = extras.length
       ? "Tümünü kaydet"
       : "Kaydet";

@@ -1,3 +1,5 @@
+let bankReturnCash=null; // In-memory form values only; never a saved money record.
+import {claimVatItem} from './hakedis-vat.js';
 import {priceVehicleContext} from "./core.js";
 import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelSummary} from './historical-fuel.js';
@@ -812,6 +814,8 @@ async function hakedisNew(ctx) {
         ${fDate("Başlangıç", "date_from", validDate(ctx.query?.date_from) ? ctx.query.date_from : today.slice(0, 8) + "01")}
         ${fDate("Bitiş", "date_to", validDate(ctx.query?.date_to) ? ctx.query.date_to : today)}
       </div>
+      <label class="row" style="gap:8px;margin:12px 0"><input type="checkbox" data-claim-vat> Hakedişe KDV ekle (kayıtlı fiyat oranlarıyla)</label>
+      <p class="small muted">KDV yalnız bu seçimle ve hakediş kesinleştirilince cariye eklenir. Seçmezseniz hakediş ana para üzerinden hazırlanır. Kesinleşmiş hakedişler değişmez.</p>
       <button class="btn block" data-fetch>İşleri Getir</button>
       <label class="row small" style="margin-top:10px;gap:8px"><input type="checkbox" data-ready-only ${ctx.query?.ready_only==='1'?'checked':''}> Yalnız hazırlık kontrolleri tamam işleri getir</label>
       <a class="btn sm" href="#/hakedis/hazirlik">Hazırlık ve eksik kontrolüne dön</a>
@@ -820,9 +824,10 @@ async function hakedisNew(ctx) {
     <div data-rows></div>
     <div data-total></div>
     <p data-hakedis-error role="alert" hidden></p>
-    <div class="actionbar"><button class="btn primary" data-create disabled>Hakediş Oluştur</button></div>`;
+    <div class="actionbar hakedis-actions"><button class="btn" data-unpriced disabled>Fiyatsız Mutabakat PDF</button><button class="btn primary" data-create disabled>Hakediş Oluştur</button></div>`;
 
   const rowsEl = qs("[data-rows]", root);
+  qs('[data-unpriced]',root).onclick=async()=>{try{const val=collectForm(root),items=[...selected.values()];if(!items.length||items.some(i=>!(i.quantity>0)||!i.unit||!validDate(i.date)))throw Error('Mutabakat için iş, geçerli tarih ve miktar seçin.');await (await import('./pdf.js')).hakedisPdf({customer_id:val.customer_id,site_id:val.site_id,date_from:val.date_from,date_to:val.date_to,status:'İş / miktar mutabakatı',items},names,{unpriced:true});}catch(e){toast(e.message,'err');}};
   const invalidate = () => {
       fetchVersion++;
       selected.clear();
@@ -830,6 +835,7 @@ async function hakedisNew(ctx) {
       qs("[data-total]", root).innerHTML = "";
       qs("[data-hakedis-error]", root).hidden = true;
       qs("[data-create]", root).disabled = true;
+      qs('[data-unpriced]',root).disabled=true;
       qs('[data-ready-select]',root).hidden=true;
   };
   for (const key of ["customer_id", "site_id", "date_from", "date_to"]) {
@@ -897,6 +903,8 @@ async function hakedisNew(ctx) {
             ${isCrane ? '<span class="badge accent">vinç</span>' : `<input type="number" data-price="${w.id}" value="${price ? price.price : ""}" placeholder="₺" step="any" style="width:100%;min-height:40px;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;color:var(--text);padding:6px 8px;text-align:right">`}
           </div>
         </div>
+        <label class="field small">Fiyatın KDV oranı (%)<input type="number" data-rate="${w.id}" min="0" max="100" step="any" value="${kdvRateOf(price?.kdv_rate)??''}" placeholder="Oran bilinmiyorsa boş"></label>
+        <p class="tiny muted">${price ? typeof price.kdv_included!=='boolean' ? 'KDV fiyat temeli kayıtlı değil; kontrol edin.' : price.kdv_included ? 'Birim fiyat KDV dahil tarifedir.' : 'Birim fiyat KDV hariç tarifedir.' : 'Elle girilen birim fiyat KDV hariç ana paradır.'}</p>
         ${price ? "" : (() => { const dec = priceDecision(pricebook,priceVehicleContext(w,vehicles.find(v=>v.id===w.vehicle_id)));
           return dec.ambiguous ? `<div class="tiny" style="color:var(--warn);margin-top:5px" data-amb="${w.id}">⚠ Birden çok fiyat kuralı uyuyor — seçin ya da el ile girin:</div><div class="row" style="gap:4px;flex-wrap:wrap;margin-top:4px">${dec.candidates.map((c) => `<button type="button" class="chip" data-pickprice="${w.id}" data-v="${c.price}" data-kdv="${c.kdv_rate}" data-inc="${c.kdv_included ? 1 : 0}">${esc(candidateLabel(c))}</button>`).join("")}</div>` : '<div class="tiny" style="color:var(--warn);margin-top:5px">⚠ Fiyat bulunamadı — el ile girin</div>'; })()}
         <p class="small" data-hakedis-row-error="${esc(w.id)}" role="alert" hidden></p>
@@ -919,7 +927,7 @@ async function hakedisNew(ctx) {
               price_source: "Snapshot",
             }
           : resolvePriceSafe(pricebook,priceVehicleContext(w,vehicles.find(v=>v.id===w.vehicle_id)));
-        const manual = qs(`[data-price="${w.id}"]`, rowsEl);
+        const manual = qs(`[data-price="${w.id}"]`, rowsEl),rateInput=qs(`[data-rate="${w.id}"]`,rowsEl);
         selected.set(w.id, {
           work_record_id: w.id,
           source_price_snapshot: structuredClone(w.price_snapshot ?? null),
@@ -933,7 +941,7 @@ async function hakedisNew(ctx) {
           quantity: hakedisNumber(w.quantity),
           unit: w.unit,
           unit_price: manual ? hakedisNumber(manual.value) : null,
-          kdv_rate: price ? (price.kdv_rate ?? 20) : manual?.dataset.kdv ? Number(manual.dataset.kdv) : 20,
+          kdv_rate: rateInput ? kdvRateOf(rateInput.value) : price ? kdvRateOf(price.kdv_rate) : manual?.dataset.kdv ? kdvRateOf(manual.dataset.kdv) : null,
           formula:
             price && price.formula === "CRANE_FIRST_HOUR"
               ? "CRANE_FIRST_HOUR"
@@ -948,7 +956,9 @@ async function hakedisNew(ctx) {
               ? "Manuel"
               : price?.price_source || "Manuel",
         });
-        const issues = hakedisItemIssues(selected.get(w.id));
+        let policyIssue=null;
+        try{selected.set(w.id,claimVatItem(selected.get(w.id),qs('[data-claim-vat]',root).checked));}catch(e){policyIssue=e.message;}
+        const issues = [...(policyIssue?[policyIssue]:[]),...hakedisItemIssues(selected.get(w.id))];
         if (issues.length) {
           incomplete++;
           errorBox.textContent = issues.join(' ');
@@ -962,8 +972,10 @@ async function hakedisNew(ctx) {
         : tot
         ? `<div class="card">${kv("Kalem", String(selected.size))}${kv("Ara Toplam", fmtTL(tot.subtotal) + " ₺")}${kv("KDV", fmtTL(tot.kdv) + " ₺")}${kv("GENEL TOPLAM", fmtTL(tot.grand) + " ₺")}</div>`
         : "";
+      qs('[data-unpriced]',root).disabled=creating||!selected.size;
       qs("[data-create]", root).disabled = creating || !selected.size || !!incomplete;
     };
+    qs('[data-claim-vat]',root).onchange=upd;
     rowsEl.onchange = upd;
     rowsEl.oninput = upd;
     rowsEl.onclick = (ev) => {
@@ -971,7 +983,7 @@ async function hakedisNew(ctx) {
       if (!b) return;
       const inp = qs(`[data-price="${b.dataset.pickprice}"]`, rowsEl);
       if (!inp) return;
-      inp.value = b.dataset.v; inp.dataset.kdv = b.dataset.kdv; inp.dataset.inc = b.dataset.inc; inp.dataset.picked = b.dataset.v;
+      inp.value = b.dataset.v; const rate=qs(`[data-rate="${b.dataset.pickprice}"]`,rowsEl);if(rate)rate.value=b.dataset.kdv; inp.dataset.kdv = b.dataset.kdv; inp.dataset.inc = b.dataset.inc; inp.dataset.picked = b.dataset.v;
       for (const x of qsa(`[data-pickprice="${b.dataset.pickprice}"]`, rowsEl)) x.classList.toggle("on", x === b);
       const chk = qs(`[data-chk="${b.dataset.pickprice}"]`, rowsEl); if (chk) chk.checked = true;
       upd();
@@ -984,16 +996,17 @@ async function hakedisNew(ctx) {
     if (creating) return;
     const errorBox = qs('[data-hakedis-error]', root);
     errorBox.hidden = true;
-    const items = [...selected.values()].map(item => ({...item}));
-    try { assertHakedisItems(items); }
+    let items;
+    try { items=[...selected.values()].map(item=>claimVatItem(item,qs('[data-claim-vat]',root).checked));assertHakedisItems(items); }
     catch (e) { errorBox.textContent = e.message; errorBox.hidden = false; return; }
+    const val = collectForm(root);
     creating = true;
+    const locked=qsa('input,select,button',root).filter(el=>!el.disabled);for(const el of locked)el.disabled=true;
     qs('[data-create]', root).disabled = true;
     try {
-    const val = collectForm(root);
     const ok = await confirmDialog(
       "Hakediş oluşturulsun mu?",
-      `${selected.size} kalem · toplam snapshot alınır. Kesinleştirme sonraki adımdır.`,
+      `${items.length} kalem · ana para ${fmtTL(calcHakedisTotals(items,crane).subtotal)} ₺ + KDV ${fmtTL(calcHakedisTotals(items,crane).kdv)} ₺. Toplam snapshot alınır; cariye yazma kesinleştirme sonraki adımdır.`,
       "Oluştur",
     );
     if (!ok || !root.isConnected) return;
@@ -1030,6 +1043,7 @@ async function hakedisNew(ctx) {
       if (root.isConnected) { errorBox.textContent = e.message || 'Hakediş oluşturulamadı'; errorBox.hidden = false; }
     } finally {
       creating = false;
+      for(const el of locked)if(el.isConnected)el.disabled=false;
       if (root.isConnected) qs('[data-create]', root).disabled = !selected.size || [...selected.values()].some(item => hakedisItemIssues(item).length);
     }
   });
@@ -1061,9 +1075,10 @@ async function hakedisDetail(ctx, id) {
       ${h.site_id ? kv("Şantiye", names.sites[h.site_id]) : ""}
       ${kv("Kalem", String((h.items || []).length))}
       ${kv("Oluşturma", trDate(h.created_date))}
+      <p class="small">${Number(h.kdv_total)>0?'Kayıtlı KDV bu hakediş kesinleştirilince cariye eklenir.':'Bu hakedişte KDV eklenmedi.'}</p>
     </div>
     <div class="section-title">Müşteri özeti</div>
-    ${customerWorkLines(h.items || [])
+    ${(h.items || [])
       .map((it) =>
         li({
           t1: esc(
@@ -1071,27 +1086,30 @@ async function hakedisDetail(ctx, id) {
               .filter(Boolean)
               .join(" · "),
           ),
-          t2: `${fmtNum(it.quantity)} ${esc(it.unit)} × ${fmtTL(it.unit_price)} TL`,
-          end: `<span class="amt">${fmtTL(it.total)} TL</span>`,
+          t2: `${fmtNum(it.quantity)} ${esc(it.unit)} · ${it.formula ? "vinç tarifesi" : fmtTL(it.unit_price)+" TL / "+esc(it.unit)}${it.kdv_included ? " (KDV dahil tarife)" : " (KDV hariç tarife)"}`,
+          end: `<span class="amt">${it.amount==null?"Kontrol gerekli":fmtTL(it.amount)+" TL"} <small>KDV hariç</small></span>`,
         }),
       )
       .join("")}
     <details><summary>İç detay · kaynak işler (snapshot)</summary>
-    ${(h.items || []).map((it) => li({ ic: it.unit === "Sefer" ? "🚛" : "🚜", t1: `${trDate(it.date)} · ${esc(it.work_type || "")}`, t2: `${esc(it.vehicle_name || "")} · ${fmtNum(it.quantity)} ${esc(it.unit || "")} × ${it.formula === "CRANE_FIRST_HOUR" ? "vinç tarifesi" : fmtTL(it.unit_price) + " ₺"}`, end: `<span class="amt nowrap">${fmtTL(it.total)} ₺</span>` })).join("")}
+    ${(h.items || []).map((it) => li({ ic: it.unit === "Sefer" ? "🚛" : "🚜", t1: `${trDate(it.date)} · ${esc(it.work_type || "")}`, t2: `${esc(it.vehicle_name || "")} · ${fmtNum(it.quantity)} ${esc(it.unit || "")} × ${it.formula === "CRANE_FIRST_HOUR" ? "vinç tarifesi" : fmtTL(it.unit_price) + " ₺"}`, end: `<span class="amt nowrap">${fmtTL(it.amount)} ₺ (hariç)</span>` })).join("")}
     </details><div class="card">
       ${kv("Ara Toplam", fmtTL(h.subtotal) + " ₺")}
       ${kv("KDV", fmtTL(h.kdv_total) + " ₺")}
       ${kv("GENEL TOPLAM", fmtTL(h.grand_total) + " ₺")}
     </div>
     <p data-hakedis-final-error role="alert" hidden></p>
-    <div class="actionbar">
-      <button class="btn" data-pdf>PDF</button>
+    <div class="actionbar hakedis-actions">
+      <button class="btn" data-pdf>Fiyatlı PDF</button><button class="btn" data-unpriced>Fiyatsız Mutabakat</button>
       ${!finalized && h.status !== "İptal" ? '<button class="btn ok" data-final>Kesinleştir</button><button class="btn danger" data-iptal>İptal</button>' : ""}
     </div>`;
   qs("[data-pdf]", root).addEventListener("click", async () => {
     const pdf = await import("./pdf.js");
-    await pdf.hakedisPdf(h, names);
+    const d=await db.dumpAll(),{customerLedgerMovements,customerBalances}=await import('./collect-core.js');
+    const collected=-customerLedgerMovements(d,h.customer_id).filter(m=>m.type==='Tahsilat').reduce((sum,m)=>sum+Number(m.amount),0);
+    await pdf.hakedisPdf(h, names,{account:{collected,balance:customerBalances(d).bal[h.customer_id]||0}});
   });
+  qs('[data-unpriced]',root).onclick=async()=>{await (await import('./pdf.js')).hakedisPdf(h,names,{unpriced:true});};
   const fin = qs("[data-final]", root);
   let finalizing = false;
   if (fin)
@@ -1102,7 +1120,7 @@ async function hakedisDetail(ctx, id) {
       try {
       const ok = await confirmDialog(
         "Hakediş kesinleşsin mi?",
-        `Kaydedilmiş kalem fiyatlarıyla ${fmtTL(h.grand_total)} ₺ toplam müşteri carisine borç yazılacak. Güncel fiyatlar otomatik uygulanmaz. Kesinleşen hakediş değiştirilemez.${sourceReview?.legacyCount ? " Bu eski taslağın kaynak fiyat geçmişi doğrulanamıyor; kaydedilmiş tutarı onaylıyorsunuz." : ""}`,
+        `Kaydedilmiş kalem fiyatlarıyla ${fmtTL(h.grand_total)} ₺ toplam (ana para ${fmtTL(h.subtotal)} ₺ + KDV ${fmtTL(h.kdv_total)} ₺) müşteri carisine borç yazılacak. Güncel fiyatlar otomatik uygulanmaz. Kesinleşen hakediş değiştirilemez.${sourceReview?.legacyCount ? " Bu eski taslağın kaynak fiyat geçmişi doğrulanamıyor; kaydedilmiş tutarı onaylıyorsunuz." : ""}`,
         "Kesinleştir",
       );
       if (!ok || !root.isConnected) return;
@@ -1159,13 +1177,13 @@ function cariMoneyHTML(m, summary = false) {
     <p class="cari-money-caption">${summary ? 'Alacağı olan müşteriler' : 'İş + hakediş'} · tahsilat öncesi</p>
     <div class="cari-money-parts">
       <div><span>Ana para</span><strong data-cari-net>${amount(m.net)}</strong></div>
-      <div><span>+ KDV</span><strong data-cari-vat>${amount(m.tax)}</strong></div>
+      <div><span>İstenirse KDV (hakedişte)</span><strong data-cari-vat>${amount(m.tax)}</strong></div>
     </div>
-    <div class="cari-money-line"><span>Toplam (KDV dahil)</span><b data-cari-gross>${amount(m.gross)}</b></div>
+    <div class="cari-money-line"><span>KDV seçilirse toplam</span><b data-cari-gross>${amount(m.gross)}</b></div>
     ${m.receipts ? `<div class="cari-money-line"><span>Tahsilat</span><b data-cari-receipts>${fmtTL(m.receipts)} ₺</b></div>` : ''}
     ${m.adjustments ? `<div class="cari-money-line"><span>Devir / düzeltme</span><b>${m.adjustments > 0 ? '+' : ''}${fmtTL(m.adjustments)} ₺</b></div>` : ''}
     <div class="cari-money-balance"><span>Kayıtlı bakiye</span><strong data-cari-balance>${!summary && m.balance > 0 ? '+' : ''}${fmtTL(m.balance)} ₺</strong></div>
-    ${m.unpostedTax ? `<p class="cari-money-note">KDV hariç işlerin ${fmtTL(m.unpostedTax)} ₺ KDV’si kayıtlı bakiyeye henüz eklenmedi.</p>` : ''}
+    ${m.unpostedTax ? `<p class="cari-money-note">İşlerin ${fmtTL(m.unpostedTax)} ₺ KDV’si bakiyeye dahil değil. Yalnız hakedişte ayrıca seçilip kesinleştirilince eklenir.</p>` : ''}
     ${m.issues.length ? `<p class="cari-money-note warn">${m.issues.length} kayıtta ana para / KDV ayrımı kontrol edilmeli. Eksik bilgiye oran varsayılmadı; kayıtlı bakiye korundu.</p>` : ''}
   </div>`;
 }
@@ -1410,11 +1428,16 @@ async function cashForm(ctx) {
       ${fSelect(
         "Banka Hesabı",
         "bank_account_id",
-        banks.map((b) => ({ v: b.id, t: b.name })),
+        [...banks.map((b) => ({ v: b.id, t: b.name })),{v:"__new_bank__",t:"+ Yeni banka hesabı"}],
       )}
+      <p data-bank-help class="small">Hesap yoksa Banka Hesapları ekranından ekleyin. Eski tarihli havale girecekseniz hesap açılış tarihini kontrol edin. <button type="button" class="btn sm" data-new-bank>+ Yeni banka hesabı</button></p>
       ${fArea("Açıklama", "description", "")}
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  if(query.bank_return==='1'&&bankReturnCash){for(const key of ['date','cash_type','amount','customer_id','personnel_id','payment_method','description']){const el=qs('[name='+key+']',root);if(el&&bankReturnCash[key]!=null)el.value=bankReturnCash[key];}qs('[name=bank_account_id]',root).value=query.bank_account_id||bankReturnCash.bank_account_id||'';bankReturnCash=null;}
+  const openBank=()=>{bankReturnCash={...collectForm(root),bank_account_id:''};go('#/bankalar/new?return_to=cash');};
+  qs('[data-new-bank]',root).onclick=openBank;
+  qs('[name=bank_account_id]',root).addEventListener('change',e=>{if(e.target.value==='__new_bank__')openBank();});
   const syncBank = () => {
     const on =
       qs("[name=cash_type]", root).value === "Müşteriden Para Alındı" &&
@@ -1422,6 +1445,7 @@ async function cashForm(ctx) {
     const bank = qs("[name=bank_account_id]", root),
       person = qs("[name=personnel_id]", root);
     bank.closest(".field").hidden = !on;
+    qs('[data-bank-help]',root).hidden=!on;
     bank.disabled = !on;
     person.closest(".field").hidden = on;
     person.disabled = on;

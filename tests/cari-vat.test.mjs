@@ -14,8 +14,8 @@ const d={customers:[{id:'C',name:'TEST mixed'},{id:'A',name:'TEST advance'},{id:
     {id:'ADV',customer_id:'A',type:'Tahsilat',amount:-150,date:'2026-10-22'}],
   cash_records:[{id:'SAME-CASH',customer_id:'C',cash_type:'Müşteriden Para Alındı',amount:600,date:'2026-10-22'}]};
 const before=JSON.stringify(d),reports=customerVatBreakdowns(d),c=reports.get('C');
-assert.deepEqual([c.net,c.tax,c.gross,c.receipts,c.adjustments,c.balance,c.unpostedTax],[4100,810,4910,600,25,4135,200]);
-assert.equal(c.unbilled,2310,'finalized claim source work is not counted twice; draft claim is not a debit');
+assert.deepEqual([c.net,c.tax,c.gross,c.receipts,c.adjustments,c.balance,c.unpostedTax],[4100,810,4910,600,25,3925,410]);
+assert.equal(c.unbilled,2100,'finalized claim source work is not counted twice; draft claim is not a debit');
 assert.equal(reports.has('I'),false,'internal customers stay outside receivables');
 assert.deepEqual([reports.get('U').net,reports.get('U').tax,reports.get('U').gross],[300,null,null],'missing VAT does not become 0 or 20 percent');
 assert.equal(reports.get('U').balance,300,'unknown VAT does not change the recorded amount');
@@ -23,7 +23,7 @@ assert.deepEqual([reports.get('Z').net,reports.get('Z').tax,reports.get('Z').gro
 const balances=customerBalances(d);
 for(const [id,row] of reports){assert.equal(row.balance,balances.bal[id]);assert.equal(row.unbilled,balances.unbilled[id]);}
 const total=receivableVatSummary(reports);
-assert.equal(total.balance,4485.01,'positive balances only; a different customer advance never nets against them');
+assert.equal(total.balance,4275.01,'positive balances only; a different customer advance never nets against them');
 assert.equal(total.net,4450.01);assert.equal(total.tax,null);assert.equal(total.gross,null);
 assert.equal(total.receipts,600,'cash record and its ledger movement are one collection, not two');
 assert.equal(JSON.stringify(d),before,'no price, claim, collection or business record is mutated');
@@ -55,4 +55,4 @@ for(const included of [true,false])for(const amount of [.01,.02,.03,.07,.29,1000
 }
 const deleted=structuredClone(d);deleted.work_records.push({...work('DELETED','C',100000,20,false),deleted_at:'2026-10-22'});
 assert.deepEqual(customerVatBreakdowns(deleted).get('C'),c,'deleted works never reappear');
-console.log('cari-vat PASS: strict frozen net/VAT basis, partial collections separate, no inferred VAT or balance changes, positive-customer scope, duplicates and exact cent identities');
+console.log('cari-vat PASS: strict frozen net/VAT basis, partial collections separate, no inferred VAT, optional-claim net balance, positive-customer scope, duplicates and exact cent identities');
