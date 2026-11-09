@@ -1559,7 +1559,8 @@ async function whatsapp(ctx) {
     <div class="notice info"><span>ℹ</span><span>Anahtar ve internet gerekmez. Tarih ve gönderen başlığı devam satırlarında korunur. Bilinmeyen alanlar sorulur; kayıt yalnız Kaydet ile yazılır.</span></div>
     <div class="field"><label>Mesaj metni</label><textarea data-raw data-msg rows="6" placeholder="WhatsApp mesajını tarih ve gönderen başlığıyla yapıştırın"></textarea></div>
     <div class="row" style="gap:8px;margin-bottom:12px"><button class="btn primary grow" data-parse data-ask>Ayrıştır</button>${voiceSupported()?'<button class="btn" data-voice>🎙 Sesli</button>':''}</div>
-    <div data-offline-result data-out></div>`;
+    <div data-offline-result data-out></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:16px"><a class="btn" href="#/whatsapp-toplu">WhatsApp grubunu toplu işle</a><a class="btn" href="#/gecmis">Geçmiş İş Aktarımı</a></div>`;
   const input=qs('[data-raw]',root),button=qs('[data-parse]',root),out=qs('[data-out]',root);let busy=false,edited=false;
   out.addEventListener('input',()=>{edited=true;});out.addEventListener('change',()=>{edited=true;});
   qs('[data-voice]',root)?.addEventListener('click',()=>startVoice(t=>{input.value=(input.value+'\n'+t).trim();},()=>{}));
