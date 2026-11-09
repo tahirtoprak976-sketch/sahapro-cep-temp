@@ -1,82 +1,16 @@
-# KDV ve cari için tutar sözleşmesi: karar notu
+# KDV ve cari — onaylanmış işletme kararı
 
-Durum: **cari hesabının net/brüt politikası için karar bekliyor**. Hiçbir hesap değiştirilmedi. Eski kayıtlar otomatik dönüştürülmüyor. Karışık ya da belirsiz veri **Veri Sağlığı**'nda işaretlenir (`vat-mixed`, `vat-ambiguous`) ve raporlanır (`js/vat-contract.js` → `workMoney`, `vatContractReport`).
+**09.11.2026, işletme sahibinin açık seçimi:** “KDV yalnız hakedişte ayrıca seçilip kesinleştirilince cariye eklensin; öncesinde hariç bakiye gösterilsin.” Bu karar, önceki brüt cari önerisinin yerine geçer.
 
-**v3.9.78 görünüm kararı:** Kullanıcının isteğiyle cari listesi ve müşteri cari kartına **tahsilat öncesi ana para + KDV = toplam** eklendi. Kesinleşen hakedişte kayıtlı net/KDV/brüt başlıkları, hakedişe girmeyen işte kendi fiyat snapshot'ı kullanılır. Tahsilat ve devir/düzeltme ayrı gösterilir; tahsilatın ana para/KDV dağılımı tahmin edilmez. Mevcut kayıtlı bakiye ve diğer ekran/ekstreler değişmez. KDV hariç işlerin cariye henüz eklenmemiş KDV'si açıkça belirtilir.
+- Hakedişe girmemiş fiyatlı işin carisi ana paradır. KDV dahil tarife varsa yalnız kayıtlı oranla nete ayrılır; %20 tahmin edilmez. KDV hariç fiyatın ana parası zaten kayıtlı tutardır.
+- Yeni hakedişte **KDV ekle** başlangıçta seçili değildir. Seçilirse kayıtlı oranlar kullanılır. Seçilmezse ana para üzerinden taslak hazırlanır. Cari ancak açık kesinleştirme onayından sonra hakedişin saklanan toplamını alır.
+- Örnek: 6 × 4.500 TL hariç iş ve 20.000 TL tahsilat için önce bakiye **7.000 TL**; KDV seçilmeden kesinleşirse **7.000 TL**; kayıtlı %20 seçilerek kesinleşirse **12.400 TL**.
+- Dahil fiyat için 3 × 1.200 TL, kayıtlı %20: ana para **3.000 TL**. KDV seçilmezse 3.000; seçilip kesinleşirse 3.600 TL. İkinci KDV eklenmez.
+- Tahsilat gerçek paradır; ana para/KDV paylarına tahminen dağıtılmaz. Hakediş PDF’inde gösterilen müşteri tahsilatı belirli hakedişe yapılmış ödeme sayılmaz.
+- Önceden kesinleşmiş hakedişlerin, tahsilatların ve cari hareketlerin saklanan tutarları **değişmez**. Eski taslak da yeniden fiyatlanmaz: kesinleştirme onayı kayıtlı ana para + KDV + toplamı açıkça söyler. KDV istenmiyorsa eski taslak iptal edilerek yeni seçimle hazırlanır.
+- İş kayıtlarına toplu düzeltme, veri dönüşümü, şema değişikliği veya sıfırlama yoktur. Yeni taslak, mevcut `kdv_rate`, `kdv_included`, `source_price_snapshot` alanlarını kullanır; kaynak fiyatın aslı korunur. İşin fiyat kilidi yalnız mevcut açık kesinleştirme işleminin parçasıdır.
+- Bu karar salt okunur cari hesabını etkiler: eski **hakedişe girmemiş dahil fiyatlı** işlerin cari görünümü nete iner. Kesinleşmiş hakedişler korunur. Bu, sahibin seçtiği hesap politikasıdır; işin kayıtlı fiyatı değiştirilmez.
+- Oran/temel eksik veya kilit/bağlantı çelişkili eski kayıtta fiyat tahmin edilmez; bilinen kayıtlı tutar kontrol uyarısıyla korunur. Yeni hakedişte belirsiz dahil fiyat engellenir. Nete çevirme tam kuruşluk birim tarifesiyle aynı toplamı vermezse otomatik farklı fiyat yazılmaz; tarife kontrolü istenir.
+- Müşteri PDF özetinde dönem deviri + caride ana para + kesinleşen hakediş KDV’si + diğer cari hareketler − tahsilat = dönem sonu bakiye. Dönem cari tarihleriyle hesaplanır; farklı dönem işlerine ödeme/KDV ataması yapılmaz.
 
-Yeni cari görünümü oranı veya fiyat temeli eksik işte **%20 varsaymaz**; bilinen ana para korunur, KDV/brüt için kontrol ister. Eski `workMoney` raporunun aşağıda açıklanan varsayım davranışı yalnız eski denetim raporunda korunur. Yeni ayrım `customerVatBreakdowns` ve `receivableVatSummary` ile salt okunur olarak üretilir; belge durumu oranın yerine geçmez ve %0 geçerlidir.
-
-## Ayrı tutulması gereken alanlar
-
-Bunlar birbirinden **türetilmez**:
-
-| Alan | Bugün nerede | Not |
-|---|---|---|
-| Net tutar | türetiliyor (`workMoney.net`) | — |
-| KDV oranı | `price_snapshot.kdv_rate` | Fiyatın kendi verisi. **%0 geçerli bir orandır.** |
-| KDV tutarı | türetiliyor (`workMoney.kdv`) | — |
-| Brüt tutar | türetiliyor (`workMoney.gross`) | — |
-| Fiyatın temeli | `price_snapshot.kdv_included` (dahil / hariç) | — |
-| Para birimi | alan yok | Her yerde TRY varsayılıyor (`workMoney.currency`) |
-| Belge / faturalama durumu | `work_records.invoice_no` | **KDV oranını belirlemez** |
-
-**İlkeler:**
-- Faturası kesilmemiş iş **kendiliğinden %0 değildir**. Faturası henüz kesilmemiş KDV'li bir iştir; oranı fiyattan gelir.
-- Müşteri kartında ileride bir varsayılan oran olursa, yalnız **yeni** fiyat önerisinde ön değer olur. İşin doğrulanmış verisini (snapshot'taki oran ve temel) **ezmez**.
-
-## 1. Mevcut hesap davranışı (kodla doğrulandı)
-
-Müşteri bakiyesi (`collect-core.js` → `customerOpenItems` / `customerBalances`):
-
-> **Bakiye = Σ hakediş (`grand_total`, brüt) + Σ düzeltme + Σ hakedişe girmemiş iş (`price_snapshot.amount`) − Σ tahsilat (gerçek para)**
-
-`price_snapshot.amount = birim fiyat × miktar`:
-- Fiyat "KDV hariç" ise net,
-- "KDV dahil" ise brüt.
-
-**Sorun:** Aynı toplamda net ve brüt tutarlar karışıyor. Örnek (`tests/vat-contract.test.mjs`): 1000 TL KDV hariç iş + 1200 TL KDV dahil iş (%20).
-
-| | Tutar |
-|---|---|
-| Bugünkü toplam | 2200 TL |
-| Net | 2000 TL |
-| Brüt | 2400 TL |
-
-## 2. Önerilen tutarlı davranış (öneri, onaylanmış işletme kararı değil)
-
-Cari **tek temelde** toplanır. Önerilen temel **brüttür**, çünkü:
-- Hakediş cariye zaten brüt yazılıyor.
-- Tahsilat gerçek para (faturalı işte KDV dahil).
-
-Hakedişe girmemiş işin cariye etkisi `workMoney(w).gross` olur. Brüt, işin **kendi** oranı ve temeliyle hesaplanır; belge durumu ve müşteri varsayılanı bu hesaba girmez. KDV'siz çalışılan bir işin brütü ancak o işin fiyatı %0 oranla girildiyse net'e eşit olur. Bu da kullanıcının fiyatta verdiği bir karardır, belge durumundan çıkarılmaz.
-
-**Örnek hesaplar** (tahsilat brüt 25.000 TL):
-
-| Durum | Bugün | Brüt temelde |
-|---|---|---|
-| 10 iş × 3500 TL **hariç** %20 | 35.000 − 25.000 = **10.000** | 42.000 − 25.000 = **17.000** |
-| 10 iş × 4200 TL **dahil** %20 | 42.000 − 25.000 = **17.000** | 42.000 − 25.000 = **17.000** (değişmez) |
-| 10 iş × 3500 TL hariç **%0** | 35.000 − 25.000 = **10.000** | 35.000 − 25.000 = **10.000** (değişmez) |
-| 5 hariç + 5 dahil (aynı fiyat 3500) | 17.500 + 17.500 = 35.000 → **10.000** | 21.000 + 17.500 = 38.500 → **13.500** |
-
-Net temel de mümkündür, ama tahsilatın içindeki KDV payı bilinmediği için tahsilatla karşılaştırma tutarsız kalır.
-
-## 3. Belirsiz eski kayıtların ele alınması
-
-- **Belirsiz:** `price_snapshot.kdv_rate` boş ya da yok. Rapor %20 varsayar ve bunu `ambiguous` + `issues` olarak açıkça gösterir. Veri Sağlığı'nda `vat-ambiguous` çıkar.
-- `kdv_included` alanı olmayan eski snapshot "hariç" sayılır (uygulama bugün de böyle sayıyor) ve ayrıca işaretlenir.
-- **Kendiliğinden düzeltilmez.** Kullanıcı ilgili işte oranı ve temeli onaylar; onaylanan iş tek tek güncellenir.
-- Hakedişe girmiş (kilitli) işlerin snapshot'ı değişmez; onların cari etkisi zaten hakedişin brüt toplamıdır.
-
-## 4. Geçişin bakiye etkisi
-
-- Yalnız **hakedişe girmemiş ve fiyatı KDV hariç olan** işlerin cari etkisi değişir: oranı kadar artar.
-- KDV dahil ya da %0 olan işler, kesinleşmiş hakedişler, tahsilatlar ve düzeltmeler **değişmez**.
-- Geçişten önce müşteri başına "bugünkü / net / brüt" karşılaştırması gösterilir (`vatContractReport`: `booked`, `net`, `gross`, `dahil` / `haric` sayıları, örnek işler). Kullanıcı onaylamadan cari değişmez.
-- Hatırlatma mesajları ve tahsilat ekranı aynı temele geçer. İki ekranın farklı tutar göstermesi istenmez.
-
-## Kullanıcıdan istenen karar
-
-1. **Cari brüt temelde toplansın.** Eski belirsiz işler listede onaya sunulsun.
-2. **Cari net temelde toplansın.** Tahsilat karşılaştırması tutarsız kalacağı için önerilmez.
-3. **Şimdilik değişmesin.** Karışım yalnız Veri Sağlığı'nda uyarı olarak görünsün (bu sürümün durumu).
+%0 geçerli kayıtlı orandır. Fatura numarasının yokluğu, ücretsiz iş, %0 KDV veya tahsilat anlamına gelmez. Genel kâr/maliyet `workAmount` hesabı değiştirilmemiştir; net politika yalnız müşteri cari yolundadır.

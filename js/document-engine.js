@@ -323,15 +323,20 @@ export async function buildDocument(input) {
   for(let i=0;i<sorted.length;i+=100){const block=sorted.slice(i,i+100);cmap+=block.length+" beginbfchar\n"+block.map(c=>`<${c.toString(16).padStart(4,'0')}> <${c.toString(16).padStart(4,'0')}>`).join('\n')+"\nendbfchar\n";}
   cmap+="endcmap CMapName currentdict /CMap defineresource pop end end";
   const unicode=add(stream(bytes(cmap)));
-  function embedFont(ff){
-    const fontFile=add(stream(ff.data,`/Length1 ${ff.data.length}`));
+  async function compactStream(data,extra=""){
+    if(typeof CompressionStream==='undefined')return stream(data,extra);
+    const packed=new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('deflate'))).arrayBuffer());
+    return packed.length<data.length?stream(packed,extra+" /Filter /FlateDecode"):stream(data,extra);
+  }
+  async function embedFont(ff){
+    const fontFile=add(await compactStream(ff.data,`/Length1 ${ff.data.length}`));
     const descriptor=add(`<< /Type /FontDescriptor /FontName /${ff.name} /Flags 32 /FontBBox [-1100 -500 2100 1600] /ItalicAngle 0 /Ascent 928 /Descent -236 /CapHeight 729 /StemV 80 /FontFile2 ${fontFile} 0 R >>`);
     const cidMap=new Uint8Array(131072);for(const c of used){const g=ff.glyph(c);cidMap[c*2]=g>>8;cidMap[c*2+1]=g&255;}
-    const mapping=add(stream(cidMap));
+    const mapping=add(await compactStream(cidMap));
     const cidFont=add(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /${ff.name} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${descriptor} 0 R /DW 600 /W [${sorted.map(c=>c+' ['+ff.width(c)+']').join(' ')}] /CIDToGIDMap ${mapping} 0 R >>`);
     return add(`<< /Type /Font /Subtype /Type0 /BaseFont /${ff.name} /Encoding /Identity-H /DescendantFonts [${cidFont} 0 R] /ToUnicode ${unicode} 0 R >>`);
   }
-  const type0=embedFont(f),typeBold=embedFont(fb),kids=[];
+  const type0=await embedFont(f),typeBold=await embedFont(fb),kids=[];
   const imageRefs = images.map((i) => ({
     ...i,
     ref: add(

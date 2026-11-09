@@ -9,6 +9,7 @@ either. A temporary loopback server swaps the same origin from old to new bytes.
 No worker/cache/controller APIs are mocked and no tests or browser flags change.
 """
 import argparse
+import copy
 import hashlib
 import io
 import json
@@ -373,7 +374,25 @@ def main():
                 page.goto(base + 'index.html#/musteriler/' + ids['c'])
                 page.wait_for_selector('#screen[data-view-ready="1"] [data-custdash]')
                 report_after = page.evaluate("""async id=>{const db=await import('./js/db.js'),R=await import('./js/customer-report.js');return R.customerReportSpec(R.customerReportData(await db.dumpAll(),id),{audience:'customer'});}""", ids['c'])
-                assert report_after == customer_report, 'Customer PDF specification must remain identical for existing normal records'
+                # v105 intentionally changes the owner-approved VAT summary.
+                # Keep a complete exact document comparison: transform only the
+                # explicitly revised template, retaining every original source
+                # cell, name, period, note, row and amount without exclusions.
+                expected_report=copy.deepcopy(customer_report)
+                old_summary=next(section for section in expected_report['sections'] if section.get('title')=='Özet')
+                if any(pair[0]=='İş tutarı (dönem, TL)' for pair in old_summary['pairs']):
+                    assert not before['data']['cari_movements'] and not before['data']['hakedis']
+                    assert all(row.get('price_snapshot') is None for row in before['data']['work_records'])
+                    pairs=[]
+                    for pair in old_summary['pairs']:
+                        if pair[0]=='İş tutarı (dönem, TL)':
+                            assert pair[1]=='0,00 ₺', 'This upgrade fixture must genuinely remain unpriced'
+                            pairs.extend([['Caride ana para (dönem, TL)','0,00 ₺'],['Kesinleşen hakediş KDV’si (dönem)','0,00 ₺'],['Diğer cari hareketler (dönem)','0,00 ₺']])
+                        else:pairs.append(pair)
+                    old_summary['pairs']=pairs
+                    index=expected_report['sections'].index(old_summary)
+                    expected_report['sections'].insert(index+1,{'layout':'notice','text':'Hakedişe girmeyen işler caride KDV hariçtir. KDV yalnız hakedişte ayrıca seçilip kesinleştirilince eklenir. Dönem başı devir + ana para + kesinleşen KDV + diğer cari hareketler − tahsilat = dönem sonu bakiye.'})
+                assert report_after == expected_report, 'Customer PDF must exactly match the approved template and preserve every existing source field and amount'
                 assert_preserved(before, page.evaluate(SNAPSHOT), upgraded=True)
 
                 page.goto(base + 'index.html#/isler/' + ids['w'])

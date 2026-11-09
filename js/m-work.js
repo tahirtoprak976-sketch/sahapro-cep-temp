@@ -504,7 +504,7 @@ async function workForm(ctx, editId) {
       Number(qs("[name=quantity]", form).value || 0) +
       extras.reduce((sum, r) => sum + Number(r.x_quantity || 0), 0);
     qs("[data-transport-total]", form).textContent =
-      `${extras.length + 1} satır · Toplam ${fmtNum(total)} sefer`;
+      `${extras.length + 1} satır · Toplam ${fmtNum(total)} ${esc(qs('[name=unit]',root)?.value||'Sefer')}`;
     qs("[data-save]", root).textContent = extras.length
       ? "Tümünü kaydet"
       : "Kaydet";
@@ -1256,7 +1256,7 @@ async function slipForm(ctx, editId) {
       qs("[name=" + key + "]", root).disabled = true;
     if(sourceBatch)qs("[data-form]", root).insertAdjacentHTML(
       "afterbegin",
-      `<div class="notice"><strong>Toplam ${fmtNum(v.quantity)} sefer</strong><p>Bağlı işlerden alınır; döküm yerleri müşteriye gösterilmez.</p>${customerWorkLines(
+      `<div class="notice"><strong>Toplam ${fmtNum(v.quantity)} ${esc(String(v.unit||'').toLocaleLowerCase('tr-TR'))}</strong><p>Bağlı işlerden alınır; döküm yerleri müşteriye gösterilmez.</p>${customerWorkLines(
         v.customer_items,
       )
         .map(

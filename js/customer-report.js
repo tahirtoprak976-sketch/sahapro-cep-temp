@@ -65,6 +65,21 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   // Cari ekstre (devir + dönem + kalan)
   const movs = [...ids].flatMap((x) => customerLedgerMovements(d, x));
   const statement = customerStatement(movs.map((m) => ({ ...m, customer_id: id })), id, { from, to });
+  // Reconcile the selected period using ledger dates, never allocate payments
+  // to a claim or infer VAT from a difference between unrelated totals.
+  const account={principal:0,vat:0,other:0,collections:0,unknownClaims:0};
+  for(const m of movs.filter(m=>inR(m.date))){
+    if(m.type==='Is'){account.principal+=toKurus(m.amount);continue;}
+    if(m.type==='Tahsilat'){account.collections-=toKurus(m.amount);continue;}
+    if(m.type==='Hakedis'){
+      const claims=live(d,'hakedis').filter(h=>h.id===m.ref_id&&h.customer_id===m.customer_id&&h.status==='Kesinleşti');
+      const h=claims[0],valid=n=>n!==''&&n!=null&&Number.isFinite(Number(n))&&Number(n)>=0;
+      if(claims.length===1&&[h.subtotal,h.kdv_total,h.grand_total].every(valid)&&toKurus(h.subtotal)+toKurus(h.kdv_total)===toKurus(h.grand_total)&&toKurus(h.grand_total)===toKurus(m.amount)&&movs.filter(x=>x.type==='Hakedis'&&x.ref_id===m.ref_id).length===1){account.principal+=toKurus(h.subtotal);account.vat+=toKurus(h.kdv_total);continue;}
+      account.unknownClaims++;
+    }
+    account.other+=toKurus(m.amount);
+  }
+  for(const key of ['principal','vat','other','collections'])account[key]=fromKurus(account[key]);
   const balanceNow = r2(movs.reduce((n, m) => n + (Number(m.amount) || 0), 0));
   // Açık kalemler / yaşlandırma (bugün itibarıyla)
   const open = [...ids].flatMap((x) => customerOpenItems(d, x, today).open).sort((a, b) => a.date.localeCompare(b.date));
@@ -103,7 +118,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const financialIssues = live(d, 'work_records').filter(w => ids.has(w.customer_id) && inR(w.date))
     .map(w => ({id: w.id, issue: claimWorkResolution(d, w).issue})).filter(r => r.issue);
   return {
-    customer: me, parent, children, from, to, subs, scopeNote, financialIssues, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
+    customer: me, parent, children, from, to, subs, scopeNote, financialIssues, account, works, units, byType, byVehicle, collections, statement, balanceNow, open, aging, months, fuel, fuelRules, fuelMonths, fuelCollections, cheques,
     totals: { works: works.length, workTotal, collected, tonnage: r2(works.reduce((n, w) => n + (w.tonnage || 0), 0)), tonnageUnknown: works.filter(w => w.tonnageUnknown).length, tonnagePerTrip: works.filter(w => w.tonnagePerTrip).length, fuelL: r2(works.reduce((n, w) => n + w.fuelL, 0)), fuelReceivedL: r2(fuelCollections.reduce((n, f) => n + f.liters, 0)), unpriced: works.filter((w) => w.unpriced).length, included: works.filter((w) => w.included).length, oldestDays: open[0]?.days || 0 },
   };
 }
@@ -154,9 +169,12 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
     ["İş sayısı", String(R.totals.works)], ["Miktar", unitsText(R.units)],
     ...(R.totals.tonnage ? [[tonnageSummaryLabel(R), fmt(R.totals.tonnage) + " ton"]] : []),
     ...(R.fuel ? [["Dönemde hak edilen mazot", fmt(R.totals.fuelL) + " L"], ["Mazot tahsilatı (dönem)", fmt(R.totals.fuelReceivedL) + " L"]] : []),
-    ["İş tutarı (dönem, TL)", tl(R.totals.workTotal)], ["Tahsilat (dönem, TL)", tl(R.totals.collected)],
+    ["Caride ana para (dönem, TL)", tl(R.account.principal)], ["Kesinleşen hakediş KDV’si (dönem)",tl(R.account.vat)],
+    ["Diğer cari hareketler (dönem)",tl(R.account.other)], ["Tahsilat (dönem, TL)", tl(R.account.collections)],
     ["Dönem başı devir", tl(R.statement.opening)], ["Dönem sonu bakiye", tl(R.statement.closing)],
   ] });
+  S.push({layout:"notice",text:"Hakedişe girmeyen işler caride KDV hariçtir. KDV yalnız hakedişte ayrıca seçilip kesinleştirilince eklenir. Dönem başı devir + ana para + kesinleşen KDV + diğer cari hareketler − tahsilat = dönem sonu bakiye."});
+  if(R.account.unknownClaims)S.push({layout:"notice",text:"Kayıtlı hakediş toplamı korunmuştur; ana para/KDV ayrımı doğrulanamayan tutarlar diğer cari hareketlerde gösterilir."});
   if (tonnageScopeNote(R)) S.push({title:"Tonaj kapsamı", layout:"notice", text:tonnageScopeNote(R)});
   if (fuelChart) S.push({ title: "Son 12 ay: hak edilen ve alınan mazot (L)", image: fuelChart, image_width: 760, max_h: 200 });
   if (chart) S.push({ title: "Son 12 ay: iş tutarı ve tahsilat (TL)", image: chart, image_width: 760, max_h: 200 });

@@ -77,7 +77,8 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
     }
    }
   }else if(!(num(w.quantity)>0))missing.push('İş miktarı eksik veya geçersiz.');
-  const ticketRequired=TRUCK_TYPES.includes(w.work_type)&&['Sefer','Ton'].includes(w.unit);
+  const destination=live(d,'dump_sites').find(s=>s.id===w.dump_site_id);
+  const ticketRequired=TRUCK_TYPES.includes(w.work_type)&&['Sefer','Ton'].includes(w.unit)&&!destination?.own_yard;
   const expected=w.unit==='Sefer'&&num(w.quantity)>0?Number(w.quantity):null;
   if(ticketRequired&&(!numbers.size||(expected!=null&&numbers.size<expected)))missing.push(expected==null?'Döküm / kantar fişi numarası bekleniyor.':`${expected} sefer için ${numbers.size} fiş numarası kayıtlı; eksik fişleri kontrol edin.`);
   if(ticketRequired&&expected!=null&&(numbers.size>expected||!Number.isInteger(expected)))issues.push('Sefer miktarı ile kayıtlı fiş sayısı birlikte kontrol edilmeli.');

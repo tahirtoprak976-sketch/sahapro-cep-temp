@@ -1,3 +1,5 @@
+import {claimVatItem} from '../js/hakedis-vat.js';
+import {kdvRateOf} from '../js/core.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
@@ -84,7 +86,7 @@ async function detailFixture(read) {
   const fn=runInNewContext(detail+'; hakedisDetail;',{
     hakedisSourcePriceReview,notice:noop,appbar:noop,statusBadge:noop,trDate:noop,kv:noop,li:noop,esc:noop,fmtNum:noop,fmtTL:noop,customerWorkLines:()=>[],toast:noop,
     isActive:()=>true,confirmDialog:()=>{counts.confirm++;return confirm.promise;},
-    qs:selector=>selector==='[data-final]'?button:selector==='[data-pdf]'?{addEventListener(){}}:selector==='[data-hakedis-final-error]'?box:null,
+    qs:selector=>selector==='[data-unpriced]'?{}:selector==='[data-final]'?button:selector==='[data-pdf]'?{addEventListener(){}}:selector==='[data-hakedis-final-error]'?box:null,
   });
   await fn({root,db,names:{customers:{C:'TEST'},sites:{}},reload:()=>{counts.reload++;}},'H');
   return {root,box,button,counts,confirm,run:()=>handler()};
@@ -118,7 +120,7 @@ const newScreen = source.slice(source.indexOf('async function hakedisNew('),sour
 async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},snapshot={},sequence,save}={}) {
   const confirm=deferred(),root={innerHTML:'',isConnected:true},rows={innerHTML:''},total={innerHTML:''},error={hidden:true},rowError={hidden:true,textContent:''};
   const checkbox={checked:true,dataset:{chk:'W'}},buttons={},calls={saved:0,navigated:0,totals:null,fields:null};
-  for(const key of ['[data-fetch]','[data-create]','[data-ready-only]','[data-ready-select]','[name=customer_id]','[name=site_id]','[name=date_from]','[name=date_to]'])
+  for(const key of ['[data-unpriced]','[data-claim-vat]','[data-fetch]','[data-create]','[data-ready-only]','[data-ready-select]','[name=customer_id]','[name=site_id]','[name=date_from]','[name=date_to]'])
     buttons[key]={disabled:false,checked:false,addEventListener(event,fn){this[event]=fn;}};
   const db={
     listActive:async store=>({customers:[{id:'C',name:'TEST'}],sites:[],vehicles:[{id:'V'}],price_book:[]}[store]),
@@ -130,7 +132,7 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
   db.dumpAll=async()=>({customers:await db.listActive('customers'),sites:await db.listActive('sites'),vehicles:await db.listActive('vehicles'),price_book:await db.listActive('price_book'),work_records:await db.getAll('work_records'),hakedis:await db.getAll('hakedis')});
   const noop=()=>'';
   const fn=runInNewContext(newScreen+'; hakedisNew;',{
-    structuredClone,customerLabel,validDate,hakedisNumber,hakedisItemIssues,assertHakedisItems,calcHakedisTotals:(items,crane)=>{calls.totals=calcHakedisTotals(items,crane);return calls.totals;},
+    claimVatItem,kdvRateOf,structuredClone,customerLabel,validDate,hakedisNumber,hakedisItemIssues,assertHakedisItems,calcHakedisTotals:(items,crane)=>{calls.totals=calcHakedisTotals(items,crane);return calls.totals;},
     todayStr:()=> '2026-10-25',isActive:()=>true,appbar:noop,fSelect:noop,fDate:noop,emptyState:noop,trDate:noop,esc:x=>x,fmtNum:x=>x,fmtTL:x=>x,kv:noop,notice:(_kind,msg)=>msg,toast:noop,
     go:()=>{calls.navigated++;},confirmDialog:()=>confirm.promise,
     collectForm:()=>({customer_id:'C',site_id:'',date_from:'2026-10-01',date_to:'2026-10-25'}),
@@ -138,6 +140,7 @@ async function newFixture({tariffs={crane_first_hour:500,crane_next_hour:100},sn
     qsa:selector=>selector==='[data-chk]'?[checkbox]:[],
   });
   await fn({root,db,names:{sites:{},vehicles:{},customers:{}}});
+  buttons['[data-claim-vat]'].checked=true;
   return {root,calls,confirm,button:buttons['[data-create]'],rowError,
     async select(){await buttons['[data-fetch]'].click();rows.onchange();},create:()=>buttons['[data-create]'].click()};
 }
@@ -181,7 +184,7 @@ for (const kind of ['legacy-same','legacy-manual','proven-manual','proven-change
   const fn=runInNewContext(detail+'; hakedisDetail;',{
     hakedisSourcePriceReview,notice:(_kind,message)=>message,appbar:noop,statusBadge:noop,trDate:noop,kv:noop,li:noop,esc:noop,fmtNum:noop,fmtTL:value=>String(value),customerWorkLines:()=>[],toast:noop,
     isActive:()=>true,confirmDialog:async(_title,body)=>{confirmBody=body;return false;},
-    qs:selector=>selector==='[data-final]'?button:selector==='[data-pdf]'?{addEventListener(){}}:selector==='[data-hakedis-final-error]'?{hidden:true}:null,
+    qs:selector=>selector==='[data-unpriced]'?{}:selector==='[data-final]'?button:selector==='[data-pdf]'?{addEventListener(){}}:selector==='[data-hakedis-final-error]'?{hidden:true}:null,
   });
   await fn({root,db:{get:async()=>h,getAll:async store=>store==='work_records'?[{id:'W',price_snapshot:workPrice}]:[h],finalizeHakedis:async()=>{finalized++;}},names:{customers:{C:'TEST'},sites:{}},reload(){}},'H');
   if(kind.startsWith('legacy'))assert.match(root.innerHTML,/kaynak fiyat geçmişi doğrulanamıyor/);
