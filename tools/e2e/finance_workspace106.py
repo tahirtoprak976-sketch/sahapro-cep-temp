@@ -27,6 +27,7 @@ with sync_playwright() as w:
  assert 'onay bekliyor' in p.locator('[data-finance-tasks] > .finance-task').nth(1).inner_text()
  assert 'kayıtlı vadesi geçmiş' in p.locator('[data-finance-tasks] > .finance-task').nth(2).inner_text()
  assert not p.locator('[data-finance-tools]').evaluate('el=>el.open')
+ assert p.locator('[data-go="#/odeme-takibi"]').count()==1 and p.locator('[data-go="#/odeme-takibi"]').is_visible(),'Payment tracking keeps its direct visible entry'
  assert p.locator('[data-finance-tool]').count()==29
  for href in ['#/finans/kasa/new','#/gider/new','#/hakedis/hazirlik','#/cari']:
   p.locator('.finance-actions a[href="'+href+'"]').click();p.wait_for_selector('#screen[data-view-ready="1"]');assert p.evaluate('location.hash')==href;p.goto(app+'#/finans');p.wait_for_selector('[data-finance-custody]');p.wait_for_selector('#screen[data-view-ready="1"]')

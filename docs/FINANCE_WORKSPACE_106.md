@@ -22,8 +22,8 @@ Maliyet bilinmiyorsa sonuç hesaplanamadı olarak gösterilir. Döküm maliyeti 
 
 | Ölçüm | v3.10.05 | v3.10.06 |
 |---|---:|---:|
-| Finans ekranı uzunluğu | 2941 px | 2374 px |
-| Başlangıçta görünür kontrol | 37 | 25 |
+| Finans ekranı uzunluğu | 2941 px | 2396 px |
+| Başlangıçta görünür kontrol | 37 | 26 |
 | Üstte günlük işlem | 0 | 4 |
 | Araç dizini | Uzun, dağınık bağlantılar | 29 araç, gruplu arama |
 | Gezinme sırasında değişen kayıt / meta / taslak | 0 | 0 |
@@ -33,3 +33,5 @@ Görünür kontrol ölçümü tarayıcının checkVisibility API’sini kullanı
 Aynı yeni tarayıcı testi değişmemiş v105’te günlük dört işlem kontrolünde başarısız olur; adayda bütün kontrolleriyle çalışır. Yeni test 320/360/390/768 px, öncelik sırası, 29 araç, arama odağı, boş sonuç, hızlı işlem yönleri, tek satır para ve bütün kayıt/meta/taslakların değişmemesini doğrular. Eski finans, fiyat uygulama ve döküm maliyeti testlerinin beklentileri korunur.
 
 Gerçek telefon, gerçek WhatsApp ve gerçek Gemini denenmedi. Genel asistan ölçümü dondurulmuş yanıtlardır; model başarısı iddiası yoktur.
+
+Ödeme Takibi, öncelikli işler başlığında başlangıçtan görünür kısayol olarak kalır. Araç dizinindeki bağlantılar normal href kullanır; aynı yönün birden fazla data-go hedefi oluşmaz. Mevcut ödeme testi tek dokunuşla bu ekrana gidebilmeyi değişmeden korur.

@@ -148,8 +148,8 @@ async function hub(ctx) {
       <div class="finance-metrics">${financeCard(fmtTL(monthH),'İş değeri ₺','accent','#/cari')}${financeCard(fmtTL(monthT),'Tahsilat ₺','ok','#/kasa')}${financeCard(fmtTL(monthG),'Masraf ₺','warn','#/gider')}</div>
       <div class="finance-result ${!cur.costIncomplete&&cur.profit<0?'finance-result-negative':''}"><span>Tahmini sonuç · iş − masraf</span><strong data-month-profit>${cur.fuelPending?'Hesaplanamadı — yakıt mutabakat bekliyor':cur.dumpUnknown||cur.dumpUnverified?'Hesaplanamadı — döküm maliyeti eksik':cur.costIncomplete?'Hesaplanamadı — maliyet eksik':cur.financialReview?'Hesaplanamadı — hakediş kaynağı kontrol bekliyor':fmtTL(cur.profit)+' ₺'}</strong><small>İş değeri tahsil edilmiş para değildir.${cur.unpriced?' '+cur.unpriced+' işin fiyatı eksik.':''}</small></div>
     </section>
-    <section class="finance-panel" data-finance-tasks><div class="finance-section-head"><h3>Öncelikli işler</h3><span>${tasks.length} kayıtlı kontrol</span></div>
-      <p class="finance-caption">Kayıtları inceleyin; bu bölüm ödeme veya kesinleştirme yapmaz.</p>
+    <section class="finance-panel" data-finance-tasks><div class="finance-section-head"><h3>Öncelikli işler</h3><a class="finance-text-link" href="#/odeme-takibi" data-go="#/odeme-takibi">Ödeme takibi →</a></div>
+      <p class="finance-caption">${tasks.length} kayıtlı kontrol · Kayıtları inceleyin; bu bölüm ödeme veya kesinleştirme yapmaz.</p>
       ${tasks.slice(0,3).map(taskHTML).join('')||'<p class="finance-empty">Bu kontrollerde bekleyen iş görünmüyor. Kaydı olmayan borçlar bu değerlendirmeye dahil değildir.</p>'}
       ${tasks.length>3?`<details class="finance-inline-details" data-finance-more-tasks><summary>Diğer ${tasks.length-3} kontrolü göster</summary>${tasks.slice(3).map(taskHTML).join('')}</details>`:''}
     </section>
