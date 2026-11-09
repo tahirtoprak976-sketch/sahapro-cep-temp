@@ -1256,7 +1256,7 @@ async function slipForm(ctx, editId) {
       qs("[name=" + key + "]", root).disabled = true;
     if(sourceBatch)qs("[data-form]", root).insertAdjacentHTML(
       "afterbegin",
-      `<div class="notice"><strong>Toplam ${fmtNum(v.quantity)} sefer</strong><p>Bağlı işlerden alınır; döküm yerleri müşteriye gösterilmez.</p>${customerWorkLines(
+      `<div class="notice"><strong>Toplam ${fmtNum(v.quantity)} ${esc(String(v.unit||'').toLocaleLowerCase('tr-TR'))}</strong><p>Bağlı işlerden alınır; döküm yerleri müşteriye gösterilmez.</p>${customerWorkLines(
         v.customer_items,
       )
         .map(

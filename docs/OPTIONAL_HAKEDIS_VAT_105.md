@@ -24,3 +24,5 @@ Banka ekleme ilgili banka hesabı ekranına gider ve dönünce kaydedilmemiş ta
 Sahibin yeni politikası nedeniyle eski karma cari testlerindeki kesin bakiye beklentileri net tutara güncellendi; tolerans eklenmedi ve finansal koruma testleri kaldırılmadı. Hakediş tarayıcı testleri KDV’yi açıkça seçer; özgün assert ifadeleri değişmez.
 
 Fontlar ve Unicode eşleştirmesi PDF içinde standart Flate ile sıkıştırılır; Türkçe harfler korunur. Sıkıştırma API’si olmayan tarayıcıda tam fontla eski sıkıştırmasız çıktı kullanılır. Çok kalemli belge birden fazla sayfa olabilir. Gerçek telefon, gerçek WhatsApp bağlantısı ve gerçek Gemini denenmedi; model ölçümleri dondurulmuş yanıtlardır.
+
+Yükseltme testindeki eski “müşteri PDF tanımı birebir aynı” sözleşmesi, sahibin istediği yeni KDV özetine göre tam eşitlikle güncellendi: unpriced sentetik başlangıç için yalnız onaylanmış özet satırları ve açıklama referansa açıkça eklenir. Kaynak hücreleri, adlar, tarihler, açıklamalar ve diğer bütün belge alanları hâlâ tam nesne eşitliğiyle karşılaştırılır. Her veritabanı kaydı, meta, taslak ve ek dosya baytı ayrıca birebir karşılaştırılmaya devam eder; alan dışlama veya tolerans yoktur.
