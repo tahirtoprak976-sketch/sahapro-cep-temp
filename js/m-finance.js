@@ -1,3 +1,4 @@
+import {financeIcon,financeToolHTML,financeToolGroup,financeWorkspaceTasks,bindFinanceTools} from './finance-workspace.js';
 let bankReturnCash=null; // In-memory form values only; never a saved money record.
 import {claimVatItem} from './hakedis-vat.js';
 import {priceVehicleContext} from "./core.js";
@@ -83,7 +84,7 @@ export async function screen(ctx) {
 }
 
 function financeCard(value,label,color,route) {
-  return `<a class="stat finance-stat ${esc(color)}" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="l">${esc(label)}</span><span class="v" style="white-space:nowrap;font-size:clamp(16px,5vw,22px)">${esc(value)}</span></a>`;
+  return `<a class="stat finance-stat ${esc(color)}" data-finance-wide="${value.length>11}" style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px" href="${esc(route)}" data-go="${esc(route)}" aria-label="${esc(label)} listesini aç"><span class="l">${esc(label)}</span><span class="v" style="white-space:nowrap;font-size:clamp(16px,5vw,22px)">${esc(value)}</span></a>`;
 }
 
 function dumpCostBreakdown(rows) {
@@ -127,34 +128,47 @@ async function hub(ctx) {
     ["#/odeme-takibi", "📅", "Ödeme Takibi", "kayıtlı vadeler ve kalan borçlar"],
     ["#/fiyat", "🏷", "Fiyat Listesi", "fiyatlar + vinç tarifesi"],
   ];
-  root.innerHTML =
-    appbar("Finans", selected.label) +
-    `
-    <section class="card" data-finance-period><label for="finance-month"><b>Dönem: ${esc(selected.label)}</b></label><div class="row" style="gap:8px;flex-wrap:wrap"><input id="finance-month" data-finance-month type="month" value="${esc(selected.month)}" max="${today.slice(0,7)}" style="min-width:0;max-width:100%">${[['month','Bu ay'],['last','Geçen ay'],['3m','Son 3 ay'],['all','Tümü']].map(([key,label])=>`<a class="chip ${selected.period===key&&!selected.automatic&&!ctx.query?.month?'on':''}" href="#/finans?period=${key}">${label}</a>`).join('')}</div><p class="tiny muted">${from?esc(trDate(from))+' – ':''}${esc(trDate(to))} · Aşağıdaki tutarlar seçilen döneme aittir.</p>${selected.automatic?notice('info','Bu ay henüz hareket yok. Son kayıt bulunan '+selected.label+' gösteriliyor.'):''}${selected.invalid?notice('warn','Geçersiz dönem yerine '+selected.label+' gösterildi.'):''}</section>
-    <section class="card" data-finance-general><div class="row between"><b>Genel müşteri alacağı · tüm tarihler</b><a href="#/cari">Cariyi aç ›</a></div>${cariMoneyHTML(general,true)}<p class="tiny muted">Bu tutar dönem filtresinden bağımsızdır. Tahsil edilmemiş müşteri bakiyesidir; kasa mevcudu değildir.</p></section>
-    <div class="statgrid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));margin-top:10px">
-      ${financeCard(fmtTL(monthH), "İş değeri ₺", "accent", "#/cari")}
-      ${financeCard(fmtTL(monthT), "Tahsilat ₺", "ok", "#/kasa")}
-      ${financeCard(fmtTL(monthG), "Masraf ₺", "warn", "#/gider")}
-    </div>
-    <section class="card" data-finance-custody><h3>${esc(selected.label)} tahsilatının parası nerede?</h3>
-      ${kv('Personelde',fmtTL(atPersonnel)+' ₺')}${kv('Teslim bildirildi · onay bekliyor',fmtTL(waitingHandover)+' ₺')}${kv('Kasaya teslim edilmiş',fmtTL(atCash)+' ₺')}${kv('Banka kaydı',fmtTL(atBank)+' ₺')}
-      <p class="small muted">Bunlar seçilen dönemin tahsilat kayıtlarıdır; toplam kasa / banka bakiyesi değildir. Personeldeki para ile kasaya teslim ayrı izlenir.</p>
-      ${unknownCustody?notice('warn',unknownCustody+' tahsilatta paranın bulunduğu durum kayıtlı değil; kasa/banka toplamına varsayımla eklenmedi.'):''}
-      <a class="btn sm" href="#/kasa">Tahsilat ve teslim kayıtlarını incele →</a></section>
-    ${cur.financialReview ? notice("warn", `${cur.financialReview} işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi. Veri Sağlığı ve kaynak işi kontrol edin.`) + '<a class="btn sm" href="#/veri-sagligi" data-go="#/veri-sagligi">Veri Sağlığı ›</a>' : ""}
-    ${dumpCostBreakdown(monthCosts)}
-    ${pendingFuelSummary(d,{from,to}).count?notice("warn",pendingFuelSummary(d,{from,to}).warning):""}
-    <div class="card tap" data-go="#/nakit" style="border-left:4px solid var(--accent)"><div class="row between"><span><b>📈 Nakit tahmini</b><br><span class="tiny muted">Önümüzdeki 5 hafta giriş / çıkış — param yetecek mi?</span></span><span class="muted">›</span></div></div>
-    <div class="card tap" data-go="#/fatura"><div class="row between"><span><b>🧾 Faturalanacaklar</b><br><span class="tiny muted">Faturası kesilmemiş işler · eLogo'ya girilecek kalemler</span></span><span class="muted">›</span></div></div>
-    <div class="card tap" data-go="#/fiyat-saglik"><div class="row between"><span><b>🩺 Fiyat sağlığı</b><br><span class="tiny muted">Hangi müşteride zarar / düşük kâr · zam önerisi</span></span><span class="muted">›</span></div></div>
-    <div class="card" style="margin-top:8px"><div class="row between"><span class="muted small">${esc(selected.label)} tahmini sonuç (iş − masraf)</span><span data-month-profit class="strong ${!cur.costIncomplete&&cur.profit < 0 ? "danger" : ""}">${cur.fuelPending?"Hesaplanamadı — yakıt mutabakat bekliyor":cur.dumpUnknown||cur.dumpUnverified?"Hesaplanamadı — döküm maliyeti eksik":fmtTL(cur.profit)+" ₺"}</span></div>
-      <div class="muted tiny">Masraf: gider ${fmtTL(cur.expense)} · yakıt ${fmtTL(cur.fuel)} · bakım ${fmtTL(cur.maint)} · esnaf ${fmtTL(cur.esnaf)}${cur.dump ? ` · döküm ${fmtTL(cur.dump)}` : ""} ₺${cur.unpriced ? ` · ⚠ ${cur.unpriced} işin fiyatı yok` : ""}. Ana sayfa grafiğiyle aynı hesap.</div></div>
-    ${cur.unpriced?notice('warn',cur.unpriced+' işin fiyatı eksik; iş değeri ve alacak hesabı bu işler tamamlanana kadar eksik görünür.')+'<a class="btn block" href="#/isler?f=fiyatsiz&period=all">Fiyatı eksik işleri incele ›</a>':''}
-    <div class="quickgrid" style="grid-template-columns:repeat(3,1fr);margin-top:10px">
-      ${items.map(([h, ic, t, d]) => `<button data-go="${h}" style="aspect-ratio:1.35"><span class="ic">${ic}</span>${t}<span class="tiny muted">${d}</span></button>`).join("")}
-    </div>`;
+  const pendingFuel=pendingFuelSummary(d,{from,to});
+  const tasks=financeWorkspaceTasks(d,{today,from,to,summary:cur,notes:await db.metaGet('collect_notes')||{}});
+  const taskHTML=t=>`<a class="finance-task" href="${esc(t.href)}"><span><b>${esc(t.title)}</b><small>${esc(t.why)}</small><em>${esc(t.action)} →</em></span></a>`;
+  const toolGroups=[['Tahsilat ve cari',['#/cari','#/kasa']],['Hakediş ve ticari belgeler',['#/hakedis','#/teklif','#/sozlesmeler']],['Planlama ve fiyat',['#/teklif-hesap','#/fiyat']],['Gider ve esnaf',['#/gider','#/esnaf']],['Ödeme takibi',['#/odeme-takibi']]];
+  root.innerHTML=appbar('Finans','Finans yönetimi')+`<div class="finance-workspace" data-finance-workspace>
+    <header class="finance-heading"><div class="finance-heading-top"><span class="finance-eyebrow">İŞLETME YÖNETİMİ</span><button class="finance-find" type="button" data-finance-open-tools>${financeIcon('search')} Araç bul</button></div><h2>Finans masası</h2><p>Tahsilat, ödeme ve hakedişlerinizi tek yerden yönetin.</p></header>
+    <nav class="finance-actions" aria-label="Günlük finans işlemleri">
+      ${[['#/finans/kasa/new','Tahsilat ekle','receipt'],['#/gider/new','Gider ekle','expense'],['#/hakedis/hazirlik','Hakediş hazırla','document'],['#/cari','Cari hesaplar','account']].map(([href,title,icon])=>`<a href="${href}" class="finance-action">${financeIcon(icon)}<span>${title}</span></a>`).join('')}
+    </nav>
+    <section class="finance-overview" data-finance-general><div class="finance-section-head"><h3>Genel müşteri alacağı</h3><span>Tüm tarihler</span></div><a class="finance-receivable" href="#/cari">${fmtTL(general.balance)} <small>₺</small><span aria-hidden="true">↗</span></a><p class="finance-caption">Kayıtlı alacak toplamıdır; kasa veya banka mevcudu değildir.</p>
+      ${general.issues.length?notice('warn',general.issues.length+' kayıtta ana para / KDV ayrımı kontrol edilmeli. Bilinen tutarlar korundu.'):''}
+      <details class="finance-inline-details"><summary>Ana para ve KDV ayrımını gör</summary>${cariMoneyHTML(general,true)}</details>
+    </section>
+    <section class="finance-panel" data-finance-period><div class="finance-section-head"><h3>Dönem özeti</h3><label for="finance-month">${esc(selected.label)}</label></div>
+      <div class="finance-period-controls"><input id="finance-month" aria-label="Finans dönemi" data-finance-month type="month" value="${esc(selected.month)}" max="${today.slice(0,7)}"><div class="finance-period-chips">${[['month','Bu ay'],['last','Geçen ay'],['3m','Son 3 ay'],['all','Tümü']].map(([key,label])=>`<a class="chip ${selected.period===key&&!selected.automatic&&!ctx.query?.month?'on':''}" ${selected.period===key&&!selected.automatic&&!ctx.query?.month?'aria-current="true"':''} href="#/finans?period=${key}">${label}</a>`).join('')}</div></div>
+      <p class="finance-caption">${from?esc(trDate(from))+' – ':''}${esc(trDate(to))} · Dönem tutarları</p>
+      ${selected.automatic?notice('info','Bu ay henüz hareket yok. Son kayıt bulunan '+selected.label+' gösteriliyor.'):''}${selected.invalid?notice('warn','Geçersiz dönem yerine '+selected.label+' gösterildi.'):''}
+      <div class="finance-metrics">${financeCard(fmtTL(monthH),'İş değeri ₺','accent','#/cari')}${financeCard(fmtTL(monthT),'Tahsilat ₺','ok','#/kasa')}${financeCard(fmtTL(monthG),'Masraf ₺','warn','#/gider')}</div>
+      <div class="finance-result ${!cur.costIncomplete&&cur.profit<0?'finance-result-negative':''}"><span>Tahmini sonuç · iş − masraf</span><strong data-month-profit>${cur.fuelPending?'Hesaplanamadı — yakıt mutabakat bekliyor':cur.dumpUnknown||cur.dumpUnverified?'Hesaplanamadı — döküm maliyeti eksik':cur.costIncomplete?'Hesaplanamadı — maliyet eksik':cur.financialReview?'Hesaplanamadı — hakediş kaynağı kontrol bekliyor':fmtTL(cur.profit)+' ₺'}</strong><small>İş değeri tahsil edilmiş para değildir.${cur.unpriced?' '+cur.unpriced+' işin fiyatı eksik.':''}</small></div>
+    </section>
+    <section class="finance-panel" data-finance-tasks><div class="finance-section-head"><h3>Öncelikli işler</h3><span>${tasks.length} kayıtlı kontrol</span></div>
+      <p class="finance-caption">Kayıtları inceleyin; bu bölüm ödeme veya kesinleştirme yapmaz.</p>
+      ${tasks.slice(0,3).map(taskHTML).join('')||'<p class="finance-empty">Bu kontrollerde bekleyen iş görünmüyor. Kaydı olmayan borçlar bu değerlendirmeye dahil değildir.</p>'}
+      ${tasks.length>3?`<details class="finance-inline-details" data-finance-more-tasks><summary>Diğer ${tasks.length-3} kontrolü göster</summary>${tasks.slice(3).map(taskHTML).join('')}</details>`:''}
+    </section>
+    <section class="finance-panel" data-finance-custody><div class="finance-section-head"><h3>Tahsilatın bulunduğu yer</h3><span>${esc(selected.label)}</span></div>
+      <div class="finance-custody-grid">${[['Personelde',atPersonnel],['Teslim bildirildi · onay bekliyor',waitingHandover],['Kasaya teslim edilmiş',atCash],['Banka kaydı',atBank]].map(([label,value])=>`<div><span>${esc(label)}</span><b>${fmtTL(value)} ₺</b></div>`).join('')}</div>
+      <p class="finance-caption">Seçili dönemin tahsilat kayıtlarıdır; toplam kasa / banka bakiyesi değildir. Personeldeki para ile kasaya teslim ayrı izlenir.</p>
+      ${unknownCustody?notice('warn',unknownCustody+' tahsilatta paranın bulunduğu durum kayıtlı değil; kasa/banka toplamına varsayımla eklenmedi.'):''}<a class="finance-text-link" href="#/kasa">Tahsilat ve teslim kayıtları →</a>
+    </section>
+    ${cur.financialReview?notice('warn',cur.financialReview+' işte hakediş kaynağı doğrulanamadı; kayıtlı değerler korunarak gösterildi.')+'<a class="btn" href="#/veri-sagligi">Veri Sağlığı</a>':''}
+    ${pendingFuel.count?notice('warn',pendingFuel.warning):''}
+    <details class="finance-panel finance-analysis" ${monthCosts.some(r=>r.kind==='dokum')||cur.dumpUnknown||cur.dumpUnverified?'open':''}><summary>Masraf ve maliyet ayrıntıları</summary><p class="small muted">Gider ${fmtTL(cur.expense)} · Yakıt ${fmtTL(cur.fuel)} · Bakım ${fmtTL(cur.maint)} · Esnaf ${fmtTL(cur.esnaf)}${cur.dump?' · Döküm '+fmtTL(cur.dump):''} ₺. Ana sayfa grafiğiyle aynı hesap.</p>${dumpCostBreakdown(monthCosts)}</details>
+    <section class="finance-panel finance-directory"><div class="finance-section-head"><h3>Finans araçları</h3><span>Arayın veya grupları açın</span></div><label class="finance-search-label" for="finance-tool-search">Araç bul</label><div class="finance-search">${financeIcon('search')}<input id="finance-tool-search" type="search" data-finance-search placeholder="Banka, fatura, ödeme…" autocomplete="off"><button type="button" data-finance-search-clear aria-label="Araç aramasını temizle">Temizle</button></div><p class="finance-caption" data-finance-search-status role="status" aria-live="polite"></p>
+      <details data-finance-tools><summary>Tüm finans araçları</summary>
+      ${toolGroups.map(([title,routes])=>financeToolGroup(title,routes.map(route=>{const item=items.find(i=>i[0]===route);return financeToolHTML(route,item[2],({'#/hakedis':'Hazırlık, KDV seçimi ve PDF','#/teklif':'Teklif hazırlama ve PDF','#/kasa':'Tahsilat ve kasa teslimi'})[route]||item[3]);}).join(''))).join('')}
+      ${financeToolGroup('Plan ve raporlar',[['#/tahsilat','Tahsilat takibi','Alacaklar ve ödeme sözleri'],['#/nakit','Nakit tahmini','Kayıtlı giriş / çıkış planı'],['#/fatura','Faturalanacaklar','Faturasız işlerin dökümü'],['#/fiyat-saglik','Fiyat sağlığı','Fiyat ve maliyet incelemesi']].map(r=>financeToolHTML(...r)).join(''))}
+      <div data-finance-enterprise-tools></div></details>
+    </section></div>`;
   qs('[data-finance-month]',root).onchange=e=>{if(e.target.value)ctx.go('#/finans?month='+encodeURIComponent(e.target.value));};
+  bindFinanceTools(root);
 }
 
 // ============ TEKLİF ============
