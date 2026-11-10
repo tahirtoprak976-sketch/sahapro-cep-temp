@@ -1,5 +1,5 @@
 """CEO decisions with real synthetic IndexedDB; source records never changed by review."""
-import argparse,json,uuid
+import argparse,json,uuid,re
 from pathlib import Path
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
@@ -14,7 +14,7 @@ with sync_playwright() as w:
   row=p.get_by_text('Kasada/Personelde Bekleyen',exact=True).locator('..');assert '20.000,00' in row.inner_text();print('BASELINE reproduced: bank-only 20000 wrongly appears as pending cash');b.close();raise SystemExit
  def snap():
   return p.evaluate("async()=>{const s=await(await import('./js/db.js')).readSnapshot({attachments:true,meta:true,drafts:true});delete s.captured_at;return s;}")
- before=snap();assert '20.000,00' not in p.get_by_text('Personelde / teslim onayı bekleyen',exact=True).locator('..').inner_text(),'Bank receipts must not appear in pending staff cash'
+ before=snap();pending_row=p.get_by_text(re.compile(r'^(Kasada/Personelde Bekleyen|Personelde / teslim onayı bekleyen)$')).locator('..');assert '20.000,00' not in pending_row.inner_text(),'Bank receipts must not appear in pending staff cash'
  assert '0,00' in p.locator('.executive-metric').nth(3).inner_text()
  assert 'Doğrulanmadı' in p.locator('.executive-metric').nth(0).inner_text();assert p.locator('[data-executive-home]').evaluate('el=>el.previousElementSibling?.classList.contains("appbar")'),'Decisions must be the first section after the page heading'
  assert p.locator('[data-assist-hero]').bounding_box()['y']<740,'Existing assistant remains reachable in first screen'

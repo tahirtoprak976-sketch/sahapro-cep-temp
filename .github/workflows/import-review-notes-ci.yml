@@ -178,6 +178,11 @@ jobs:
                   time.sleep(.2)
           PYREADY
           /tmp/solo-e2e-venv/bin/python tools/e2e/executive_decisions107.py http://localhost:8878/ --baseline-proof
+          if /tmp/solo-e2e-venv/bin/python tools/e2e/executive_decisions107.py http://localhost:8878/ > /tmp/solo-executive107-identical-baseline.log 2>&1; then
+            echo 'Unchanged baseline unexpectedly passed the bank exclusion guard'
+            exit 1
+          fi
+          grep -F 'Bank receipts must not appear in pending staff cash' /tmp/solo-executive107-identical-baseline.log
 
       - name: Verify installed v3.10.05 to mobile finance preservation
         run: |
@@ -972,6 +977,7 @@ jobs:
             /tmp/solo-offline104*.json
             /tmp/solo-vat105/*
             /tmp/solo-executive107/*
+            /tmp/solo-executive107-identical-baseline.log
             /tmp/solo-finance106/*
             /tmp/solo-finance106-baseline.log
             /tmp/solo-vat-policy-baseline.log
