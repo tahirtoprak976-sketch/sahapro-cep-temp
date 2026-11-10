@@ -1,3 +1,4 @@
+import {pendingCustomerCash,executiveHome,executiveHomeHTML} from './executive-home.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 import {mountFleetHome} from './fleet-document-ui.js';
 // SAHAPRO SOLO — Dashboard · Gün Sonu · Yönetici · Raporlar · Daha Fazla
@@ -163,17 +164,8 @@ async function dashboard(ctx) {
   const openMaint = data.maintenance_records
     .filter((m) => isActive(m) && m.status !== "Tamamlandı")
     .slice(0, 3);
-  const pendingCash = data.cash_records.filter(
-    (c) =>
-      isActive(c) &&
-      c.cash_status !== "KASAYA_TESLIM_EDILDI" &&
-      (c.cash_type === "Müşteriden Para Alındı" ||
-        c.cash_status === "PERSONELDE"),
-  );
-  const pendingSum = pendingCash.reduce(
-    (s, c) => s + (Number(c.amount) || 0),
-    0,
-  );
+  const pendingSum = pendingCustomerCash(data,today).total;
+  const decisions = executiveHome(data,{today,notes:(await db.metaGet('collect_notes'))||{},cash:await db.metaGet('cash_on_hand')});
   const upcomingMaint = data.vehicles.filter(
     (v) =>
       isActive(v) &&
@@ -192,6 +184,7 @@ async function dashboard(ctx) {
       <button class="iconbtn" data-go="#/ayarlar" aria-label="Ayarlar">⚙</button>
     </div>
 
+    ${executiveHomeHTML(decisions)}
     <section class="card assist-hero" aria-label="Akıllı asistan" data-assist-hero>
       <h2 style="margin:0 0 2px;font-size:20px">Ne yapmak istiyorsunuz?</h2>
       <a class="ultimate-home-link" href="#/saha-akisi"><b>Saha Akışı →</b><small>Günün işleri · yakıt · gider · bakım</small></a>
@@ -281,7 +274,7 @@ async function dashboard(ctx) {
     <div class="card" style="margin-top:12px">
       <div class="row between tap" data-go="#/tahsilat"><span class="muted small">💰 Müşteriden alacak${recv.buckets.b90 ? ` <span class="badge danger">90+ gün ${fmtTL(recv.buckets.b90)} ₺</span>` : recv.buckets.b60 ? ` <span class="badge warn">60+ gün ${fmtTL(recv.buckets.b60)} ₺</span>` : ""}</span><span class="strong">${fmtTL(recv.total)} ₺ ›</span></div>
       <div class="divider"></div>
-      <div class="row between"><span class="muted small">Kasada/Personelde Bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${fmtTL(pendingSum)} ₺</span></div>
+      <div class="row between"><span class="muted small">Personelde / teslim onayı bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${fmtTL(pendingSum)} ₺</span></div>
       <div class="divider"></div>
       ${yardCard}
       <div class="row between tap" data-go="#/yakit"><span class="muted small">Bu ay verilen yakıt</span><span class="strong">${fmtNum(monthFuel.depo + monthFuel.other)} Lt${monthFuel.depo && monthFuel.other ? ` <span class="muted small">(depodan ${fmtNum(monthFuel.depo)})</span>` : ""}</span></div>
