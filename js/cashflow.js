@@ -1,4 +1,4 @@
-// Nakit tahmini ekranı (#/nakit): önümüzdeki 5 hafta para girişi / çıkışı, iki senaryo, en sıkışık hafta.
+// Nakit tahmini ekranı (#/nakit): önümüzdeki 5 hafta para girişi / çıkışı, üç senaryo, en sıkışık hafta.
 import { qs, qsa, esc, appbar, toast, notice, todayStr, trDate, promptDialog } from "./ui.js";
 
 const tl = (n) => (Number(n) < 0 ? "−" : "") + Math.abs(Number(n)||0).toLocaleString("tr-TR",{minimumFractionDigits:2,maximumFractionDigits:2}) + " ₺";
@@ -20,7 +20,7 @@ export async function screen(ctx) {
         <div class="small">⬇ Giriş: <b>${tl(w.inSure)}</b>${w.inEst ? ` <span class="muted">+ ${tl(w.inEst)} tahmini</span>` : ""}</div>
         <div class="small">⬆ Çıkış: <b>${tl(w.outSure)}</b>${w.outEst ? ` <span class="muted">+ ${tl(w.outEst)} tahmini</span>` : ""}</div>
       </div>
-      ${F.start != null ? `<div class="tiny muted" style="margin-top:4px">Hafta sonu kasa: normal ${tl(w.good)} · kötü senaryo <span style="color:${color(w.bad)}">${tl(w.bad)}</span></div>` : ""}
+      ${F.start != null ? `<div class="tiny muted" style="margin-top:4px">Hafta sonu kasa: normal ${tl(w.good)} · kötü senaryo <span style="color:${color(w.bad)}">${tl(w.bad)}</span><br><b data-cashflow-stress>Tahsilat gelmezse: ${tl(w.stress)}</b></div>` : ""}
       ${w.items.map((x) => `<div class="row between small${x.href ? " tap" : ""}" ${x.href ? `data-go="${esc(x.href)}"` : ""} style="padding:5px 0;border-top:1px solid var(--border)">
         <span>${x.dir === "in" ? "⬇" : "⬆"} ${esc(x.label)}${x.sure ? "" : ' <span class="tiny muted">(tahmini)</span>'}${x.late ? ' <span class="tiny" style="color:#d9534f">gecikmiş</span>' : ""}${x.sub ? `<br><span class="tiny muted">${esc(x.sub)}</span>` : ""}</span>
         <b style="white-space:nowrap;color:${x.dir === "in" ? "#2e9e6b" : "inherit"}">${x.dir === "in" ? "+" : "−"}${tl(x.amount)}</b></div>`).join("") || '<div class="tiny muted" style="margin-top:6px">Bu hafta bilinen hareket yok</div>'}
@@ -34,6 +34,7 @@ export async function screen(ctx) {
     ${F.start != null && F.lowBad?.amount < 0 ? notice("warn", `Kayıtlı vade / söz tahsilatları varsayımında bile ${trDate(F.lowBad.week.from)} haftasında kasa ${tl(F.lowBad.amount)} görünüyor. Tahsilatları öne çekin ya da ödemeleri konuşun.`)
       : F.start != null && F.lowGood?.amount < 0 ? notice("warn", `Beklenen tahsilatlar gelse bile ${trDate(F.lowGood.week.from)} haftasında kasa ${tl(F.lowGood.amount)} olur.`)
       : F.start != null && F.complete ? notice("ok", `Kayıtlı vade / söz tahsilatları gerçekleşirse 5 haftalık bilinen kasa artıda görünüyor (en düşük: ${tl(F.lowBad.amount)}).`) : ""}
+    <section class="card" data-cashflow-stress-summary><h3>Tahsilat gecikirse</h3><p class="small">Bu stres senaryosunda ödeme sözü ve çek dahil gelecekteki bütün girişler sıfır; kayıtlı ve tahmini çıkışlar korunur. Borçları artırmaz, kayıt yazmaz.</p>${F.start!=null?`<b>En düşük tahmini bakiye: ${tl(F.lowStress.amount)}</b><p class="tiny muted">${trDate(F.lowStress.week.from)} haftası · ${coh?.date===today?'Bugünkü':'Eski tarihli'} nakit beyanından başlar. Eksik borçlar ve maliyetler kapsam dışındadır.</p>`:'<p class="small">Başlangıç nakdi bilinmediğinden bakiye gösterilmedi.</p>'}</section>
     ${F.reviews.length?`<section class="card" data-cashflow-review>${notice('warn',F.reviews.length+' kayıt kontrol bekliyor. Eksik / çelişkili borçlar sıfır sayılmadı; aşağıdaki tahmin bütün nakit ihtiyacını kapsamıyor.')} ${F.reviews.map(r=>`<a class="btn block" href="${esc(r.href)}">${esc(r.label)} · ${esc(r.reason)} →</a>`).join('')}</section>`:''}
     ${F.lateIn ? notice("info", `${tl(F.lateIn)} tahsilat gecikmiş durumda; bu haftaya yazıldı ama gelmeyebilir.`) : ""}
     <div class="formgrid2">

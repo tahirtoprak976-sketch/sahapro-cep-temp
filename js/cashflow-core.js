@@ -140,15 +140,17 @@ export function cashForecast(d, { today = todayStr(), weeks = 5, notes = {}, cas
   }
   const start = cashOnHand == null ? null : (cashOnHand!==''&&Number.isFinite(Number(cashOnHand))&&Number.isSafeInteger(toKurus(cashOnHand))?r0(cashOnHand):null);
   if(cashOnHand!=null&&start==null)reviews.push({label:'Başlangıç nakdi',reason:'Kayıtlı nakit tutarı geçersiz; sıfır varsayılmadı.',href:'#/nakit'});
-  let good = start ?? 0, bad = start ?? 0, lowGood = null, lowBad = null;
+  let good = start ?? 0, bad = start ?? 0, lowGood = null, lowBad = null, stress = start, lowStress = null;
   for (const w of W) {
     good += w.inSure + w.inEst - w.outSure - w.outEst; bad += w.inSure - w.outSure - w.outEst;
     w.good = r0(good); w.bad = r0(bad);
+    if (stress != null) stress = r0(stress - w.outSure - w.outEst); w.stress = stress;
+    if (stress != null && (!lowStress || w.stress < lowStress.amount)) lowStress = { amount: w.stress, week: w };
     if (!lowGood || w.good < lowGood.amount) lowGood = { amount: w.good, week: w };
     if (!lowBad || w.bad < lowBad.amount) lowBad = { amount: w.bad, week: w };
   }
   const late = r0(sumBy(items.filter((i) => i.late && i.dir === "in"), (i) => i.amount));
-  return { today, end, start, weeks: W, lowGood, lowBad, lateIn: late, reviews, complete:!reviews.length, totals: {
+  return { today, end, start, weeks: W, lowGood, lowBad, lowStress, lateIn: late, reviews, complete:!reviews.length, totals: {
     inSure: r0(sumBy(W, (w) => w.inSure)), inEst: r0(sumBy(W, (w) => w.inEst)), outSure: r0(sumBy(W, (w) => w.outSure)), outEst: r0(sumBy(W, (w) => w.outEst)) } };
 }
 
@@ -157,9 +159,10 @@ export function forecastSummary(F) {
   return {
     bugun: F.today, baslangic_nakit_TL: F.start,
     kayitlar_tam:F.complete,kontrol_bekleyen:F.reviews.map(r=>r.label+': '+r.reason),
-    varsayim:'Vade ve ödeme sözleri gerçekleşmiş para değildir. Kötü senaryo da kayıtlı vade/söz tahsilatının gerçekleştiğini varsayar. Eksik kayıt varsa bütün nakit ihtiyacı hesaplanmış sayılmaz.',
-    haftalar: F.weeks.map((w) => ({ hafta: `${w.from}..${w.to}`, giris_kesin: w.inSure, giris_tahmini: w.inEst, cikis_kesin: w.outSure, cikis_tahmini: w.outEst, bakiye_normal: w.good, bakiye_kotu: w.bad,
+    varsayim:'Vade ve ödeme sözleri gerçekleşmiş para değildir. Kötü senaryo da kayıtlı vade/söz tahsilatının gerçekleştiğini varsayar. Tahsilat yok stres senaryosu gelecek girişleri sıfır alır, kayıtlı/tahmini çıkışları korur. Eksik kayıt varsa bütün nakit ihtiyacı hesaplanmış sayılmaz.',
+    haftalar: F.weeks.map((w) => ({ hafta: `${w.from}..${w.to}`, giris_kesin: w.inSure, giris_tahmini: w.inEst, cikis_kesin: w.outSure, cikis_tahmini: w.outEst, bakiye_normal: w.good, bakiye_kotu: w.bad, bakiye_tahsilat_yok: w.stress,
       kalemler: w.items.slice(0, 8).map((i) => `${i.dir === "in" ? "+" : "-"}${i.amount} ${i.label}${i.sure ? "" : " (tahmini)"}${i.late ? " (gecikmiş)" : ""}`) })),
+    en_dusuk_tahsilat_yok: F.lowStress?.amount,
     en_dusuk_normal: F.lowGood?.amount, en_dusuk_kotu: F.lowBad?.amount, gecikmis_beklenen_tahsilat: F.lateIn,
   };
 }
