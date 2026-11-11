@@ -1,3 +1,4 @@
+import {installFormAccessibility} from './form-accessibility.js';
 import {installRecordRefresh} from "./record-refresh.js";
 import * as partsScreen from "./parts-ui.js";
 import { allowUpdate, trackUpdateEdits } from "./update-safety.js";
@@ -165,7 +166,9 @@ export async function buildNames() {
 function parseHash() {
   const raw = (location.hash || "#/").slice(1);
   const [path, qsStr] = raw.split("?");
-  const parts = path.split("/").filter(Boolean).map(decodeURIComponent);
+  let parts;
+  try { parts = path.split("/").filter(Boolean).map(decodeURIComponent); }
+  catch { return {parts:["__invalid_route__"],query:{},invalid:true}; }
   if (
     parts[0] === "finans" &&
     [
@@ -225,7 +228,7 @@ async function firstRunChoice() {
 }
 
 export async function renderCurrent() {
-  const { parts, query } = parseHash();
+  const { parts, query, invalid } = parseHash();
   // Şoför telefonu: yalnız şoför ekranı (menü, asistan ve patron ekranları gizli)
   const driverMode = (() => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } })();
   if (driverMode && parts[0] !== "sofor") { location.replace("#/sofor"); return; }
@@ -236,6 +239,7 @@ export async function renderCurrent() {
   const root = previousRoot.cloneNode(false);
   delete root.dataset.viewReady;
   previousRoot.replaceWith(root);
+  if(invalid){root.innerHTML='<section class="card" data-invalid-route><h1>Bağlantı açılamadı</h1><p>Adres eksik veya bozuk. Ana sayfaya dönüp kaydı uygulamanın içinden açın.</p><button class="btn primary" data-go="#/">Ana sayfaya dön</button></section>';root.dataset.viewReady='1';renderNav('');return;}
   const mod = MODULES[parts[0] || ""] || dashScreen;
   const names = await buildNames();
   const ctx = {
@@ -413,7 +417,6 @@ async function registerSW() {
     document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") check(); });
     setInterval(check, 30 * 60 * 1000);
     window.__swCheck = async () => { await reg.update(); return !!(reg.waiting || reg.installing); };
-    trackUpdateEdits(document.querySelector("#screen"));
     let reloaded = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return;
@@ -462,8 +465,10 @@ document.addEventListener("click", (ev) => {
   try {
     await db.openDB();
     await db.ensureSeeded();
+    trackUpdateEdits(document);
     registerSW();
     bindOnline();
+    installFormAccessibility(document.body);
     // Yönetici kilidi (şoför telefonunda değil): açılışta şifre / parmak izi, boşta ve arka planda otomatik kilit
     if (!isDriverPhone()) {
       const sec = await import("./security.js");

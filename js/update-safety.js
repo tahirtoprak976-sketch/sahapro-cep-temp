@@ -2,6 +2,7 @@
 const edited = new WeakSet(), activities = new Set();
 export function startActivity(label) { const token = { label }; activities.add(token); return () => activities.delete(token); }
 export function updateRisk(root) {
+  if (root?.ownerDocument?.querySelector('#sheet-root .sheet')) return {busy:true,unsaved:false};
   if (activities.size || root?.querySelector('[data-ask]:disabled, [data-out] [data-save]:disabled, [data-pdf-read]:disabled, [data-pdf-save]:disabled') || (root?.querySelector('form[data-form]') && root?.querySelector('[data-save]:disabled'))) return { busy: true, unsaved: false };
   const fields = [...(root?.querySelectorAll('input,textarea,select') || [])];
   const openForm = !!root?.querySelector('form') && /\/(new|edit)(?:$|[?/#])/.test(globalThis.location?.hash || '');

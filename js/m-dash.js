@@ -274,7 +274,7 @@ async function dashboard(ctx) {
     <div class="card" style="margin-top:12px">
       <div class="row between tap" data-go="#/tahsilat"><span class="muted small">💰 Müşteriden alacak${recv.buckets.b90 ? ` <span class="badge danger">90+ gün ${fmtTL(recv.buckets.b90)} ₺</span>` : recv.buckets.b60 ? ` <span class="badge warn">60+ gün ${fmtTL(recv.buckets.b60)} ₺</span>` : ""}</span><span class="strong">${fmtTL(recv.total)} ₺ ›</span></div>
       <div class="divider"></div>
-      <div class="row between"><span class="muted small">Personelde / teslim onayı bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${fmtTL(pendingSum)} ₺</span></div>
+      <div class="row between"><span class="muted small">Personelde / teslim onayı bekleyen</span><span class="amt ${pendingSum ? "badge warn" : ""}">${pendingSum==null?"Tutarı doğrulayın":fmtTL(pendingSum)+" ₺"}</span></div>
       <div class="divider"></div>
       ${yardCard}
       <div class="row between tap" data-go="#/yakit"><span class="muted small">Bu ay verilen yakıt</span><span class="strong">${fmtNum(monthFuel.depo + monthFuel.other)} Lt${monthFuel.depo && monthFuel.other ? ` <span class="muted small">(depodan ${fmtNum(monthFuel.depo)})</span>` : ""}</span></div>

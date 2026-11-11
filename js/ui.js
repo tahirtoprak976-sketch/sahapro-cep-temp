@@ -1,3 +1,4 @@
+import {accessibleDialog} from './form-accessibility.js';
 // SAHAPRO SOLO — paylaşılan UI bileşenleri (DOM)
 import { fmtTL, fmtNum, trDate, todayStr } from "./core.js";
 
@@ -118,6 +119,7 @@ export function sheet(html, opts = {}) {
   sh.innerHTML = `<div class="grab"></div>${html}`;
   root.appendChild(ov);
   root.appendChild(sh);
+  sh._disposeAccessibility=accessibleDialog(sh);
   requestAnimationFrame(() => {
     ov.classList.add("show");
     sh.classList.add("show");
@@ -130,6 +132,7 @@ export function sheet(html, opts = {}) {
 export function sheetClose(immediate = false) {
   const root = qs("#sheet-root");
   for (const el of qsa(".sheet, .sheet-overlay", root)) {
+    el._disposeAccessibility?.();
     if (immediate) el.remove();
     else {
       el.classList.remove("show");
