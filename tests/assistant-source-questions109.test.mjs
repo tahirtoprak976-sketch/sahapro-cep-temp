@@ -3,7 +3,7 @@ import {assistantQuestions} from '../js/assistant-questions.js';
 import {validatePlan} from '../js/assistant-core.js';
 const row=(index,date,{photo=false,proven=true}={})=>({kind:'work',index,key:'work:'+index,fields:{date},missing:[],r:{date,calendarConflict:true,dateUnsure:true,_fieldEvidence:{date:{value:date,level:proven?'CIKARIM':'BILINMIYOR',source:'source_context'}},fieldConfidence:{date:{value:null,level:'BILINMIYOR',photoConflict:photo}}}});
 const rows=[row(0,'2026-11-07'),row(1,'2026-11-07'),row(2,'2026-11-08'),row(3,'2026-11-07',{photo:true}),row(4,'2026-02-31'),row(5,'2026-02-31')],copy=structuredClone(rows),q=assistantQuestions(rows);
-assert.equal(q.length,5);assert.equal(q[0].key,'date:phone:2026-11-07');assert.deepEqual(q[0].targets.map(t=>t.index),[0,1]);assert.equal(q[1].key,'work:2:date');assert.equal(q[2].key,'work:3:date');assert.deepEqual(rows,copy);
+assert.equal(q.length,5,'Phone-proven repeated dates must share one question');assert.equal(q[0].key,'date:phone:2026-11-07');assert.deepEqual(q[0].targets.map(t=>t.index),[0,1]);assert.equal(q[1].key,'work:2:date');assert.equal(q[2].key,'work:3:date');assert.deepEqual(rows,copy);
 assert.equal(assistantQuestions([row(0,'2026-11-07')])[0].key,'work:0:date','Existing single-card question identity remains stable');
 assert.equal(assistantQuestions([row(0,'2026-11-07',{proven:false}),row(1,'2026-11-07',{proven:false})]).length,2,'Unknown dates cannot merge just because the model repeated a value');
 const d={personnel:[{id:'TEST_P',name:'TEST Operator',vehicle_id:'TEST_V'}],vehicles:[{id:'TEST_V',name:'TEST Machine',type:'JCB'}],customers:[{id:'TEST_C',name:'TEST Company'}],sites:[],aliases:[]};
