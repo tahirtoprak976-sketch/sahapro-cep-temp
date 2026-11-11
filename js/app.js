@@ -228,7 +228,9 @@ async function firstRunChoice() {
   return true;
 }
 
+let renderedHash = null;
 export async function renderCurrent() {
+  renderedHash = location.hash;
   const { parts, query, invalid } = parseHash();
   // Şoför telefonu: yalnız şoför ekranı (menü, asistan ve patron ekranları gizli)
   const driverMode = (() => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } })();
@@ -480,7 +482,7 @@ document.addEventListener("click", (ev) => {
     try { await (await import("./dump-fees.js")).seedOfficialDumps(db); } catch (e) { console.warn(e); }
     try { await (await import("./yard-core.js")).seedVehicleTypes(db); } catch (e) { console.warn(e); }
     await installRecordRefresh({db,context:()=>({root:qs("#screen"),parts:parseHash().parts}),reload:renderCurrent});
-    window.addEventListener("hashchange", renderCurrent);
+    window.addEventListener("hashchange", () => { if(location.hash !== renderedHash)return renderCurrent(); });
     await renderCurrent();
   } catch (e) {
     console.error(e);
