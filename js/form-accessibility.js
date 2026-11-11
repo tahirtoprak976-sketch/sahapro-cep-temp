@@ -30,6 +30,6 @@ export function accessibleDialog(dialog){
   else if(!e.shiftKey&&(doc.activeElement===last||doc.activeElement===dialog)){e.preventDefault();first.focus();}
  };
  dialog.addEventListener('keydown',keydown);
- requestAnimationFrame(()=>{if(dialog.isConnected)(focusable()[0]||dialog).focus({preventScroll:true});});
+ requestAnimationFrame(()=>{if(dialog.isConnected&&!dialog.contains(doc.activeElement))(focusable()[0]||dialog).focus({preventScroll:true});});
  return ()=>{dialog.removeEventListener('keydown',keydown);if(dialog.contains(doc.activeElement)&&opener?.isConnected)opener.focus({preventScroll:true});};
 }

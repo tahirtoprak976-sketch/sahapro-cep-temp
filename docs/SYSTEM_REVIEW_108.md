@@ -54,3 +54,7 @@ Yeni tarayıcı testleri aynı kodla değişmemiş v107 üzerinde beklenen neden
 ## Sınırlar ve kalan işler
 
 Bu paket gerçek Gemini anlama başarısını ölçmez. Takma adlı 20 mesajın dondurulmuş genel asistan ölçümü bu pakette tek tek 23/38, toplu 15/38 hazır kart ve topluda 21 gereksiz soru olarak kalır; azaltıldığı iddia edilmez. Bu ayrı bir kaynak kapsamı incelemesidir. Gerçek telefon, gerçek WhatsApp, gerçek Gemini, cihaz kaybından fiziksel kurtarma ve gerçek işletme hesapları denenmedi. Safari/Android donanım davranışı Chromium ölçümüyle eşdeğer sayılmaz. Yedek dosyasının paylaşım paneline verilmesi dış teslim kanıtı değildir. Hatasızlık veya tam güvenlik garantisi verilmez.
+
+## İlk CI'de yakalanan gerileme
+
+İlk tam CI (`42941926547`) eski `shared_dump` testinde durdu. Yeni diyalog odağı, kullanıcı tutar alanına geçtikten sonra gecikmeli çalışıp odağı başka alana taşıyabiliyordu; tutar boş kaldığında doğal form doğrulaması kaydı haklı olarak engelliyordu. Otomatik odak artık kullanıcı pencerenin içinde bir alan seçmişse çalışmaz. Önceki aday `ba6030d` üzerinde zorlanmış odak yarışı aynı testle düşer; düzeltmede altı kez geçer. Eski ortak döküm testinin beklentileri değiştirilmedi. İkinci tam CI sonucu ayrıca PR'da yer alır; ikinci kapı başarısızlığında yayın yapılmadan durulur.
