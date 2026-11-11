@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - fix/system-review-108
       - feat/executive-decisions-107
       - feat/mobile-finance-workspace-106
       - fix/optional-hakedis-vat-105
@@ -152,6 +153,81 @@ jobs:
       - name: Verify installed v3.10.04 to optional VAT preservation
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 42aaa42706ab23dcbb841c8d6807702557602aaf
+
+      - name: Verify installed v3.10.07 to system-review preservation
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref dfe5341dbc27d463698027f4575c698a54722627
+
+      - name: Reproduce cross-screen and financial request defects on unchanged v3.10.07
+        run: |
+          set -euo pipefail
+          review_baseline=$(mktemp -d /tmp/solo-system108-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive dfe5341dbc27d463698027f4575c698a54722627 | tar -x -C "$review_baseline"
+          python3 -m http.server 8877 --bind 127.0.0.1 --directory "$review_baseline" > /tmp/solo-system108-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$review_baseline"' EXIT
+          python3 - <<'PYREADY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8877/index.html',timeout=1) as response:
+                      assert response.status==200
+                  break
+              except OSError:
+                  if attempt==59:raise
+                  time.sleep(.2)
+          PYREADY
+          for scenario in dirty labels modal uri money menu source profit; do
+            if /tmp/solo-e2e-venv/bin/python tools/e2e/system_review108.py http://localhost:8877/ --case "$scenario" > "/tmp/solo-system108-baseline-$scenario.log" 2>&1; then
+              echo "Unchanged v107 unexpectedly passed $scenario"
+              exit 1
+            fi
+          done
+          grep -F 'Edited settings after navigation must block an unconfirmed update' /tmp/solo-system108-baseline-dirty.log
+          grep -F 'Visible form label must be associated' /tmp/solo-system108-baseline-labels.log
+          grep -F 'An open input dialog must block update' /tmp/solo-system108-baseline-modal.log
+          grep -F 'Malformed encoded routes must show a recoverable error' /tmp/solo-system108-baseline-uri.log
+          grep -F 'Unknown staff cash must not be displayed as zero money' /tmp/solo-system108-baseline-money.log
+          grep -F 'More must show the actual running version' /tmp/solo-system108-baseline-menu.log
+          grep -F 'Original source must remain verbatim' /tmp/solo-system108-baseline-source.log
+          grep -F 'Unverified claim source must suppress numeric profit' /tmp/solo-system108-baseline-profit.log
+          if /tmp/solo-e2e-venv/bin/python tools/e2e/enterprise_retry108.py http://localhost:8877/ > /tmp/solo-system108-baseline-retry.log 2>&1; then
+            echo 'Unchanged v107 unexpectedly rejected changed financial requests'
+            exit 1
+          fi
+          grep -F 'Repeated financial request must reject different business fields' /tmp/solo-system108-baseline-retry.log
+          if /tmp/solo-e2e-venv/bin/python tools/e2e/operation_retry108.py http://localhost:8877/ > /tmp/solo-system108-baseline-operation.log 2>&1; then
+            echo 'Unchanged v107 unexpectedly rejected changed operational requests'
+            exit 1
+          fi
+          grep -F 'Repeated operational request must reject changed fields' /tmp/solo-system108-baseline-operation.log
+
+      - name: Prove dialog focus regression on the first v108 candidate
+        run: |
+          set -euo pipefail
+          focus_baseline=$(mktemp -d /tmp/solo-focus108-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive ba6030dae24ba8a6953b06c82f7951bc58dd51d5 | tar -x -C "$focus_baseline"
+          python3 -m http.server 8876 --bind 127.0.0.1 --directory "$focus_baseline" > /tmp/solo-focus108-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$focus_baseline"' EXIT
+          python3 - <<'PYREADY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8876/index.html',timeout=1) as response:
+                      assert response.status==200
+                  break
+              except OSError:
+                  if attempt==59:raise
+                  time.sleep(.2)
+          PYREADY
+          if /tmp/solo-e2e-venv/bin/python tools/e2e/dialog_focus108.py http://localhost:8876/ > /tmp/solo-focus108-baseline.log 2>&1; then
+            echo 'Pre-fix candidate unexpectedly preserved the chosen input focus'
+            exit 1
+          fi
+          grep -F 'Delayed autofocus must not steal user input' /tmp/solo-focus108-baseline.log
 
       - name: Verify installed v3.10.06 to owner decisions preservation
         run: |
@@ -361,7 +437,7 @@ jobs:
           done
           echo 'ASSISTANT_TURN_STANDALONE RESULT passed=10 failed=0'
           failed=0
-          suites=(executive_decisions107 finance_workspace106 optional_vat105 offline_whatsapp104 public_bootstrap103 assistant_draft_race assistant_questions101 assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
+          suites=(dialog_focus108 system_review108 enterprise_retry108 operation_retry108 system_surface108 executive_decisions107 finance_workspace106 optional_vat105 offline_whatsapp104 public_bootstrap103 assistant_draft_race assistant_questions101 assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if ASSISTANT_TURN_DIAGNOSTICS="/tmp/solo-assistant-turn-diagnostics/full-$suite" /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -976,6 +1052,9 @@ jobs:
             /tmp/solo-real101*.json
             /tmp/solo-offline104*.json
             /tmp/solo-vat105/*
+            /tmp/solo-focus108-baseline.log
+            /tmp/solo-system108/*
+            /tmp/solo-system108-baseline-*.log
             /tmp/solo-executive107/*
             /tmp/solo-executive107-identical-baseline.log
             /tmp/solo-finance106/*

@@ -1,3 +1,4 @@
+import {matchingRequest} from './enterprise-retry.js';
 import { messageLocked } from "./message-smart-db.js";
 import * as db from "./db.js";
 import {
@@ -21,10 +22,13 @@ const run = (fn) =>
 function once(d, store, key) {
   return d[store]?.find((r) => r.request_id === key);
 }
+function repeatedFields(d,store,old,normalize){
+  return matchingRequest(old,()=>{const data={...d,[store]:(d[store]||[]).filter(r=>r.id!==old.id)},fields=normalize(data);delete fields.status;return fields;});
+}
 export async function saveMeter(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "meter_readings", key);
-    if (old) return old;
+    if (old) return repeatedFields(d,'meter_readings',old,data=>rules.meterFields(data,f));
     const fields = rules.meterFields(d, f),
       r = newRecord({ ...fields, request_id: key });
     t.add("meter_readings", r);
@@ -48,7 +52,7 @@ export async function saveMeter(f, key = uuid()) {
 export async function saveShift(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "shift_assignments", key);
-    if (old) return old;
+    if (old) return repeatedFields(d,'shift_assignments',old,data=>rules.shiftFields(data,f));
     const r = newRecord({ ...rules.shiftFields(d, f), request_id: key });
     t.add("shift_assignments", r);
     return r;
@@ -68,7 +72,7 @@ export async function shiftStatus(id, status, reason) {
 export async function saveCustody(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "custody_records", key);
-    if (old) return old;
+    if (old) return repeatedFields(d,'custody_records',old,data=>rules.custodyFields(data,f));
     const r = newRecord({ ...rules.custodyFields(d, f), request_id: key });
     t.add("custody_records", r);
     if (f.owner_type === "vehicle") {
@@ -110,7 +114,7 @@ export async function returnCustody(id, date, note) {
 export async function saveDowntime(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "downtime_records", key);
-    if (old) return old;
+    if (old) return repeatedFields(d,'downtime_records',old,data=>rules.downtimeFields(data,f));
     const r = newRecord({ ...rules.downtimeFields(d, f), request_id: key });
     t.add("downtime_records", r);
     return r;
@@ -137,7 +141,7 @@ export async function closeDowntime(id, ended_at, note) {
 export async function savePart(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "maintenance_parts", key);
-    if (old) return old;
+    if (old) return repeatedFields(d,'maintenance_parts',old,data=>rules.partFields(data,f));
     const r = newRecord({ ...rules.partFields(d, f), request_id: key });
     t.add("maintenance_parts", r);
     return r;
@@ -146,7 +150,7 @@ export async function savePart(f, key = uuid()) {
 export async function saveAllocation(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "cost_allocations", key);
-    if (old) return old;
+    if (old) return repeatedFields(d,'cost_allocations',old,data=>rules.allocationFields(data,f));
     const r = newRecord({ ...rules.allocationFields(d, f), request_id: key });
     t.add("cost_allocations", r);
     return r;
@@ -428,7 +432,7 @@ export async function reconcileBank(id, f) {
 export async function countStock(f, key = uuid()) {
   return run((d, t) => {
     const old = once(d, "stock_counts", key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>{rules.required(f.reason,'Stok farkı gerekçesi');return {date:rules.validPast(f.date),physical_liters:rules.number(f.physical_liters,'Fiziksel litre',true),reason:f.reason};});
     rules.validPast(f.date);
     if (d.fuel_tank_movements.some((m) => isActive(m) && m.date > f.date))
       throw Error("Sayımı son tank hareketi tarihinde veya sonrasında yapın");
@@ -464,13 +468,7 @@ export async function countStock(f, key = uuid()) {
     return rec;
   });
 }
-export async function renewService(id, f, key = uuid()) {
-  return run((d, t) => {
-    const old = once(d, "service_plans", key);
-    if (old) return old;
-    const p = rules.reference(d, "service_plans", id);
-    if (p.status !== "Tamamlandı" || p.next_plan_id)
-      throw Error("Tamamlanmış ve yenilenmemiş bakım gerekli");
+function renewalFields(d,p,f){
     const m = rules.reference(
       d,
       "maintenance_records",
@@ -501,7 +499,7 @@ export async function renewService(id, f, key = uuid()) {
       throw Error("Bakım tamamlanma sayaç okuması gerekli");
     const date = new Date(baseDate + "T12:00:00Z");
     if (days) date.setUTCDate(date.getUTCDate() + days);
-    const r = newRecord({
+    return {
       vehicle_id: p.vehicle_id,
       title: p.title,
       next_date: days ? date.toISOString().slice(0, 10) : null,
@@ -512,8 +510,16 @@ export async function renewService(id, f, key = uuid()) {
       warn_km: p.warn_km,
       warn_hours: p.warn_hours,
       previous_plan_id: p.id,
-      request_id: key,
-    });
+    };
+}
+export async function renewService(id, f, key = uuid()) {
+  return run((d, t) => {
+    const old = once(d, "service_plans", key);
+    if (old) return matchingRequest(old,()=>{const fields=renewalFields(d,rules.reference(d,'service_plans',id),f);delete fields.status;return fields;});
+    const p = rules.reference(d, "service_plans", id);
+    if (p.status !== "Tamamlandı" || p.next_plan_id)
+      throw Error("Tamamlanmış ve yenilenmemiş bakım gerekli");
+    const r = newRecord({...renewalFields(d,p,f),request_id:key});
     t.add("service_plans", r);
     t.put("service_plans", { ...p, next_plan_id: r.id, updated_at: nowISO() });
     return r;

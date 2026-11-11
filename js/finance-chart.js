@@ -97,7 +97,7 @@ function financialBuckets(data,keys,opts={},keyOf=monthKey){
     fuelGotL: Math.round(r.fuelGotL * 10) / 10,
     // tahmini kâr = fiyatlı (parayla) iş değeri − masraflar; mazotla ödenen işler litre olarak ayrı (fuelPayL / fuelGotL)
     costIncomplete: !!(r.fuelPending || r.dumpUnknown || r.dumpUnverified),
-    profit: (r.fuelPending || r.dumpUnknown || r.dumpUnverified) ? null : fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump - r.pay),
+    profit: (r.fuelPending || r.dumpUnknown || r.dumpUnverified || r.financialReview) ? null : fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump - r.pay),
   }));
 }
 

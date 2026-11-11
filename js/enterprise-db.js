@@ -1,3 +1,4 @@
+import {matchingRequest} from './enterprise-retry.js';
 import {journalTransaction,rememberWrites} from './write-receipt.js';
 import {recordsCommitted} from "./record-refresh.js";
 import * as db from "./db.js";
@@ -13,6 +14,7 @@ import {
   PARTY_STORES,
   validDate,
   money,
+  numericInput,
   invoiceLines,
   invoiceTotals,
   billBalance,
@@ -121,7 +123,7 @@ export async function transaction(stores, fn) {
 export async function saveSupplier(f, key = uuid()) {
   return transaction(["suppliers"], (d, t) => {
     const exists = d.suppliers.find((r) => r.request_id === key);
-    if (exists) return exists;
+    if (exists) return matchingRequest(exists,()=>({name:f.name.trim(),type:f.type||'Tedarikçi',phone:f.phone||'',tax_no:f.tax_no||'',address:f.address||'',note:f.note||''}));
     if (!f.name?.trim()) throw Error("Firma adı zorunlu");
     if (
       active(d.suppliers).some(
@@ -161,7 +163,11 @@ export async function savePayable(f, key = uuid()) {
     ],
     (d, t) => {
       const old = d.payables.find((r) => r.request_id === key);
-      if (old) return old;
+      if (old) return matchingRequest(old,()=>{
+        const source=f.source_store&&f.source_id?owner(d,f.source_store,f.source_id):null;
+        const items=invoiceLines(f.source_store==='purchase_orders'?source.items:f.items);
+        return {date:validDate(f.date),due_date:validDate(f.due_date),document_no:f.document_no.trim(),party_type:f.party_type,party_id:f.party_id,items,...invoiceTotals(items),cost_category:f.cost_category||'Diğer',bill_kind:f.bill_kind||'Alış',kdv_unknown:f.kdv_unknown===true,description:f.description||'',source_store:f.source_store||null,source_id:f.source_id||null,...Object.fromEntries(['customer_id','site_id','vehicle_id','personnel_id'].map(k=>[k,f[k]||source?.[k]||null]))};
+      });
       validDate(f.date);
       validDate(f.due_date, "Vade");
       if (f.due_date < f.date) throw Error("Vade belge tarihinden önce olamaz");
@@ -294,6 +300,11 @@ export async function cancelPayable(id, reason) {
     t.put("payables", r);
     return r;
   });
+}
+function openingMoney(value){
+  const amount=numericInput(value,'Açılış bakiyesi'),cents=toKurus(amount);
+  if(!Number.isSafeInteger(cents))throw Error('Açılış bakiyesi çok büyük');
+  return fromKurus(cents);
 }
 function bankMove(
   data,
@@ -454,10 +465,9 @@ export async function customerBankReceipt(f, key = uuid()) {
 export async function saveBank(f, key = uuid()) {
   return transaction(["bank_accounts"], (d, t) => {
     const old = d.bank_accounts.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>({name:f.name.trim(),bank_name:f.bank_name||'',iban:f.iban||'',opening_date:validDate(f.opening_date),opening_balance:openingMoney(f.opening_balance)}));
     if (!f.name?.trim()) throw Error("Hesap adı zorunlu");
-    const balance = Number(f.opening_balance || 0);
-    if (!Number.isFinite(balance)) throw Error("Açılış bakiyesi geçersiz");
+    const balance = openingMoney(f.opening_balance);
     const r = newRecord({
       name: f.name.trim(),
       bank_name: f.bank_name || "",
@@ -474,7 +484,16 @@ export async function saveBank(f, key = uuid()) {
 export async function transferBanks(f, key = uuid()) {
   return transaction(["bank_accounts", "bank_movements"], (d, t) => {
     const old = d.bank_movements.find((r) => r.transfer_key === key);
-    if (old) return old;
+    if (old) {
+      const legs=d.bank_movements.filter(r=>r.transfer_key===key);
+      matchingRequest(old,()=>{if(legs.length!==2||legs.some(r=>!isActive(r)||r.source_store!=='bank_transfer'||r.source_id!==old.source_id))throw Error('Eksik transfer çifti');return {date:validDate(f.date),amount:money(f.amount),note:f.note||''};});
+      for(const [direction,account]of [['OUT',f.from_id],['IN',f.to_id]]){
+        const leg=legs.find(r=>r.direction===direction);
+        if(!leg)throw Object.assign(Error('Transferin iki yönü doğrulanamadı.'),{code:'OP_CONFLICT'});
+        matchingRequest(leg,()=>({bank_account_id:account,date:f.date,amount:money(f.amount),note:f.note||''}));
+      }
+      return {id:old.source_id};
+    }
     validDate(f.date);
     if (f.from_id === f.to_id) throw Error("Farklı iki banka hesabı seçin");
     const amount = money(f.amount),
@@ -502,7 +521,7 @@ export async function transferBanks(f, key = uuid()) {
 export async function saveReceivablePlan(f, key = uuid()) {
   return transaction(["hakedis", "receivable_plans"], (d, t) => {
     const old = d.receivable_plans.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>{const h=owner(d,'hakedis',f.hakedis_id);return {hakedis_id:h.id,customer_id:h.customer_id,date:validDate(f.date||h.date_from),amount:h.grand_total,installments:installmentSchedule(h.grand_total,f.first_due,f.count,f.days)};});
     const h = owner(d, "hakedis", f.hakedis_id);
     if (h.status !== "Kesinleşti") throw Error("Kesinleşmiş hakediş seçin");
     if (active(d.receivable_plans).some((r) => r.hakedis_id === h.id))
@@ -510,7 +529,7 @@ export async function saveReceivablePlan(f, key = uuid()) {
     const r = newRecord({
       hakedis_id: h.id,
       customer_id: h.customer_id,
-      date: f.date || h.date_from,
+      date: validDate(f.date || h.date_from),
       reference: "Hakediş " + h.hakedis_no,
       installments: installmentSchedule(
         h.grand_total,
@@ -530,7 +549,7 @@ export async function allocateReceipt(f, key = uuid()) {
     ["receivable_plans", "settlement_allocations", "cash_records"],
     (d, t) => {
       const old = d.settlement_allocations.find((r) => r.request_id === key);
-      if (old) return old;
+      if (old) return matchingRequest(old,()=>({plan_id:f.plan_id,installment_id:f.installment_id,receipt_id:f.receipt_id,amount:money(f.amount)}));
       const plan = owner(d, "receivable_plans", f.plan_id),
         receipt = owner(d, "cash_records", f.receipt_id);
       if (
@@ -571,7 +590,7 @@ export async function allocateReceipt(f, key = uuid()) {
 export async function savePurchase(f, key = uuid()) {
   return transaction([...owners, "purchase_orders", "work_records"], (d, t) => {
     const old = d.purchase_orders.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>{const items=invoiceLines(f.items);return {date:validDate(f.date),expected_date:validDate(f.expected_date),order_no:f.order_no.trim(),party_type:f.party_type,party_id:f.party_id,items,...invoiceTotals(items),note:f.note||'',customer_id:f.customer_id||null,site_id:f.site_id||null,vehicle_id:f.vehicle_id||null};});
     party(d, f.party_type, f.party_id);
     context(d, f);
     validDate(f.date);
@@ -633,7 +652,7 @@ export async function savePayroll(f, key = uuid()) {
     ],
     (d, t) => {
       const old = d.payroll_entries.find((r) => r.request_id === key);
-      if (old) return old;
+      if (old) return matchingRequest(old,()=>({date:validDate(f.date),period:f.period,personnel_id:f.personnel_id,kind:f.kind,amount:money(f.amount),note:f.note||'',method:['Avans','Ücret Ödemesi'].includes(f.kind)?f.method:null,...(['Avans','Ücret Ödemesi'].includes(f.kind)&&f.method==='Banka'?{bank_account_id:f.bank_account_id}:{})}));
       owner(d, "personnel", f.personnel_id);
       validDate(f.date);
       if (
@@ -706,7 +725,7 @@ export async function savePayroll(f, key = uuid()) {
 export async function saveServicePlan(f, key = uuid()) {
   return transaction(["vehicles", "service_plans"], (d, t) => {
     const old = d.service_plans.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>({vehicle_id:f.vehicle_id,title:f.title.trim(),next_date:f.next_date||null,next_km:f.next_km!==''&&f.next_km!=null?money(f.next_km,'Km',true):null,next_hours:f.next_hours!==''&&f.next_hours!=null?money(f.next_hours,'Saat',true):null,note:f.note||''}));
     owner(d, "vehicles", f.vehicle_id);
     if (!f.title?.trim()) throw Error("Bakım adı zorunlu");
     if (
@@ -768,7 +787,7 @@ export async function saveActivity(f, key = uuid()) {
   if (!Object.hasOwn(types, f.owner_type)) throw Error("Takip sahibi geçersiz");
   return transaction([types[f.owner_type], "activities"], (d, t) => {
     const old = d.activities.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>({owner_type:f.owner_type,owner_id:f.owner_id,title:f.title.trim(),due_date:validDate(f.due_date),kind:f.kind||'Takip',note:f.note||''}));
     owner(d, types[f.owner_type], f.owner_id);
     validDate(f.due_date);
     if (!f.title?.trim()) throw Error("Görev başlığı zorunlu");
@@ -820,7 +839,8 @@ export async function closeDay(date, note, key = uuid()) {
   ];
   return transaction(stores, (d, t) => {
     const old = d.daily_closings.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>({date:validDate(date),note:note||''}));
+    validDate(date);
     if (active(d.daily_closings).some((r) => r.date === date))
       throw Error("Bu tarih için gün sonu kaydı var");
     const summary = closingSummary(d, date);
@@ -839,7 +859,7 @@ export async function closeDay(date, note, key = uuid()) {
 export async function saveInstrument(f, key = uuid()) {
   return transaction([...owners, "instruments"], (d, t) => {
     const old = d.instruments.find((r) => r.request_id === key);
-    if (old) return old;
+    if (old) return matchingRequest(old,()=>({date:validDate(f.date),due_date:validDate(f.due_date),kind:f.kind,direction:f.direction,document_no:f.document_no.trim(),bank_name:f.bank_name||'',party_type:f.party_type,party_id:f.party_id,amount:money(f.amount),note:f.note||''}));
     party(d, f.party_type, f.party_id, true);
     validDate(f.date);
     validDate(f.due_date);
@@ -956,11 +976,7 @@ export async function updateMaster(store, id, f) {
       fields.name = f.name.trim();
       if (store === "bank_accounts") {
         if (fields.opening_date) validDate(fields.opening_date);
-        if (
-          fields.opening_balance != null &&
-          !Number.isFinite(Number(fields.opening_balance))
-        )
-          throw Error("Açılış bakiyesi geçersiz");
+        if(fields.opening_balance!=null)fields.opening_balance=openingMoney(fields.opening_balance);
         if (
           active(d.bank_movements).some((m) => m.bank_account_id === id) &&
           ((fields.opening_date && fields.opening_date !== r.opening_date) ||
