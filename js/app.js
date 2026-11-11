@@ -1,3 +1,4 @@
+import {mountWorkspaceMenu} from './workspace-menu.js';
 import {installFormAccessibility} from './form-accessibility.js';
 import {installRecordRefresh} from "./record-refresh.js";
 import * as partsScreen from "./parts-ui.js";
@@ -268,6 +269,7 @@ export async function renderCurrent() {
     if (!handled) await pro.augment(ctx);
     if (!enterpriseHandled) await enterprise.augment(ctx);
     await solo.augment(ctx);
+    if(parts[0]==="daha")mountWorkspaceMenu(root);
     professionalIcons(root);
   } catch (e) {
     console.error(e);
@@ -534,7 +536,7 @@ function professionalIcons(root) {
   const nodes = [];
   while (walker.nextNode()) nodes.push(walker.currentNode);
   for (const n of nodes) {
-    if (n.parentElement?.closest("script,style,input,textarea,select,canvas"))
+    if (n.parentElement?.closest("script,style,input,textarea,select,canvas,pre,code,[data-record-source],[data-record-note]"))
       continue;
     const clean = n.textContent
       .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "")

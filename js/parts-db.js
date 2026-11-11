@@ -57,10 +57,11 @@ export async function saveSparePart(f, files = [], key = uuid()) {
   return transaction([...stores, "attachments"], (d, t) => {
     const old = d.maintenance_parts.find((r) => r.request_id === key);
     if (old) {
+      if(!isActive(old))throw Object.assign(Error('Bu parça kaydı geri alınmış; yeni işlem kimliğiyle kontrol edin.'),{code:'OP_REVERSED'});
       if (old.request_signature !== signature)
-        throw Error(
+        throw Object.assign(Error(
           "Bu işlem anahtarı farklı içerikle kullanılmış; ekranı yeniden açın",
-        );
+        ),{code:'OP_CONFLICT'});
       return old;
     }
     if(f.purchase_source_key){

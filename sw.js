@@ -2,6 +2,8 @@
 const CACHE = "sahapro-solo-v3-20261111-system-review-108";
 const CDN_CACHE = "sahapro-solo-cdn-v1";
 const ASSETS = [
+  "./js/workspace-menu.js",
+  "./js/enterprise-retry.js",
   "./js/form-accessibility.js",
   "./js/executive-home.js",
   "./js/finance-workspace.js",
