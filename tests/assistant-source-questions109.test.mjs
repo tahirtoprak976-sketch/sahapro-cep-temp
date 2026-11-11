@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {assistantQuestions} from '../js/assistant-questions.js';
+import {validatePlan} from '../js/assistant-core.js';
+const row=(index,date,{photo=false,proven=true}={})=>({kind:'work',index,key:'work:'+index,fields:{date},missing:[],r:{date,calendarConflict:true,dateUnsure:true,_fieldEvidence:{date:{value:date,level:proven?'CIKARIM':'BILINMIYOR',source:'source_context'}},fieldConfidence:{date:{value:null,level:'BILINMIYOR',photoConflict:photo}}}});
+const rows=[row(0,'2026-11-07'),row(1,'2026-11-07'),row(2,'2026-11-08'),row(3,'2026-11-07',{photo:true}),row(4,'2026-02-31'),row(5,'2026-02-31')],copy=structuredClone(rows),q=assistantQuestions(rows);
+assert.equal(q.length,5,'Phone-proven repeated dates must share one question');assert.equal(q[0].key,'date:phone:2026-11-07');assert.deepEqual(q[0].targets.map(t=>t.index),[0,1]);assert.equal(q[1].key,'work:2:date');assert.equal(q[2].key,'work:3:date');assert.deepEqual(rows,copy);
+assert.equal(assistantQuestions([row(0,'2026-11-07')])[0].key,'work:0:date','Existing single-card question identity remains stable');
+assert.equal(assistantQuestions([row(0,'2026-11-07',{proven:false}),row(1,'2026-11-07',{proven:false})]).length,2,'Unknown dates cannot merge just because the model repeated a value');
+const d={personnel:[{id:'TEST_P',name:'TEST Operator',vehicle_id:'TEST_V'}],vehicles:[{id:'TEST_V',name:'TEST Machine',type:'JCB'}],customers:[{id:'TEST_C',name:'TEST Company'}],sites:[],aliases:[]};
+const texts=['TEST Company TEST Machine 2 saat çalışma','TEST Company TEST Machine 3 saat çalışma','TEST Company TEST Machine 4 saat çalışma'],message='[07/11/2026 18:00] TEST Operator: '+texts[0]+'\n'+texts[1]+'\n[08/11/2026 18:00] TEST Operator: '+texts[2];
+const plan={works:texts.map((quote,i)=>({date:'2026-11-11',customer_id:'TEST_C',vehicle_id:'TEST_V',quantity:i+2,unit:'Saat',work_type:'JCB Çalışması',quote})),fuel:[]};
+const result=validatePlan(plan,{d,message,today:'2026-11-11'});assert.deepEqual(result.works.map(r=>r.date),['2026-11-07','2026-11-07','2026-11-08']);assert.ok(result.works.every(r=>!r.ok&&r.calendarConflict&&r.dateUnsure),'A shared question must never waive a model/message date conflict');
+const questionRows=result.works.map((r,index)=>({kind:'work',index,key:'work:'+index,r,fields:{date:r.date},missing:[]}));assert.equal(assistantQuestions(questionRows).filter(q=>q.field==='date').length,2);
+const fuelQuote='TEST Machine depodan 2 litre mazot aldı',photos=validatePlan({works:[],fuel:[{date:'2026-11-07',vehicle_id:'TEST_V',liters:2,source:'Depo Tankı',quote:fuelQuote,photo:0}],photo_texts:['08.11.2026 2 litre mazot']},{d,message:'[07/11/2026 18:00] TEST Operator: '+fuelQuote,today:'2026-11-11',photoCount:1});assert.ok(photos.fuel[0].fieldConfidence.date.photoConflict);assert.equal(photos.fuel[0].ok,false);
+console.log('PASS source questions109: date groups need phone evidence, receipts/invalid dates stay separate, date conflicts stay unchecked');

@@ -201,7 +201,7 @@ export function promptDialog(title, label, value = "", opts = {}) {
       { modal: true },
     );
     const inp = qs("[data-p]", sh);
-    setTimeout(() => inp.focus(), 250);
+    setTimeout(() => { if(sh.isConnected&&!sh.contains(document.activeElement))inp.focus(); }, 250);
     sh.addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-x]");
       if (!b) return;

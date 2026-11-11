@@ -670,6 +670,8 @@ export async function screen(ctx) {
       for(const el of locked)if(el.isConnected)el.disabled=false;
     }
   });
+  // Editing starts only after async file/draft setup and the submit handler are ready.
+  msgEl.readOnly = false;
   // The visible button must not accept a click before async setup binds its handler.
   qs('[data-ask]',root).disabled = false;
   // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)

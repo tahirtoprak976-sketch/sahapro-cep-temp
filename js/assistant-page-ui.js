@@ -25,7 +25,7 @@ export function assistantPageHTML(g,query,guide){
  <section class="assistant-composer" data-composer aria-label="Asistana mesaj gönder">
  <div data-read-status hidden role="status">İstek okunuyor; henüz kayıt yazılmıyor.<button class="btn block" data-stop-reading>Okumayı durdur</button></div>
  <div class="assistant-file-strip" data-thumbs></div><div class="assistant-file-actions"><button class="btn sm" type="button" data-clearfiles hidden>Ekleri temizle</button><div data-attachment-error role="alert" class="small" hidden></div></div>
- <label class="assistant-message-label" for="assistant-message">Mesaj</label><textarea id="assistant-message" data-msg rows="2" placeholder="Mesajını yaz veya WhatsApp’tan yapıştır…"></textarea>
+ <label class="assistant-message-label" for="assistant-message">Mesaj</label><textarea id="assistant-message" data-msg readonly rows="2" placeholder="Mesajını yaz veya WhatsApp’tan yapıştır…"></textarea>
  <input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos class="assistant-native-file" tabindex="-1" aria-label="Fotoğraf, PDF veya aktarım dosyası seç">
  <input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-addphotos class="assistant-native-file" tabindex="-1" aria-label="Yeni ekleri seç">
  <div class="assistant-composer-actions"><button class="btn" type="button" data-attach aria-label="Fotoğraf veya dosya ekle">＋ Ekle</button><button class="btn" type="button" data-rec ${g.ready?'':'disabled'}>🎤 Sesli not</button><button class="btn primary" type="button" data-ask disabled>Gönder ↑</button></div>

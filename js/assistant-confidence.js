@@ -150,6 +150,10 @@ function messageDateScope(r,kind,scope,whole,d){
 }
 function dateEvidence(value,{scope,whole,photoText,today,dateUnsure,row,kind,d}){
  let message=dateCandidates(messageDateScope(row,kind,scope,whole,d),today);
+ // A phone-verified source row is more specific than a quantity match elsewhere
+ // in a pasted conversation. Receipt evidence is still checked against it below.
+ const phoneDate=row?._fieldEvidence?.date;
+ if(phoneDate?.value===value&&['source_context','source_row'].includes(phoneDate.source)&&[CONFIDENCE.CERTAIN,CONFIDENCE.INFERRED].includes(phoneDate.level))message={values:[{date:phoneDate.value,level:phoneDate.level}],hint:true};
  const common=dateCandidates(whole,today),photo=dateCandidates(photoText,today);
  if(!message.hint){if(common.values.length===1)message=common;else if(common.hint)message={values:[],hint:true};}
  const m=message.values.length===1?message.values[0]:null,p=photo.values.length===1?photo.values[0]:null;

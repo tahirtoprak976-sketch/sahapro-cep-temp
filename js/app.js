@@ -228,7 +228,9 @@ async function firstRunChoice() {
   return true;
 }
 
+let renderedHash = null;
 export async function renderCurrent() {
+  renderedHash = location.hash;
   const { parts, query, invalid } = parseHash();
   // Şoför telefonu: yalnız şoför ekranı (menü, asistan ve patron ekranları gizli)
   const driverMode = (() => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } })();
@@ -342,7 +344,7 @@ async function pinGate() {
         <div style="font-size:44px;margin-bottom:6px">🔒</div>
         <div class="strong" style="font-size:18px;margin-bottom:2px">SAHAPRO SOLO</div>
         <div class="muted small" style="margin-bottom:20px">Devam etmek için PIN girin</div>
-        <div class="field" style="max-width:220px;margin:0 auto 14px"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" data-pin style="text-align:center;font-size:24px;letter-spacing:6px"></div>
+        <div class="field" style="max-width:220px;margin:0 auto 14px"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" aria-label="PIN" data-pin style="text-align:center;font-size:24px;letter-spacing:6px"></div>
         <button class="btn primary" style="min-width:180px" data-unlock>Aç</button>
         <div class="tiny muted" style="margin-top:16px">Bu yalnızca basit bir cihaz içi ekran kilididir.</div>
       </div>`;
@@ -480,12 +482,13 @@ document.addEventListener("click", (ev) => {
     try { await (await import("./dump-fees.js")).seedOfficialDumps(db); } catch (e) { console.warn(e); }
     try { await (await import("./yard-core.js")).seedVehicleTypes(db); } catch (e) { console.warn(e); }
     await installRecordRefresh({db,context:()=>({root:qs("#screen"),parts:parseHash().parts}),reload:renderCurrent});
-    window.addEventListener("hashchange", renderCurrent);
+    window.addEventListener("hashchange", () => { if(location.hash !== renderedHash)return renderCurrent(); });
     await renderCurrent();
   } catch (e) {
     console.error(e);
     qs("#screen").innerHTML =
-      `<div class="notice danger" style="margin-top:30px"><span>⛔</span><span>Uygulama başlatılamadı: ${esc(e.message || e)}. Sayfayı yenileyin; verileriniz cihazda güvendedir.</span></div>`;
+      `<section class="card" data-boot-error><h1>Uygulama açılamadı</h1><div class="notice danger"><span>⛔</span><span>${esc(e.message || e)}</span></div><p>Verileri silmeyin. Uygulamayı yeniden açmayı deneyin; sorun sürerse mevcut yedeklerinizi koruyun.</p><button class="btn primary block" data-boot-retry>Yeniden açmayı dene</button></section>`;
+    qs('[data-boot-retry]').onclick=()=>location.reload();
   }
 })();
 

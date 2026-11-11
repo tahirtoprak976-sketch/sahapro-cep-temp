@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - fix/assistant-source-questions-109
       - fix/system-review-108
       - feat/executive-decisions-107
       - feat/mobile-finance-workspace-106
@@ -153,6 +154,49 @@ jobs:
       - name: Verify installed v3.10.04 to optional VAT preservation
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 42aaa42706ab23dcbb841c8d6807702557602aaf
+
+      - name: Verify installed v3.10.08 to source-question preservation
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref fc56ee340f497c32ff43d4c716b9f490f0789a68
+
+      - name: Reproduce source-date and recovery gaps on unchanged v3.10.08
+        run: |
+          set -euo pipefail
+          source_baseline=$(mktemp -d /tmp/solo-source109-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive fc56ee340f497c32ff43d4c716b9f490f0789a68 | tar -x -C "$source_baseline"
+          cp tests/assistant-source-questions109.test.mjs "$source_baseline/tests/"
+          python3 -m http.server 8875 --bind 127.0.0.1 --directory "$source_baseline" > /tmp/solo-source109-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$source_baseline"' EXIT
+          python3 - <<'PYREADY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8875/index.html',timeout=1) as response:
+                      assert response.status==200
+                  break
+              except OSError:
+                  if attempt==59:raise
+                  time.sleep(.2)
+          PYREADY
+          if node "$source_baseline/tests/assistant-source-questions109.test.mjs" > /tmp/solo-source109-baseline-node.log 2>&1; then
+            echo 'Unchanged v108 unexpectedly grouped source-proven dates'
+            exit 1
+          fi
+          grep -F 'Phone-proven repeated dates must share one question' /tmp/solo-source109-baseline-node.log
+          for suite in assistant_source_questions109 startup_recovery109 prompt_focus109 lock_accessibility109 route_race109 assistant_ready109; do
+            if /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8875/ > "/tmp/solo-source109-baseline-$suite.log" 2>&1; then
+              echo "Unchanged v108 unexpectedly passed $suite"
+              exit 1
+            fi
+          done
+          grep -F 'Same phone-proven date must have one shared question' /tmp/solo-source109-baseline-assistant_source_questions109.log
+          grep -F 'Storage failure must provide a recovery screen' /tmp/solo-source109-baseline-startup_recovery109.log
+          grep -F 'Delayed prompt focus must preserve' /tmp/solo-source109-baseline-prompt_focus109.log
+          grep -F 'Lock password needs an accessible name' /tmp/solo-source109-baseline-lock_accessibility109.log
+          grep -F 'Queued route events must not erase a message' /tmp/solo-source109-baseline-route_race109.log
+          grep -F 'Composer must be readonly from first paint' /tmp/solo-source109-baseline-assistant_ready109.log
 
       - name: Verify installed v3.10.07 to system-review preservation
         run: |
@@ -436,11 +480,24 @@ jobs:
             echo '::endgroup::'
           done
           echo 'ASSISTANT_TURN_STANDALONE RESULT passed=10 failed=0'
+          mkdir -p /tmp/solo-command-selection-diagnostics
+          for attempt in {1..10}; do
+            echo "::group::command_selection standalone $attempt/10"
+            if COMMAND_SELECTION_DIAGNOSTICS="/tmp/solo-command-selection-diagnostics/standalone-$attempt" /tmp/solo-e2e-venv/bin/python tools/e2e/command_selection.py http://localhost:8841/ 2>&1 | tee "/tmp/solo-command-selection-diagnostics/standalone-$attempt.log"; then
+              echo "PASS command_selection standalone $attempt/10"
+            else
+              echo '::endgroup::'
+              echo "FAIL command_selection standalone $attempt/10; stopped without retry"
+              exit 1
+            fi
+            echo '::endgroup::'
+          done
+          echo 'COMMAND_SELECTION_STANDALONE RESULT passed=10 failed=0'
           failed=0
-          suites=(dialog_focus108 system_review108 enterprise_retry108 operation_retry108 system_surface108 executive_decisions107 finance_workspace106 optional_vat105 offline_whatsapp104 public_bootstrap103 assistant_draft_race assistant_questions101 assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
+          suites=(assistant_ready109 route_race109 assistant_source_questions109 startup_recovery109 prompt_focus109 lock_accessibility109 dialog_focus108 system_review108 enterprise_retry108 operation_retry108 system_surface108 executive_decisions107 finance_workspace106 optional_vat105 offline_whatsapp104 public_bootstrap103 assistant_draft_race assistant_questions101 assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
-            if ASSISTANT_TURN_DIAGNOSTICS="/tmp/solo-assistant-turn-diagnostics/full-$suite" /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
+            if COMMAND_SELECTION_DIAGNOSTICS="/tmp/solo-command-selection-diagnostics/full-$suite" ASSISTANT_TURN_DIAGNOSTICS="/tmp/solo-assistant-turn-diagnostics/full-$suite" /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
               echo "PASS $suite"
             else
               failed=$((failed + 1))
@@ -458,7 +515,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: assistant-turn-diagnostics-${{ github.sha }}
-          path: /tmp/solo-assistant-turn-diagnostics/
+          path: |
+            /tmp/solo-assistant-turn-diagnostics/
+            /tmp/solo-command-selection-diagnostics/
           if-no-files-found: warn
           retention-days: 7
 
@@ -1052,6 +1111,7 @@ jobs:
             /tmp/solo-real101*.json
             /tmp/solo-offline104*.json
             /tmp/solo-vat105/*
+            /tmp/solo-source109-baseline-*.log
             /tmp/solo-focus108-baseline.log
             /tmp/solo-system108/*
             /tmp/solo-system108-baseline-*.log

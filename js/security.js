@@ -1,3 +1,4 @@
+import {accessibleDialog} from './form-accessibility.js';
 // Güvenlik ve Yetki (#/guvenlik) + uygulama kilidi.
 // • Yönetici kilidi: PBKDF2 şifre, parmak izi / Face ID (WebAuthn, cihazın kendi doğrulaması), boşta kalınca ve arka plana alınınca kilit,
 //   yanlış denemede artan bekleme, uygulama değiştiricide içerik bulanık.
@@ -72,7 +73,7 @@ function lockOverlay({ title = "SAHAPRO", sub = "Devam etmek için yönetici şi
       <div class="strong" style="font-size:19px;margin:4px 0 2px">${esc(title)}</div>
       <div class="muted small" style="margin-bottom:${reason ? 4 : 18}px">${esc(sub)}</div>
       ${reason ? `<div class="small" style="margin-bottom:16px"><b>${esc(reason)}</b></div>` : ""}
-      <input type="password" autocomplete="current-password" data-pw ${cfg?.alpha ? "" : 'inputmode="numeric"'} style="width:100%;text-align:center;font-size:24px;letter-spacing:6px;padding:12px;border-radius:12px;border:1px solid var(--border)">
+      <input type="password" autocomplete="current-password" aria-label="Yönetici şifresi" data-pw ${cfg?.alpha ? "" : 'inputmode="numeric"'} style="width:100%;text-align:center;font-size:24px;letter-spacing:6px;padding:12px;border-radius:12px;border:1px solid var(--border)">
       <button class="btn primary block" data-go-un style="margin-top:12px;min-height:50px">Aç</button>
       ${cfg?.bio_id ? '<button class="btn block" data-bio style="margin-top:8px;min-height:50px">👆 Parmak izi / Face ID</button>' : ""}
       ${cancel ? '<button class="btn ghost block" data-cancel style="margin-top:8px">Vazgeç</button>' : ""}
@@ -80,8 +81,11 @@ function lockOverlay({ title = "SAHAPRO", sub = "Devam etmek için yönetici şi
       ${hasOld ? '<div class="tiny muted">Eski PIN\'inizi girin; daha güçlü kilide kendiliğinden geçilir.</div>' : '<div class="tiny muted" style="margin-top:10px">Şifreyi unuttuysanız: Ayarlar\'dan değil, şifreli yedekten geri yükleyerek açılır (aşağıda “Şifremi unuttum”).</div><button class="btn ghost sm" data-forgot style="margin-top:6px">Şifremi unuttum</button>'}
     </div>`;
     document.body.appendChild(el);
+    const background=[...document.body.children].filter(node=>node!==el&&!node.matches('script,style')).map(node=>({node,id:node.id,inert:!!node.inert}));
+    for(const item of background)item.node.inert=true;
+    const releaseDialog=accessibleDialog(el);el.setAttribute('aria-label','Yönetici kilidi');
     const pw = qs("[data-pw]", el), msg = qs("[data-msg]", el);
-    const done = (ok) => { el.remove(); lockShown = null; resolve(ok); };
+    const done = (ok) => { for(const item of background){item.node.inert=item.inert;const live=item.id?document.getElementById(item.id):null;if(live&&live!==item.node)live.inert=item.inert;}releaseDialog();el.remove(); lockShown = null; resolve(ok); };
     let timer = null;
     const waitTick = async () => {
       const f = await failState(), left = f.until - Date.now();
@@ -89,7 +93,7 @@ function lockOverlay({ title = "SAHAPRO", sub = "Devam etmek için yönetici şi
       pw.disabled = false; if (msg.textContent.startsWith("Çok fazla")) msg.textContent = ""; return false;
     };
     await waitTick();
-    setTimeout(() => pw.focus(), 250);
+    setTimeout(() => {if(el.isConnected&&!el.contains(document.activeElement))pw.focus();}, 250);
     const tryIt = async () => {
       if (await waitTick()) return;
       const v = pw.value;
