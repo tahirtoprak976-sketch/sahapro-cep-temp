@@ -485,7 +485,8 @@ document.addEventListener("click", (ev) => {
   } catch (e) {
     console.error(e);
     qs("#screen").innerHTML =
-      `<div class="notice danger" style="margin-top:30px"><span>⛔</span><span>Uygulama başlatılamadı: ${esc(e.message || e)}. Sayfayı yenileyin; verileriniz cihazda güvendedir.</span></div>`;
+      `<section class="card" data-boot-error><h1>Uygulama açılamadı</h1><div class="notice danger"><span>⛔</span><span>${esc(e.message || e)}</span></div><p>Verileri silmeyin. Uygulamayı yeniden açmayı deneyin; sorun sürerse mevcut yedeklerinizi koruyun.</p><button class="btn primary block" data-boot-retry>Yeniden açmayı dene</button></section>`;
+    qs('[data-boot-retry]').onclick=()=>location.reload();
   }
 })();
 

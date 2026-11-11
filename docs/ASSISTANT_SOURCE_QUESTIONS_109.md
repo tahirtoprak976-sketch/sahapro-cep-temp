@@ -20,3 +20,5 @@ Toplu sette kalan tarih sorularının çoğu kayıtlı model yanıtının mesajd
 Birim testi aynı tarih/farklı tarih, tek soru kimliği, geçersiz/kanıtsız tarihler ve fiş çelişkisini korur. Gerçek Chromium/IndexedDB testi iki kartın ortak cevabını, üçüncü kartın ve manuel açıklamanın korunmasını, tahsilatın işaretsiz kalmasını ve sıfır işletme yazmasını ölçer. Sağlayıcı yanıtı taklittir.
 
 Bu çalışma v108 denetim onarımlarına bağlı ayrı adaydır; önceki yayın kapıları tamamlanmadan birleştirilmez.
+
+Açılış kurtarması: veri deposu açılamadığında eski hata metni verilerin güvende olduğunu doğrulamadan söylüyordu. Yeni ekran verileri silmemeyi belirtir ve açık bir yeniden deneme sunar. Geçici IndexedDB açılış hatası gerçek tarayıcıda zorlanır; yeniden denemede mevcut TEST kayıtları aynı kalır. Bu, fiziksel veri kaybının kurtarıldığı veya bütün depolama hatalarının düzeltildiği iddiası değildir. Otomatik sıfırlama yoktur.
