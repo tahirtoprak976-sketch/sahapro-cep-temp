@@ -8,7 +8,7 @@ with sync_playwright() as w:
  p=c.new_page();errors=[];p.on('pageerror',lambda e:errors.append(str(e)));app=base+'index.html?db=TEST_startup109_'+uuid.uuid4().hex+'#/daha';p.goto(app);p.wait_for_selector('#screen[data-view-ready="1"]')
  p.evaluate("async()=>await(await import('./js/db.js')).saveNew('customers',{name:'TEST Keep Existing Customer'},'TEST')")
  before=p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()")
- p.evaluate("sessionStorage.setItem('TEST_storage_block','1')");p.reload();p.wait_for_timeout(400)
+ p.evaluate("sessionStorage.setItem('TEST_storage_block','1')");p.reload();p.wait_for_function("()=>document.querySelector('#screen')?.textContent.includes('TEST temporary storage failure')")
  assert p.locator('[data-boot-error]').count()==1,'Storage failure must provide a recovery screen without claiming data is safe'
  assert 'güvendedir' not in p.locator('#screen').inner_text() and 'Verileri silmeyin' in p.locator('[data-boot-error]').inner_text()
  assert p.evaluate('document.documentElement.scrollWidth<=innerWidth')

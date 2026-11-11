@@ -1,4 +1,4 @@
-# Aynı tarih teyidini bir kez sorma — aday v3.10.09
+# Tarih teyidi ve arayüz kurtarması — v3.10.09
 
 Telefonun kaynak satırından doğruladığı tarih, toplu konuşmada aynı miktarın geçtiği başka bir satırın tarihiyle karıştırılmamalıdır. Tarih kanıtı önce o kayıtla eşleşen telefon kanıtından alınır, sonra bağlı fişin tarihiyle karşılaştırılır. Model/mesaj veya fotoğraf çelişkisi kartı işaretsiz bırakmaya devam eder.
 
@@ -19,8 +19,10 @@ Toplu sette kalan tarih sorularının çoğu kayıtlı model yanıtının mesajd
 
 Birim testi aynı tarih/farklı tarih, tek soru kimliği, geçersiz/kanıtsız tarihler ve fiş çelişkisini korur. Gerçek Chromium/IndexedDB testi iki kartın ortak cevabını, üçüncü kartın ve manuel açıklamanın korunmasını, tahsilatın işaretsiz kalmasını ve sıfır işletme yazmasını ölçer. Sağlayıcı yanıtı taklittir.
 
-Bu çalışma v108 denetim onarımlarına bağlı ayrı adaydır; önceki yayın kapıları tamamlanmadan birleştirilmez.
+Bu çalışma, bütün kapıları geçen ve canlıda dosya/servis çalışanı doğrulanan v3.10.08 üzerine hazırlanmış ayrı sürümdür. Şema 7 ve kayıt biçimi değişmez; eski işletme kayıtları otomatik düzeltilmez.
 
 Açılış kurtarması: veri deposu açılamadığında eski hata metni verilerin güvende olduğunu doğrulamadan söylüyordu. Yeni ekran verileri silmemeyi belirtir ve açık bir yeniden deneme sunar. Geçici IndexedDB açılış hatası gerçek tarayıcıda zorlanır; yeniden denemede mevcut TEST kayıtları aynı kalır. Bu, fiziksel veri kaybının kurtarıldığı veya bütün depolama hatalarının düzeltildiği iddiası değildir. Otomatik sıfırlama yoktur.
 
 Gecikmeli soru penceresi odağı da kullanıcı seçimini korur: kullanıcı Vazgeç düğmesine geçmişse eski 250 ms zamanlayıcı odağı tekrar giriş alanına taşımaz. Önceki sürümde düşen gerçek klavye/odak testi adayda geçer; iptal cevap üretmez ve işletme kaydı yazmaz.
+
+Kilit ekranı: şifre alanına erişilebilir ad ve modal odak sınırı eklendi. Kilit açıkken arka plan kontrol edilemez; doğru şifreyle önceki etkinlik durumu geri gelir. Gerçek tarayıcıda sentetik şifreyle yanlış girişin reddi, doğru girişin kabulü, Tab odağının kilitte kalması ve işletme kayıtlarının aynı kalması denetlenir. PBKDF2, deneme sınırı, biyometrik kararlar ve kayıt biçimi değiştirilmez. Fiziksel parmak izi/Face ID denenmedi; bu cihaz içi UI kilidi veri şifrelemesi veya sunucu yetkisi değildir.

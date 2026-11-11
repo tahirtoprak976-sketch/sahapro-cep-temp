@@ -342,7 +342,7 @@ async function pinGate() {
         <div style="font-size:44px;margin-bottom:6px">🔒</div>
         <div class="strong" style="font-size:18px;margin-bottom:2px">SAHAPRO SOLO</div>
         <div class="muted small" style="margin-bottom:20px">Devam etmek için PIN girin</div>
-        <div class="field" style="max-width:220px;margin:0 auto 14px"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" data-pin style="text-align:center;font-size:24px;letter-spacing:6px"></div>
+        <div class="field" style="max-width:220px;margin:0 auto 14px"><input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" aria-label="PIN" data-pin style="text-align:center;font-size:24px;letter-spacing:6px"></div>
         <button class="btn primary" style="min-width:180px" data-unlock>Aç</button>
         <div class="tiny muted" style="margin-top:16px">Bu yalnızca basit bir cihaz içi ekran kilididir.</div>
       </div>`;
