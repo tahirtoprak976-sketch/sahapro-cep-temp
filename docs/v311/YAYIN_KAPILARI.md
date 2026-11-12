@@ -12,3 +12,7 @@ Eski dondurulmuş toplu ölçüm15/38 hazır,14gereksizsoru,3yanlışalan.38kart
 - Tüm mevcut Node/tarayıcı/yükseltme testleri ve yeni paket testleri. İki başarısız tam kapıda durma kuralı korunur.
 
 Bu kapılar tamamlanmadan taslak PR birleştirilmez/yayınlanmaz. Gerçek telefon/Gemini sonucu uydurulmaz. Yeni bağımsız gerçek yanıtlar eski v3.10.10 yerel ayrıştırıcı kayıtlarının yerine geçirilmez.
+
+## Hibrit adayda doğrulanan dar kontroller
+
+Taklit modelle tarayıcı: ilgisiz müşteri/araç/geçmiş kaydı gönderilmiyor; çözülmüş genel soru kaldırılıyor, parasal soru kalıyor; eksik alan tek başına ikinci modeli çağırmıyor; yön çelişkisi ve bozuk JSON birer ek okumayla sınırlı; iç içe fatura toplamı çelişkisinde gider işaretsiz kalıyor. Toplam sekiz taklit HTTP çağrısı, sıfır işletme yazımı, sıfır yakalanmamış sayfa hatası. Gerçek Gemini başarısı değildir.

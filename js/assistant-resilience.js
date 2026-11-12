@@ -55,3 +55,13 @@ export async function strongReviewOnce(db,{plan,validation,validate,parts,system
 export function localFallbackAllowed(error,{message='',files=0,online=true}={}){
  return !!message.trim()&&!files&&!/SP1:|\[DÜZELTME\]/i.test(message)&&error?.code!=='ASSISTANT_ABORT'&&error?.name!=='AbortError'&&(!online||['RATE','NO_FREE','LOCAL_LIMIT','BUSY','MODEL_GONE'].includes(error?.code)||error instanceof TypeError);
 }
+
+const reviewedScopes=new WeakSet();
+// v3.11: one secondary read per request scope, including malformed initial JSON.
+export async function oneSecondaryRead(db,{parts,system,schema,scope}={}){
+ scope.check();if(reviewedScopes.has(scope))throw Object.assign(Error('Bu isteğin ikinci kontrolü kullanıldı.'),{code:'REVIEW_ONCE'});reviewedScopes.add(scope);
+ const g=await geminiSettings(db),model=strongModelCandidate(await db.metaGet('gemini_model_list'),g.model);
+ if(!g.ready||!model)throw Object.assign(Error('Uygun ikinci kontrol modeli veya bağlantısı yok.'),{code:'NO_REVIEW_MODEL'});
+ let requests=0;const fetchFn=async(url,init)=>{scope.check();if(requests++)throw Object.assign(Error('İkinci kontrol tek ağ isteğiyle sınırlı.'),{code:'REVIEW_ONCE'});return gatedFetch(db,scope.fetchFn)(url,init);};
+ const plan=await geminiJson(parts,{key:g.key,model,fetchFn,system,schema,maxTokens:8192});scope.check();return {plan:untrustedWorkPlan(plan),model};
+}

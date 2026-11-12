@@ -75,3 +75,33 @@ export function hybridReadRunner(run,envelope,message){
   return run(name,args);
  };
 }
+
+// OCR gives a literal plate; the phone resolves the ID after reading, without sending its fleet.
+export function fillReceiptReferences(plan,d,photoCount){
+ const texts=Array.isArray(plan?.photo_texts)?plan.photo_texts:[],next={...plan};
+ const compact=x=>String(x||'').toLocaleUpperCase('tr-TR').replace(/[^A-Z0-9]/g,'');
+ for(const group of ['works','fuel','expenses','maintenance'])if(Array.isArray(plan[group]))next[group]=plan[group].map(row=>{
+  if(row.vehicle_id||!Number.isInteger(row.photo)||row.photo<0||row.photo>=photoCount||typeof texts[row.photo]!=='string')return row;
+  const plates=new Set([...texts[row.photo].matchAll(/\b\d{2}\s*[A-Z]{1,3}\s*\d{2,5}\b/giu)].map(m=>compact(m[0])));
+  const matches=live(d,'vehicles').filter(v=>v.plate&&plates.has(compact(v.plate)));
+  return matches.length===1?{...row,vehicle_id:matches[0].id}:row;
+ });
+ return next;
+}
+
+export function secondaryReviewTriggers({message='',plan={},schemaError=false}={}){
+ const result=[];if(schemaError)result.push('JSON şeması geçersiz');
+ for(const clause of String(message).split(/\n|[;!?]|\.(?=\s)/)){
+  const t=norm(clause),received=/\b(?:aldik|aldim|tahsil edildi|odedi)\b/.test(t),promised=/\b(?:odeyecek|verecek|yatiracak|odenecek)\b/.test(t);
+  if(received&&promised&&!/\b(?:kalan|kalani|kismi|bir kismini|geri kalani)\b/.test(t)){result.push('Aynı cümlede para yönü çelişkili');break;}
+ }
+ const number=x=>x!==''&&x!=null&&Number.isFinite(Number(x))&&Number(x)>=0?Number(x):null;
+ for(const doc of [...(Array.isArray(plan.documents)?plan.documents:[]),...(Array.isArray(plan.expenses)?plan.expenses:[])]){
+  const details=doc.invoice&&typeof doc.invoice==='object'?doc.invoice:doc,lines=details.lines;
+  const total=number(doc.total??doc.amount??details.total),net=number(details.net??doc.invoice_net),vat=number(details.kdv??doc.invoice_kdv);
+  if(total!=null&&net!=null&&vat!=null&&Math.abs(net+vat-total)>.02){result.push('Fiş ara toplamı ve genel toplamı uyuşmuyor');break;}
+  if(total!=null&&Array.isArray(lines)&&lines.length&&lines.every(l=>number(l.amount??l.total)!=null)&&Math.abs(lines.reduce((sum,l)=>sum+number(l.amount??l.total),0)-(net??total))>.02){result.push('Fiş satırları ve genel toplamı uyuşmuyor');break;}
+ }
+ return [...new Set(result)];
+}
+export function recoverableSchemaError(error){if(/^Plan satır sınırı aşıldı: [a-z_]+$/i.test(error?.message||''))return true;return error?.code!=='ASSISTANT_ABORT'&&error?.name!=='AbortError'&&!/çok büyük|en fazla|sınır|böl|limit/i.test(error?.message||'')&&/JSON|şema|planı döndürmedi|listesi geçersiz|satırı eksik veya bozuk/i.test(error?.message||'');}
