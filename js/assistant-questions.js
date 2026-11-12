@@ -21,9 +21,11 @@ export function assistantQuestions(rows){
    const commonDate=field==='date'&&scope&&info?.suggestedValue&&!info.photoConflict;
    const manual=String(info?.source||'').startsWith('user');
    const subject=manual?null:hint?field+':'+hint:commonDate?'date:'+scope.datePart+':'+info.suggestedValue:null;
-   const key=subject?(scope?'block:'+scope.block+':'+scope.sender+':':'')+subject:row.kind+':'+row.index+':'+field;
-   const q=groups.get(key)||{key,field,fields:combined&&field==='quantity'?['quantity','unit']:[field],optional:!!(field==='quantity'&&r.contractIncluded),priority:({vehicle:0,customer:1,date:2}[field]??(field==='quantity'&&r.contractIncluded?9:4)),label:hint?hint+' — '+(label[field]||field):(field==='quantity'&&row.kind==='work'?(r.unit==='Saat'?'Miktar / süre: Kaç saat?':r.unit==='Sefer'?'Miktar: Kaç sefer?':'Miktar / süre: Kaç saat / sefer?'):label[field]||field),targets:[],suggested:r.fieldConfidence?.[raw[field]||field]?.suggestedValue??(field==='date'&&r.calendarConflict?r.date:null)};
-   q.targets.push({kind:row.kind,index:row.index,key:row.key||row.kind+':'+row.index});groups.set(key,q);
+   const groupKey=subject?(scope?'block:'+scope.block+':'+scope.sender+':':'')+subject:row.kind+':'+row.index+':'+field;
+   // Keep the established single-card question identity; only the internal grouping key uses provenance.
+   const key=commonDate&&!hint?row.kind+':'+row.index+':'+field:groupKey;
+   const q=groups.get(groupKey)||{key,field,fields:combined&&field==='quantity'?['quantity','unit']:[field],optional:!!(field==='quantity'&&r.contractIncluded),priority:({vehicle:0,customer:1,date:2}[field]??(field==='quantity'&&r.contractIncluded?9:4)),label:hint?hint+' — '+(label[field]||field):(field==='quantity'&&row.kind==='work'?(r.unit==='Saat'?'Miktar / süre: Kaç saat?':r.unit==='Sefer'?'Miktar: Kaç sefer?':'Miktar / süre: Kaç saat / sefer?'):label[field]||field),targets:[],suggested:r.fieldConfidence?.[raw[field]||field]?.suggestedValue??(field==='date'&&r.calendarConflict?r.date:null)};
+   q.targets.push({kind:row.kind,index:row.index,key:row.key||row.kind+':'+row.index});groups.set(groupKey,q);
   }
  }
  return [...groups.values()].sort((a,b)=>a.priority-b.priority);
