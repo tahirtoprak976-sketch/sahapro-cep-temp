@@ -1296,7 +1296,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
       if (affected && !(await confirmDialog("Dosyalar eklenmeden kaydedilsin mi?", "Şoför dosyaları güvenle eşleştirilemedi. Seçili şoför kayıtlarına bu paketin fotoğrafları ve dosya olarak gelen imzaları eklenmeyecek. Sonradan aynı kodu tekrar almak dosyaları tamamlamaz; kayıt ayrıntısından elle eklemeniz gerekir. Önce dosyaları düzeltmek için vazgeçin.", "Dosyasız kaydet"))) return;
       if (out.isConnected) await save(ctx, out, v, d, { message, files, selection, preserveDrafts:!!selection });
     } catch (e) { toast("Kaydedilemedi: " + (e?.message || String(e)), "err"); }
-    finally { saveInFlight = false;for(const el of controls)if(el.isConnected&&el.closest('[data-saved]')?.dataset.saved!=='1')el.disabled=false; if (btn.isConnected) btn.disabled = false; }
+    finally { saveInFlight = false;for(const el of controls)if(el.isConnected&&el.closest('[data-saved]')?.dataset.saved!=='1')el.disabled=false; if (btn.isConnected) btn.disabled = false;if(out.querySelector('[data-review-overview]')){v._workflow?.refresh();v._review?.update();await v._receiptDesk?.refresh();} }
   };
   qs("[data-save]",out)?.addEventListener("click",ev=>runSave(ev));
   // Önizlemesi açılamayan fotoğraf: yerine yazı (CSP satır içi onerror'a izin vermez)
@@ -2066,7 +2066,7 @@ async function save(ctx, out, v, d, { message, files, selection=null, preserveDr
         for (const pi of (r.photos?.length ? r.photos : r.photo != null ? [r.photo] : [])) if (files[pi]) await db.addAttachment("fuel", rec.id, files[pi]);
         done.fuel++;
       }
-      }finally{if(preserveDrafts&&Object.keys(done).some(k=>k!=='conflict'&&done[k]>beforeDone[k]))markDone(c);}
+      }finally{if(preserveDrafts&&([({work:'work',expense:'expense',fuel:'fuel',collection:'collection',personnel:'personnel',fuelout:'fuelOut',tank:'tank'})[c.dataset.kind],'already',...(c.dataset.kind==='expense'?['dumpdep','dumpinv','dumpinvPaid']:[])].some(k=>k&&done[k]>beforeDone[k])))markDone(c);}
     }
     const parts = [[done.already, "kayıt bu mesajdan zaten yazılmıştı (yeniden yazılmadı)"], [done.conflict, "satır daha önce farklı bilgilerle kaydedildiği için atlandı"], [done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.fuelOut, "müşteriye mazot teslimi (depodan düştü, TL borç yazıldı)"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
