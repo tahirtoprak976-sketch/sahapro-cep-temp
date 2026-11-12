@@ -1,3 +1,4 @@
+import {attachSourcePriorities} from './assistant-hybrid311.js';
 import {sourceProof} from './assistant-source-context.js';
 // Phone-side evidence only. Model confidence, counts and explanations are never authority.
 import {isActive} from './core.js';
@@ -202,7 +203,7 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  }
  if(r.sourceUncertain)f.source=unknown('Yakıt kaynağı bu satır için doğrulanmalı');
  if(f.date?.level===CONFIDENCE.UNKNOWN){r.dateUnsure=true;if(f.date.conflict){r.dateConflict=true;(r.issues??=[]).push('Önerilen tarih mesaj/fiş ile çelişiyor; '+(f.date.suggestedValue||'doğru tarihi')+' tarihini doğrulayın?');}}
- r.fieldConfidence=f;
+ r.fieldConfidence=f;attachSourcePriorities(r);
  r.okData=r.okData??r.ok;
  r.ok=!!r.ok&&confidenceReady(r,kind)&&!r.needsApproval&&(r.price_pending||!r.priceInfo?.ambiguous);
  return r;

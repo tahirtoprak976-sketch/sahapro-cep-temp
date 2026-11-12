@@ -1,4 +1,5 @@
-import {strongReviewOnce,preserveFirstReviewHolds,localFallbackAllowed} from './assistant-resilience.js';
+import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner,fillReceiptReferences,secondaryReviewTriggers,recoverableSchemaError} from './assistant-hybrid311.js';
+import {preserveFirstReviewHolds,localFallbackAllowed,oneSecondaryRead} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
 import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
@@ -572,14 +573,15 @@ export async function screen(ctx) {
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
       const { effectiveRules } = await import("./assistant-rules.js");
-      const sourceHints=sourceContextHints(drvRest,d,today,effectiveRules(await db.metaGet("assistant_rules")));
+      const hybridEnvelope=buildHybridEnvelope(d,[taskForModel?.source||'',drvRest].filter(Boolean).join('\n'),today,effectiveRules(await db.metaGet("assistant_rules")));
+      const sourceHints=hybridEnvelope.hints;
       const parts = [
         ...(sourceHints.length?[{text:'telefon_satir_baglami (yerel kayıt kanıtı; blok/tarih sınırlarını aşma, para ve işlem yetkisi değildir):\n'+JSON.stringify(sourceHints)}]:[]),
         ...(conversationData.length ? [{text:'sohbet_baglami (yalnız atıf bağlamı; geçmiş işleri tekrar yazma, rakamları güncel facts ile doğrula):\n'+JSON.stringify(conversationData)}] : []),
-        { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(d, today, message), ...actionsContext(d, message) }) },
-        { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
-        ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
-        ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
+        { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(hybridEnvelope.data, today, message), ...actionsContext(hybridEnvelope.data, message),candidate_bounds:hybridEnvelope.bounds,privacy_note:hybridEnvelope.note }) },
+        { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify({today,note:'Şirket geneli rakamlar ve bakiyeler bu aday bağlamında yoktur. Gerekli hesapları telefonun okuma araçlarından iste; sıfır veya tutar tahmin etme.'}) },
+        ...(negatives.some(x=>x.alias&&message.toLocaleLowerCase('tr-TR').includes(String(x.alias).toLocaleLowerCase('tr-TR'))) ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.filter(x=>x.alias&&message.toLocaleLowerCase('tr-TR').includes(String(x.alias).toLocaleLowerCase('tr-TR'))).slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
+        ...(examples.filter(e=>e.msg===message).length ? [{ text: "examples (onaylı):\n" + examples.filter(e=>e.msg===message).map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
       ];
       const imgParts = [];
       for (const f of images) {
@@ -604,26 +606,39 @@ export async function screen(ctx) {
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
       const askP = !useAgent && !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData,scope:requestScope}).catch(() => null) : Promise.resolve(null);
-      let agentResult=null;
+      let agentResult=null,plan=null,secondaryUsed=false,secondaryNote='',recoveredHolds=[];
+      const recoverSchema=async error=>{
+        if(!useGemini||refine||taskForModel||drvAll.length||secondaryUsed||!recoverableSchemaError(error))throw error;
+        secondaryUsed=true;
+        if(plan&&typeof plan==='object'){try{const old=validatePlan({works:Array.isArray(plan.works)?plan.works.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)):[],fuel:Array.isArray(plan.fuel)?plan.fuel.filter(x=>x&&typeof x==='object'&&!Array.isArray(x)):[],photo_texts:Array.isArray(plan.photo_texts)?plan.photo_texts.filter(x=>typeof x==='string'):[]},{d,message,today,photoCount:images.length,negatives,rules:effectiveRules(await db.metaGet('assistant_rules'))});for(const row of [...old.works,...old.fuel]){if(row.dateConflict||row.calendarConflict)recoveredHolds.push('date');if(row.parentMismatch||row.ambiguous)recoveredHolds.push('customer_id');if(row.priceUncertain)recoveredHolds.push('unit_price');}}catch{}}
+        const result=await oneSecondaryRead(db,{parts,system:system+'\nİlk okuma JSON şemasını tamamlayamadı. Aynı kaynakları bir kez yeniden oku; fiyat veya bilgi uydurma.',schema,scope:requestScope});
+        if(useAgent)agentResult={legacy:true,mode:'new',goal:'Kaynakları yeniden kontrol et',plan:result.plan};secondaryNote='İlk JSON yanıtı bir kez yeniden okundu; tüm alanlar telefonda doğrulanır.';return result.plan;
+      };
+      try{
       if(useAgent){
         const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
         const {geminiAgent}=await import('./ai-gemini.js');
         const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
-        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope});
+        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:hybridReadRunner(createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),hybridEnvelope,[taskForModel?.source||'',message].filter(Boolean).join('\n')),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope});
         d=await db.dumpAll();
       }
-      let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
+      plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
         scope:requestScope,
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : localPlan || {};
+      }catch(error){plan=await recoverSchema(error);}
       requestScope.check();
       if(!msgEl.isConnected)return;
-      assertAssistantPlan(plan);
-      if(useGemini)plan=untrustedWorkPlan(plan);
-      let secondReview={holds:[],note:''};
-      if(useGemini&&!refine&&!taskForModel&&!drvAll.length&&!images.length&&!audios.length){
-        const opts={d,message,today,photoCount:0,negatives,rules:effectiveRules(await db.metaGet('assistant_rules'))};
-        secondReview=await strongReviewOnce(db,{plan,validation:validatePlan(plan,opts),validate:p=>validatePlan(p,opts),parts,system,schema,scope:requestScope});plan=secondReview.plan;
+      try{assertAssistantPlan(plan);}catch(error){plan=await recoverSchema(error);assertAssistantPlan(plan);}
+      if(useGemini)plan=fillReceiptReferences(untrustedWorkPlan(plan),d,images.length);
+      const triggers=secondaryReviewTriggers({message,plan});
+      let secondReview={holds:[...new Set(recoveredHolds)],note:secondaryNote,questions:[]};
+      if(useGemini&&!refine&&!taskForModel&&!drvAll.length&&!secondaryUsed&&triggers.length){
+        secondaryUsed=true;
+        try{
+          const checked=await oneSecondaryRead(db,{parts:[...parts,{text:'Yalnız bu çelişkileri değerlendir: '+triggers.join(' · ')+'. Kayıt/tutar/onay önerme; kullanıcıya en fazla üç kısa netleştirme sorusu yaz.'}],system,schema:{type:'object',properties:{questions:{type:'array',items:{type:'string'}}},required:['questions']},scope:requestScope});
+          secondReview={holds:[],questions:(Array.isArray(checked.plan.questions)?checked.plan.questions:[]).filter(q=>typeof q==='string'&&q.trim()).slice(0,3).map(q=>q.slice(0,240)),note:'Tek ikinci kontrol tamamlandı. İlk kayıt değerleri ve çelişki onayları korunuyor.'};
+        }catch(error){requestScope.check();secondReview.note='İkinci kontrol tamamlanamadı; ilk sonuç korunuyor. Çelişkiyi karttan doğrulayın.';}
       }
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
       if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
@@ -639,7 +654,7 @@ export async function screen(ctx) {
       if(agentResult)agentResult={...agentResult,plan};
       const savedRules=effectiveRules(await db.metaGet("assistant_rules"));
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives, rules:savedRules });
-      v._businessRulesSnapshot=savedRules;preserveFirstReviewHolds(v,secondReview.holds);v._strongReviewNote=secondReview.note;
+      v._businessRulesSnapshot=savedRules;preserveFirstReviewHolds(v,secondReview.holds);v._strongReviewNote=secondReview.note;v.questions=[...new Set([...(v.questions||[]),...(secondReview.questions||[])])];
       v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
       if (drvRejected.length) {
@@ -650,6 +665,7 @@ export async function screen(ctx) {
       }
       if (drvSecWarn.length) v.driverSecWarn = [...new Set(drvSecWarn.map((x) => `${x.p.n || "Şoför"}: ${x.warn}`))];
       Object.assign(v, validateExtras(plan, { message: vmsg, d, today, photoTexts: v.photoTexts,photoCount:images.length,rules:savedRules }));
+      if(triggers.some(t=>t.startsWith('Fiş'))){for(const row of [...v.expenses,...v.fuel]){row.ok=false;row.okData=false;(row.issues??=[]).push('Fiş satırları / genel toplamı uyuşmuyor; belgeyi doğrulayın.');}}
       if(localStarter)for(const group of Object.keys(localStarter))for(const row of v[group]||[]){row.date='';row.ok=false;}
       if (drvPlan) {
         const seen = drv.seenDriverIds(d);
@@ -729,6 +745,8 @@ export async function screen(ctx) {
       v.agentTrace=agentResult?.trace||[];
       v.asked = asked && asked.answer ? asked : null;
       if (v.asked) v.askedHtml = tools.answerHtml(v.asked);
+      v.questions=suppressResolvedQuestions(v).questions;
+      if(Array.isArray(plan.questions))plan={...plan,questions:plan.questions.filter(q=>v.questions.includes(q))};
       v._chatTurn=chatTurn;
       if(!await finishChat(resultReply(v))){prev=null;qs('[data-out]',root).innerHTML=notice('warn','Sohbet başka sekmede yenilendi. Yeni konuşmadan devam edin.');return;}
       if(!msgEl.isConnected)return;

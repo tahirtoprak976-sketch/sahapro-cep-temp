@@ -1,3 +1,4 @@
+import {buildHybridEnvelope} from '../../../js/assistant-hybrid311.js';
 // Explicit owner-approved pseudonym corpus only. No phone DB, Save or real names.
 import {readFileSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -14,7 +15,7 @@ if(!Number.isInteger(budget)||budget<1||budget>100||!Number.isInteger(repeats)||
 const usagePath=resolve(value('--usage-file')),output=resolve(value('--output'));if(!usagePath.startsWith('/tmp/')||!output.startsWith('/tmp/'))throw Error('Sayaç/çıktı yalnız /tmp altında olmalı.');
 const lock=usagePath+'.lock';mkdirSync(lock);let scope,interrupted=false,usage;
 const interrupt=()=>{interrupted=true;scope?.abort();};process.once('SIGINT',interrupt);process.once('SIGTERM',interrupt);
-const report={mode:'live-owner-pseudonymized',realGemini:true,model,usedRealNames:false,savedBusinessRecords:0,runs:[],limitations:['Takma adlı kayıtlar ve mesajlar; gerçek telefon veya WhatsApp entegrasyonu ölçülmez.','Başarısız veya eksik ağ yanıtı dondurulmuş planla tamamlanmaz.']};
+const report={mode:'live-owner-pseudonymized',realGemini:true,model,usedRealNames:false,savedBusinessRecords:0,runs:[],limitations:['Takma adlı kayıtlar ve mesajlar; gerçek telefon veya WhatsApp entegrasyonu ölçülmez.','Bu koşucu ana JSON çıkarımı ve telefon doğrulamasını ölçer; araçlı sohbet/ikinci kontrol ve fiziksel UX ayrı sınanır.','Başarısız veya eksik ağ yanıtı dondurulmuş planla tamamlanmaz.']};
 try{
  try{usage=JSON.parse(readFileSync(usagePath,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
  const db={metaTxn:async(_keys,fn)=>{const r=fn({gemini_consent:true,gemini_daily_limit:budget,gemini_usage:usage});usage=r.set.gemini_usage;writeFileSync(usagePath,JSON.stringify(usage),{mode:0o600});return r.result;},metaUpdate:async(_k,fn)=>{usage=fn(usage);writeFileSync(usagePath,JSON.stringify(usage),{mode:0o600});}};
@@ -25,7 +26,8 @@ try{
    const http=gatedFetch(db),once=async(url,init)=>{if(requests++)throw Object.assign(Error('Bir örnek için tek ağ isteği sınırı.'),{code:'SAMPLE_ONCE'});return http(url,init);};
    scope=assistantRequestScope({fetchImpl:once});
    try{
-    const parts=[{text:JSON.stringify({context:assistantContext(fixture(),source.today_for_test,message(c)),message:message(c)})}];
+    const envelope=buildHybridEnvelope(fixture(),message(c),source.today_for_test,fixtureSettings().assistant_rules);
+    const parts=[{text:JSON.stringify({context:assistantContext(envelope.data,source.today_for_test,message(c)),phone_hints:envelope.hints,candidate_bounds:envelope.bounds,note:envelope.note,message:message(c)})}];
     run.responses[c.id]=await geminiJson(parts,{key,model,system:assistantSystem(fixtureSettings().assistant_rules),schema:assistantSchema(),fetchFn:scope.fetchFn});scope.check();
    }catch(e){run.failures.push({id:c.id,code:e.code||e.name||'ERROR',message:'Canlı yanıt tamamlanamadı; dondurulmuş yanıt kullanılmadı.'});if(['RATE','NO_FREE','LOCAL_LIMIT','ASSISTANT_ABORT'].includes(e.code))interrupted=true;}
    finally{scope.dispose();scope=null;writeFileSync(output,JSON.stringify(report,null,2)+'\n',{mode:0o600});}
