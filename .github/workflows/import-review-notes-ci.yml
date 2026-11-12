@@ -168,7 +168,7 @@ jobs:
       - name: Prove missing evening assistant on unchanged hybrid source
         run: |
           baseline=$(mktemp -d /tmp/solo-evening311-baseline-XXXXXX)
-          git archive 44a3d6c4002aaaa4c7ded5c57b7369f8a6aabbe8 | tar -x -C "$baseline"
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 44a3d6c4002aaaa4c7ded5c57b7369f8a6aabbe8 | tar -x -C "$baseline"
           cp tests/assistant-evening311.test.mjs "$baseline/tests/"
           if (cd "$baseline" && node tests/assistant-evening311.test.mjs) > /tmp/solo-evening311-baseline.log 2>&1; then
             cat /tmp/solo-evening311-baseline.log
