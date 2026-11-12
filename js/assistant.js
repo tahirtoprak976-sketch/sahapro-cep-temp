@@ -1,3 +1,4 @@
+import {strongReviewOnce,preserveFirstReviewHolds,localFallbackAllowed} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
 import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
@@ -137,7 +138,8 @@ export async function screen(ctx) {
   const paintTask=()=>{
     const box=qs('[data-agent-task]',root);if(!box)return;
     box.innerHTML=activeTask&&['draft','clarify','applying','review'].includes(activeTask.status)?`<section class="card"><b>Devam eden istek</b><p class="small">${esc(activeTask.goal)}</p><p class="small">${esc(taskOpen(activeTask)?(activeTask.plan.questions||[]).join(' · ')||'Kontrol kartları onay bekliyor.':'Kayıt sonucu kontrol gerektiriyor. Eski plan otomatik tekrar uygulanmaz.')}</p>${taskOpen(activeTask)?'<button class="btn block" data-task-resume>İsteğe devam et</button><button class="btn block" data-task-cancel style="margin-top:6px">Bu isteği kapat</button>':''}</section>`:'';
-    qs('[data-task-resume]',box)?.addEventListener('click',()=>{if(asking)return;if(!qs('[data-chat-context]',root).checked)return toast('Devam etmek için önceki sohbet ve açık istek bağlamını paylaş seçeneğini açın.','err');msgEl.value='Bu isteğe devam edelim; eksik bilgiyi sor.';msgEl.dispatchEvent(new Event('input',{bubbles:true}));qs('[data-ask]',root).click();});
+    qs('[data-task-resume]',box)?.addEventListener('click',()=>{if(asking)return;if(!qs('[data-chat-context]',root).checked)return toast('Devam etmek için önceki sohbet ve açık istek bağlamını paylaş seçeneğini açın.','err');msgEl.value=activeTask?.goal==='Gemini okuması bekliyor'?activeTask.source:'Bu isteğe devam edelim; eksik bilgiyi sor.';msgEl.dispatchEvent(new Event('input',{bubbles:true}));qs('[data-ask]',root).click();});
+    if(taskOpen(activeTask)&&activeTask.goal==='Yerel WhatsApp kontrolü'){const b=document.createElement('button');b.className='btn block';b.type='button';b.dataset.taskLocalResume='';b.textContent='Kaynak metni yerel olarak yeniden aç';b.onclick=()=>readLocally({resume:activeTask});box.querySelector('section').append(b);}
     qs('[data-task-cancel]',box)?.addEventListener('click',async()=>{if(asking)return;try{activeTask=await transitionTask(db,activeTask,'cancelled','Kullanıcı açık isteği kapattı.');if(prev?.v._agentTask?.id===activeTask.id){prev=null;qs('[data-out]',root).innerHTML='';}paintTask();}catch(e){toast(e.message,'err');}});
     ctx.taskCenterRefresh?.();
   };
@@ -306,7 +308,56 @@ export async function screen(ctx) {
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
   ctx.assistantPrepareNavigation=async()=>{if(asking||filesPending)throw Error('İşlem veya dosya kontrolü sürüyor.');clearTimeout(fileDraftT);await fileDraftWrite;await(await import('./assistant-task-files.js')).savePendingFiles(db,[...files]);clearTimeout(draftT);await db.metaSet('assistant_draft',msgEl.value);};
+  // Explicit local read reuses the same review/Save path and existing durable task format.
+  const readLocally=async({reason='',resume=null}={})=>{
+    if(asking||openingCard||filesPending||!root.isConnected)return;
+    const source=String(resume?.source||msgEl.value).trim();if(!source)return toast('Yerel okumak için mesaj yazın veya yapıştırın.','err');
+    if(files.length)return toast('Yerel okuyucu yalnız metin okur. Ekleriniz korunuyor; belgeyi Gemini ile okuyabilir veya metni ayrı bir istekte kullanabilirsiniz.','err');
+    if(/SP1:/.test(source))return toast('İmzalı şoför mesajını Gönder düğmesiyle güvenli doğrulamadan geçirin. Yerel okuyucu bu kodu işlemez.','err');
+    try{assertAssistantSource(source);}catch(error){return toast(error.message,'err');}
+    if(hasAssistantDraft(root)&&!await confirmDialog('Açık taslak kapansın mı?','Mevcut kontrol kartları yerine bu metin yerel kurallarla okunacak. Kaydet yapılmaz; önce kartı tamamlayabilir veya yeni okumayı seçebilirsiniz.','Yerel oku'))return;
+    if(asking||!root.isConnected||!resume&&msgEl.value.trim()!==source)return;
+    asking=true;const controls=qsa('button,input,select,textarea',root).filter(e=>!e.disabled);for(const el of controls)el.disabled=true;
+    let turn;
+    try{
+      const d=await db.dumpAll(),{offlinePlan}=await import('./offline-whatsapp.js'),{effectiveRules}=await import('./assistant-rules.js');
+      const v=offlinePlan(source,{d,today:todayStr(),rules:effectiveRules(await db.metaGet('assistant_rules'))});
+      if(!root.isConnected)return;
+      if(!v||!(v.works.length+v.fuel.length)){showAssistantRequestError(qs('[data-out]',root),'Yerel okuyucu bu metinde iş / araç yakıtı taslağı bulamadı. Para hareketi veya belge okunmuş sayılmadı; mesaj ve mevcut kartlar korunuyor.');return;}
+      const previous=await readTask(db);if(resume&&(previous?.id!==resume.id||previous?.rev!==resume.rev||!taskOpen(previous)))throw Error('Görev değişti; güncel isteği açın.');turn=await conversation.begin('Yerel okuma: '+source);
+      const keys=['date','customer_id','new_customer','site_id','new_site','vehicle_id','personnel_id','work_type','quantity','unit','material','dump_site_id','quarry_id','liters','source','description','note'];
+      const plan=Object.fromEntries(['works','fuel'].map(group=>[group,v[group].map(r=>({...Object.fromEntries(keys.filter(k=>r[k]!=null).map(k=>[k,r[k]])),quote:r.source_quote||r.quote||r.description||''}))]));
+      activeTask=await saveTaskProposal(db,{epoch:turn.epoch,previous,result:{mode:resume?'continue':'new',...(resume?{task_id:resume.id}:{}),goal:'Yerel WhatsApp kontrolü',plan},source});
+      const {savePendingFiles,attachFilesToTask}=await import('./assistant-task-files.js');await savePendingFiles(db,files);await attachFilesToTask(db,activeTask.id);
+      v._chatTurn=turn;v._agentTask=activeTask;v._draftOperation='agent:'+activeTask.id;
+      v._localReadNote=(reason?reason+' ':'')+'Yerel kuralla hazırlandı. Gemini çağrılmadı; yalnız iş ve araç yakıtı metni okundu. Para hareketi veya fotoğraf okunmuş sayılmaz.';
+      await conversation.finish(turn,{status:'draft',reply:v.works.length+v.fuel.length+' yerel kontrol kartı hazırlandı. Henüz kaydedilmedi; eksikleri tamamlayıp ayrıca onaylayın.'});
+      if(!root.isConnected)return;
+      prev={message:source,plan,v,d};manualRefine=null;qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
+      await renderOfflinePlan(ctx,qs('[data-out]',root),v,d,{message:source});paintTask();if(!resume){msgEl.value='';clearTimeout(draftT);await db.metaSet('assistant_draft','');}turnPreview();page.refresh();
+    }catch(error){if(root.isConnected)showAssistantRequestError(qs('[data-out]',root),'Yerel okuma tamamlanamadı; metni kontrol edip yeniden deneyin. '+(error.message||error));if(turn)await conversation.finish(turn,{status:'error',reply:'Yerel okuma tamamlanamadı; kayıt yazılmadı.'});}
+    finally{asking=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
+  };
+  qs('[data-local-read]',root).addEventListener('click',()=>{qs('[data-hub-dialog]',root)?.close();readLocally();});
+  qs('[data-queue-assistant]',root).addEventListener('click',async()=>{
+    qs('[data-hub-dialog]',root)?.close();
+    if(asking||filesPending||openingCard)return;
+    const source=msgEl.value.trim()||'Ekli belgeler bağlantı gelince okunacak.';
+    if(!msgEl.value.trim()&&!files.length)return toast('Saklamak için metin veya belge ekleyin.','err');
+    try{assertAssistantSource(source);}catch(error){return toast(error.message,'err');}
+    if(hasAssistantDraft(root)&&!await confirmDialog('Okunmamış istek saklansın mı?','Açık kontrol kartları kapanacak. Ekli belgeler ve kaynak metin görevde saklanır; iş veya para kaydı yazılmaz.','Görevde sakla'))return;
+    if(asking||!root.isConnected)return;asking=true;const controls=qsa('button,input,select,textarea',root).filter(e=>!e.disabled);for(const el of controls)el.disabled=true;
+    try{
+      const previous=await readTask(db),turn=await conversation.begin('Daha sonra oku: '+source);
+      const task=await saveTaskProposal(db,{epoch:turn.epoch,previous,result:{mode:'new',legacy:true,goal:'Gemini okuması bekliyor',plan:{questions:['Kaynak metin ve belgeler henüz okunmadı. Bağlantı ve kota uygun olduğunda Gönder ile okuyun.']}},source});
+      const {savePendingFiles,attachFilesToTask}=await import('./assistant-task-files.js');await savePendingFiles(db,files);await attachFilesToTask(db,task.id);await savePendingFiles(db,files);
+      activeTask=task;await conversation.finish(turn,{status:'clarify',reply:'İstek ve belgeler bu cihazın görev merkezinde saklandı. Henüz okunmadı; iş veya para kaydı oluşturulmadı.'});
+      if(root.isConnected){prev=null;manualRefine=null;qs('[data-out]',root).innerHTML=notice('info','İstek ve belgeler görev merkezinde saklandı. Bağlantı gelince kaynak metin ve eklerle Gönder düğmesini kullanın. Henüz okunmadı veya kaydedilmedi.');paintTask();}
+    }catch(error){if(root.isConnected)showAssistantRequestError(qs('[data-out]',root),'İstek saklanamadı; metin ve ekleri koruyun. '+(error.message||error));}
+    finally{asking=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
+  });
   const runAssistantRequest=async () => {
+    let pendingLocalFallback=null;
     if(asking)return;if(filesPending)return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin","err");asking=true;
     const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
     for(const el of locked)el.disabled=true;
@@ -475,14 +526,14 @@ export async function screen(ctx) {
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
     if (!localPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) {
       const slot=prev?.v._workflow?.panel.querySelector('[data-draft-reply]');
-      const reply=slot?.isConnected?'Bu ifadeyi yerel alanlara eşleyemedim. Açık taslağınız korunuyor. Alan adını ve tam seçeneği yazabilir veya karttan seçebilirsiniz. Genel serbest konuşma için Gemini bağlantısı gerekir.':"Bu isteği serbest mesaj veya belge olarak okumak için Gemini bağlantısı gerekiyor. İş merkezindeki yerel işlemler anahtarsız çalışır: müşteri/şantiye/araç/personel oluşturma, iş/tahsilat/gider/yakıt/bakım taslağı, kayıt arama, günlük özet ve ödeme takibi. Genel okuma için Ayarlar → Yapay Zeka bölümünden bağlantıyı ayarlayın.";
+      const reply=slot?.isConnected?'Bu ifadeyi yerel alanlara eşleyemedim. Açık taslağınız korunuyor. Alan adını ve tam seçeneği yazabilir veya karttan seçebilirsiniz. Genel serbest konuşma için Gemini bağlantısı gerekir.':"Bu isteği serbest mesaj veya belge olarak okumak için Gemini bağlantısı gerekiyor. İş merkezindeki yerel işlemler anahtarsız çalışır: müşteri/şantiye/araç/personel oluşturma, iş/tahsilat/gider/yakıt/bakım taslağı, kayıt arama, günlük özet ve ödeme takibi. Metni internetsiz okumak için + İşlem → Metni yerel oku seçin. Genel okuma için Ayarlar → Yapay Zeka bölümünden bağlantıyı ayarlayın.";
       if(slot?.isConnected)showAssistantRequestError(slot,reply);else showAssistantRequestError(qs('[data-out]',root),reply+' Mevcut kontrol kartları korunuyor.');
       await finishChat({status:'clarify',reply});return;
     }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
     const images = bundleFiles || files.filter((f) => !isAudio(f) && !isTransfer(f)), audios = files.filter(isAudio);
     await db.metaSet("assistant_draft", message);
-    if (!localPlan && !navigator.onLine) return toast("İnternet yok. Mesaj saklandı; internet gelince tekrar Gönder'e basın.", "err");
+    if(!localPlan&&!navigator.onLine){pendingLocalFallback={message:msgEl.value,reason:'İnternet yok.'};await finishChat({status:'clarify',reply:'İnternet yok; metin yerel okuyucuyla hazırlanacak. Ekler ve açık kartlar korunur.'});return;}
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
     const priorNodes=[...out.childNodes];
     btn.disabled = true;
@@ -569,6 +620,11 @@ export async function screen(ctx) {
       if(!msgEl.isConnected)return;
       assertAssistantPlan(plan);
       if(useGemini)plan=untrustedWorkPlan(plan);
+      let secondReview={holds:[],note:''};
+      if(useGemini&&!refine&&!taskForModel&&!drvAll.length&&!images.length&&!audios.length){
+        const opts={d,message,today,photoCount:0,negatives,rules:effectiveRules(await db.metaGet('assistant_rules'))};
+        secondReview=await strongReviewOnce(db,{plan,validation:validatePlan(plan,opts),validate:p=>validatePlan(p,opts),parts,system,schema,scope:requestScope});plan=secondReview.plan;
+      }
       const photoPolicy = drv.driverPhotoPolicy(drvPayloads, images.length, { rejected: drvRejected.length > 0 });
       if(bundled&&drvPayloads.length&&!photoPolicy.allowed)throw Error("Paketin fotoğraf sayısı kayıtlarla uyuşmuyor. Şoförden aynı kayıtları tek paketle yeniden paylaşmasını isteyin");
       const drvPlan = drvPayloads.length ? drv.payloadsToPlan(drvPayloads, d, { photoCount: images.length, allowPhotos: photoPolicy.allowed }) : null;
@@ -583,7 +639,7 @@ export async function screen(ctx) {
       if(agentResult)agentResult={...agentResult,plan};
       const savedRules=effectiveRules(await db.metaGet("assistant_rules"));
       const v = validatePlan(plan, { message: vmsg, d, today, photoCount: images.length, negatives, rules:savedRules });
-      v._businessRulesSnapshot=savedRules;
+      v._businessRulesSnapshot=savedRules;preserveFirstReviewHolds(v,secondReview.holds);v._strongReviewNote=secondReview.note;
       v._draftOperation=refine?.v._draftOperation||(localStarter?'draft:'+chatTurn.id:null);
       v.rawCount = useGemini ? Object.values(plan || {}).filter(Array.isArray).reduce((n, a) => n + a.length, 0) : null;
       if (drvRejected.length) {
@@ -698,6 +754,7 @@ export async function screen(ctx) {
       render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
       turnPreview();
     } catch (e) {
+      if(localFallbackAllowed(e,{message:typed,files:files.length,online:navigator.onLine}))pendingLocalFallback={message:msgEl.value,reason:'Gemini bağlantısı veya kota uygun değil.'};
       if(msgEl.isConnected){
         showAssistantRequestError(out,(e.message||String(e))+(priorNodes.some(n=>n.nodeType===1&&!n.matches('[data-assistant-request-error]'))?' Önceki kontrol kartları aşağıda korunuyor.':''),priorNodes);
         await finishChat({status:'error',reply:e.message||String(e)});
@@ -711,6 +768,7 @@ export async function screen(ctx) {
       if(chatTurn&&!chatFinished)await finishChat({status:'error',reply:qs('[data-out]',root)?.textContent?.slice(0,1200)||'İstek tamamlanamadı. Mesajı kontrol edip yeniden gönderin.'}).catch(()=>toast('Sohbet notu saklanamadı; mesajınız ekranda korunuyor.','err'));
       asking=false;
       for(const el of locked)if(el.isConnected)el.disabled=false;
+      if(pendingLocalFallback&&root.isConnected&&msgEl.value===pendingLocalFallback.message&&!hasAssistantDraft(root))queueMicrotask(()=>readLocally({reason:pendingLocalFallback.reason}));
     }
   };
   qs('[data-ask]',root).addEventListener('click',runAssistantRequest);
@@ -837,6 +895,8 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const checkedTools={find_records:'Kayıt araması',get_records:'Kayıt incelemesi',work_totals:'İş toplamı',customer_balance:'Müşteri bakiyesi',fuel_totals:'Yakıt toplamı',expense_totals:'Gider toplamı',collection_totals:'Tahsilat toplamı',tank_status:'Depo durumu',customer_fuel:'Mazot hesabı',yard_stock:'Depo stoku',receivables:'Alacaklar',vehicle_profit:'Araç kârlılığı',customer_profit:'Müşteri kârlılığı',price_check:'Fiyat kontrolü',business_review:'İşletme değerlendirmesi',quote_price:'Teklif hesabı',payroll_status:'Puantaj / maaş',maintenance_due:'Bakım takvimi',esnaf_debt:'Esnaf borcu'};
   const checks=(v.agentTrace||[]).filter(t=>checkedTools[t.name]);
   out.innerHTML =
+    (v._localReadNote?'<p class="notice info" data-local-read-note>'+esc(v._localReadNote)+'</p>':'')+
+    (v._strongReviewNote?'<p class="notice info" data-strong-review-note>'+esc(v._strongReviewNote)+'</p>':'')+
     (v.agentGoal?`<div class="card" data-agent-goal><b>Anladığım istek</b><p class="small">${esc(v.agentGoal)}</p>${checks.length?`<details data-agent-checks><summary>Kontrol edilenler (${checks.length})</summary>${checks.map(t=>`<p class="small">${esc(checkedTools[t.name])}: ${esc(t.result?.error?'Tamamlanamadı — '+t.result.error:t.result?.records?`${t.result.records.length} kayıt gösterildi${t.result.truncated?' (sonuç sınırlı)':''}`:'Hesaplandı')}</p>`).join('')}</details>`:''}</div>`:'') +
     `<div class="section-title">Asistanın bulduğu (${total+(v.partDocuments?.length||0)}) · ${(ms / 1000).toFixed(1)} sn</div>` +
     (v.partDocumentUnmatched?notice('warn','Parça belgesinin fotoğraf sırası eşleşmedi. Orijinalleri koruyup Yedek parça / garanti belgesi oku düğmesini kullanın.'):'')+

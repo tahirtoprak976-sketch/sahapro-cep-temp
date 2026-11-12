@@ -54,14 +54,16 @@ function oldQuestions(rows){
  for(const [index,r]of rows.entries())if(r.dateConflict&&!groups.some(q=>q.field==='date'&&q.rows.includes(index+1)))groups.push({field:'date',rows:[index+1]});
  return groups.map(q=>({field:q.field,actualRows:q.rows.map(n=>n-1)}));
 }
-export function measureReal({mode='assistant-validation',batch=false,photos=false,today=source.today_for_test}={}){
+export function measureReal({mode='assistant-validation',batch=false,photos=false,today=source.today_for_test,responses=null}={}){
  const totals=newStats(),categories={},failureReasons={},details=[];
  const inputs=photos?photoCases:batch?[{...source.cases.find(c=>c.id==='r00_tumu'),expected:cases.flatMap(c=>c.expected),originIds:cases.flatMap(c=>c.expected.map(()=>c.id))}]:cases;
  for(const c of inputs){
   const d=fixture(),text=message(c);let rows;
+  if(responses&&!Object.hasOwn(responses,c.id))throw Error('Canlı yanıt eksik: '+c.id+'; dondurulmuş yanıtla tamamlanmaz.');
+  const response=responses?responses[c.id]:c.recordedResponse||recordings.responses[c.id];
   if(mode==='local-parser')rows=analyzeMessage({id:c.id,text,date:today},d).rows.map(r=>({...r,ok:!!(r.customer_id&&r.vehicle_id&&r.work_type&&r.quantity&&r.unit&&r.inference_confirmed),liters:r.fuel_liters,source:r.fuel_source,note:(r.notes||[]).join(' · ')}));
   else if(mode==='offline-review'){const out=offlinePlan(text,{d,today,rules:fixtureSettings().assistant_rules});rows=Object.entries(kinds).flatMap(([kind,group])=>(out?.[group]||[]).map(r=>({...r,kind})));}
-  else{const out=validatePlan(structuredClone(c.recordedResponse||recordings.responses[c.id]),{d,message:text,today,rules:fixtureSettings().assistant_rules,photoCount:(c.photoTexts||[]).length});Object.assign(out,validateExtras(c.recordedResponse||recordings.responses[c.id],{d,message:text,today,rules:fixtureSettings().assistant_rules}));rows=Object.entries(kinds).flatMap(([kind,group])=>(out[group]||[]).map(r=>({...r,kind})));}
+  else{const out=validatePlan(structuredClone(response),{d,message:text,today,rules:fixtureSettings().assistant_rules,photoCount:(c.photoTexts||[]).length});Object.assign(out,validateExtras(response,{d,message:text,today,rules:fixtureSettings().assistant_rules}));rows=Object.entries(kinds).flatMap(([kind,group])=>(out[group]||[]).map(r=>({...r,kind})));}
   const stat=newStats();stat.messages=1;stat.expectedCards=c.expected.length;stat.actualCards=rows.length;const pairs=align(c.expected,rows,d),used=new Set(pairs.filter(i=>i>=0)),wrong=[],rowsByExpected=[];
   for(const [ei,e]of c.expected.entries()){
    const ai=pairs[ei],a=ai<0?null:rows[ai];if(!a){stat.missingCards++;rowsByExpected.push(null);continue;}const errors=[];
