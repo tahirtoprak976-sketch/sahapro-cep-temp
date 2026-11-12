@@ -31,7 +31,7 @@ export function assistantPageHTML(g,query,guide){
  <label class="assistant-message-label" for="assistant-message">Mesaj</label><textarea id="assistant-message" data-msg readonly rows="2" placeholder="Mesajını yaz veya WhatsApp’tan yapıştır…"></textarea>
  <input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-photos class="assistant-native-file" tabindex="-1" aria-label="Fotoğraf, PDF veya aktarım dosyası seç">
  <input type="file" accept="image/jpeg,image/png,image/webp,audio/*,.txt,.zip,.pdf,text/plain,application/zip,application/pdf" multiple data-addphotos class="assistant-native-file" tabindex="-1" aria-label="Yeni ekleri seç">
- <div class="assistant-composer-actions"><button class="btn" type="button" data-attach aria-label="Fotoğraf veya dosya ekle">＋ Ekle</button><button class="btn" type="button" data-rec ${g.ready?'':'disabled'}>🎤 Sesli not</button><button class="btn primary" type="button" data-ask disabled>Gönder ↑</button></div>
+ <div class="assistant-composer-actions"><button class="btn" type="button" data-hub-catalog-open aria-label="Tüm asistan işlemleri">＋ İşlem</button><button class="btn" type="button" data-attach aria-label="Fotoğraf veya dosya ekle">＋ Ekle</button><button class="btn" type="button" data-rec ${g.ready?'':'disabled'}>🎤 Sesli not</button><button class="btn primary" type="button" data-ask disabled>Gönder ↑</button></div>
  <div data-turn-intent class="tiny muted" role="status">Yeni istek veya belge gönderebilirsiniz.</div>
  </section></div>`;
 }
