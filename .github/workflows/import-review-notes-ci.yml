@@ -158,6 +158,23 @@ jobs:
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 42aaa42706ab23dcbb841c8d6807702557602aaf
 
+      - name: Verify installed v3.10.11 to mobile assistant preservation
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 465a6e70254b5e3f79acc1b141e096bc37a62695
+
+      - name: Prove absent card states on unchanged v3.10.11
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-mobile112-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 465a6e70254b5e3f79acc1b141e096bc37a62695 | tar -x -C "$baseline"
+          cp tests/assistant-mobile112.test.mjs "$baseline/tests/"
+          if (cd "$baseline" && node tests/assistant-mobile112.test.mjs) > /tmp/solo-mobile112-baseline.log 2>&1; then
+            echo 'Unchanged v111 unexpectedly provides independent card states'
+            exit 1
+          fi
+          grep -F "does not provide an export named 'reviewState'" /tmp/solo-mobile112-baseline.log
+          rm -rf "$baseline"
+
       - name: Verify installed v3.10.10 to source context preservation
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e130fc24296704ec46cc1a6761ce3d7357cacbe3
