@@ -19,6 +19,7 @@ export function customerNameAnswer(value) {
 }
 export function customerCreateRequest(text,previous) {
   const raw=String(text||'').trim(),f=fold(raw);
+  if(/^(?:yeni musteri|(?:yeni )?musteri (?:olusturmak|acmak|eklemek) istiyorum)[.!?]?$/u.test(f))return {kind:'ask',name:''};
   // A dedicated intent survives reload, but only the immediately preceding question consumes a bare name.
   if(previous?.intent===CUSTOMER_CREATE_INTENT && previous.status==='clarify') {
     const name=customerNameAnswer(raw);if(name)return {kind:'draft',name};
@@ -56,8 +57,8 @@ export function customerCreateMatches(name,parent,customers=[]) {
   ));
   return {exact,similar};
 }
-export function showCustomerCreate(ctx,out,request,customers,conversation,turn) {
-  out.innerHTML=`<section class="card" data-customer-create><h3>Yeni müşteri oluştur</h3><p class="small">Müşterinin adını kontrol edin. Benzer bir kayıt adı kendiliğinden değiştirmez.</p>
+export function showCustomerCreate(ctx,out,request,customers,conversation,turn,{onCreated,onCancelled,cancelLabel='Vazgeç'}={}) {
+  out.innerHTML=`<section class="card assistant-entity-card" data-customer-create><div class="assistant-section-label">YENİ KART · MÜŞTERİ</div><h2>Yeni müşteri oluştur</h2><p class="small">Müşterinin adını kontrol edin. Benzer bir kayıt adı kendiliğinden değiştirmez.</p>
     <div class="field"><label for="assistant-customer-name">Müşteri adı</label><input id="assistant-customer-name" data-customer-name maxlength="120" value="${esc(request.name||'')}" autocomplete="off"></div>
     <div class="field"><label for="assistant-customer-phone">Telefon (isteğe bağlı)</label><input id="assistant-customer-phone" data-customer-phone type="tel" maxlength="40"></div>
     <div class="field"><label for="assistant-customer-parent">Ana firma (taşeronsa, isteğe bağlı)</label><select id="assistant-customer-parent" data-customer-parent><option value="">Bağımsız müşteri</option>${customers.filter(isActive).map(c=>`<option value="${esc(c.id)}">${esc(customerLabel(c,customers))}</option>`).join('')}</select></div>
@@ -65,7 +66,7 @@ export function showCustomerCreate(ctx,out,request,customers,conversation,turn) 
     <label class="history-check small" data-customer-separate-wrap hidden><input type="checkbox" data-customer-separate> Benzer kayıtlardan ayrı yeni bir müşteri oluşturmak istiyorum</label>
     <p class="small" data-customer-error role="alert"></p>
     <button class="btn primary block" data-create-customer>Müşteriyi oluştur</button>
-    <button class="btn block" data-cancel-customer style="margin-top:8px">Vazgeç</button>
+    <button class="btn block" data-cancel-customer style="margin-top:8px">${esc(cancelLabel)}</button>
     <p class="tiny muted">Bu işlem yalnız müşteri kartı açar; iş, borç veya tahsilat yazmaz.</p></section>`;
   const box=qs('[data-customer-create]',out),nameEl=qs('[data-customer-name]',box),parentEl=qs('[data-customer-parent]',box),separate=qs('[data-customer-separate]',box),button=qs('[data-create-customer]',box),error=qs('[data-customer-error]',box);
   let busy=false;
@@ -77,10 +78,11 @@ export function showCustomerCreate(ctx,out,request,customers,conversation,turn) 
     button.disabled=busy||!name||!!m.exact.length||!!m.similar.length&&!separate.checked;
     if(reset)error.textContent='';
   };
-  nameEl.oninput=()=>refresh(true);parentEl.onchange=()=>refresh(true);separate.onchange=()=>refresh();refresh();
+  nameEl.oninput=()=>refresh(true);parentEl.onchange=()=>refresh(true);separate.onchange=()=>refresh();refresh();box.scrollIntoView({block:'start'});
   qs('[data-cancel-customer]',box).onclick=async()=>{
     if(busy)return;
     box.remove();await conversation.finish(turn,{status:'cancelled',reply:'Müşteri oluşturma taslağından vazgeçildi; kayıt açılmadı.',intent:null});
+    if(onCancelled&&ctx.root.isConnected)try{await onCancelled();}catch(e){out.innerHTML=notice('warn',esc('Taslak açılamadı: '+e.message));}
   };
   button.onclick=async()=>{
     if(busy||button.disabled||!box.isConnected||qs('[data-ask]',ctx.root)?.disabled)return;
@@ -103,5 +105,6 @@ export function showCustomerCreate(ctx,out,request,customers,conversation,turn) 
     }
     busy=false;for(const el of locked)if(el.isConnected)el.disabled=false;
     if(box.isConnected)refresh();
+    if(rec&&onCreated&&ctx.root.isConnected)try{await onCreated(rec);}catch(e){out.insertAdjacentHTML('beforeend',notice('warn',esc('Müşteri kaydedildi; sonraki taslak açılamadı: '+e.message)));}
   };
 }

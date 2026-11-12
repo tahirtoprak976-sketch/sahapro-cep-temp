@@ -1,4 +1,4 @@
-import {normalizedVehicleFields} from "./vehicle-type-core.js";
+import {normalizedVehicleFields,canonicalVehicleType} from "./vehicle-type-core.js";
 import {journalTransaction,rememberWrites,transactionWrites} from './write-receipt.js';
 import { prepareAttachment, prepareInvoiceOriginal } from "./attachment-safety.js";
 import {historicalFuelIdentity} from './historical-fuel.js';
@@ -530,6 +530,58 @@ export async function ensureCustomerCard(name, parent = null, options = {}) {
     };
     t.oncomplete = () => resolve(rememberWrites(result,t));
     t.onerror = t.onabort = (event) => reject(error || transactionError(t, event));
+  });
+}
+
+// Explicit site approval: identity is name + customer, serialized with parent and chat checks.
+export async function ensureSiteCard(name, customer, options = {}) {
+  name=String(name||'').trim();
+  if(name.length<2||name.length>120||/[<>\n\r]/u.test(name))throw Error('Şantiye adı 2–120 karakter olmalı ve düz metin içermeli');
+  if(!customer)throw Error('Şantiyenin müşterisini seçin');
+  const d=await openDB();
+  return new Promise((resolve,reject)=>{
+    const t=journalTransaction(d.transaction(['sites','customers','audit_log',...(options.conversation?['meta']:[])],'readwrite'));let result,error;
+    const abort=message=>{error=Error(message);t.abort();};
+    const parent=t.objectStore('customers').get(customer);
+    parent.onsuccess=()=>{if(!parent.result||!isActive(parent.result))abort('Müşteri artık kullanılamıyor; tekrar seçin');};
+    if(options.conversation){const chat=t.objectStore('meta').get('assistant_conversation_v1');chat.onsuccess=()=>{const state=chat.result?.value,turn=options.conversation;if(state?.id!==turn.epoch||!state?.turns?.some(x=>x.id===turn.id&&x.status!=='cancelled'))abort('Sohbet yenilendi veya taslak kapandı. Şantiye isteğini yeniden gönderin.');};}
+    const q=t.objectStore('sites').getAll();q.onsuccess=()=>{try{
+      const matches=q.result.filter(r=>isActive(r)&&r.customer_id===customer&&customerNameKey(r.name)===customerNameKey(name));
+      if(matches.length>1){abort('Aynı müşteride aynı adlı birden fazla şantiye var; mevcut kartı seçin');return;}
+      if(matches.length){result={...matches[0],_existing:true};return;}
+      result=newRecord({name,customer_id:customer,address:String(options.address||'').trim().slice(0,300)});
+      t.objectStore('sites').put(result);t.objectStore('audit_log').put({id:uuid(),entity:'sites',entity_id:result.id,action:'create',old:null,new:result,reason:'Asistan: onaylanan yeni şantiye',at:nowISO()});
+    }catch(e){error=e;try{t.abort();}catch{}}};
+    t.oncomplete=()=>resolve(rememberWrites(result,t));t.onerror=t.onabort=event=>reject(error||transactionError(t,event));
+  });
+}
+
+// Narrow assistant directory writer: no pay, fuel, driver credentials or arbitrary store/field writes.
+export async function ensureAssistantDirectoryCard(store, fields, options={}) {
+  if(!['vehicles','personnel'].includes(store))throw Error('Bu kart türü desteklenmiyor');
+  const name=String(fields?.name||'').trim();
+  if(name.length<2||name.length>120||/[<>\n\r]/u.test(name))throw Error('Ad 2–120 karakter olmalı ve düz metin içermeli');
+  let values={name};
+  if(store==='vehicles'){
+    const type=canonicalVehicleType(fields?.type);if(!type)throw Error('Araç türünü seçin');
+    const raw=String(fields?.plate||'').trim(),plate=raw.toLocaleUpperCase('tr-TR').replace(/[\s-]+/g,'');
+    if(raw&&(!/^[A-Z0-9]{4,16}$/u.test(plate)||!/^[A-Za-z0-9\s-]+$/u.test(raw)))throw Error('Plakayı harf ve rakamlarla yazın veya boş bırakın');
+    values={...values,...normalizedVehicleFields({type}),plate};
+  }else{
+    const phone=String(fields?.phone||'').trim();if(phone&&(!/^[+\d\s().-]+$/u.test(phone)||phone.replace(/\D/g,'').length<10||phone.replace(/\D/g,'').length>15))throw Error('Telefonu 10–15 rakam olarak yazın veya boş bırakın');
+    values.phone=phone;
+  }
+  const d=await openDB();
+  return new Promise((resolve,reject)=>{
+    const t=journalTransaction(d.transaction([store,'audit_log',...(options.conversation?['meta']:[])],'readwrite'));let result,error;
+    if(options.conversation){const chat=t.objectStore('meta').get('assistant_conversation_v1');chat.onsuccess=()=>{const state=chat.result?.value,turn=options.conversation;if(state?.id!==turn.epoch||!state?.turns?.some(x=>x.id===turn.id&&x.status!=='cancelled')){error=Error('Sohbet yenilendi veya taslak kapandı. Kart isteğini yeniden gönderin.');t.abort();}};}
+    const q=t.objectStore(store).getAll();q.onsuccess=()=>{try{
+      const matches=q.result.filter(r=>isActive(r)&&(store==='vehicles'&&values.plate?String(r.plate||'').toLocaleUpperCase('tr-TR').replace(/[\s-]+/g,'')===values.plate:customerNameKey(r.name)===customerNameKey(name)));
+      if(matches.length>1){error=Error('Birden fazla aynı kart var; mevcut kayıtları inceleyin');t.abort();return;}
+      if(matches.length){result={...matches[0],_existing:true};return;}
+      result=newRecord(values);t.objectStore(store).put(result);t.objectStore('audit_log').put({id:uuid(),entity:store,entity_id:result.id,action:'create',old:null,new:result,reason:'Asistan: onaylanan '+(store==='vehicles'?'araç':'personel'),at:nowISO()});
+    }catch(e){error=e;try{t.abort();}catch{}}};
+    t.oncomplete=()=>resolve(rememberWrites(result,t));t.onerror=t.onabort=event=>reject(error||transactionError(t,event));
   });
 }
 
