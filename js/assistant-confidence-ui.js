@@ -1,3 +1,4 @@
+import {attachSourcePriorities} from './assistant-hybrid311.js';
 import {CONFIDENCE,confidenceValue} from './assistant-confidence.js';
 const groups={work:'works',expense:'expenses',fuel:'fuel',fuelout:'fuelOut',tank:'tankIn',collection:'collections',maintenance:'maintenance',personnel:'personnel'};
 const raw={customer:'customer_id',vehicle:'vehicle_id',site:'site_id',personnel:'personnel_id',fuel_customer:'customer_id',bank:'bank_account_id',supplier:'supplier_id',pay:'payment_option'};
@@ -32,6 +33,7 @@ export function mountConfidenceInputs(out,v){
    if(el.name==='supplier'&&el.value)r.credit=true;
    if(el.name==='pay'&&el.value)r.credit=false;
    if(r.fieldConfidence[field])r.fieldConfidence[field]={value:el.value||null,level:el.value?CONFIDENCE.CERTAIN:CONFIDENCE.UNKNOWN,reason:el.value?'Sizin açık düzeltmeniz':'Alan boş',source:'user'};if(r.fieldConfidence[field])badge(el,field,r.fieldConfidence[field]);
+   attachSourcePriorities(r);
    // Never leave a registered-price label attached to a changed price context.
    if(['customer','site','vehicle','work_type','unit','date','material','unit_price'].includes(el.name)){
     delete r.fieldConfidence.effective_unit_price;card.querySelector('[data-confidence-price]')?.remove();

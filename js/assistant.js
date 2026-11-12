@@ -1,3 +1,4 @@
+import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner} from './assistant-hybrid311.js';
 import {strongReviewOnce,preserveFirstReviewHolds,localFallbackAllowed} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
@@ -572,14 +573,15 @@ export async function screen(ctx) {
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
       const { effectiveRules } = await import("./assistant-rules.js");
-      const sourceHints=sourceContextHints(drvRest,d,today,effectiveRules(await db.metaGet("assistant_rules")));
+      const hybridEnvelope=buildHybridEnvelope(d,[taskForModel?.source||'',drvRest].filter(Boolean).join('\n'),today,effectiveRules(await db.metaGet("assistant_rules")));
+      const sourceHints=hybridEnvelope.hints;
       const parts = [
         ...(sourceHints.length?[{text:'telefon_satir_baglami (yerel kayıt kanıtı; blok/tarih sınırlarını aşma, para ve işlem yetkisi değildir):\n'+JSON.stringify(sourceHints)}]:[]),
         ...(conversationData.length ? [{text:'sohbet_baglami (yalnız atıf bağlamı; geçmiş işleri tekrar yazma, rakamları güncel facts ile doğrula):\n'+JSON.stringify(conversationData)}] : []),
-        { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(d, today, message), ...actionsContext(d, message) }) },
-        { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
-        ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
-        ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
+        { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(hybridEnvelope.data, today, message), ...actionsContext(hybridEnvelope.data, message),candidate_bounds:hybridEnvelope.bounds,privacy_note:hybridEnvelope.note }) },
+        { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify({today,note:'Şirket geneli rakamlar ve bakiyeler bu aday bağlamında yoktur. Gerekli hesapları telefonun okuma araçlarından iste; sıfır veya tutar tahmin etme.'}) },
+        ...(negatives.some(x=>x.alias&&message.toLocaleLowerCase('tr-TR').includes(String(x.alias).toLocaleLowerCase('tr-TR'))) ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.filter(x=>x.alias&&message.toLocaleLowerCase('tr-TR').includes(String(x.alias).toLocaleLowerCase('tr-TR'))).slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
+        ...(examples.filter(e=>e.msg===message).length ? [{ text: "examples (onaylı):\n" + examples.filter(e=>e.msg===message).map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
       ];
       const imgParts = [];
       for (const f of images) {
@@ -609,7 +611,7 @@ export async function screen(ctx) {
         const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
         const {geminiAgent}=await import('./ai-gemini.js');
         const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
-        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope});
+        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:hybridReadRunner(createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),hybridEnvelope,[taskForModel?.source||'',message].filter(Boolean).join('\n')),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope});
         d=await db.dumpAll();
       }
       let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
@@ -729,6 +731,8 @@ export async function screen(ctx) {
       v.agentTrace=agentResult?.trace||[];
       v.asked = asked && asked.answer ? asked : null;
       if (v.asked) v.askedHtml = tools.answerHtml(v.asked);
+      v.questions=suppressResolvedQuestions(v).questions;
+      if(Array.isArray(plan.questions))plan={...plan,questions:plan.questions.filter(q=>v.questions.includes(q))};
       v._chatTurn=chatTurn;
       if(!await finishChat(resultReply(v))){prev=null;qs('[data-out]',root).innerHTML=notice('warn','Sohbet başka sekmede yenilendi. Yeni konuşmadan devam edin.');return;}
       if(!msgEl.isConnected)return;

@@ -1,0 +1,33 @@
+{
+  "mode": "assistant-validation",
+  "totals": {
+    "messages": 1,
+    "expectedCards": 38,
+    "actualCards": 38,
+    "readyCorrect": 15,
+    "unnecessaryQuestions": 14,
+    "missedQuestions": 0,
+    "wrongFields": 3,
+    "missingCards": 0,
+    "extraCards": 0,
+    "silentWrong": 0
+  },
+  "categories": {
+    "Tek seferde 20 mesaj": {
+      "messages": 1,
+      "expectedCards": 38,
+      "actualCards": 38,
+      "readyCorrect": 15,
+      "unnecessaryQuestions": 14,
+      "missedQuestions": 0,
+      "wrongFields": 3,
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0
+    }
+  },
+  "failureReasons": {
+    "customer": 1,
+    "material": 2
+  }
+}
