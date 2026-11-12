@@ -3,15 +3,15 @@ import {inferenceReason} from './assistant-confidence-ui.js';
 import {esc,qs,fmtTL,trDate,fmtNum} from './ui.js';
 import {readDraftRows,draftMissing,DRAFT_FIELDS} from './assistant-workflow.js';
 import {detailedAssistant,DETAIL_PREFERENCE} from './assistant-page-ui.js';
-import {reviewTotals,groupedDraftQuestions} from './assistant-review-core.js';
+import {reviewTotals,reviewStates,reviewState,sensitiveAssistantRow,groupedDraftQuestions} from './assistant-review-core.js';
 const groups={work:'works',expense:'expenses',fuel:'fuel',fuelout:'fuelOut',collection:'collections',maintenance:'maintenance',ticket:'tickets',doc:'docs',tank:'tankIn',personnel:'personnel',edit:'edits',card:'cards',memory:'memory',price:'prices',action:'actions',setting:'settings'};
 const labels={work:'İş',expense:'Gider',fuel:'Yakıt',fuelout:'Müşteriye mazot',collection:'Tahsilat',maintenance:'Bakım',ticket:'Fiş',doc:'Belge',tank:'Depo girişi',personnel:'Personel',edit:'Kayıt düzeltme',card:'Kart',memory:'Hatırlanacak bilgi',price:'Fiyat kuralı',action:'İşlem',setting:'Ayar'};
 export function openReviewCard(card){const detail=card?.querySelector('[data-record-details]');if(detail)detail.open=true;}
 export function bindAssistantReview(ctx,out,v,d){
  const cards=[...out.querySelectorAll('.card[data-kind]')];if(!cards.length)return;
  out.querySelector('[data-model-questions]')?.setAttribute('hidden','');
- let expanded=detailedAssistant();
- const panel=document.createElement('section');panel.className='card assistant-review-overview';panel.dataset.reviewOverview='';panel.innerHTML='<h2>Kayıtları kontrol edelim</h2><div data-review-counts role="status"></div><div class="assistant-review-tools"><button type="button" class="btn sm" data-review-expand></button><button type="button" class="btn sm" data-review-compose>Konuşarak düzelt</button></div>';out.prepend(panel);
+ let expanded=detailedAssistant(),filter='all';
+ const panel=document.createElement('section');panel.className='card assistant-review-overview';panel.dataset.reviewOverview='';panel.innerHTML='<h2>Kayıtları kontrol edelim</h2><div class="assistant-review-states" data-review-states aria-label="Bu isteğin kartları"></div><p class="small" data-review-filter-notice hidden></p><div data-review-counts role="status"></div><div class="assistant-review-tools"><button type="button" class="btn sm" data-review-expand></button><button type="button" class="btn sm" data-review-compose>Konuşarak düzelt</button></div>';out.prepend(panel);
  const questionBox=document.createElement('section');questionBox.className='card';questionBox.dataset.reviewQuestions='';out.append(questionBox);
  if((v.works||[]).length>20){const count=document.createElement('p');count.className='notice info';count.dataset.largeReviewCount='';count.textContent=v.works.length+' iş satırının tamamı kontrol listesinde. Henüz kaydedilmedi; seçili satırları kontrol edip onaylayın.';panel.append(count);}
  const batchControls=qs('[data-batch-ready]',out)?.parentElement;if(batchControls)qs('.assistant-review-tools',panel).append(batchControls);
@@ -42,6 +42,8 @@ export function bindAssistantReview(ctx,out,v,d){
   if(kind==='work')parts.push(value(card,'price_pending')?'Fiyat bekliyor':value(card,'unit_price')!==''?'Birim fiyat '+fmtTL(Number(value(card,'unit_price')))+' ₺':r.fieldConfidence?.effective_unit_price?'Kayıtlı fiyat '+fmtTL(Number(r.fieldConfidence.effective_unit_price.value))+' ₺':'Fiyat kayıt sırasında kontrol edilir');
   if(!parts.length)parts.push(...fields(['name','title','description','ticket_no','doc_no']));
   const summary=qs('[data-record-summary]',card);if(summary)summary.innerHTML=`<b>${esc(parts.join(' · ')||r.description||row.label)}</b><span class="assistant-record-state">${row.saved?'Kaydedildi':row.missing.length?'Eksik: '+esc(row.missing.map(k=>DRAFT_FIELDS[k]).join(', ')):row.duplicate?'Olası mükerrer':row.issues?'Kontrol gerekiyor':'Ayrıntıları kontrol et'} <span aria-hidden="true">⌄</span></span>`;
+  let approval=qs('[data-sensitive-approval]',card);
+  if(sensitiveAssistantRow(row)){if(!approval){approval=document.createElement('div');approval.dataset.sensitiveApproval='';approval.className='assistant-sensitive-approval';card.insertBefore(approval,qs('[data-record-details]',card));}approval.hidden=row.saved;approval.textContent=row.selected?'Seçtiniz. Para hareketi henüz kaydedilmedi; Kaydet ile onaylanır.':'Bu para hareketi ayrıca onayınızı bekliyor. Üstteki kutuyu kendiniz işaretleyin; sonra Kaydet’e basın.';card.classList.add('assistant-sensitive-record');}
   let warning=qs('[data-review-warning]',card);
   if(!warning){warning=document.createElement('div');warning.className='small assistant-record-warning';warning.dataset.reviewWarning='';card.insertBefore(warning,qs('[data-record-details]',card));}
   warning.textContent=row.issueText;warning.hidden=!row.issueText;
@@ -73,6 +75,10 @@ export function bindAssistantReview(ctx,out,v,d){
  });
  let updating=false;
  const update=()=>{if(updating||!panel.isConnected)return;updating=true;try{const rows=read(),totals=reviewTotals(rows);qs('[data-review-counts]',panel).textContent=`${totals.total} kayıt · ${totals.selected} seçili · ${totals.review} kontrol bekliyor${totals.duplicates?' · '+totals.duplicates+' olası mükerrer':''}`;
+  const states=reviewStates(rows),stateLabels={all:'Tümü',saved:'Kaydedilen',ready:'Hazır',review:'Kontrol / onay'};
+  const chips=qs('[data-review-states]',panel);for(const [key,label]of Object.entries(stateLabels)){let button=chips.querySelector('[data-review-filter="'+key+'"]');if(!button){button=document.createElement('button');button.type='button';button.dataset.reviewFilter=key;chips.append(button);}button.textContent=label+' '+states[key];button.setAttribute('aria-pressed',String(filter===key));}
+  for(const row of rows)row.card.hidden=filter!=='all'&&reviewState(row)!==filter;
+  const hiddenSelected=rows.filter(r=>r.selected&&!r.saved&&r.card.hidden).length,filterNote=qs('[data-review-filter-notice]',panel);filterNote.hidden=!hiddenSelected;filterNote.textContent=hiddenSelected?hiddenSelected+' seçili kart filtre dışında. Kaydet tüm seçili kartları kapsar; Tümü düğmesiyle yeniden görün.':'';
   qs('[data-review-expand]',panel).textContent=expanded?'Ayrıntıları kapat':'Tüm ayrıntıları aç';
   const questions=[...assistantQuestions(rows),...[...new Set(v.questions||[])].map((text,i)=>({key:'message:'+i,field:'message',label:text,targets:[]}))];questionBox.hidden=!questions.length;
   // Soru kutusu yalnız soru kümesi değişince yeniden çizilir: başka bir alandaki "change" olayı Uygula tıklamasının ortasında düğmeyi değiştirmesin.
@@ -90,12 +96,13 @@ export function bindAssistantReview(ctx,out,v,d){
   for(const row of rows)renderRow(row);
   const save=qs('[data-save]',out);if(save&&!save.disabled)save.textContent=totals.selected?'Onayla ve '+totals.selected+' kaydı kaydet':'Kaydetmek için kayıt seç';
  }finally{updating=false;}};
+ qs('[data-review-states]',panel).addEventListener('click',e=>{const button=e.target.closest('[data-review-filter]');if(!button)return;filter=button.dataset.reviewFilter;update();});
  qs('[data-review-expand]',panel).onclick=()=>{expanded=!expanded;for(const c of cards)qs('[data-record-details]',c)?.toggleAttribute('open',expanded);try{localStorage.setItem(DETAIL_PREFERENCE,expanded?'expanded':'compact');}catch{}update();};
  qs('[data-review-compose]',panel).onclick=()=>{const msg=qs('[data-msg]',ctx.root);msg.focus();};
  out.addEventListener('input',ev=>{if(!questionBox.contains(ev.target))update();});out.addEventListener('change',ev=>{if(!questionBox.contains(ev.target))update();});out.addEventListener('click',ev=>{if(!questionBox.contains(ev.target))queueMicrotask(update);});update();
  // Existing live validation can change warnings without dispatching an input event.
  const watched=cards.flatMap(c=>[...c.querySelectorAll('[data-row-issues],[data-fuelout-issues]')]);
- const obs=new MutationObserver(()=>{if(!out.isConnected)obs.disconnect();else update();});for(const el of watched)obs.observe(el,{childList:true,subtree:true,characterData:true});
+ const obs=new MutationObserver(()=>{if(!out.isConnected)obs.disconnect();else update();});for(const el of watched)obs.observe(el,{childList:true,subtree:true,characterData:true});for(const card of cards)obs.observe(card,{attributes:true,attributeFilter:['data-saved']});
  const detach=new MutationObserver(()=>{if(!panel.isConnected){obs.disconnect();detach.disconnect();}});detach.observe(document.body,{childList:true,subtree:true});
  return {update};
 }

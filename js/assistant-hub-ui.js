@@ -3,7 +3,7 @@ import {qs,esc,fmtNum,fmtTL} from './ui.js';
 import {isActive,todayStr} from './core.js';
 const modes={entity:'Burada oluştur',draft:'Burada hazırla',query:'Burada hesapla',search:'Burada bul',screen:'Ayrıntılı ekran',tasks:'İsteğe dön'};
 export function assistantHubHTML(){
- return `<section class="assistant-hub" data-assistant-hub aria-label="Asistan iş merkezi"><header class="assistant-hub-hero"><button type="button" class="assistant-hub-toggle" data-hub-toggle aria-expanded="true" aria-controls="assistant-hub-content">İşlemleri daralt</button><span class="assistant-section-label">İŞ MERKEZİNİZ</span><h2>İşinizi buradan yönetin.</h2><p>İş seçin; kayıtları bulup kontrol kartlarını birlikte tamamlayalım.</p><div class="assistant-hub-status"><span>Yerel işlemler anahtarsız</span><span>Kayıtlar açık onayınızla</span></div></header><div class="assistant-hub-body" id="assistant-hub-content"><nav class="assistant-hub-nav" aria-label="İş alanları">${HUB_GROUPS.map(([id,label])=>`<button type="button" data-hub-group="${id}" aria-pressed="${id==='all'}" disabled>${label}</button>`).join('')}</nav><div class="assistant-hub-catalog"><label for="as-hub-search">Asistana ne yaptırmak istiyorsunuz?</label><div class="assistant-hub-search"><input id="as-hub-search" type="search" data-hub-search placeholder="İş, tahsilat, müşteri, belge, rapor…" autocomplete="off" disabled><button class="btn sm ghost" type="button" data-hub-clear disabled>Temizle</button></div><p class="tiny muted" data-hub-count></p><div class="assistant-hub-tasks" data-hub-tasks></div><button class="btn block ghost" type="button" data-hub-more hidden>Tüm işlemleri göster</button></div></div><section class="assistant-hub-panel" data-hub-panel aria-label="Asistan çalışma paneli" hidden><header><h3 data-hub-title></h3><button type="button" class="btn sm ghost" data-hub-close>Kapat</button></header><div data-hub-output aria-live="polite"></div></section></section>`;
+ return `<section class="assistant-hub" data-assistant-hub aria-label="Asistan iş merkezi"><header class="assistant-hub-hero"><button type="button" class="assistant-hub-toggle" data-hub-toggle aria-expanded="true" aria-controls="assistant-hub-content">İşlemleri daralt</button><span class="assistant-section-label">İŞ MERKEZİNİZ</span><h2>İşinizi buradan yönetin.</h2><p>İş seçin; kayıtları bulup kontrol kartlarını birlikte tamamlayalım.</p><div class="assistant-hub-status"><span>Yerel işlemler anahtarsız</span><span>Kayıtlar açık onayınızla</span></div></header><div class="assistant-hub-body" id="assistant-hub-content"><nav class="assistant-hub-nav" aria-label="İş alanları">${HUB_GROUPS.map(([id,label])=>`<button type="button" data-hub-group="${id}" aria-pressed="${id==='all'}" disabled>${label}</button>`).join('')}</nav><div class="assistant-hub-catalog"><label for="as-hub-search">Asistana ne yaptırmak istiyorsunuz?</label><div class="assistant-hub-search"><input id="as-hub-search" type="search" data-hub-search placeholder="İş, tahsilat, müşteri, belge, rapor…" autocomplete="off" disabled><button class="btn sm ghost" type="button" data-hub-clear disabled>Temizle</button><button class="btn sm" type="button" data-hub-task="search" disabled>Kayıt ara</button></div><p class="tiny muted" data-hub-count></p><div class="assistant-hub-tasks" data-hub-tasks></div><button class="btn block ghost" type="button" data-hub-more hidden>Tüm işlemleri göster</button></div></div><dialog class="assistant-hub-dialog" data-hub-dialog aria-label="Tüm asistan işlemleri"><header><h2>Tüm işlemler</h2><button class="btn" type="button" data-hub-dialog-close>Kapat</button></header><div data-hub-dialog-content></div></dialog><section class="assistant-hub-panel" data-hub-panel aria-label="Asistan çalışma paneli" hidden><header><h3 data-hub-title></h3><button type="button" class="btn sm ghost" data-hub-close>Kapat</button></header><div data-hub-output aria-live="polite"></div></section></section>`;
 }
 const safeHash=v=>typeof v==='string'&&v.startsWith('#/')&&!/[<>\r\n]/u.test(v)?v:null;
 const fields=[['date','Tarih'],['plate','Plaka'],['type','Tür'],['phone','Telefon'],['address','Adres'],['work_type','İş türü'],['description','Açıklama'],['note','Not'],['cash_type','Para rolü']];
@@ -17,11 +17,16 @@ export function mountAssistantHub(ctx,controls){
  const panel=qs('[data-hub-panel]',hub),output=qs('[data-hub-output]',hub),title=qs('[data-hub-title]',hub),search=qs('[data-hub-search]',hub),list=qs('[data-hub-tasks]',hub);let group='all',expanded=false,token=0,records=[],current=null,busy=false;
  const alive=id=>root.isConnected&&id===token;
  const draw=()=>{
-  const rows=hubTasks(search.value,group),shown=!expanded&&group==='all'&&!search.value.trim()?rows.filter(r=>['priorities','today','work','payments','search','tasks'].includes(r.id)):rows;
-  list.innerHTML=shown.map(t=>`<button type="button" data-hub-task="${t.id}"><small>${modes[t.mode]}</small><b>${esc(t.title)}</b><span>${esc(t.detail)}</span></button>`).join('')||'<p class="muted">Eşleşen işlem yok. Mesaj kutusunda yapmak istediğiniz işi anlatabilirsiniz.</p>';
-  qs('[data-hub-count]',hub).textContent=shown.length+' / '+rows.length+' işlem';qs('[data-hub-more]',hub).hidden=shown.length===rows.length;
+  const rows=hubTasks(search.value,group),home=!expanded&&group==='all'&&!search.value.trim(),shown=home?rows.filter(r=>['today','work','payments'].includes(r.id)):rows;
+  list.innerHTML=shown.filter(t=>t.id!=='search').map(t=>`<button type="button" data-hub-task="${t.id}"><small>${modes[t.mode]}</small><b>${esc(t.title)}</b><span>${esc(t.detail)}</span></button>`).join('')+(home?'<button type="button" data-hub-photo><small>Belge ekle</small><b>Fiş / irsaliye ekle</b><span>Fotoğrafı seçin; Gemini okuması ayrıca başlar.</span></button>':'')||'<p class="muted">Eşleşen işlem yok. Mesaj kutusunda yapmak istediğiniz işi anlatabilirsiniz.</p>';
+  qs('[data-hub-count]',hub).textContent=home?'4 başlangıç · '+rows.length+' işlem aranabilir':shown.length+' / '+rows.length+' işlem';qs('[data-hub-more]',hub).hidden=shown.length===rows.length;
   for(const b of hub.querySelectorAll('[data-hub-group]'))b.setAttribute('aria-pressed',String(b.dataset.hubGroup===group));
  };
+ const body=qs('.assistant-hub-body',hub),dialog=qs('[data-hub-dialog]',hub),originalNext=body.nextSibling;
+ const openCatalog=()=>{if(dialog.open)return;hub.dataset.surface='open';updateHubConversation(root,true);group='all';expanded=true;draw();qs('[data-hub-dialog-content]',dialog).append(body);dialog.showModal();search.focus();};
+ dialog.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();dialog.close();}});
+ dialog.addEventListener('close',()=>{hub.insertBefore(body,originalNext);});
+ const composerCatalog=e=>{if(e.target.closest('[data-hub-catalog-open]'))openCatalog();};root.addEventListener('click',composerCatalog);
  const open=(label,kind)=>{token++;current={kind};panel.hidden=false;title.textContent=label;output.innerHTML='<p class="muted">Kayıtlar okunuyor…</p>';panel.scrollIntoView({block:'start'});return token;};
  const details=async row=>{
   const id=open(row.title,'record'),snapshot=await db.readSnapshot({attachments:false}),r=(snapshot.data[row.store]||[]).find(x=>x.id===row.id&&isActive(x));if(!alive(id))return;
@@ -53,13 +58,15 @@ export function mountAssistantHub(ctx,controls){
  };
  hub.addEventListener('click',async e=>{
   const button=e.target.closest('button');if(!button||!hub.contains(button))return;
+  if(button.hasAttribute('data-hub-dialog-close')){dialog.close();return;}
+  if(button.hasAttribute('data-hub-photo')){qs('[data-addphotos]',root).click();return;}
   if(button.hasAttribute('data-hub-toggle')){hub.dataset.surface=hub.classList.contains('hub-collapsed')?'open':'closed';updateHubConversation(root,!!qs('[data-chat-turn]',root));return;}
   if(button.hasAttribute('data-hub-close')){token++;panel.hidden=true;current=null;return;}
   if(button.hasAttribute('data-hub-group')){group=button.dataset.hubGroup;draw();return;}
   if(button.hasAttribute('data-hub-clear')){search.value='';draw();search.focus();return;}
-  if(button.hasAttribute('data-hub-more')){expanded=true;draw();return;}
+  if(button.hasAttribute('data-hub-more')){openCatalog();return;}
   if(busy)return;
-  const task=HUB_TASKS.find(t=>t.id===button.dataset.hubTask);busy=true;hub.setAttribute('aria-busy','true');
+  const task=HUB_TASKS.find(t=>t.id===button.dataset.hubTask);if(task&&dialog.open)dialog.close();busy=true;hub.setAttribute('aria-busy','true');
   try{
    if(task){
     if(task.mode==='query')await query(task);
@@ -84,5 +91,5 @@ export function mountAssistantHub(ctx,controls){
   finally{busy=false;hub.removeAttribute('aria-busy');}
  });
  search.addEventListener('input',draw);for(const el of hub.querySelectorAll('[disabled]'))el.disabled=false;updateHubConversation(root,!!qs('[data-chat-turn]',root));draw();
- return ()=>{token++;};
+ return ()=>{token++;root.removeEventListener('click',composerCatalog);if(dialog.open)dialog.close();};
 }
