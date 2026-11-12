@@ -2,6 +2,11 @@
 // Model can read/prepare only. Every real write is an existing user-approved service.
 const entry = (id, group, title, detail, read, draft, evidence, commit, extra = {}) => ({ id, group, title, detail, read, draft, evidence, commit, model_write: false, ...extra });
 export const CAPABILITY_CATALOG = [
+  entry("new_customer", "Kayıt", "Yeni müşteri oluştur", "Müşteri veya taşeron kartını burada hazırla.", "Mevcut müşteri kartları", "Yeni müşteri taslağı", "Ad ve açık ana firma seçimi", "ensureCustomerCard + açık onay", { text: "Yeni müşteri oluştur" }),
+  entry("new_site", "Kayıt", "Yeni şantiye oluştur", "Şantiyeyi doğru müşteriye bağla.", "Müşteri ve şantiye kartları", "Yeni şantiye taslağı", "Ad ve müşteri", "ensureSiteCard + açık onay", { text: "Yeni şantiye oluştur" }),
+  entry("new_vehicle", "Kayıt", "Yeni araç oluştur", "Tür ve plakayı kontrol et.", "Mevcut araç kartları", "Araç kartı taslağı", "Ad, açık tür seçimi, varsa plaka", "Dar alanlı kart yazıcısı + açık onay", { text: "Yeni araç oluştur" }),
+  entry("new_personnel", "Kayıt", "Yeni personel oluştur", "Ücret veya şoför bağlantısı üretmeden kart aç.", "Mevcut personel kartları", "Personel kartı taslağı", "Ad ve varsa telefon", "Dar alanlı kart yazıcısı + açık onay", { text: "Yeni personel oluştur" }),
+
   entry("payment_agenda", "Rapor", "Kime ödeme yapacağım?", "Vadeler ve bağlı ödemelerden kalan borçlar; internetsiz.", "Alış ve ödeme kayıtları", "Yerel borç özeti", "Dönem ve taraf", "Yok — salt okuma", { text: "Kime ödeme yapacağım?" }),
   entry("overview", "Rapor", "İşletme panosu", "Dönem, grafik ve kaynak kayıt bağlantıları.", "İş, cari, masraf ve stok", "Kapsamlı okuma panosu", "Dönem/filtre", "Yok — salt okuma", { hash: "#/isletme-panosu" }),
   entry("priorities", "Kontrol", "Bugün ne yapmalıyım?", "Kaynaklı günlük öncelikler; internetsiz.", "Tahsilat, nakit, bakım ve eksikler", "Eylem önerileri", "Güncel kayıtlar", "Yok — salt okuma", { text: "Bugün ne yapmalıyım?" }),

@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {HUB_TASKS,HUB_GROUPS,HUB_RECORDS,hubTasks,hubRecordRows,hubAnswer} from '../js/assistant-hub-core.js';
+import {startDraftPlan} from '../js/assistant-workflow.js';
+import {assistantHubHTML} from '../js/assistant-hub-ui.js';
+assert.equal(HUB_TASKS.length,47);assert.equal(new Set(HUB_TASKS.map(x=>x.id)).size,HUB_TASKS.length);
+assert.ok(HUB_TASKS.every(t=>HUB_GROUPS.some(([g])=>g===t.group)&&t.title&&t.detail&&t.target));
+for(const t of HUB_TASKS.filter(t=>t.mode==='draft'))assert.ok(startDraftPlan(t.target),t.id);
+for(const t of HUB_TASKS.filter(t=>t.mode==='query'))assert.equal(hubAnswer(t.id,{},[],'2026-11-12').kind,'answer');
+assert.throws(()=>hubAnswer('bank',{},[],'2026-11-12'),/yerel soru/);
+assert.equal(hubTasks('ödeme','money').some(t=>t.id==='payments'),true);assert.deepEqual(hubTasks('olmayan özellik'),[]);
+const d={customers:[{id:'P',name:'Akarsu TEST'},{id:'C',name:'Çatı TEST',parent_customer_id:'P'},{id:'X',name:'Pasif TEST',deleted_at:'x'}],sites:[{id:'S',name:'Doğu TEST',customer_id:'C'}],vehicles:[{id:'V',name:'Makine TEST',plate:'34TT999',type:'JCB'}],personnel:[{id:'E',name:'Eren TEST',phone:'05320000000'}],aliases:[{id:'A',alias:'Kısa TEST',target_type:'customer',target_id:'C'}],work_records:[{id:'W',date:'2026-11-12',customer_id:'C',vehicle_id:'V',description:'TEST kaynak <script>',quantity:3,unit:'Saat'}]};
+const original=structuredClone(d);assert.deepEqual(hubRecordRows(d,'Kısa TEST','customers').map(r=>r.id),['C']);
+assert.deepEqual(hubRecordRows(d,'Doğu','sites').map(r=>r.customer_id),['C']);
+assert.equal(hubRecordRows(d,'Akarsu','customers').length,2,'Parent and child stay distinct visible choices');
+assert.equal(hubRecordRows(d,'Pasif').length,0);assert.deepEqual(hubRecordRows(d,'34TT999','work_records').map(r=>r.id),['W']);
+assert.equal(hubRecordRows(d,'TEST','meta').length,0);assert.equal(Object.hasOwn(HUB_RECORDS,'bank_accounts'),false);assert.deepEqual(d,original);
+const html=assistantHubHTML();assert.match(html,/data-assistant-hub/);assert.match(html,/data-hub-panel[^>]*hidden/);assert.match(html,/data-hub-search/);
+console.log('assistant hub110 PASS: 47 concrete tasks, whitelisted local draft/query modes, Turkish alias search, separate debtors and read-only records');
