@@ -12,6 +12,7 @@ import {bindBulkEntry,mountBulkResume} from './bulk-entry-ui.js';
 import {partDocumentIntent,assistantPartDocuments,separatePartDocumentPlan} from './part-document-core.js';
 import {stagePartDocuments} from './part-document-ui.js';
 import {assistantTurn} from './assistant-turn.js';
+import {siteCreateRequest,showSiteCreate} from './assistant-site.js';
 import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
 import {startDraftPlan,bindDraftWorkflow,draftPreflight,applyDraftPlan,DRAFT_FIELDS} from './assistant-workflow.js';
 import {readTask,taskOpen,taskContext,saveTaskProposal,transitionTask,hasTaskProposal} from './assistant-task.js';
@@ -104,6 +105,25 @@ export async function screen(ctx) {
     qs('[data-turn-intent]',root).dataset.turnMode=turn.mode;
     if(manualRefine===null)qs('[data-refine]',root).checked=turn.mode==='refine';
   };
+  let openingCard=false;
+  const openEntity=async(label,build)=>{
+    if(asking||openingCard||qs('[data-ask]',root).disabled)return;
+    openingCard=true;const controls=qsa('button,input,select,textarea',root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
+    try{
+      const turn=await conversation.begin(label);await conversation.finish(turn,{status:'draft',reply:'Bilgileri kontrol edip karttaki oluştur düğmesiyle onaylayın; henüz kayıt açılmadı.'});
+      if(!root.isConnected)return;
+      prev=null;manualRefine=null;qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
+      await build(turn);
+    }finally{openingCard=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
+  };
+  ctx.assistantOpenCustomer=({siteDraft,siteTurn}={})=>openEntity('Yeni müşteri oluştur',async turn=>{
+    await conversation.finish(turn,{status:'clarify',intent:CUSTOMER_CREATE_INTENT,reply:'Müşteri bilgilerini tamamlayın; henüz kart açılmadı.'});
+    showCustomerCreate(ctx,qs('[data-out]',root),{name:''},await db.listActive('customers'),conversation,turn,{onCreated:siteDraft?async rec=>{
+      const handle=showSiteCreate(ctx,qs('[data-out]',root),siteDraft,await db.listActive('customers'),conversation,siteTurn);handle.setCustomer(rec.id);
+      qs('[data-site-address]',root).value=siteDraft.address||'';
+    }:null});
+  });
+  ctx.assistantOpenSite=()=>openEntity('Yeni şantiye oluştur',async turn=>showSiteCreate(ctx,qs('[data-out]',root),{name:''},await db.listActive('customers'),conversation,turn));
   qs('[data-chat-context]',root).addEventListener('change',turnPreview);
   qs('[data-msg]',root).addEventListener('input',turnPreview);
   qs('[data-refine]',root).addEventListener('change',()=>{manualRefine=qs('[data-refine]',root).checked;turnPreview();});
@@ -331,6 +351,14 @@ export async function screen(ctx) {
         const reply=changed.length?`${changed.length} iş taslağı güncellendi. ${batchReply.date?'Tarih: '+trDate(batchReply.date)+'. ':''}${batchReply.hasPriceDirective?(batchReply.deferPrices?'Fiyatlar bekleyecek. ':'Fiyat önizlemesini kontrol edin. '):''}Kartları kontrol edip hazır işleri seçebilirsiniz; henüz kayıt yapılmadı.`:'Bu toplu talimat için uygun iş taslağı yok; şoför kayıtları tek tek kontrol edilir.';
         await finishChat({status:'draft',reply});msgEl.value='';turnPreview();return;
       }
+      const siteRequest=siteCreateRequest(typed);
+      if(siteRequest){
+        if(!await finishChat({status:'draft',reply:'Şantiye kartını hazırladım. Adı ve müşteriyi tamamlayıp Şantiyeyi oluştur düğmesine basın; henüz kayıt açılmadı.'}))return;
+        if(!msgEl.isConnected)return;
+        prev=null;manualRefine=null;qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
+        showSiteCreate(ctx,qs('[data-out]',root),siteRequest,await db.listActive('customers'),conversation,chatTurn);
+        clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');msgEl.value='';turnPreview();return;
+      }
       const customerRequest=customerCreateRequest(typed,qs('[data-chat-context]',root).checked?previousChat:null);
       if(customerRequest){
         const customers=await db.listActive('customers');
@@ -362,12 +390,12 @@ export async function screen(ctx) {
       const cc=conversationCommand(typed);
       if(cc){
         const out=qs('[data-out]',root);
-        const customerDraft=!!qs('[data-customer-create]',out);
-        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Adı kontrol edip aşağıdaki Müşteriyi oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına müşteri açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':taskOpen(activeTask)?'Devam eden isteği İsteğe devam et düğmesiyle açıp kartlarını kontrol edin. Henüz kayıt yapılmadı.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done||taskOpen(activeTask)?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
+        const customerDraft=!!qs('[data-customer-create],[data-site-create]',out);
+        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Bilgileri kontrol edip karttaki oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına kart açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':taskOpen(activeTask)?'Devam eden isteği İsteğe devam et düğmesiyle açıp kartlarını kontrol edin. Henüz kayıt yapılmadı.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done||taskOpen(activeTask)?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
         if(cc==='cancel'&&taskOpen(activeTask)){activeTask=await transitionTask(db,activeTask,'cancelled',reply);paintTask();}
-        if(cc==='cancel'&&customerDraft){await conversation.finish(previousChat,{status:'cancelled',reply:'Müşteri taslağından vazgeçildi.',intent:null});out.innerHTML='';}
+        if(cc==='cancel'&&customerDraft){await conversation.finish(previousChat,{status:'cancelled',reply:'Kart taslağından vazgeçildi.',intent:null});out.innerHTML='';}
         if(cc==='cancel' && prev&&!prev.v._done){prev=null;manualRefine=null;out.innerHTML='';qs('[data-refine-wrap]',root).hidden=true;turnPreview();}
-        if(!out.textContent.trim() || cc==='help'&&!qs('[data-save],[data-work-confirm],[data-customer-create]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+'</div>';
+        if(!out.textContent.trim() || cc==='help'&&!qs('[data-save],[data-work-confirm],[data-customer-create],[data-site-create]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+'</div>';
         await finishChat({status:cc==='cancel'?'cancelled':'answer',reply});
         clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
       }
@@ -671,6 +699,8 @@ export async function screen(ctx) {
     }
   });
   // The visible button must not accept a click before async setup binds its handler.
+  msgEl.readOnly=false;
+  for(const button of qsa('[data-start-customer],[data-start-site],[data-start-work],[data-start-compare],[data-start-claim]',root))button.disabled=false;
   qs('[data-ask]',root).disabled = false;
   // Ana ekrandan gelen metin: kullanıcı "Asistana gönder"e bastı → metin yerleşir ve gönderilir (anahtar yoksa yalnız yerleşir)
   if(ctx.query?.gun_kontrol==='1'){

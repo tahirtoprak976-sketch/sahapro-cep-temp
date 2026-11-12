@@ -1,0 +1,26 @@
+"""Real UI customer/site creation, no model, isolated records, atomic duplicate/parent/epoch guards."""
+import json,sys,uuid
+from urllib.parse import urlparse
+from playwright.sync_api import sync_playwright
+U=(sys.argv[1]if len(sys.argv)>1 else 'http://localhost:8841/').rstrip('/')+'/';assert urlparse(U).hostname in ('localhost','127.0.0.1')
+with sync_playwright()as w:
+ b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':360,'height':850},service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')");p=c.new_page();errors=[];calls=[];p.on('pageerror',lambda e:errors.append(str(e)));p.route('https://generativelanguage.googleapis.com/**',lambda r:(calls.append(r.request.url),r.abort()))
+ p.goto(U+'index.html?db=TEST_entities109_'+uuid.uuid4().hex+'#/akilli-asistan');p.wait_for_selector('#screen[data-view-ready="1"]')
+ assert p.locator('[data-start-customer]').count()==1 and p.locator('[data-start-site]').count()==1,'Assistant must expose direct customer and site creation actions'
+ state=lambda:p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()")
+ initial=state();p.click('[data-start-customer]');p.wait_for_selector('[data-customer-create]');assert state()==initial
+ p.fill('[data-customer-name]','Akarsu TEST İnşaat');p.fill('[data-customer-phone]','05320001122');p.click('[data-create-customer]');p.wait_for_selector('[data-out] .notice.ok');first=state();assert len(first['customers'])==len(initial['customers'])+1
+ p.click('[data-start-site]');p.wait_for_selector('[data-site-create]');p.wait_for_function("()=>!document.querySelector('[data-composer]').classList.contains('fixed')");assert p.locator('[data-create-site]').is_disabled();p.fill('[data-site-name]','Doğu TEST 17');p.fill('[data-site-address]','TEST adres 42');assert p.locator('[data-create-site]').is_disabled();assert state()==first
+ p.click('[data-site-new-customer]');p.wait_for_selector('[data-customer-create]');p.fill('[data-customer-name]','Yonca TEST Yapı');p.click('[data-create-customer]');p.wait_for_selector('[data-site-create]');assert p.input_value('[data-site-name]')=='Doğu TEST 17' and p.input_value('[data-site-address]')=='TEST adres 42'
+ before_site=state();owner=next(x for x in before_site['customers']if x['name']=='Yonca TEST Yapı');assert p.input_value('[data-site-customer]')==owner['id'];assert before_site['sites']==initial['sites']
+ p.click('[data-create-site]');p.wait_for_selector('[data-out] .notice.ok');saved=state();site=next(x for x in saved['sites']if x['name']=='Doğu TEST 17');assert site['customer_id']==owner['id'] and site['address']=='TEST adres 42'
+ for store in initial:
+  if store not in ('customers','sites','audit_log'):assert saved[store]==initial[store],store
+ p.click('[data-start-site]');p.wait_for_selector('[data-site-create]');p.fill('[data-site-name]','Doğu TEST 17');p.select_option('[data-site-customer]',owner['id']);p.wait_for_function("()=>document.querySelector('[data-site-matches]').textContent.includes('zaten var')");assert p.locator('[data-create-site]').is_disabled() and state()==saved
+ p.click('[data-cancel-site]');p.wait_for_selector('[data-site-create]',state='detached');assert state()==saved
+ result=p.evaluate("""async id=>{const d=await import('./js/db.js');const before=await d.dumpAll();const pair=await Promise.all([d.ensureSiteCard('Batı TEST Eşzamanlı',id,{address:'ilk'}),d.ensureSiteCard('Batı TEST Eşzamanlı',id,{address:'ikinci'})]);const reuse=await d.ensureSiteCard('Batı TEST Eşzamanlı',id,{address:'değiştirme'});const after=await d.dumpAll();let invalid=false,stale=false;const snapshot=JSON.stringify(after);try{await d.ensureSiteCard('Geçersiz TEST','MISSING')}catch{invalid=true}try{await d.ensureSiteCard('Eski TEST',id,{conversation:{epoch:'OLD',id:'OLD'}})}catch{stale=true}const unchanged=snapshot===JSON.stringify(await d.dumpAll());let rolledBack=false;const native=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(v,...args){if(this.name==='audit_log'){IDBObjectStore.prototype.put=native;this.transaction.abort()}return native.call(this,v,...args)};try{await d.ensureSiteCard('Atomik TEST',id)}catch{rolledBack=snapshot===JSON.stringify(await d.dumpAll())}return {pair,reuse,invalid,stale,unchanged,rolledBack,newSites:after.sites.length-before.sites.length,audits:after.audit_log.length-before.audit_log.length};}""",owner['id'])
+ assert result['newSites']==result['audits']==1 and result['pair'][0]['id']==result['pair'][1]['id'];assert result['reuse']['address']=='ilk';assert all(result[k]for k in ['invalid','stale','unchanged','rolledBack']),result
+ for width in [320,360,768,1280]:
+  p.set_viewport_size({'width':width,'height':850});assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
+ p.set_viewport_size({'width':360,'height':850});p.screenshot(path='/tmp/assistant-workspace109.png',full_page=True)
+ assert not calls and not errors,(calls,errors);print(json.dumps({'directActions':True,'customerCreatedExplicitly':True,'siteDraftSurvivesCustomerCreation':True,'siteCustomerCorrect':True,'duplicatesPrevented':True,'concurrentOneSiteOneAudit':True,'staleChatAndMissingParentRejected':True,'auditFailureRolledBack':True,'noFinancialWrites':True,'modelCalls':0,'pageErrors':errors}),flush=True);b.close()
