@@ -28,3 +28,5 @@ Yeni aynı tarayıcı testi değişmemiş v109'da iş merkezinin yokluğunda dü
 | Toplu hazır doğru / gereksiz soru | 15/38 / 21 | 15/38 / 21 |
 
 Bu paket modelin anlama oranının arttığı iddiası değildir. Gerçek Gemini, telefon ve WhatsApp denenmedi. Yerel 194 Node dosyası, yeni iş merkezi uçtan uca testi, mevcut dört kart ve asistan iş akışı testleri geçti. Tam CI ve yayın kanıtı PR'da ayrı raporlanır; bütün kapılar geçmeden birleştirme yoktur. Yeni görevin iki başarısız tam kapıda durma sınırı korunur.
+
+Telefon görsel incelemesinde ilk işlem başlığı sabit mesaj kutusunun altında kalıyordu. Küçük ekran giriş alanı daraltıldı; 320 ve 390 pikselde ilk işlem başlığının mesaj kutusunun üzerinde görünmesi aynı tarayıcı testine eklendi. Önceki commit üzerindeki devam eden CI, bu düzeltme nedeniyle yeni commit ile geçersiz kılınır; yayın için yalnız son commitin tam kapıları geçerlidir.

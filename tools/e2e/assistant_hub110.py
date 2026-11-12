@@ -13,6 +13,9 @@ with sync_playwright()as w:
  c.route('**/js/db.js',lambda r:r.fulfill(status=200,content_type='text/javascript',body=source))
  p.goto(U+'index.html?db=TEST_hub110_'+uuid.uuid4().hex+'#/akilli-asistan');p.wait_for_selector('#screen[data-view-ready="1"]')
  assert p.locator('[data-assistant-hub]').count()==1,'Assistant must have an executable command center and independent result panel'
+ for width in [320,390]:
+  p.set_viewport_size({'width':width,'height':850});p.evaluate('scrollTo(0,0)');p.wait_for_function("()=>document.querySelector('[data-composer]').classList.contains('fixed')&&Math.abs(document.querySelector('[data-composer]').getBoundingClientRect().width-document.querySelector('[data-assistant-page]').getBoundingClientRect().width)<1")
+  assert p.evaluate("()=>document.querySelector('[data-hub-task=work] b').getBoundingClientRect().bottom<=document.querySelector('[data-composer]').getBoundingClientRect().top"),'First task title must be visible above the message box on a phone'
  p.evaluate("""async()=>{const d=await import('./js/db.js'),C=await import('./js/core.js');for(const[store,rows]of Object.entries({customers:[{id:'P',name:'Akarsu TEST'},{id:'C',name:'Çatı TEST',parent_customer_id:'P',phone:'05320000000'}],sites:[{id:'S',name:'Doğu TEST',customer_id:'C',address:'TEST sokak 17'}],vehicles:[{id:'V',name:'Makine TEST',plate:'34TT999',type:'JCB'}],aliases:[{id:'A',alias:'Kısa TEST',target_type:'customer',target_id:'C'}],work_records:[{id:'W',date:C.todayStr(),customer_id:'C',site_id:'S',vehicle_id:'V',work_type:'JCB Çalışması',quantity:3,unit:'Saat',description:'TEST <img src=x onerror=window.TEST_xss=1> kaynak'}]}))for(const row of rows)await d.put(store,row);}""")
  business=lambda:p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()")
  snapshot=lambda:p.evaluate("async()=>{const s=await(await import('./js/db.js')).readSnapshot({attachments:true,meta:true,drafts:true});delete s.captured_at;return s;}")
