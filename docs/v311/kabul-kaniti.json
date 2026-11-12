@@ -1,0 +1,24 @@
+{
+  "note": "DOLDURULMAMIŞ TASLAK. Ölçülmeyen değerler null; bu dosya yayın izni değildir.",
+  "automation": null,
+  "live": null,
+  "staged": {
+    "implemented": false,
+    "sameFieldNodes": false,
+    "localFirstPaintMs": null,
+    "cls": null,
+    "fieldMovePx": null,
+    "manualFieldLoss": null
+  },
+  "phone": {
+    "physical": false,
+    "device": null,
+    "date": null,
+    "realWhatsApp": false,
+    "lowBrightnessSensitiveCards": null,
+    "closingSeconds": null,
+    "fourReceiptsSeconds": null,
+    "sensitiveAutoSaved": null,
+    "manualFieldLoss": null
+  }
+}
