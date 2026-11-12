@@ -18,7 +18,7 @@ export function mountAssistantHub(ctx,controls){
  const alive=id=>root.isConnected&&id===token;
  const draw=()=>{
   const rows=hubTasks(search.value,group),home=!expanded&&group==='all'&&!search.value.trim(),shown=home?rows.filter(r=>['today','work','payments'].includes(r.id)):rows;
-  list.innerHTML=shown.filter(t=>t.id!=='search').map(t=>`<button type="button" data-hub-task="${t.id}"><small>${modes[t.mode]}</small><b>${esc(t.title)}</b><span>${esc(t.detail)}</span></button>`).join('')+(home?'<button type="button" data-hub-photo><small>Belge ekle</small><b>Fiş / irsaliye ekle</b><span>Fotoğrafı seçin; Gemini okuması ayrıca başlar.</span></button>':'')||'<p class="muted">Eşleşen işlem yok. Mesaj kutusunda yapmak istediğiniz işi anlatabilirsiniz.</p>';
+  list.innerHTML=shown.filter(t=>t.id!=='search').map(t=>`<button type="button" data-hub-task="${t.id}" ${home&&t.id==='work'?'data-evening-whatsapp':''}><small>${modes[t.mode]}</small><b>${esc(home?({work:'WhatsApp Gün Sonu Dökümü',today:'Bugünün Eksik & Özeti',payments:'Tahsilat & Mazot Kapat'}[t.id]||t.title):t.title)}</b><span>${esc(home&&t.id==='work'?'Gruptan kopyalayın; mesaj kutusunda birlikte okuyalım.':t.detail)}</span></button>`).join('')+(home?'<button type="button" data-hub-photo><small>Belge ekle</small><b>Seri Fiş / İrsaliye Tara</b><span>Fotoğrafı seçin; Gemini okuması ayrıca başlar.</span></button>':'')||'<p class="muted">Eşleşen işlem yok. Mesaj kutusunda yapmak istediğiniz işi anlatabilirsiniz.</p>';
   qs('[data-hub-count]',hub).textContent=home?'4 başlangıç · '+rows.length+' işlem aranabilir':shown.length+' / '+rows.length+' işlem';qs('[data-hub-more]',hub).hidden=shown.length===rows.length;
   for(const b of hub.querySelectorAll('[data-hub-group]'))b.setAttribute('aria-pressed',String(b.dataset.hubGroup===group));
  };
@@ -59,6 +59,7 @@ export function mountAssistantHub(ctx,controls){
  hub.addEventListener('click',async e=>{
   const button=e.target.closest('button');if(!button||!hub.contains(button))return;
   if(button.hasAttribute('data-hub-dialog-close')){dialog.close();return;}
+  if(button.hasAttribute('data-evening-whatsapp')){open('WhatsApp gün sonu dökümü','paste');output.textContent='Ekleriniz korunuyor. Mesajınız ve açık kartlarınız da korunur. WhatsApp dökümünü kutuya yapıştırın; Gönder ile kontrol kartlarını hazırlayın.';qs('[data-msg]',root)?.focus();return;}
   if(button.hasAttribute('data-hub-photo')){qs('[data-addphotos]',root).click();return;}
   if(button.hasAttribute('data-hub-toggle')){hub.dataset.surface=hub.classList.contains('hub-collapsed')?'open':'closed';updateHubConversation(root,!!qs('[data-chat-turn]',root));return;}
   if(button.hasAttribute('data-hub-close')){token++;panel.hidden=true;current=null;return;}

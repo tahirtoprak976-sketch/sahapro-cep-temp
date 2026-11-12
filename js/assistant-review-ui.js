@@ -1,5 +1,6 @@
+import {createUndoWindow,coverageText,mountDraftPicker} from './assistant-evening311.js';
 import {assistantQuestions} from './assistant-questions.js';
-import {inferenceReason} from './assistant-confidence-ui.js';
+import {inferenceReason,repaintConfidenceBadges} from './assistant-confidence-ui.js';
 import {esc,qs,fmtTL,trDate,fmtNum} from './ui.js';
 import {readDraftRows,draftMissing,DRAFT_FIELDS} from './assistant-workflow.js';
 import {detailedAssistant,DETAIL_PREFERENCE} from './assistant-page-ui.js';
@@ -49,6 +50,17 @@ export function bindAssistantReview(ctx,out,v,d){
   warning.textContent=row.issueText;warning.hidden=!row.issueText;
   let reason=qs('[data-confidence-reason]',card);if(!reason){reason=document.createElement('div');reason.dataset.confidenceReason='';reason.className='small muted';card.insertBefore(reason,qs('[data-record-details]',card));}const why=inferenceReason(r);reason.textContent=why?'Çıkarım: '+why:'';reason.hidden=!why;
  };
+ const coverage=document.createElement('p');coverage.dataset.dailyCoverage='';panel.append(coverage);
+ const undo=createUndoWindow(),versions=new WeakMap();let undoTimer,highlightTimer;
+ const undoBar=document.createElement('div');undoBar.dataset.draftUndo='';undoBar.hidden=true;undoBar.innerHTML='<span>Soru cevabı uygulandı · 5 sn</span><button type="button" class="btn sm" data-undo-answer>Geri al</button>';questionBox.after(undoBar);
+ const markEdit=ev=>{const card=ev.target.closest?.('.card[data-kind]');if(card)versions.set(card,(versions.get(card)||0)+1);};out.addEventListener('input',markEdit,true);out.addEventListener('change',markEdit,true);
+ const snapshotRow=(row,updates)=>{
+  const values=Object.fromEntries(Object.keys(updates).map(f=>[f,qs('[name="'+f+'"]',row.card)?.value??'']));
+  const keys=['date','customer_id','new_customer','new_customer_parent_id','vehicle_id','quantity','unit','dateUnsure','calendarConflict','dateConflict','customerGuess','vehicleGuess','guessed','sourceNeedsMaterial','sourceUncertain','fieldConfidence','issues','_bulkReviewed','_workflowCompleted'];
+  const state=Object.fromEntries(keys.map(k=>[k,{present:Object.hasOwn(row.r,k),value:structuredClone(row.r[k])}]));
+  return ()=>{v._workflow.apply({key:row.key,updates:values},'Son soru cevabı geri alındı');for(const[k,saved]of Object.entries(state)){if(saved.present)row.r[k]=saved.value;else delete row.r[k];}row.r.ok=false;const warning=qs('[data-row-issues]',row.card);if(warning)warning.textContent=row.r.issues?.length?'⚠ '+row.r.issues.join(' · '):'';repaintConfidenceBadges(row.card,row.r);v._workflow.refresh();};
+ };
+ qs('[data-undo-answer]',undoBar).onclick=()=>{const n=undo.undo();undoBar.hidden=true;clearTimeout(undoTimer);update();let ack=out.querySelector('[data-question-applied]');if(ack)ack.textContent=n?n+' kartın soru cevabı geri alındı; kayıt yazılmadı.':'Sonradan düzenlenen veya kaydedilen kartlar korundu; geri alınacak cevap kalmadı.';};
  const questionDrafts=new Map(),unitDrafts=new Map();
  let questionSignature=null,latestQuestions=[],latestRows=[];
  // Tek dinleyici: kutu yeniden çizilse de her zaman en güncel soru ve satırlar kullanılır.
@@ -60,15 +72,17 @@ export function bindAssistantReview(ctx,out,v,d){
   const q=questions.find(q=>q.key===button.dataset.answer),oi=button.dataset.option;if(!q)return;const target=rows.find(r=>r.key===q.targets[0].key);
   const value=oi==='value'?(questionDrafts.get(q.key)??q.suggested??''):target?.options[q.field]?.[Number(oi)]?.value;
   if(value===''||value==null)return;
-  const changed=[];
+  const changed=[],undoEntries=[];
   for(const t of q.targets){const row=rows.find(r=>r.key===t.key);if(!row)continue;
    // A shared answer is offered only for the same explicitly unresolved subject.
    if(row.options[q.field]&&!row.options[q.field].some(o=>o.value===value))continue;
    const updates={[q.field]:value};
    if(q.fields?.includes('unit')){const unit=questionBox.querySelector('[data-question-unit="'+CSS.escape(q.key)+'"]')?.value;if(!unit)return;updates.unit=unit;}
-   v._workflow?.apply({key:t.key,updates},q.label+': '+value);
+   const restore=snapshotRow(row,updates);v._workflow?.apply({key:t.key,updates},q.label+': '+value);
+   const version=versions.get(row.card)||0;undoEntries.push({valid:()=>row.card.isConnected&&row.card.dataset.saved!=='1'&&(versions.get(row.card)||0)===version,restore});
    changed.push(row);row.card.dataset.questionUpdated='1';
   }
+  undo.set(undoEntries);clearTimeout(undoTimer);undoBar.hidden=!undoEntries.length;undoTimer=setTimeout(()=>{undoBar.hidden=true;undo.clear();},5000);clearTimeout(highlightTimer);highlightTimer=setTimeout(()=>{for(const card of cards)delete card.dataset.questionUpdated;},1500);
   questionDrafts.delete(q.key);unitDrafts.delete(q.key);questionSignature=null;update();
   let ack=out.querySelector('[data-question-applied]');if(!ack){ack=document.createElement('p');ack.dataset.questionApplied='';ack.className='notice info';ack.setAttribute('role','status');questionBox.after(ack);}
   ack.textContent=changed.length+' kartta yalnız '+(DRAFT_FIELDS[q.field]||q.field)+' alanı güncellendi: '+changed.map(r=>r.label+' '+(r.index+1)).join(', ')+'. Henüz kaydedilmedi.';
@@ -93,7 +107,7 @@ export function bindAssistantReview(ctx,out,v,d){
   }
 
 
-  for(const row of rows)renderRow(row);
+  for(const row of rows)renderRow(row);coverage.textContent=coverageText(d,rows);
   const save=qs('[data-save]',out);if(save&&!save.disabled)save.textContent=totals.selected?'Onayla ve '+totals.selected+' kaydı kaydet':'Kaydetmek için kayıt seç';
  }finally{updating=false;}};
  qs('[data-review-states]',panel).addEventListener('click',e=>{const button=e.target.closest('[data-review-filter]');if(!button)return;filter=button.dataset.reviewFilter;update();});
@@ -103,6 +117,7 @@ export function bindAssistantReview(ctx,out,v,d){
  // Existing live validation can change warnings without dispatching an input event.
  const watched=cards.flatMap(c=>[...c.querySelectorAll('[data-row-issues],[data-fuelout-issues]')]);
  const obs=new MutationObserver(()=>{if(!out.isConnected)obs.disconnect();else update();});for(const el of watched)obs.observe(el,{childList:true,subtree:true,characterData:true});for(const card of cards)obs.observe(card,{attributes:true,attributeFilter:['data-saved']});
- const detach=new MutationObserver(()=>{if(!panel.isConnected){obs.disconnect();detach.disconnect();}});detach.observe(document.body,{childList:true,subtree:true});
+ const releasePicker=v._workflow?mountDraftPicker(out,v._workflow,update):()=>{};
+ const detach=new MutationObserver(()=>{if(!panel.isConnected){obs.disconnect();detach.disconnect();releasePicker();clearTimeout(undoTimer);clearTimeout(highlightTimer);undo.clear();out.removeEventListener('input',markEdit,true);out.removeEventListener('change',markEdit,true);}});detach.observe(document.body,{childList:true,subtree:true});
  return {update};
 }

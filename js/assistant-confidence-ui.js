@@ -56,3 +56,5 @@ export function paintRuleConfidence(card,row,decision){
  const info={value:Number(rule.price),level:CONFIDENCE.CERTAIN,reason:'Bu bağlamda tek kayıtlı fiyat sonucu',source:'price_rule'};row.fieldConfidence.effective_unit_price=info;
  const output=document.createElement('output');output.dataset.confidencePrice='';output.className='small';output.textContent='Kayıtlı fiyat: '+info.value.toLocaleString('tr-TR')+' ₺ · Kesin';input.after(output);badge(input,'effective_unit_price',info);
 }
+
+export function repaintConfidenceBadges(card,row){for(const el of card.querySelectorAll("[name]")){const field=raw[el.name]||el.name;if(row.fieldConfidence?.[field])badge(el,field,row.fieldConfidence[field]);}attachSourcePriorities(row);}

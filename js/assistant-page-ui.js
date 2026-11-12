@@ -1,3 +1,4 @@
+import {mountEveningPage} from './assistant-evening311.js';
 import {assistantHubHTML} from './assistant-hub-ui.js';
 import {appbar,esc,notice,qs,confirmDialog,toast} from './ui.js';
 
@@ -38,7 +39,7 @@ export function assistantPageHTML(g,query,guide){
 
 export function mountAssistantPage(ctx){
  const {root,db}=ctx,workspace=qs('[data-assistant-page]',root),composer=qs('[data-composer]',root),space=qs('[data-composer-space]',root),msg=qs('[data-msg]',root);
- const cleanups=[];let closed=false,frame;
+ const cleanups=[mountEveningPage(ctx)];let closed=false,frame;
  const layout=()=>{if(closed||!workspace.isConnected)return;if(qs('[data-customer-create],[data-site-create],[data-directory-create],[data-hub-panel]:not([hidden])',root)){composer.classList.remove('fixed');for(const key of ['left','width','bottom'])composer.style[key]='';space.style.height='0px';return;}const r=workspace.getBoundingClientRect(),vv=window.visualViewport,visibleBottom=(vv?.height||innerHeight)+(vv?.offsetTop||0),nav=document.getElementById('bottomnav'),nr=nav?.getBoundingClientRect();let bottom=Math.max(8,innerHeight-visibleBottom+8);if(nr&&getComputedStyle(nav).display!=='none'&&!nav.hidden&&nr.top<visibleBottom&&nr.bottom<=visibleBottom+2)bottom=Math.max(bottom,innerHeight-nr.top+8);composer.style.left=r.left+'px';composer.style.width=r.width+'px';composer.style.bottom=bottom+'px';composer.classList.add('fixed');space.style.height=(composer.getBoundingClientRect().height+24)+'px';};
  const schedule=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(layout);};
  const resize=new ResizeObserver(schedule);resize.observe(workspace);resize.observe(composer);window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);
