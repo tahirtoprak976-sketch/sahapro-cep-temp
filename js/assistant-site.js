@@ -25,7 +25,7 @@ export function showSiteCreate(ctx,out,request,customers,conversation,turn){
  const changed=()=>{separate.checked=false;error.textContent='';refresh();};name.oninput=changed;customer.onchange=changed;separate.onchange=refresh;
  ctx.db.listActive('sites').then(rows=>{sites=rows;loaded=true;if(box.isConnected)refresh();}).catch(e=>{error.textContent='Şantiyeler okunamadı: '+e.message;button.disabled=true;});
  qs('[data-cancel-site]',box).onclick=async()=>{if(busy)return;box.remove();await conversation.finish(turn,{status:'cancelled',reply:'Şantiye taslağından vazgeçildi; kayıt açılmadı.'});};
- qs('[data-site-new-customer]',box).onclick=async()=>{if(busy)return;try{await ctx.assistantOpenCustomer?.({siteDraft:{name:name.value,address:address.value},siteTurn:turn});}catch(e){error.textContent=e.message;}};
+ qs('[data-site-new-customer]',box).onclick=async()=>{if(busy)return;try{await ctx.assistantOpenCustomer?.({siteDraft:{name:name.value,address:address.value,customer_id:customer.value},siteTurn:turn});}catch(e){error.textContent=e.message;}};
  button.onclick=async()=>{
   if(busy||button.disabled||!box.isConnected||qs('[data-ask]',ctx.root)?.disabled)return;
   busy=true;const controls=[...ctx.root.querySelectorAll('button,input,select,textarea')].filter(e=>!e.disabled);for(const el of controls)el.disabled=true;

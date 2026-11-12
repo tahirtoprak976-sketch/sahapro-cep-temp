@@ -72,7 +72,7 @@ export function conversationCommand(text) {
   if (/^(?:merhaba|selam|neler yapabilirsin|ne yapabilirsin|yardim|yardim et)[.!?]?$/u.test(f)) return 'help';
   return null;
 }
-export const CAPABILITIES_REPLY = 'İşlerinizi, tahsilatları, yakıtı, gider ve bakım bildirimlerini kontrol kartlarına hazırlayabilirim. Müşteri/araç kartları, fiyat kuralları, belge okuma ve kayıtlarınıza dayanan hesaplarda yardımcı olurum. Birden çok işi birlikte yazabilirsiniz. Eksik bilgiyi sorarım; kayıt değişikliklerini onayınızdan sonra uygularız. Örneğin: “Kaya’ya yaptığımız işi gir, aldığımız parayı da ayrı tahsilat göster.”';
+export const CAPABILITIES_REPLY = 'İşlerinizi, tahsilatları, yakıtı, gider ve bakım bildirimlerini kontrol kartlarına hazırlayabilirim. Yeni müşteri, şantiye, araç ve personel kartları, fiyat kuralları, belge okuma ve kayıtlarınıza dayanan hesaplarda yardımcı olurum. Birden çok işi birlikte yazabilirsiniz. Eksik bilgiyi sorarım; kayıt değişikliklerini onayınızdan sonra uygularız. Örneğin: “Kaya’ya yaptığımız işi gir, aldığımız parayı da ayrı tahsilat göster.”';
 
 const fold=s=>String(s||'').trim().toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i');
 // Explicit field replies and answers to a concrete missing-field question. Never a blanket "short text" rule.

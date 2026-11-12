@@ -1,10 +1,11 @@
 """Keep the composer noneditable throughout async setup, including before the saved draft read."""
-import asyncio,json,sys,uuid
+import argparse,asyncio,json,sys,uuid
 from pathlib import Path
 from urllib.parse import urlparse
 from playwright.async_api import async_playwright
-base=(sys.argv[1]if len(sys.argv)>1 else 'http://localhost:8841/').rstrip('/')+'/';assert urlparse(base).hostname in ('localhost','127.0.0.1')
-source=(Path(__file__).resolve().parents[2]/'js/db.js').read_text()
+ap=argparse.ArgumentParser();ap.add_argument('url',nargs='?',default='http://localhost:8841/');ap.add_argument('--source-root',type=Path,default=Path(__file__).resolve().parents[2]);args=ap.parse_args()
+base=args.url.rstrip('/')+'/';assert urlparse(base).hostname in ('localhost','127.0.0.1')
+source=(args.source_root/'js/db.js').read_text()
 for needle,extra in [
  ('  const row = await wrap(tx(db, "drafts", "readonly").get(form));',"\n  if(form==='assistant-pending-files'&&globalThis.TEST_setupGate){globalThis.TEST_setupWaiting=true;await globalThis.TEST_setupGate;}"),
  ('  const row = await wrap(tx(db, "meta", "readonly").get(key));',"\n  if(key==='assistant_draft'&&globalThis.TEST_draftGate){globalThis.TEST_draftWaiting=true;await globalThis.TEST_draftGate;}")]:
