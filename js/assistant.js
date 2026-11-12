@@ -2,7 +2,7 @@ import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
 import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
 import {priceVehicleContext} from "./core.js";
 import * as priceCore from "./price-rule-core.js";
-import {assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
+import {hasAssistantDraft,assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
 import {bindAssistantReview,openReviewCard} from "./assistant-review-ui.js";
 import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
@@ -748,7 +748,7 @@ export async function screen(ctx) {
       if(asking||openingCard||qs('[data-ask]',root).disabled)return;
       if(filesPending||files.length)throw Error('Ekleriniz korunuyor. Yerel taslak için önce Ekleri temizle düğmesini kullanın; eklerle işlem yapmak için mesajı Gönder düğmesiyle okuyun.');
       if(!startDraftPlan(command))throw Error('Bu yerel taslak türü desteklenmiyor.');
-      if((msgEl.value.trim()||qs('[data-save],[data-work-confirm],[data-customer-create],[data-site-create],[data-directory-create]',root))&&!await confirmDialog('Yeni taslak hazırlansın mı?','Açık kontrol kartının yerini yeni taslak alacak. Kaydedilmemiş alanları kontrol edin.','Yeni taslağı hazırla'))return;
+      if((msgEl.value.trim()||hasAssistantDraft(root))&&!await confirmDialog('Yeni taslak hazırlansın mı?','Açık kontrol kartının yerini yeni taslak alacak. Kaydedilmemiş alanları kontrol edin.','Yeni taslağı hazırla'))return;
       if(!root.isConnected)return;
       manualRefine=false;msgEl.value=command;msgEl.dispatchEvent(new Event('input',{bubbles:true}));await runAssistantRequest();
       if(selection.customer_id&&root.isConnected){

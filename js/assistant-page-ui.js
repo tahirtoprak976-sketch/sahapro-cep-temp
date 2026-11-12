@@ -1,6 +1,7 @@
 import {assistantHubHTML} from './assistant-hub-ui.js';
 import {appbar,esc,notice,qs,confirmDialog,toast} from './ui.js';
 
+export const hasAssistantDraft=root=>!!qs('[data-out] .card[data-kind]:not([data-saved="1"]),[data-work-confirm]:not(:disabled),[data-customer-create],[data-site-create],[data-directory-create]',root);
 export const DETAIL_PREFERENCE='sp_assistant_details_v1';
 export function detailedAssistant(){try{return localStorage.getItem(DETAIL_PREFERENCE)==='expanded';}catch{return false;}}
 export function assistantPageHTML(g,query,guide){
@@ -50,8 +51,8 @@ export function mountAssistantPage(ctx){
  const start=async(text,href,entity=null)=>{
   if(starting||qs('[data-ask]',root).disabled)return;starting=true;
   try{
-   const pending=entity&&qs('[data-save],[data-work-confirm],[data-customer-create],[data-site-create],[data-directory-create]',root);
-   if((msg.value.trim()||pending)&&!(await confirmDialog(href?'Ekrana geçilsin mi?':pending?'Açık taslak kapansın mı?':'Mesaj değişsin mi?',href?'Yazdığınız mesaj bu telefonda saklanacak.':pending?'Kaydedilmemiş kartın yerini yeni kart taslağı alacak.':'Yazdığınız metnin yerine başlangıç örneği gelecek; ekler korunacak.',href?'Ekranı aç':pending?'Yeni kartı aç':'Örneği yaz')))return;
+   const pending=(entity||href)&&hasAssistantDraft(root);
+   if((msg.value.trim()||pending)&&!(await confirmDialog(href?'Ekrana geçilsin mi?':pending?'Açık taslak kapansın mı?':'Mesaj değişsin mi?',href?(pending?'Kaydedilmemiş kontrol kartı bu ekrandan ayrılınca kapanacak. Önce kartı tamamlayabilir veya açıkça bu ekrana geçebilirsiniz. Mesaj ve ekler saklanır.':'Yazdığınız mesaj bu telefonda saklanacak.'):pending?'Kaydedilmemiş kartın yerini yeni kart taslağı alacak.':'Yazdığınız metnin yerine başlangıç örneği gelecek; ekler korunacak.',href?'Ekranı aç':pending?'Yeni kartı aç':'Örneği yaz')))return;
    if(!root.isConnected)return;
    if(href){await ctx.assistantPrepareNavigation?.();await db.metaSet('assistant_draft',msg.value);ctx.go(href);}
    else if(entity){if(entity==='customer')await ctx.assistantOpenCustomer?.();else if(entity==='site')await ctx.assistantOpenSite?.();else await ctx.assistantOpenDirectory?.(entity);msg.value='';await db.metaSet('assistant_draft','');msg.dispatchEvent(new Event('input',{bubbles:true}));}
