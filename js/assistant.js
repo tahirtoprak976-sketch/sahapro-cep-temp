@@ -1,3 +1,4 @@
+import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
 import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
 import {priceVehicleContext} from "./core.js";
 import * as priceCore from "./price-rule-core.js";
@@ -43,6 +44,7 @@ const opt = (list, val, empty = "— seçin —") =>
   list.map(([v, t]) => `<option value="${esc(v)}" ${v === val ? "selected" : ""}>${esc(t)}</option>`).join("");
 
 function drawConversation(root,state) {
+  updateHubConversation(root,!!state.turns.length);
   const log=qs('[data-chat-log]',root);if(!log||!root.isConnected)return;
   const historyOpen=!!qs('[data-earlier-turns]',log)?.open;
   log.innerHTML=conversationHTML(state);
@@ -303,7 +305,7 @@ export async function screen(ctx) {
     draftT = setTimeout(() => db.metaSet("assistant_draft", msgEl.value), 500);
   });
   ctx.assistantPrepareNavigation=async()=>{if(asking||filesPending)throw Error('İşlem veya dosya kontrolü sürüyor.');clearTimeout(fileDraftT);await fileDraftWrite;await(await import('./assistant-task-files.js')).savePendingFiles(db,[...files]);clearTimeout(draftT);await db.metaSet('assistant_draft',msgEl.value);};
-  qs("[data-ask]", root).addEventListener("click", async () => {
+  const runAssistantRequest=async () => {
     if(asking)return;if(filesPending)return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin","err");asking=true;
     const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
     for(const el of locked)el.disabled=true;
@@ -472,8 +474,8 @@ export async function screen(ctx) {
     // Gemini anahtarı yoksa: yerel komutlar (yukarıda) çalıştı; kayıt okuma için anahtar gerekir
     if (!localPlan && !g.ready && !/SP1:[A-Za-z0-9_-]{8,}/.test(message)) {
       const slot=prev?.v._workflow?.panel.querySelector('[data-draft-reply]');
-      const reply=slot?.isConnected?'Bu ifadeyi yerel alanlara eşleyemedim. Açık taslağınız korunuyor. Alan adını ve tam seçeneği yazabilir veya karttan seçebilirsiniz. Genel serbest konuşma için Gemini bağlantısı gerekir.':"Bu mesajı okumak için Gemini anahtarı gerekiyor (Ayarlar → Yapay Zeka). Anahtarsız da çalışanlar: yeni iş / tahsilat / gider / yakıt / bakım taslağı oluşturma, yeni müşteri oluşturma (\"Gürçelik Sürücü Kursu adında müşteri oluştur\"), ekran / kart açma (\"Kılıç'ın kartını aç\"), listeler (\"bugünkü işler\"), düzeltilecek işi bulma, mazot kalanı gibi kayıt soruları. Kayıtları formlardan da girebilirsiniz.";
-      if(slot?.isConnected)slot.innerHTML=notice('warn',reply);else qs('[data-out]',root).innerHTML=notice('warn',reply);
+      const reply=slot?.isConnected?'Bu ifadeyi yerel alanlara eşleyemedim. Açık taslağınız korunuyor. Alan adını ve tam seçeneği yazabilir veya karttan seçebilirsiniz. Genel serbest konuşma için Gemini bağlantısı gerekir.':"Bu isteği serbest mesaj veya belge olarak okumak için Gemini bağlantısı gerekiyor. İş merkezindeki yerel işlemler anahtarsız çalışır: müşteri/şantiye/araç/personel oluşturma, iş/tahsilat/gider/yakıt/bakım taslağı, kayıt arama, günlük özet ve ödeme takibi. Genel okuma için Ayarlar → Yapay Zeka bölümünden bağlantıyı ayarlayın.";
+      if(slot?.isConnected)showAssistantRequestError(slot,reply);else showAssistantRequestError(qs('[data-out]',root),reply+' Mevcut kontrol kartları korunuyor.');
       await finishChat({status:'clarify',reply});return;
     }
     if (rec) return toast("Önce ses kaydını bitirin", "err");
@@ -707,7 +709,8 @@ export async function screen(ctx) {
       asking=false;
       for(const el of locked)if(el.isConnected)el.disabled=false;
     }
-  });
+  };
+  qs('[data-ask]',root).addEventListener('click',runAssistantRequest);
   // The visible button must not accept a click before async setup binds its handler.
   msgEl.readOnly=false;
   for(const button of qsa('[data-start-customer],[data-start-site],[data-start-vehicle],[data-start-personnel],[data-start-work],[data-start-compare],[data-start-claim]',root))button.disabled=false;
@@ -738,6 +741,30 @@ export async function screen(ctx) {
     qs("[data-rec]", root).scrollIntoView({ block: "center" });
     qs("[data-rec]", root).click();
   }
+  const hubControls={
+    entity:type=>page.runAction(null,null,type),
+    screen:hash=>page.runAction(null,hash),
+    draft:async(command,selection={})=>{
+      if(asking||openingCard||qs('[data-ask]',root).disabled)return;
+      if(filesPending||files.length)throw Error('Ekleriniz korunuyor. Yerel taslak için önce Ekleri temizle düğmesini kullanın; eklerle işlem yapmak için mesajı Gönder düğmesiyle okuyun.');
+      if(!startDraftPlan(command))throw Error('Bu yerel taslak türü desteklenmiyor.');
+      if((msgEl.value.trim()||qs('[data-save],[data-work-confirm],[data-customer-create],[data-site-create],[data-directory-create]',root))&&!await confirmDialog('Yeni taslak hazırlansın mı?','Açık kontrol kartının yerini yeni taslak alacak. Kaydedilmemiş alanları kontrol edin.','Yeni taslağı hazırla'))return;
+      if(!root.isConnected)return;
+      manualRefine=false;msgEl.value=command;msgEl.dispatchEvent(new Event('input',{bubbles:true}));await runAssistantRequest();
+      if(selection.customer_id&&root.isConnected){
+        const card=qs('[data-kind="work"]',root),input=card&&qs('[name="customer"]',card),previousCustomer=input?.value;
+        if(!input)return;
+        const customer=await db.get('customers',selection.customer_id);if(!customer||!isActive(customer))throw Error('Seçilen müşteri artık kullanılamıyor.');
+        if(!card.isConnected||input.value!==previousCustomer)return;
+        if([...input.options].some(o=>o.value===customer.id)){
+          input.value=customer.id;input.dispatchEvent(new Event('change',{bubbles:true}));
+          if(selection.site_id){const field=qs('[name="site"]',card),previousSite=field?.value,site=await db.get('sites',selection.site_id);if(card.isConnected&&input.value===customer.id&&field?.value===previousSite&&site&&isActive(site)&&site.customer_id===customer.id&&[...field.options].some(o=>o.value===site.id)){field.value=site.id;field.dispatchEvent(new Event('change',{bubbles:true}));}}
+        }
+      }
+      qs('[data-out]',root)?.scrollIntoView({block:'start'});
+    }
+  };
+  const releaseHub=mountAssistantHub(ctx,hubControls);page.onDispose(()=>releaseHub?.());
   qs('[data-new-chat]',root).disabled=false;
   return true;
 }
