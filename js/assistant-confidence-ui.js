@@ -6,7 +6,7 @@ function badge(el,field,info){
  const label=el.closest('.field')?.querySelector('label');if(!label||!info)return;
  let b=label.querySelector('[data-field-confidence]');if(!b){b=document.createElement('span');b.dataset.fieldConfidence=field;label.append(' ',b);}
  b.dataset.fieldConfidence=field;
- b.className='badge '+(info.level===CONFIDENCE.CERTAIN?'ok':info.level===CONFIDENCE.INFERRED?'warn':'');b.dataset.level=info.level;b.textContent=labels[info.level];b.title=info.reason||'';
+ b.className='badge '+(info.level===CONFIDENCE.CERTAIN?'ok':info.level===CONFIDENCE.INFERRED?'warn':'');b.dataset.level=info.level;b.textContent=info.source==='user'?'Elle düzenlendi':info.source==='user_answer'?'Sizin seçiminiz':labels[info.level];b.title=info.reason||'';
 }
 export function mountConfidenceInputs(out,v){
  for(const card of out.querySelectorAll('.card[data-kind]')){
@@ -28,6 +28,7 @@ export function mountConfidenceInputs(out,v){
   const edited=ev=>{
    const el=ev.target;if(!el.matches('input[name],select[name],textarea[name]'))return;
    const field=raw[el.name]||el.name;if(el.type==='checkbox')return;
+   if(el.name==='date'){r.dateUnsure=false;r.calendarConflict=false;r.dateConflict=false;}
    if(el.name==='supplier'&&el.value)r.credit=true;
    if(el.name==='pay'&&el.value)r.credit=false;
    if(r.fieldConfidence[field])r.fieldConfidence[field]={value:el.value||null,level:el.value?CONFIDENCE.CERTAIN:CONFIDENCE.UNKNOWN,reason:el.value?'Sizin açık düzeltmeniz':'Alan boş',source:'user'};if(r.fieldConfidence[field])badge(el,field,r.fieldConfidence[field]);

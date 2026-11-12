@@ -1,3 +1,4 @@
+import {sourceProof} from './assistant-source-context.js';
 // Phone-side evidence only. Model confidence, counts and explanations are never authority.
 import {isActive} from './core.js';
 import {foldTr} from './parser.js';
@@ -149,7 +150,8 @@ function messageDateScope(r,kind,scope,whole,d){
  return hits.length===1?hits[0]:String(whole||scope||'');
 }
 function dateEvidence(value,{scope,whole,photoText,today,dateUnsure,row,kind,d}){
- let message=dateCandidates(messageDateScope(row,kind,scope,whole,d),today);
+ const phone=sourceProof(row);
+ let message=phone&&!phone.dateIssue&&phone.fields.date?.value?{values:[{date:phone.fields.date.value,level:phone.fields.date.level}],hint:true}:dateCandidates(messageDateScope(row,kind,scope,whole,d),today);
  const common=dateCandidates(whole,today),photo=dateCandidates(photoText,today);
  if(!message.hint){if(common.values.length===1)message=common;else if(common.hint)message={values:[],hint:true};}
  const m=message.values.length===1?message.values[0]:null,p=photo.values.length===1?photo.values[0]:null;
@@ -157,7 +159,7 @@ function dateEvidence(value,{scope,whole,photoText,today,dateUnsure,row,kind,d})
  const verify=reason=>({...unknown(reason),conflict:conflict||!!(chosen&&value&&value!==chosen.date),...(chosen?{suggestedValue:chosen.date,suggestedSource:m?'message':'photo'}:{})});
  if(conflict)return {...verify('Mesaj ve fiş tarihi çelişiyor; tarihi doğrulayın'),photoConflict:true};
  if(chosen){
-  if(dateUnsure||value!==chosen.date)return verify('Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı');
+  if(dateUnsure||value!==chosen.date)return {...verify('Önerilen tarih mesaj/fiş tarihiyle doğrulanmalı'),conflict:true};
   return chosen.level===CONFIDENCE.CERTAIN?certain(value,m?'Mesajdaki satır/başlık tarihi':'İlgili fişteki tarih',m?'message':'photo'):inferred(value,'Satırdaki gün/ay ve mevcut yıl','row_date');
  }
  if(!value||dateUnsure||message.hint||photo.hint)return verify('Tarih kanıtı belirsiz; tarihi doğrulayın');

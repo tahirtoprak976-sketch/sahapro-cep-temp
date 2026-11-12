@@ -1,5 +1,5 @@
 import {businessRuleGuidance,businessRules,bossDispatch} from './assistant-business-rules.js';
-import {prepareSourcePlan,sourceProof,registeredMatches,OPERATIONAL_GUIDANCE} from './assistant-source-context.js';
+import {prepareSourcePlan,sourceProof,carrySourceProof,registeredMatches,OPERATIONAL_GUIDANCE} from './assistant-source-context.js';
 import {fillWorkEvidence,annotateConfidence} from './assistant-confidence.js';
 import {isMachineKind,canonicalVehicleType,vehicleTypeRequested} from "./vehicle-type-core.js";
 import {assertAssistantPlan,rowEvidence,PLAN_LIMITS} from './assistant-safety.js';
@@ -659,7 +659,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.issues=issues;
     const evidenceText=w.quote&&quoteFound(w.quote,message)?String(w.quote):message;
     if(!w.quote||quoteFound(w.quote,message))fillWorkEvidence(r,{d,text:evidenceText,hasUnknownName:nameInMessage(d,evidenceText),negative:negatives.some(n=>n.alias&&quoteFound(n.alias,evidenceText))});
-    const operational=sourceProof(w);
+    const operational=sourceProof(w);carrySourceProof(r,operational);
     if(operational&&!fromDriver){
       if(operational.includedWork)r.contractIncluded=true;
       if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya birden fazla tarih çelişiyor',source:'source_row'};issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}
@@ -877,7 +877,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
       if (r.liters > stock) { r.stockShort = true; issues.push(`Depoda kayıtlı ${Math.max(0, Math.round(stock))} L var; gerçek depo girişini veya başlangıç stokunu kontrol edin. İşleri yakıttan ayrı kaydedebilirsiniz.`); }
       else stock -= r.liters;
     }
-    const operational=sourceProof(f);
+    const operational=sourceProof(f);carrySourceProof(r,operational);
     if(operational){if(operational.dateMismatch||operational.weekdayConflict){r.calendarConflict=true;r.dateUnsure=true;issues.push('Model tarihi veya gün adı mesaj tarihiyle çelişti; '+r.date+' tarihini doğrulayın?');}if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}r._fieldEvidence=Object.fromEntries(Object.entries(operational.fields).filter(([key,v])=>r[key]===v.value));if(operational.dateIssue)r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya çelişkili',source:'source_row'};if(operational.unknownVehicle){r._fieldEvidence.vehicle_id={value:null,level:'BILINMIYOR',reason:operational.unknownVehicle+' kartlarda yok; araç seçin',source:'source_row',rejected:true};r.unknownVehicleLabel=operational.unknownVehicle;}}
     r.issues = issues;
     r.ok = !!(r.date && r.vehicle_id && r.liters && !issues.length && !r.stockShort && (r.source !== "Müşteri Verdi" || r.customer_id));

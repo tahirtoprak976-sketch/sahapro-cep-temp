@@ -58,14 +58,18 @@ export function bindAssistantReview(ctx,out,v,d){
   const q=questions.find(q=>q.key===button.dataset.answer),oi=button.dataset.option;if(!q)return;const target=rows.find(r=>r.key===q.targets[0].key);
   const value=oi==='value'?(questionDrafts.get(q.key)??q.suggested??''):target?.options[q.field]?.[Number(oi)]?.value;
   if(value===''||value==null)return;
+  const changed=[];
   for(const t of q.targets){const row=rows.find(r=>r.key===t.key);if(!row)continue;
    // A shared answer is offered only for the same explicitly unresolved subject.
    if(row.options[q.field]&&!row.options[q.field].some(o=>o.value===value))continue;
    const updates={[q.field]:value};
    if(q.fields?.includes('unit')){const unit=questionBox.querySelector('[data-question-unit="'+CSS.escape(q.key)+'"]')?.value;if(!unit)return;updates.unit=unit;}
    v._workflow?.apply({key:t.key,updates},q.label+': '+value);
+   changed.push(row);row.card.dataset.questionUpdated='1';
   }
   questionDrafts.delete(q.key);unitDrafts.delete(q.key);questionSignature=null;update();
+  let ack=out.querySelector('[data-question-applied]');if(!ack){ack=document.createElement('p');ack.dataset.questionApplied='';ack.className='notice info';ack.setAttribute('role','status');questionBox.after(ack);}
+  ack.textContent=changed.length+' kartta yalnız '+(DRAFT_FIELDS[q.field]||q.field)+' alanı güncellendi: '+changed.map(r=>r.label+' '+(r.index+1)).join(', ')+'. Henüz kaydedilmedi.';
  });
  let updating=false;
  const update=()=>{if(updating||!panel.isConnected)return;updating=true;try{const rows=read(),totals=reviewTotals(rows);qs('[data-review-counts]',panel).textContent=`${totals.total} kayıt · ${totals.selected} seçili · ${totals.review} kontrol bekliyor${totals.duplicates?' · '+totals.duplicates+' olası mükerrer':''}`;
@@ -75,10 +79,10 @@ export function bindAssistantReview(ctx,out,v,d){
   latestQuestions=questions;latestRows=rows;
   const signature=JSON.stringify([questions.length,questions.slice(0,3).map(q=>[q.key,q.label,q.targets.map(t=>t.key),(rows.find(r=>r.key===q.targets[0]?.key)?.options[q.field]||[]).map(o=>[o.value,o.label]),q.suggested??null,q.fields,q.optional,(rows.find(r=>r.key===q.targets[0]?.key)?.options.unit||[]).map(o=>[o.value,o.label])])]);
   if(signature!==questionSignature){questionSignature=signature;
-  questionBox.innerHTML=questions.length?'<h3>Eksikleri birlikte tamamlayalım</h3>'+questions.slice(0,3).map((q,i)=>{
+  questionBox.innerHTML=questions.length?'<h3>Eksikleri birlikte tamamlayalım</h3><p class="small muted">Aynı kaynağa ait sorular birleştirilir. Cevap yalnız listelenen kartların ilgili alanını değiştirir.</p>'+questions.slice(0,3).map((q,i)=>{
    if(q.field==='message')return `<p>${esc(q.label)} <button type="button" class="btn sm" data-question-reply>Mesajla cevapla</button></p>`;
    const target=rows.find(r=>r.key===q.targets[0].key),opts=target?.options[q.field]||[],suggested=q.suggested;
-   return `<div data-question="${esc(q.key)}"><p>${esc(q.label)} <span class="muted">(${q.targets.map(t=>(labels[t.kind]||t.kind)+' '+(t.index+1)).join(', ')})</span></p>${opts.map((o,j)=>`<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="${j}">${esc(o.label)}</button>`).join('')}${!opts.length?`<input data-question-value="${esc(q.key)}" type="${q.field==='date'?'date':['quantity','liters','unit_price','amount'].includes(q.field)?'number':'text'}" value="${esc(questionDrafts.get(q.key)??suggested??'')}" aria-label="${esc(q.label)}">${q.fields?.includes('unit')?`<select data-question-unit="${esc(q.key)}" aria-label="Birim">${(target?.options.unit||[]).map(o=>`<option value="${esc(o.value)}" ${o.value===(unitDrafts.get(q.key)||target.fields.unit||target.r.unit)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`:''}<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="value">Uygula</button>`:''}</div>`;
+   return `<div data-question="${esc(q.key)}"><p>${esc(q.label)} <b class="badge">${q.targets.length} kart</b> <span class="muted">(${q.targets.map(t=>(labels[t.kind]||t.kind)+' '+(t.index+1)).join(', ')})</span></p>${opts.map((o,j)=>`<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="${j}">${esc(o.label)}</button>`).join('')}${!opts.length?`<input data-question-value="${esc(q.key)}" type="${q.field==='date'?'date':['quantity','liters','unit_price','amount'].includes(q.field)?'number':'text'}" value="${esc(questionDrafts.get(q.key)??suggested??'')}" aria-label="${esc(q.label)}">${q.fields?.includes('unit')?`<select data-question-unit="${esc(q.key)}" aria-label="Birim">${(target?.options.unit||[]).map(o=>`<option value="${esc(o.value)}" ${o.value===(unitDrafts.get(q.key)||target.fields.unit||target.r.unit)?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`:''}<button type="button" class="btn sm" data-answer="${esc(q.key)}" data-option="value">Uygula</button>`:''}</div>`;
   }).join('')+(questions.length>3?`<p class="small">${questions.length-3} soru daha var; bu cevaplardan sonra sırayla gösterilecek.</p>`:''):'';
   }
 

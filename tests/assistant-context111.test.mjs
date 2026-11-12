@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {validatePlan} from '../js/assistant-core.js';
+import {assistantQuestions} from '../js/assistant-questions.js';
+const d={customers:[{id:'TEST_A',name:'Akasya Yapı'},{id:'TEST_B',name:'Deniz Yapı'}],sites:[{id:'TEST_S',name:'Koru Parsel',customer_id:'TEST_A'}],personnel:[{id:'TEST_P',name:'Salih',vehicle_id:'TEST_V'}],vehicles:[{id:'TEST_V',name:'Kazıcı 8',type:'JCB',assignee_id:'TEST_P'}],aliases:[{id:'TEST_ALIAS',target_type:'site',target_id:'TEST_S',alias:'Koru işi',active:true}],work_records:[],price_book:[],fuel_records:[],fuel_tank_movements:[]};
+const today='2026-11-12';
+const text='[11/11/2026 19:00] Salih: Koru işi 2 saat çalıştı\n3 saat çalıştı';
+const out=validatePlan({works:[],fuel:[]},{d,message:text,today});
+assert.equal(out.works.length,2);assert.equal(out.works[1].site_id,'TEST_S','quantity-led continuation keeps the proven site, not just its owner');
+const m=validatePlan({works:[{date:today,vehicle_id:'TEST_V',customer_id:'TEST_A',site_id:'TEST_S',work_type:'JCB Çalışması',quantity:2,unit:'Saat',quote:'Koru işi 2 saat çalıştı'},{date:today,vehicle_id:'TEST_V',customer_id:'TEST_A',site_id:'TEST_S',work_type:'JCB Çalışması',quantity:3,unit:'Saat',quote:'3 saat çalıştı'}],fuel:[]},{d,message:text,today});
+assert.ok(m.works.every(r=>!r.ok),'genuine model/date conflict remains unchecked');
+const rows=m.works.map((r,index)=>({kind:'work',index,key:'work:'+index,r,fields:{date:r.date,customer:r.customer_id,vehicle:r.vehicle_id,quantity:r.quantity,unit:r.unit},missing:[]}));
+const qs=assistantQuestions(rows).filter(q=>q.field==='date');assert.equal(qs.length,1,'one explicit source date asks once for both cards');assert.equal(qs[0].targets.length,2);
+const other=validatePlan({works:[],fuel:[]},{d,message:'[11/11/2026 19:00] Salih: Koru işi 2 saat çalıştı\n[12/11/2026 19:00] Salih: 3 saat çalıştı',today});assert.equal(other.works[1].customer_id,null,'new header cannot inherit customer');
+const dated=validatePlan({works:[],fuel:[]},{d,message:'[12/11/2026 19:00] Salih: Akasya Yapı 2 saat çalıştı\n11.11.2026 3 saat çalıştı',today});assert.equal(dated.works[1].customer_id,null,'new explicit date cuts customer context');
+console.log('source scope, continuation site, grouped date, hard boundaries PASS');
+// Identical dates in different headers must still be separately confirmed.
+const separate=validatePlan({works:[{date:today,quote:'Akasya Yapı 2 saat çalıştı',customer_id:'TEST_A',vehicle_id:'TEST_V',quantity:2,unit:'Saat',work_type:'JCB Çalışması'},{date:today,quote:'Akasya Yapı 3 saat çalıştı',customer_id:'TEST_A',vehicle_id:'TEST_V',quantity:3,unit:'Saat',work_type:'JCB Çalışması'}],fuel:[]},{d,message:'[11/11/2026 19:00] Salih: Akasya Yapı 2 saat çalıştı\n[11/11/2026 20:00] Salih: Akasya Yapı 3 saat çalıştı',today});
+assert.equal(assistantQuestions(separate.works.map((r,index)=>({kind:'work',index,r,fields:{date:r.date},missing:[]}))).filter(q=>q.field==='date').length,2);
+const split=validatePlan({works:[],fuel:[]},{d,message:'[11/11/2026 19:00] Salih: Koru işi 2 saat çalıştı\nDeniz Yapı 3 saat çalıştı\n1 saat çalıştı',today});assert.equal(split.works[2].customer_id,'TEST_B');assert.equal(split.works[2].site_id,null);
+const money=validatePlan({works:[],fuel:[]},{d,message:'[11/11/2026 19:00] Salih: Koru işi 2 saat çalıştı\n5000 TL avans verdik\n3 saat çalıştı',today});assert.equal(money.works.at(-1).customer_id,null,'finance line cuts work customer inheritance');
+const unknownSender=validatePlan({works:[],fuel:[]},{d,message:'[11/11/2026 19:00] Salih: Koru işi 2 saat çalıştı\n[11/11/2026 20:00] Bilinmeyen: 3 saat çalıştı',today});assert.equal(unknownSender.works.length,1,'unknown sender cannot borrow registered sender');
+const typoD=structuredClone(d);typoD.sites=[{id:'TEST_TYPO',name:'Uzunorman',customer_id:'TEST_A'}];
+const typo=message=>validatePlan({works:[],fuel:[]},{d:typoD,message,today});const ty=typo('[11/11/2026 19:00] Salih: Uzunoman 2 saat çalıştı').works[0];assert.equal(ty.customer_id,'TEST_A');assert.equal(ty.fieldConfidence.site_id.level,'CIKARIM');
+typoD.sites.push({id:'TEST_NEAR',name:'Uzunomanı',customer_id:'TEST_B'});const amb=typo('[11/11/2026 19:00] Salih: Uzunoman 2 saat çalıştı').works[0];assert.equal(amb.customer_id,null);assert.equal(amb.ok,false);
+console.log('separate headers, finance/customer boundaries, unknown sender, unique typo and ambiguous candidates PASS');
