@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {normalGroupEligible,draftCariEffect} from '../js/assistant-receipts311.js';
+const row={kind:'work',saved:false,missing:[],issues:false,duplicate:false,disabled:false,fields:{},r:{}};
+for(let i=0;i<100;i++)for(const r of [{kind:'collection'},{kind:'fuelout'},{kind:'tank',r:{customer_id:'TEST_C'}},{kind:'personnel',r:{event_type:'Avans'}},{kind:'personnel',r:{event_type:'Kasa Teslimi'}}])assert.equal(normalGroupEligible({...row,...r}),false);
+assert.equal(normalGroupEligible(row),true);assert.equal(normalGroupEligible({...row,kind:'expense'}),true);assert.equal(normalGroupEligible({...row,issues:true}),false);assert.equal(normalGroupEligible({...row,kind:'fuel',r:{source:'Müşteri Verdi'}}),false);
+const d={customers:[{id:'TEST_C',name:'TEST Cari'}],vehicles:[{id:'TEST_V',name:'TEST Makine',type:'JCB'}],sites:[],price_book:[],work_records:[],hakedis:[],cari_movements:[{id:'TEST_M',customer_id:'TEST_C',amount:120,date:'2026-11-12',type:'Hakediş'}]};
+const fields={customer:'TEST_C',vehicle:'TEST_V',date:'2026-11-12',quantity:'2',unit:'Saat',work_type:'JCB Çalışması',unit_price:'10'};
+const before=JSON.stringify(d),p=draftCariEffect({kind:'work',fields,r:{}},d);assert.equal(p.before,120);assert.equal(p.delta,20);assert.equal(p.after,140,'existing finalized VAT remains; draft never adds VAT');assert.equal(JSON.stringify(d),before);
+assert.equal(draftCariEffect({kind:'work',fields:{...fields,unit_price:''},r:{}},d).delta,null,'unknown price is not zero');assert.equal(draftCariEffect({kind:'collection',fields:{customer:'TEST_C',amount:'20'},r:{}},d).after,100);
+assert.equal(draftCariEffect({kind:'collection',fields:{customer:'TEST_C',amount:''},r:{}},d).delta,null);
+console.log('100 repetitions of five sensitive group exclusions; existing ledger preserved; no guessed amount or automatic VAT PASS');
+const taxIncluded={...d,price_book:[{id:'TEST_RULE',customer_id:'TEST_C',unit:'Saat',price:12,kdv_rate:20,kdv_included:true,active:true}]};
+assert.equal(draftCariEffect({kind:'work',fields:{...fields,unit_price:''},r:{}},taxIncluded).after,140,'included VAT is removed only from new draft, never from current ledger');
+assert.equal(draftCariEffect({kind:'collection',fields:{customer:'TEST_C',amount:'20'},r:{fieldConfidence:{amount:{level:'BILINMIYOR'}}}},d).delta,null,'unverified money is not presented as a definite balance');

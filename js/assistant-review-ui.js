@@ -119,5 +119,5 @@ export function bindAssistantReview(ctx,out,v,d){
  const obs=new MutationObserver(()=>{if(!out.isConnected)obs.disconnect();else update();});for(const el of watched)obs.observe(el,{childList:true,subtree:true,characterData:true});for(const card of cards)obs.observe(card,{attributes:true,attributeFilter:['data-saved']});
  const releasePicker=v._workflow?mountDraftPicker(out,v._workflow,update):()=>{};
  const detach=new MutationObserver(()=>{if(!panel.isConnected){obs.disconnect();detach.disconnect();releasePicker();clearTimeout(undoTimer);clearTimeout(highlightTimer);undo.clear();out.removeEventListener('input',markEdit,true);out.removeEventListener('change',markEdit,true);}});detach.observe(document.body,{childList:true,subtree:true});
- return {update};
+ return {update,read};
 }

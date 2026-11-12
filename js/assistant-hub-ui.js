@@ -60,7 +60,7 @@ export function mountAssistantHub(ctx,controls){
   const button=e.target.closest('button');if(!button||!hub.contains(button))return;
   if(button.hasAttribute('data-hub-dialog-close')){dialog.close();return;}
   if(button.hasAttribute('data-evening-whatsapp')){open('WhatsApp gün sonu dökümü','paste');output.textContent='Ekleriniz korunuyor. Mesajınız ve açık kartlarınız da korunur. WhatsApp dökümünü kutuya yapıştırın; Gönder ile kontrol kartlarını hazırlayın.';qs('[data-msg]',root)?.focus();return;}
-  if(button.hasAttribute('data-hub-photo')){qs('[data-addphotos]',root).click();return;}
+  if(button.hasAttribute('data-hub-photo')){if(ctx.assistantOpenReceiptQueue)ctx.assistantOpenReceiptQueue();else qs('[data-addphotos]',root).click();return;}
   if(button.hasAttribute('data-hub-toggle')){hub.dataset.surface=hub.classList.contains('hub-collapsed')?'open':'closed';updateHubConversation(root,!!qs('[data-chat-turn]',root));return;}
   if(button.hasAttribute('data-hub-close')){token++;panel.hidden=true;current=null;return;}
   if(button.hasAttribute('data-hub-group')){group=button.dataset.hubGroup;draw();return;}
