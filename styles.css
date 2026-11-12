@@ -1304,3 +1304,4 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 
 .assistant-local-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px;border-top:1px solid var(--border);padding-top:8px}.assistant-local-actions .btn{min-height:38px;font-size:12px}.assistant-local-actions span{font-size:10px}
 .assistant-hub-dialog>.assistant-local-actions{padding:12px 16px;margin:0;background:#f5f9fd;border-bottom:1px solid #dae5ef}
+@media(max-width:719px){.assistant-hub-hero p{display:none}.assistant-hub-hero h2{font-size:19px}}

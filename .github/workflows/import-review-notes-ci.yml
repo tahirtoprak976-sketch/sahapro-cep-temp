@@ -161,13 +161,13 @@ jobs:
 
       - name: Verify installed v3.10.12 to assistant resilience preservation
         run: |
-          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref df2ab84a637f6ead622f3871b943dadb2b5ebe6b
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref e7d801137388926b4aa6ecfafa4b6cc1f909f57f
 
       - name: Prove absent one-shot review on unchanged v3.10.12
         run: |
           set -euo pipefail
           baseline=$(mktemp -d /tmp/solo-resilience113-baseline-XXXXXX)
-          git -c safe.directory="$GITHUB_WORKSPACE" archive df2ab84a637f6ead622f3871b943dadb2b5ebe6b | tar -x -C "$baseline"
+          git -c safe.directory="$GITHUB_WORKSPACE" archive e7d801137388926b4aa6ecfafa4b6cc1f909f57f | tar -x -C "$baseline"
           cp tests/assistant-resilience113.test.mjs "$baseline/tests/"
           if (cd "$baseline" && node tests/assistant-resilience113.test.mjs) > /tmp/solo-resilience113-baseline.log 2>&1; then
             echo 'Unchanged v112 unexpectedly provides the one-shot review'
