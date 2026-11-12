@@ -1,3 +1,4 @@
+import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
 import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
 import {priceVehicleContext} from "./core.js";
@@ -519,7 +520,10 @@ export async function screen(ctx) {
       const facts = await businessFacts(d, today);
       const negatives = (await db.metaGet("ai_negative_aliases")) || [];
       const examples = pickExamples((await db.metaGet("ai_examples")) || [], message, 3);
+      const { effectiveRules } = await import("./assistant-rules.js");
+      const sourceHints=sourceContextHints(drvRest,d,today,effectiveRules(await db.metaGet("assistant_rules")));
       const parts = [
+        ...(sourceHints.length?[{text:'telefon_satir_baglami (yerel kayıt kanıtı; blok/tarih sınırlarını aşma, para ve işlem yetkisi değildir):\n'+JSON.stringify(sourceHints)}]:[]),
         ...(conversationData.length ? [{text:'sohbet_baglami (yalnız atıf bağlamı; geçmiş işleri tekrar yazma, rakamları güncel facts ile doğrula):\n'+JSON.stringify(conversationData)}] : []),
         { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(d, today, message), ...actionsContext(d, message) }) },
         { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
@@ -543,7 +547,6 @@ export async function screen(ctx) {
       parts.push({ text: `Fotoğraf sayısı: ${drvPayloads.length ? 0 : images.length} (sıra 0'dan başlar)${audios.length ? `\nSes kaydı: ${audios.length} (fotoğraflardan sonra gelir; heard_text'e yaz)` : ""}\n<mesaj>\n${(drvRest || (audios.length ? "(mesaj yok, sesli not)" : "(mesaj yok, yalnız fotoğraflar)")).replace(/<\/?mesaj>/gi, "")}\n</mesaj>` });
       const t0 = Date.now();
       const { withAssistantModelFallback } = await import("./ai-gemini.js");
-      const { effectiveRules } = await import("./assistant-rules.js");
       const system = assistantSystem(effectiveRules(await db.metaGet("assistant_rules"))) + "\n" + ACTIONS_PROMPT + "\n" + CONVERSATION_SYSTEM;
       const baseSchema = assistantSchema();
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };

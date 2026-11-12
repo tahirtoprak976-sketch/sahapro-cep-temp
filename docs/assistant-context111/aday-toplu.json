@@ -1,0 +1,81 @@
+{
+  "version": "SAHAPRO SOLO v3.10.11",
+  "realGemini": false,
+  "mode": "assistant-validation",
+  "totals": {
+    "messages": 1,
+    "expectedCards": 38,
+    "actualCards": 38,
+    "readyCorrect": 15,
+    "unnecessaryQuestions": 14,
+    "missedQuestions": 0,
+    "wrongFields": 3,
+    "missingCards": 0,
+    "extraCards": 0,
+    "silentWrong": 0
+  },
+  "questions": {
+    "vehicle": {
+      "total": 2,
+      "required": 2,
+      "optional": 0,
+      "unnecessary": 0
+    },
+    "customer": {
+      "total": 3,
+      "required": 3,
+      "optional": 0,
+      "unnecessary": 0
+    },
+    "date": {
+      "total": 12,
+      "required": 1,
+      "optional": 0,
+      "unnecessary": 11
+    },
+    "work_type": {
+      "total": 1,
+      "required": 0,
+      "optional": 0,
+      "unnecessary": 1
+    },
+    "quantity": {
+      "total": 3,
+      "required": 1,
+      "optional": 2,
+      "unnecessary": 0
+    },
+    "material": {
+      "total": 2,
+      "required": 0,
+      "optional": 0,
+      "unnecessary": 2
+    }
+  },
+  "blocked": {
+    "unknown:vehicle_id": 3,
+    "calendarConflict": 16,
+    "dateUnsure": 16,
+    "unknown:date": 16,
+    "unknown:customer_id": 7,
+    "unknown:work_type": 1,
+    "unknown:unit": 3,
+    "unknown:quantity": 3,
+    "sourceNeedsMaterial": 2,
+    "vehicleGuess": 1
+  },
+  "categories": {
+    "Tek seferde 20 mesaj": {
+      "messages": 1,
+      "expectedCards": 38,
+      "actualCards": 38,
+      "readyCorrect": 15,
+      "unnecessaryQuestions": 14,
+      "missedQuestions": 0,
+      "wrongFields": 3,
+      "missingCards": 0,
+      "extraCards": 0,
+      "silentWrong": 0
+    }
+  }
+}
