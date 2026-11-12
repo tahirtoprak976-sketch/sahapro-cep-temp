@@ -7,7 +7,14 @@ import {priceDecision} from './price-decision.js';
 import {priceSnapshot} from './business.js';
 import {jobPreview,applyJob} from './job-core.js';
 const positive=v=>v!==''&&v!=null&&Number.isFinite(Number(v))&&Number(v)>0?Number(v):null;
-export function normalGroupEligible(row){return ['work','expense','fuel'].includes(row.kind)&&!row.saved&&!row.disabled&&!row.missing?.length&&!row.issues&&!row.duplicate&&!sensitiveAssistantRow(row)&&row.r?.source!=='Müşteri Verdi'&&row.fields?.source!=='Müşteri Verdi'&&!['customer','vehicle','site','quarry','dump_site'].some(k=>String(row.fields?.[k]||'').startsWith('new:'))&&!row.r?.driver_entry_id&&!row.r?.unverified&&!['dateUnsure','dateConflict','calendarConflict','ambiguous','parentMismatch','customerGuess','vehicleGuess','priceUncertain','guessed'].some(k=>row.r?.[k]);}
+export function normalGroupEligible(row){
+ const required={work:['date','customer_id','vehicle_id','work_type','quantity','unit'],expense:['date','amount'],fuel:['date','vehicle_id','liters','source']};
+ const unresolved=(required[row.kind]||[]).some(k=>row.r?.fieldConfidence?.[k]?.level==='BILINMIYOR');
+ return ['work','expense','fuel'].includes(row.kind)&&!row.saved&&!row.disabled&&!row.missing?.length&&!row.issues&&!row.duplicate&&!unresolved&&!sensitiveAssistantRow(row)
+  &&row.r?.source!=='Müşteri Verdi'&&row.fields?.source!=='Müşteri Verdi'&&!['customer','vehicle','site','quarry','dump_site'].some(k=>String(row.fields?.[k]||'').startsWith('new:'))
+  &&!row.r?.driver_entry_id&&!row.r?.unverified&&!['dateUnsure','dateConflict','calendarConflict','ambiguous','parentMismatch','customerGuess','vehicleGuess','priceUncertain','guessed'].some(k=>row.r?.[k]);
+}
+
 export function draftCariEffect(row,d){
  const f=row.fields||{},customer=f.customer||f.fuel_customer||row.r?.customer_id,known=(d.customers||[]).some(c=>isActive(c)&&c.id===customer);if(!known||(d.customers||[]).find(c=>c.id===customer)?.internal)return null;
  const before=customerBalances(d).bal[customer]??0;let delta=null;

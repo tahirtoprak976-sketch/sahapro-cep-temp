@@ -12,3 +12,6 @@ console.log('100 repetitions of five sensitive group exclusions; existing ledger
 const taxIncluded={...d,price_book:[{id:'TEST_RULE',customer_id:'TEST_C',unit:'Saat',price:12,kdv_rate:20,kdv_included:true,active:true}]};
 assert.equal(draftCariEffect({kind:'work',fields:{...fields,unit_price:''},r:{}},taxIncluded).after,140,'included VAT is removed only from new draft, never from current ledger');
 assert.equal(draftCariEffect({kind:'collection',fields:{customer:'TEST_C',amount:'20'},r:{fieldConfidence:{amount:{level:'BILINMIYOR'}}}},d).delta,null,'unverified money is not presented as a definite balance');
+
+assert.equal(normalGroupEligible({...row,r:{fieldConfidence:{date:{level:'BILINMIYOR'}}}}),false,'visible but unverified required field is not a ready group');
+assert.equal(normalGroupEligible({...row,r:{needsApproval:true}}),false);
