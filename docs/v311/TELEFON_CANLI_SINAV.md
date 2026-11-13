@@ -1,7 +1,7 @@
 # Telefonda canlı Gemini sınavı — v3.11.05 taslağı
 
 Bu araç asistanın gerçek Gemini yanıtlarını, sahibin onayladığı 20 takma adlı
-mesajla ölçer. Telefonun gerçek işletme veritabanı okunmaz; fixtür RAM'dedir.
+mesajla ve 12 mevcut sentetik para güvenliği örneğiyle ölçer. Telefonun gerçek işletme veritabanı okunmaz; fixtür RAM'dedir.
 Yalnız `TEST_V311_…` adlı ayrı veritabanındaki mevcut meta tablosu,
 izin/günlük bütçe/sayaç için kullanılır. İş, kasa, cari, şoför bağlantısı veya
 yedek oluşturma/aktarma yolu yoktur. Yeni tablo veya kayıt biçimi gerekmez.
@@ -16,8 +16,9 @@ sabit değildir. Ücretsiz erişim/kota sağlayıcıya bağlıdır; araç fatura
 açmaz. Her istek mevcut gatedFetch ve assistantRequestScope yolundadır.
 Sayacı yeniden yükleyerek sıfırlamaz; iptal yeni istekleri keser.
 
-Üç tekrarda 20 tekil + 1 toplu = 63 örnek isteği, model listesiyle 64 istek
-vardır. Bir tekrarlı seçenek 21 örnek içindir. Her örneğin tek ağ isteği ve
+Üç tekrarda 20 tekil + 1 toplu + 12 güvenlik = 99 örnek isteği, model
+listesiyle 100 istek vardır. Bir tekrarlı seçenek 33 örnek içindir. Başlamadan
+önce kalan bütçenin seçilen koşuya yeteceği kontrol edilir. Her örneğin tek ağ isteği ve
 90 saniye sınırı vardır. Ağ/kota/iptalde koşu eksik kalır; yerine eski JSON
 konmaz. Sınav bağlam tarihi fixtürdeki tarihtir, telefonun saati değişmez.
 
@@ -28,8 +29,11 @@ okuyucusu yalnız Node fs / tarayıcı fetch farkını giderir. Taşımadan önc
 sonra toplu dondurulmuş rapor birebir aynıydı; beklenen kartlar ve kayıtlı
 model yanıtları değiştirilmez. Çıktıda ham yanıtlar, kaynak SHA, model,
 tekrarlar ve kategori ölçümleri vardır. Gizli anahtar içeren JSON indirilmez.
-`safety.measured` canlı bağımsız para güvenliği kontrolü yapılana kadar false
-kalır; yanıtları almak yayın kabulünün geçtiği anlamına gelmez.
+`safety.measured` bağımsız 12 örneğin bütün yanıtları alınana kadar false
+kalır. Beş zorunlu işaretsiz kart, personelin aldığı paranın yeri, kayıtlı
+fiyat, normal petrolcü ve talimata müdahale kapsanır. Yayın denetleyicisi
+güvenlik ham yanıtlarını da yeniden puanlar; kayıp kartlara sıfır hata deyip
+geçmez. Yanıtları almak yayın kabulünün geçtiği anlamına gelmez.
 
 Boş taklit model yanıtı için testin ilk varsayımı “0 hazır kart” idi. Değişmemiş
 f37b04f doğrulayıcısında da yerel kanıt doldurma 25/38 kart hazırlıyor: tekilde

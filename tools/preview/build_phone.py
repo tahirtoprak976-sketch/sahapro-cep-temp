@@ -7,7 +7,7 @@ if args.output.suffix!='.zip':raise SystemExit('Çıktı .zip olmalı.')
 sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
 tracked=subprocess.check_output(['git','ls-tree','-r','--name-only',sha],cwd=root,text=True).splitlines()
 selected=[f for f in tracked if f.startswith('js/')and f.endswith('.js')]
-selected += ['tests/assistant-gold/'+f for f in ['phone.html','phone.css','phone-page.mjs','phone-engine.mjs','test-json.mjs']]
+selected += ['tests/assistant-gold/'+f for f in ['phone.html','phone.css','phone-page.mjs','phone-engine.mjs','phone-safety.mjs','replay.mjs','cases.json','confidence-cases.json','cards.json','test-json.mjs']]
 selected += ['tests/assistant-gold/real-messages/'+f for f in ['fixture.mjs','measure.mjs','source.json','records.json','photo-cases.json','recorded-v3.10.00.json']]
 if any(f not in tracked for f in selected):raise SystemExit('Önce sınav dosyalarını commit edin; paket yalnız kayıtlı kaynaktan oluşur.')
 files={f:subprocess.check_output(['git','show',sha+':'+f],cwd=root)for f in selected}

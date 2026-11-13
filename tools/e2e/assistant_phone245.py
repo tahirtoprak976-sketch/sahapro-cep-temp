@@ -21,21 +21,22 @@ with sync_playwright()as w:
  key='TEST_FAKE_SECRET_NOT_REAL';p.fill('#key',key);p.check('#consent');p.click('#models');p.wait_for_function("()=>document.querySelector('#model').options.length===2&&!document.querySelector('#models').disabled")
  assert len(calls)==1
  p.select_option('#model','gemini-test-free');p.click('#run');p.wait_for_function("()=>document.querySelector('#progress').textContent.includes('Canlı yanıtlar alındı')",timeout=120000)
- assert len(calls)==64,'1 model list + 3 × (20 single + 1 batch)'
- assert all('PRIVATE_SENTINEL'not in call['body']and key not in call['body']for call in calls)
+ assert len(calls)==100,'1 model list + 3 × (20 single + 1 batch + 12 safety)'
+ assert all('PRIVATE_SENTINEL'not in call['body']and key not in call['body']and'"expectedCards"'not in call['body']and'"recordedResponse"'not in call['body']for call in calls)
  assert p.locator('#result table tbody tr').count()==6
  assert p.locator('#result').inner_text().count('25/38')==6,'The unchanged phone validator resolves 25 cards even for empty model proposals; this is not 38/38 model success'
  with p.expect_download()as download:p.click('#download')
  path='/tmp/SAHAPRO_phone245_canned_only.json';download.value.save_as(path);text=open(path).read();report=json.loads(text)
  assert key not in text and report['completed']and len(report['runs'])==6
- assert report['safety']['measured']is False and report['savedBusinessRecords']==0
+ assert report['safety']['measured']is True and report['savedBusinessRecords']==0
  for run in report['runs']:
   t=run['measurement']['totals'];assert t['readyCorrect']==25 and t['unnecessaryQuestions']==3 and t['missedQuestions']==0 and t['silentWrong']==0 and t['wrongFields']==(4 if run['mode']=='single'else 3),t
+ assert len(report['safety']['runs'])==3 and report['safety']['cardCountErrors']>0,'Empty model cannot satisfy financial case coverage'
  assert p.evaluate("async()=>{const d=await import('./../../js/db.js');return Object.values(await d.dumpAll()).every(rows=>rows.length===0)}")
  assert p.evaluate("()=>window.__opened.every(n=>n.startsWith('sahapro_cep_db_TEST_V311_'))")
- p.reload();p.wait_for_function("()=>!document.querySelector('#models').disabled");assert p.locator('#key').input_value()=='';assert '64'in p.locator('#usage').inner_text()
- p.fill('#key',key);p.check('#consent');p.fill('#budget','64');p.click('#models');p.wait_for_function("()=>!document.querySelector('#models').disabled&&document.querySelector('#progress').textContent.includes('tamamlanamadı')")
- assert len(calls)==64,'Persisted daily counter cannot be reset by reloading or reducing limit'
+ p.reload();p.wait_for_function("()=>!document.querySelector('#models').disabled");assert p.locator('#key').input_value()=='';assert '100'in p.locator('#usage').inner_text()
+ p.fill('#key',key);p.check('#consent');p.fill('#budget','100');p.click('#models');p.wait_for_function("()=>!document.querySelector('#models').disabled&&document.querySelector('#progress').textContent.includes('tamamlanamadı')")
+ assert len(calls)==100,'Persisted daily counter cannot be reset by reloading or reducing limit'
  # A real pending HTTP must abort when the owner revokes consent.
  hold=True;p.goto(U+'tests/assistant-gold/phone.html?db=TEST_V311_CANCEL');p.wait_for_function("()=>!document.querySelector('#models').disabled")
  p.fill('#key',key);p.check('#consent');p.click('#models');p.wait_for_function("()=>document.querySelector('#model').options.length===2&&!document.querySelector('#models').disabled");p.select_option('#model','gemini-test-free');p.click('#run')
@@ -46,6 +47,6 @@ with sync_playwright()as w:
  held[0].abort('aborted')
  with p.expect_download()as partial:p.click('#download')
  partial.value.save_as('/tmp/SAHAPRO_phone245_cancelled_canned_only.json');cancelled=json.load(open('/tmp/SAHAPRO_phone245_cancelled_canned_only.json'));assert not cancelled['completed']and cancelled['runs'][0]['responses']=={}and cancelled['runs'][0]['failures'][0]['code']=='ASSISTANT_ABORT'
- assert len(calls)==66 and p.evaluate("()=>window.__opened.every(n=>n.startsWith('sahapro_cep_db_TEST_V311_'))")
+ assert len(calls)==102 and p.evaluate("()=>window.__opened.every(n=>n.startsWith('sahapro_cep_db_TEST_V311_'))")
  assert not errors,errors
  print(json.dumps({'androidEmulationOnly':True,'realGemini':False,'cannedHTTP':len(calls),'noAutomaticCalls':True,'isolatedTestDBOnly':True,'businessWrites':0,'secretAbsentFromExport':True,'sameCorpusScorer':True,'sixRunsActuallyRescored':True,'counterSurvivesReload':True,'revokingConsentAbortsPendingRequest':True,'pageErrors':errors}),flush=True);b.close()

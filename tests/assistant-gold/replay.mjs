@@ -1,13 +1,13 @@
 // Measurement only: real application validators, no storage and no provider requests.
-import {readFileSync,existsSync} from 'node:fs';
+import {readTestJSON} from './test-json.mjs';
 import {validatePlan,validateExtras} from '../../js/assistant-core.js';
 import {validateTickets} from '../../js/assistant-docs.js';
 import {untrustedWorkPlan} from '../../js/assistant-batch.js';
 const confidenceModule=new URL('../../js/assistant-confidence.js',import.meta.url);
-const confidenceProjection=existsSync(confidenceModule)?(await import(confidenceModule)).confidenceValue:(_row,_key,value)=>value;
-export const cases=JSON.parse(readFileSync(new URL('./cases.json',import.meta.url)));
-export const confidenceCases=JSON.parse(readFileSync(new URL('./confidence-cases.json',import.meta.url)));
-export const cards=JSON.parse(readFileSync(new URL('./cards.json',import.meta.url)));
+let confidenceProjection;if(typeof process!=='undefined'&&process.versions?.node){const {existsSync}=await import('node:fs');confidenceProjection=existsSync(confidenceModule)?(await import(confidenceModule)).confidenceValue:(_row,_key,value)=>value;}else confidenceProjection=(await import(confidenceModule)).confidenceValue;
+export const cases=await readTestJSON(new URL('./cases.json',import.meta.url));
+export const confidenceCases=await readTestJSON(new URL('./confidence-cases.json',import.meta.url));
+export const cards=await readTestJSON(new URL('./cards.json',import.meta.url));
 const groups={work:'works',expense:'expenses',fuel:'fuel',fuelout:'fuelOut',tank:'tankIn',collection:'collections',personnel:'personnel',maintenance:'maintenance',ticket:'tickets'};
 const moneyFields=new Set(['amount','unit_price','total','cost','dump_cost']);
 const eq=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null);
