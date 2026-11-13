@@ -79,6 +79,9 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
+      - name: Trust only the checked-out repository inside the test container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Install the normal Linux browser test runtime
         id: runtime
         run: |

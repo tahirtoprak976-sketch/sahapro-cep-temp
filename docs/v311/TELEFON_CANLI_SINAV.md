@@ -59,3 +59,8 @@ Telefonda: sınavı aç → kaynak sürümünü kontrol et → anahtarı telefon
 izin ve bütçeyi seç → modeli listele/seç → canlı ölçümü başlat → raporu indir.
 Gerçek WhatsApp panosu, düşük parlaklık, seri kamera ve kapanış süresi için
 fiziksel uygulama kabulü ayrıca yapılır; bu rapor onun yerine geçmez.
+
+Paketin kendisi tarayıcı testinde açılır; yalnız kaynak klasörüne bakılmaz.
+İlk bağımsız paket kontrolü ortak doğrulayıcının JSON katalog bağımlılığını
+buldu. `data/reference-dump-sites.json` aynı committen, hash doğrulamasıyla
+pakete dahil edilir; işletme kaydı veya şoför aktarım dosyası alınmaz.

@@ -1,6 +1,17 @@
 """Phone-only corpus runner; intercepted Gemini, isolated storage and source configuration."""
-import json,sys,uuid
+import json,sys,uuid,subprocess,tempfile,zipfile,threading,pathlib,functools
+from http.server import ThreadingHTTPServer,SimpleHTTPRequestHandler
 from playwright.sync_api import sync_playwright
+if '--package'not in sys.argv:
+ with tempfile.TemporaryDirectory(prefix='sahapro-phone-browser-package-')as tmp:
+  output=pathlib.Path(tmp)/'phone.zip';subprocess.check_call([sys.executable,'tools/preview/build_phone.py','--output',str(output)]);folder=pathlib.Path(tmp)/'site';folder.mkdir()
+  with zipfile.ZipFile(output)as z:z.extractall(folder)
+  class QuietHandler(SimpleHTTPRequestHandler):
+   def log_message(self,*args):pass
+  server=ThreadingHTTPServer(('127.0.0.1',0),functools.partial(QuietHandler,directory=str(folder)));thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+  try:subprocess.check_call([sys.executable,__file__,'http://127.0.0.1:'+str(server.server_port)+'/','--package'])
+  finally:server.shutdown();thread.join();server.server_close()
+ sys.exit(0)
 U=sys.argv[1]if len(sys.argv)>1 else'http://localhost:8897/'
 def await_default_sentinel(p):
  return p.evaluate("""async()=>await new Promise((resolve,reject)=>{const q=window.__originalOpen('sahapro_cep_db',7);q.onsuccess=()=>{const d=q.result,r=d.transaction('test_sentinel').objectStore('test_sentinel').get('TEST_PRIVATE');r.onsuccess=()=>{d.close();resolve(r.result);};r.onerror=()=>reject(r.error);};})""")
