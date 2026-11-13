@@ -1211,6 +1211,7 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
   }
   if(!previewBefore){out.classList.remove('assistant-staged-results');out.removeAttribute('data-preview-expanded');}
   const reusedPreview=installPreviewHTML(out,html,{before:previewBefore,after:v});
+  if(!reusedPreview)out.removeAttribute('data-preview-expanded');
   mountConfidenceInputs(out,v);
   for(const b of qsa('[data-part-document-open]',out))b.onclick=async()=>{
     if(b.disabled)return;b.disabled=true;
