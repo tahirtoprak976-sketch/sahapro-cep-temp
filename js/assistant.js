@@ -5,7 +5,7 @@ import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner,fillRecei
 import {preserveFirstReviewHolds,localFallbackAllowed,oneSecondaryRead} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
-import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence,repaintConfidenceBadges} from './assistant-confidence-ui.js';
+import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
 import {priceVehicleContext} from "./core.js";
 import * as priceCore from "./price-rule-core.js";
 import {hasAssistantDraft,detailedAssistant,assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
@@ -1199,7 +1199,7 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
     const previewRoot=qs('[data-preview-review]',out);previewRoot.innerHTML=html;
     out.toggleAttribute('data-preview-expanded',detailedAssistant());
     if(detailedAssistant()){
-      for(const card of qsa('[data-kind]',previewRoot))repaintConfidenceBadges(card,v[card.dataset.kind==='work'?'works':'fuel']?.[Number(card.dataset.i)]||{});
+      mountConfidenceInputs(previewRoot,v,{editable:false});
       bindAssistantReview(ctx,previewRoot,v,d);arrangeExpandedPreview(out);previewRoot.inert=true;
     }
     for(const card of qsa('[data-kind]',out)){card.dataset.stageKind=card.dataset.kind;delete card.dataset.kind;}
