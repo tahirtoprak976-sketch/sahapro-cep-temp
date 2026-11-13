@@ -1,3 +1,4 @@
+import {memoizeText} from './text-memo.js';
 // Evidence-led local parser. Raw UTF-16 offsets, explicit uncertainty, no writes.
 import { normKey, todayStr } from "./core.js";
 import {
@@ -48,10 +49,10 @@ const units = {
   litreyi: "L",
   lt: "L",
 };
-const clean = (s) =>
+const clean = memoizeText((s) =>
   String(s || "")
     .toLocaleLowerCase("tr-TR")
-    .replace(/[’‘]/g, "'");
+    .replace(/[’‘]/g, "'"));
 const code = (s) => s.toLocaleUpperCase("tr-TR").replace(/\s+/g, "");
 function quantityWord(s) {
   s = clean(s);

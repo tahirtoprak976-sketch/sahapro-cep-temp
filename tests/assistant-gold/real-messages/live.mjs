@@ -1,3 +1,4 @@
+import {execFileSync} from 'node:child_process';
 import {buildHybridEnvelope} from '../../../js/assistant-hybrid311.js';
 // Explicit owner-approved pseudonym corpus only. No phone DB, Save or real names.
 import {readFileSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
@@ -15,7 +16,8 @@ if(!Number.isInteger(budget)||budget<1||budget>100||!Number.isInteger(repeats)||
 const usagePath=resolve(value('--usage-file')),output=resolve(value('--output'));if(!usagePath.startsWith('/tmp/')||!output.startsWith('/tmp/'))throw Error('Sayaç/çıktı yalnız /tmp altında olmalı.');
 const lock=usagePath+'.lock';mkdirSync(lock);let scope,interrupted=false,usage;
 const interrupt=()=>{interrupted=true;scope?.abort();};process.once('SIGINT',interrupt);process.once('SIGTERM',interrupt);
-const report={mode:'live-owner-pseudonymized',realGemini:true,model,usedRealNames:false,savedBusinessRecords:0,runs:[],limitations:['Takma adlı kayıtlar ve mesajlar; gerçek telefon veya WhatsApp entegrasyonu ölçülmez.','Bu koşucu ana JSON çıkarımı ve telefon doğrulamasını ölçer; araçlı sohbet/ikinci kontrol ve fiziksel UX ayrı sınanır.','Başarısız veya eksik ağ yanıtı dondurulmuş planla tamamlanmaz.']};
+let sourceSha=null;try{sourceSha=execFileSync('git',['rev-parse','HEAD'],{cwd:new URL('../../../',import.meta.url),encoding:'utf8'}).trim();}catch{}
+const report={protocol:'v311-primary-json',sourceSha,safety:{measured:false,silentWrong:null,moneyGuesses:null,mandatoryChecked:null},mode:'live-owner-pseudonymized',realGemini:true,model,usedRealNames:false,savedBusinessRecords:0,runs:[],limitations:['Takma adlı kayıtlar ve mesajlar; gerçek telefon veya WhatsApp entegrasyonu ölçülmez.','Bu koşucu ana JSON çıkarımı ve telefon doğrulamasını ölçer; araçlı sohbet/ikinci kontrol ve fiziksel UX ayrı sınanır.','Başarısız veya eksik ağ yanıtı dondurulmuş planla tamamlanmaz.']};
 try{
  try{usage=JSON.parse(readFileSync(usagePath,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
  const db={metaTxn:async(_keys,fn)=>{const r=fn({gemini_consent:true,gemini_daily_limit:budget,gemini_usage:usage});usage=r.set.gemini_usage;writeFileSync(usagePath,JSON.stringify(usage),{mode:0o600});return r.result;},metaUpdate:async(_k,fn)=>{usage=fn(usage);writeFileSync(usagePath,JSON.stringify(usage),{mode:0o600});}};

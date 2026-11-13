@@ -1,3 +1,4 @@
+import {memoizeText} from './text-memo.js';
 // SAHAPRO SOLO — WhatsApp ayrıştırıcı + alias motoru + sesli taslak
 // Kurallar: sahapro-whatsapp-parser / sahapro-domain skill'leri.
 // Parser asla fiyat üretmez, bilinmeyeni uydurmaz, belirsizde kontrol_gerekli=true.
@@ -68,12 +69,14 @@ export function matchByName(text, rows) {
 
 // ---- Türkçe / ASCII yazım katlama (uzunluk korunur; ofsetler bozulmaz) ----
 const FOLD_MAP = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" };
-export function foldTr(s) {
+function foldTrValue(s) {
   return String(s ?? "")
     .toLocaleLowerCase("tr-TR")
     .replace(/[’‘]/g, "'")
     .replace(/[çğıöşüâîû]/g, (c) => FOLD_MAP[c]);
 }
+let foldedText;
+export function foldTr(s){foldedText??=memoizeText(foldTrValue);return foldedText(s);}
 // Kelime sınırı + yalnızca bilinen Türkçe ek listesi ("kumanda" kum sayılmaz, "kumda" sayılır)
 const SUFFIX =
   "(?:lar|ler|ları|leri|nın|nin|nun|nün|dan|den|tan|ten|da|de|ta|te|ya|ye|yı|yi|yu|yü|la|le|ın|in|un|ün|sı|si|su|sü|ı|i|u|ü|a|e)?";
