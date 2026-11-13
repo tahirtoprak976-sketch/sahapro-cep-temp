@@ -31,3 +31,5 @@ const result=controller.finish();assert.equal(result,shown[0]);assert.equal(work
 console.log('request worker is isolated, terminated at final result, and rejects stale packets PASS');
 
 assert.equal(quickPreview('[12/11/2026 19:00] Salih: '+ 'x'.repeat(2001)+' 2 saat çalıştı',{d:fastData,today:'2026-11-12'}),null,'large first blocks stay off the synchronous fast path');
+
+for(const body of ['-3 saat çalıştı','2-3 saat çalıştı','1.000 saat çalıştı','2.500,5 saat çalıştı','2 saat çalışmadı','2 saat çalıştı mı?'])assert.equal(quickPreview('[12/11/2026 19:00] Salih: '+body,{d:fastData,today:'2026-11-12'}),null,'fast preview declines disputed or ambiguous quantity: '+body);

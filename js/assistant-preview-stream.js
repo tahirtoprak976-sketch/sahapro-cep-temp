@@ -33,8 +33,10 @@ export function quickPreview(text,{d,today,rules=''}={}){
  const block=offlineBlocks(text,today)[0];if(!block||block.body.length>2000)return null;
  const norm=s=>foldTr(String(s||'')).replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' '),body=norm(block.body);
  if(/\b(?:tl|lira|avans|maas|mesai|ucret|odeme|tahsilat|teklif|calisacak|yapilacak|yapacak|talep|plan|izin|rapor|mazot|motorin|benzin|akaryakit)\b/.test(body)||/₺/.test(block.body))return null;
+ if(/[?？]/.test(block.body)||/\b(?:calismadi|calismadik|calismadim|yapmadi|yapilmadi|iptal|yaklasik|tahminen|veya|ila)\b/.test(body))return null;
  const quantities=[...block.body.matchAll(/(?<![\p{L}\d])(\d+(?:[.,]\d+)?)\s*(saat|sa|sefer|yevmiye|ton|m3|m³|adet)(?![\p{L}\d])/giu)];if(quantities.length!==1)return null;
- const quantity=Number(quantities[0][1].replace(',','.'));if(!(quantity>0)||!Number.isFinite(quantity))return null;
+ const token=quantities[0];if(/[.,+\-–]$/.test(block.body.slice(0,token.index))||/^\d{1,3}[.,]\d{3}$/.test(token[1]))return null;
+ const quantity=Number(token[1].replace(',','.'));if(!(quantity>0)||!Number.isFinite(quantity))return null;
  const active=(store)=>(d?.[store]||[]).filter(r=>!r.deleted_at&&r.active!==false),aliases=active('aliases');
  const exact=(record,type,value)=>[record.name,...aliases.filter(a=>a.target_type===type&&a.target_id===record.id).map(a=>a.alias)].some(name=>norm(name)&&norm(name)===norm(value));
  const named=(store,type)=>{const compact=body.replace(/ /g,'');return active(store).filter(record=>[record.name,...aliases.filter(a=>a.target_type===type&&a.target_id===record.id).map(a=>a.alias)].some(name=>{const n=norm(name).replace(/ /g,'');return n.length>=3&&compact.includes(n);}));};
