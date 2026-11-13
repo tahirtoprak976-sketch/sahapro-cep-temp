@@ -1,0 +1,1 @@
+Bu paket yalnız takma adlı sınav içindir. HTTPS statik önizleme adresinde açın. İş/kasa/cari kaydı yazmaz, servis çalışanı kurmaz. Anahtar yalnız telefonda bellekte kalır. Gerçek uygulamanın yedeğini buraya yüklemeyin. Fiziksel kullanım kabulü ayrı yapılır.

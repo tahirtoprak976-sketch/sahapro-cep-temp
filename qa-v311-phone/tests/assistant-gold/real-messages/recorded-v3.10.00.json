@@ -1,0 +1,1045 @@
+{
+  "meta": {
+    "version": "SAHAPRO SOLO v3.10.00",
+    "baseCommit": "59b571c71937ae46c70148cad1f72217c1d83c28",
+    "origin": "unchanged local parser -> untrusted plan bridge",
+    "realGemini": false,
+    "oracleUsed": false
+  },
+  "responses": {
+    "r01": {
+      "works": [
+        {
+          "date": "2026-10-29",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "quote": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": "Manitou Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r02": {
+      "works": [
+        {
+          "date": "2026-10-30",
+          "vehicle_id": null,
+          "quote": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 2.5,
+          "unit": "Saat",
+          "description": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r03": {
+      "works": [
+        {
+          "date": "2026-10-30",
+          "vehicle_id": null,
+          "quote": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Babam",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r04": {
+      "works": [
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "quote": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Nazım Abi",
+          "work_type": "Makine Çalışması",
+          "quantity": 1,
+          "unit": "Yevmiye",
+          "description": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "from_place": null,
+          "to_place": null,
+          "note": "\"tam gün\" yevmiye olarak önerildi; onay gerekli"
+        }
+      ],
+      "fuel": [
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "quote": "150lt mazot alındı şantiyeden",
+          "liters": 150,
+          "source": null,
+          "customer_id": null
+        }
+      ]
+    },
+    "r05": {
+      "works": [
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": "İş türü makine saatine göre JCB Çalışması önerildi; doğrulayın"
+        },
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": null,
+          "quantity": 2,
+          "unit": "Saat",
+          "description": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+          "site_id": "TEST_REAL_SITE_HAMIDIYE",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "Tesviye",
+          "quantity": 1.5,
+          "unit": "Saat",
+          "description": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r06": {
+      "works": [
+        {
+          "date": "2026-11-01",
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "quote": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "personnel_id": null,
+          "reporter": "Nazım Abi",
+          "work_type": "Makine Çalışması",
+          "quantity": null,
+          "unit": null,
+          "description": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r07": {
+      "works": [
+        {
+          "date": "2026-11-01",
+          "vehicle_id": null,
+          "quote": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r08": {
+      "works": [],
+      "fuel": []
+    },
+    "r09": {
+      "works": [
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": "Mıcır Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "Cerahpaşa 1sefer harfiyat santiye",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "Cerahpaşa 1sefer harfiyat santiye",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "1sefer buluca döküm",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "1sefer buluca döküm",
+          "from_place": null,
+          "to_place": "buluca",
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r10": {
+      "works": [
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_NATURA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r11": {
+      "works": [
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Çöp Nakliye",
+          "quantity": 4,
+          "unit": "Sefer",
+          "description": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r12": {
+      "works": [],
+      "fuel": [
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "quote": "[2/11 19:45] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden",
+          "liters": 38,
+          "source": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12"
+        }
+      ]
+    },
+    "r13": {
+      "works": [],
+      "fuel": []
+    },
+    "r14": {
+      "works": [
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 3,
+          "unit": "Saat",
+          "description": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "from_place": null,
+          "to_place": null,
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "customer_id": "TEST_REAL_CUSTOMER_VELI",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r15": {
+      "works": [],
+      "fuel": [
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "quote": "[2/11 20:07] Sinan Abi: Manitou 140 litre mazot depodan alındı",
+          "liters": 140,
+          "source": "Depo Tankı",
+          "customer_id": null
+        }
+      ]
+    },
+    "r16": {
+      "works": [
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "Mimar Kemal 53 numaradan 1 sefer moloz",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "Mimar Kemal 53 numaradan 1 sefer moloz ",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "2 sefer hafriyat alındı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": 2,
+          "unit": "Sefer",
+          "description": "2 sefer hafriyat alındı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r17": {
+      "works": [],
+      "fuel": [
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "Şantiyeden 150 litre mazot aldım",
+          "liters": 150,
+          "source": null,
+          "customer_id": null
+        }
+      ]
+    },
+    "r18": {
+      "works": [
+        {
+          "date": "2026-11-03",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_SADIK",
+          "site_id": "TEST_REAL_SITE_KEMER",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "Kentorman mıcır tesviye 1saat",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "site_id": "TEST_REAL_SITE_KEMER",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "Kentorman mıcır tesviye 1saat",
+          "from_place": null,
+          "to_place": null,
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+        }
+      ],
+      "fuel": []
+    },
+    "r19": {
+      "works": [
+        {
+          "date": "2026-11-03",
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "quote": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Nazım Abi",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": null,
+          "unit": null,
+          "description": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": [
+        {
+          "date": "2026-11-03",
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "quote": "1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden",
+          "liters": 3,
+          "source": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12"
+        }
+      ]
+    },
+    "r20": {
+      "works": [
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": []
+    },
+    "r00_tumu": {
+      "works": [
+        {
+          "date": "2026-10-29",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "quote": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": "Manitou Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[29/10 23:35] Kadir Yılmaz: Manitou kenta evleri 1 saat profil indirildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-30",
+          "vehicle_id": null,
+          "quote": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 2.5,
+          "unit": "Saat",
+          "description": "[30/10 21:31] Sinan Abi: Lena 2.5 saat cam verildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-30",
+          "vehicle_id": null,
+          "quote": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Babam",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[30/10 23:10] Babam: Lena 1 saat mutfaklara çalıştı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "quote": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Nazım Abi",
+          "work_type": "Makine Çalışması",
+          "quantity": 1,
+          "unit": "Yevmiye",
+          "description": "[31/10 17:52] Nazım Abi: 14 tonluk makine Park vista sitesiberkay bey dere çalısması tam gün",
+          "from_place": null,
+          "to_place": null,
+          "note": "\"tam gün\" yevmiye olarak önerildi; onay gerekli"
+        },
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[31/10 20:03] Orhan Operator: Jcb kepce yıldız oto cop yukleme 1 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": "İş türü makine saatine göre JCB Çalışması önerildi; doğrulayın"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": null,
+          "quantity": 2,
+          "unit": "Saat",
+          "description": "Park vista sitesi berkay beye  taş tasıma 2 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_ERKAN",
+          "site_id": "TEST_REAL_SITE_HAMIDIYE",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "Tesviye",
+          "quantity": 1.5,
+          "unit": "Saat",
+          "description": "Hamidiye su yanı erkan asfalt serme tesviye 1.5 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-01",
+          "vehicle_id": "TEST_REAL_VEHICLE_EKS14",
+          "quote": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "Makine Çalışması",
+          "quantity": null,
+          "unit": null,
+          "description": "[1/11 18:27] Nazım Abi: 14 tonluk makine Park vista sitesi berkay bey yevmiye çalişma",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-01",
+          "vehicle_id": null,
+          "quote": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "customer_id": "TEST_REAL_CUSTOMER_BERKAY",
+          "site_id": "TEST_REAL_SITE_PARKVISTA",
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[1/11 18:30] Bekir Tırcı: Öztepetaşocagı 1 sefer taş park vista sitesi berkay bey pazar mesayisi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": "Mıcır Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[2/11 17:30] Bekir Tırcı: Entadan 1sefer mıcır  arnavutkoy imrek mustafa",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Cerahpaşa 1sefer harfiyat santiye",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "Cerahpaşa 1sefer harfiyat santiye",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "1sefer buluca döküm",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "1sefer buluca döküm",
+          "from_place": null,
+          "to_place": "buluca",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_NATURA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[2/11 18:37] Orhan Operator: Jcb kepce natura peysajdan curuf yuklendi nakliyeciye 1 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Çöp Nakliye",
+          "quantity": 4,
+          "unit": "Sefer",
+          "description": "[2/11 18:40] Selim Operatör: Kamyonetle lale yokuşu 12 den 4 sefer çöp alındı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "quote": "[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan",
+          "customer_id": "TEST_REAL_CUSTOMER_MURAT",
+          "site_id": "TEST_REAL_SITE_TARABYA",
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": null,
+          "quantity": 2026,
+          "unit": "Sefer",
+          "description": "[2/11 20:02] Kadir Yılmaz: 30.10 2026 kamyonet murat bey tarabyadan ",
+          "from_place": null,
+          "to_place": null,
+          "note": "Araç adedi sefer olarak önerildi; onay gerekli"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "1 sefer moloz depoya döküldü",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "1 sefer moloz depoya döküldü",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-10-31",
+          "vehicle_id": "TEST_REAL_VEHICLE_KMYT",
+          "quote": "31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden",
+          "customer_id": "TEST_REAL_CUSTOMER_YILDIZ",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": null,
+          "quantity": 10.2026,
+          "unit": "Sefer",
+          "description": "31.10.2026 kamyonet yıldız inşaat bitmek üzere olan yerden ",
+          "from_place": null,
+          "to_place": null,
+          "note": "Araç adedi sefer olarak önerildi; onay gerekli"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "1 sefer çöp depoya döküldü",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": "Çöp Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "1 sefer çöp depoya döküldü",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": "TEST_REAL_VEHICLE_TIR2",
+          "quote": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+          "customer_id": "TEST_REAL_CUSTOMER_AYK",
+          "site_id": "TEST_REAL_SITE_CERRAH",
+          "personnel_id": null,
+          "reporter": "Kadir Yılmaz",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": 2,
+          "unit": "Sefer",
+          "description": "34FZ2491 Cerrahpaşadan 2 sefer hafriyat 1 tanesi depoya döküldü 1 tanesi bolluca döküm",
+          "from_place": null,
+          "to_place": "bolluca",
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": null,
+          "quote": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 3,
+          "unit": "Saat",
+          "description": "[2/11 20:04] Sinan Abi: Lena 3 saat kum çimento ve tuğla verildi",
+          "from_place": null,
+          "to_place": null,
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "customer_id": "TEST_REAL_CUSTOMER_VELI",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "Cemal Duman'ın evinin arkası veli müteahhite 1 saat ytong verildi",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[3/11 18:19] Selim Operatör: Kamyonetle lale yokuşu 12 den 1 sefer moloz alındı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Mimar Kemal 53 numaradan 1 sefer moloz",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Moloz Nakliye",
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "Mimar Kemal 53 numaradan 1 sefer moloz ",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "2 sefer hafriyat alındı",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Selim Operatör",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": 2,
+          "unit": "Sefer",
+          "description": "2 sefer hafriyat alındı",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "[3/11 18:38] Bekir Tırcı: Cerahpaşa  1 sefer şantıye ",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "1sefer boluca dökum  peşın hakan abi gonderdi",
+          "customer_id": null,
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Bekir Tırcı",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Sefer",
+          "description": "1sefer boluca dökum  peşın hakan abi gonderdi",
+          "from_place": null,
+          "to_place": null,
+          "note": "Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": "TEST_REAL_VEHICLE_JCB",
+          "quote": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "customer_id": "TEST_REAL_CUSTOMER_SADIK",
+          "site_id": "TEST_REAL_SITE_KEMER",
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "JCB Çalışması",
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[3/11 20:15] Orhan Operator: Jcb kepce kemerburgaz sadık abi demir tasıma 1 saat",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Kentorman mıcır tesviye 1saat",
+          "customer_id": "TEST_REAL_CUSTOMER_KENTA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "Kentorman mıcır tesviye 1saat",
+          "from_place": null,
+          "to_place": null,
+          "note": "Malzeme adı geçti ama taşıma (sefer/ton) belirtilmedi; iş türünü seçin · Metindeki tarihler çelişiyor; gerçek tarihi seçin"
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "quote": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Orhan Operator",
+          "work_type": "Hafriyat Nakliye",
+          "quantity": null,
+          "unit": null,
+          "description": "[3/11 23:21] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme yapıldı",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        },
+        {
+          "date": "2026-11-03",
+          "vehicle_id": null,
+          "quote": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "customer_id": "TEST_REAL_CUSTOMER_LENA",
+          "site_id": null,
+          "personnel_id": null,
+          "reporter": "Sinan Abi",
+          "work_type": null,
+          "quantity": 1,
+          "unit": "Saat",
+          "description": "[3/11 23:25] Sinan Abi: Lena 1 saat fayans indirildi",
+          "from_place": null,
+          "to_place": null,
+          "note": ""
+        }
+      ],
+      "fuel": [
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "150lt mazot alındı şantiyeden",
+          "liters": 150,
+          "source": null,
+          "customer_id": null
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_U36",
+          "quote": "[2/11 19:45] Nazım Abi: U36 Lale yokuşu 12 hafriyat yükleme 38lt mazot alındı şantiyeden",
+          "liters": 38,
+          "source": null,
+          "customer_id": "TEST_REAL_CUSTOMER_LALE12"
+        },
+        {
+          "date": "2026-11-02",
+          "vehicle_id": "TEST_REAL_VEHICLE_MANITOU",
+          "quote": "[2/11 20:07] Sinan Abi: Manitou 140 litre mazot depodan alındı",
+          "liters": 140,
+          "source": "Depo Tankı",
+          "customer_id": null
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "Şantiyeden 150 litre mazot aldım",
+          "liters": 150,
+          "source": null,
+          "customer_id": null
+        },
+        {
+          "date": "2026-10-29",
+          "vehicle_id": null,
+          "quote": "1tonluk makine göl sokak 53numara toprak yükleme 2buçuk saat çalişma 3lt mazot alındı şantiyeden",
+          "liters": 3,
+          "source": null,
+          "customer_id": null
+        }
+      ]
+    }
+  }
+}

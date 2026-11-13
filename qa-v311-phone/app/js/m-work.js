@@ -1,0 +1,1580 @@
+import {priceVehicleContext} from "./core.js";
+import {slipWorkState,slipWorkCandidates} from './digital-slip-core.js';
+import {createDigitalSlip,updateDigitalSlipDraft} from './digital-slip-db.js';
+import { prepareAttachment } from "./attachment-safety.js";
+import { enteredTonnageText } from "./work-tonnage.js";
+import { attachmentHTML } from "./attachment-ui.js";
+import {recordNoteHTML,recordSourceHTML} from './record-notes-ui.js';
+import {recordNoteText,recordLocalText,noteEditPatch} from './record-notes.js';
+import {bindWorkFuelPreview, workFuelState} from "./work-fuel-preview.js";
+import {workReviewContext} from './collect-core.js';
+import {entryContext,entryContextHTML,entrySaveHash,entryRepeatHash} from './entry-context.js';
+import { latestWork, repeatWork } from "./work-repeat.js";
+import { hasWorkDraft, workEntryPlan, workSiteChoices } from "./work-entry.js";
+import { plannedWorkDraft } from "./operation-core.js";
+import { customerLabel } from "./driver-customer.js";
+import { exploreWorks, workURL, workFlags, workCSV, realDate } from "./work-explorer.js";
+import { workHours } from "./enterprise-core.js";
+import { kdvRateOf } from "./core.js";
+// SAHAPRO SOLO — İş Kayıtları · Dijital Fiş (imza, immutable, revizyon) · WhatsApp Ayrıştırıcı
+import {
+  qs,
+  qsa,
+  esc,
+  appbar,
+  stat,
+  li,
+  emptyState,
+  notice,
+  kv,
+  badge,
+  statusBadge,
+  segBar,
+  searchBar,
+  sheet,
+  sheetClose,
+  toast,
+  confirmDialog,
+  choiceDialog,
+  promptDialog,
+  fText,
+  fNum,
+  fDate,
+  fArea,
+  fSelect,
+  collectForm,
+  setForm,
+  fmtTL,
+  fmtNum,
+  trDate,
+  todayStr,
+  pagedRender,
+  shareOrDownload,
+  back,
+  go,
+} from "./ui.js";
+import {
+  WORK_UNITS,
+  WORK_TYPES,
+  isActive,
+  todayStr as td,
+  matchSearch,
+  newRecord,
+} from "./core.js";
+import { customerWorkLines } from "./business.js";
+import {
+  voiceSupported,
+  startVoice,
+} from "./parser.js";
+
+export async function screen(ctx) {
+  const root0 = ctx.parts[0];
+  if (root0 === "isler") return work(ctx);
+  if (root0 === "fisler") return slips(ctx);
+  if (root0 === "whatsapp") return whatsapp(ctx);
+  return work(ctx);
+}
+
+// ============ İŞ KAYITLARI ============
+async function work(ctx) {
+  const sub = ctx.parts[1];
+  if (sub === "new") return workForm(ctx, null);
+  if (sub && ctx.parts[2] === "edit") return workForm(ctx, sub);
+  if (sub) return workDetail(ctx, sub);
+  return workList(ctx);
+}
+
+async function workList(ctx) {
+  const { root, db, names, query } = ctx;
+  const [all, customers, vehicles, personnel, sites, hakedis] = await Promise.all([
+    db.getAll("work_records"), db.listActive("customers"), db.listActive("vehicles"), db.listActive("personnel"), db.listActive("sites"), db.getAll("hakedis"),
+  ]);
+  const today = todayStr(), {internal,billed}=workReviewContext({customers,hakedis});
+  const model = exploreWorks(all, names, query, { today, internal, billed });
+  const { rows, state, units, counts } = model;
+  const filter = state.f, q = state.q, dFrom = state.from, dTo = state.to;
+  const options = (list, value, label) => `<option value="">${esc(label)}</option>` +
+    (value && !list.some(r => r.id === value) ? `<option value="${esc(value)}" selected>${esc(value)} (arşiv / listede yok)</option>` : "") +
+    list.map(r => `<option value="${esc(r.id)}" ${r.id === value ? "selected" : ""}>${esc(r.name)}</option>`).join("");
+  const values = (key) => [...new Set(all.filter(isActive).map(w => w[key]).filter(Boolean).map(String))].sort((a,b)=>a.localeCompare(b,"tr"));
+  const textOptions = (key, label) => `<option value="">${esc(label)}</option>` + (state[key] && !values(key).includes(state[key]) ? `<option value="${esc(state[key])}" selected>${esc(state[key])}</option>` : "") + values(key).map(v => `<option value="${esc(v)}" ${state[key] === v ? "selected" : ""}>${esc(v)}</option>`).join("");
+  const activeKeys = ["customer_id","vehicle_id","personnel_id","site_id","work_type","unit"];
+  const activeFilters = activeKeys.filter(k => state[k]);
+  const filterLabels = { customer_id: "Müşteri", site_id: "Şantiye", vehicle_id: "Araç", personnel_id: "Personel", work_type: "İş", unit: "Birim" };
+  const labelOf = key => ({ customer_id: names.customers, site_id: names.sites, vehicle_id: names.vehicles, personnel_id: names.personnel }[key]?.[state[key]] || state[key]);
+  const scope = dFrom || dTo ? `${dFrom ? trDate(dFrom) : "Başlangıçtan"} – ${dTo ? trDate(dTo) : "Tüm tarihlere"}` : "Tüm tarihler";
+  const renderHash = location.hash;
+
+  root.innerHTML =
+    appbar("İş Kayıtları", `${rows.length} kayıt${dFrom ? " · " + trDate(dFrom) + (dTo !== dFrom ? " – " + trDate(dTo) : "") : ""}`, {
+      right: '<button class="iconbtn" data-go="#/whatsapp">💬</button>',
+    }) +
+    `
+    <nav class="work-day-nav"><span class="badge info">İş listesi</span><a class="btn primary" data-work-day-entry href="#/isler/kontrol">Günü kontrol et</a></nav>
+    <div class="history-tools"><button class="btn" data-go="#/gecmis">Geçmiş İş Aktarımı</button></div><div style="height:10px"></div>
+    <div class="work-explorer-summary card" data-work-summary>
+      <div class="row between"><b>İş özeti</b><span class="tiny muted">${esc(scope)}</span></div>
+      ${state.error ? notice("danger", state.error) : `<div class="work-explorer-metrics"><div><strong>${rows.length}</strong><span>iş kaydı</span></div><div><strong>${model.days}</strong><span>farklı gün</span></div>${Object.entries(units).map(([u,n])=>`<div><strong>${fmtNum(n)}</strong><span>${esc(u)}</span></div>`).join("")}</div><p class="tiny muted">Özet ve CSV bütün filtre sonucunu kapsar. Sefer, saat ve ton ayrı hesaplanır; bu ekran alacak veya kâr toplamı değildir.</p>`}
+    </div>
+    ${segBar([{v:"all",t:"Tüm tarihler"},{v:"today",t:"Bugün"},{v:"week",t:"Son 7 gün"},{v:"month",t:"Bu ay"}],query.from || query.to ? "custom" : state.period,v=>workURL(query,{f:filter,period:v,from:null,to:null}))}
+    ${segBar([{v:"all",t:"Tüm işler"},{v:"noslip",t:"Fişsiz"},{v:"fiyatsiz",t:"Fiyatsız"},{v:"musterisiz",t:"Müşterisiz"},{v:"driver",t:"Şoförden"}],filter,v=>workURL(query,{f:v,period:state.period}))}
+    ${searchBar("Müşteri, araç, personel, iş, fiş no…", q)}
+    ${activeFilters.length || query.from || query.to ? `<div class="work-explorer-checks" aria-label="Etkin filtreler">${activeFilters.map(key=>`<button class="btn sm" data-go="${esc(workURL(query,{[key]:null,...(key==="customer_id"?{site_id:null}:{})}))}" title="${esc(filterLabels[key]+": "+labelOf(key))}">${esc(filterLabels[key])}: ${esc(labelOf(key))} ×</button>`).join("")}${query.from || query.to ? `<button class="btn sm" data-go="${esc(workURL(query,{from:null,to:null,period:"all"}))}">Özel tarih ×</button>` : ""}</div>` : ""}
+    <details class="card" data-work-filters ${state.error ? "open" : ""}><summary>Filtreler · tarih, müşteri, araç, personel</summary>
+      <div class="formgrid2" style="margin-top:12px">
+        <div class="field"><label>Başlangıç</label><input type="date" data-wfilter="from" value="${esc(dFrom)}"></div>
+        <div class="field"><label>Bitiş</label><input type="date" data-wfilter="to" value="${esc(dTo)}"></div>
+        <div class="field"><label>Müşteri</label><select data-wfilter="customer_id">${options(customers,state.customer_id,"Tüm müşteriler")}</select></div>
+        <div class="field"><label>Şantiye</label><select data-wfilter="site_id">${options(sites.filter(x=>!state.customer_id||x.customer_id===state.customer_id),state.site_id,"Tüm şantiyeler")}</select></div>
+        <div class="field"><label>Araç / makine</label><select data-wfilter="vehicle_id">${options(vehicles,state.vehicle_id,"Tüm araçlar")}</select></div>
+        <div class="field"><label>Şoför / operatör</label><select data-wfilter="personnel_id">${options(personnel,state.personnel_id,"Tüm personel")}</select></div>
+        <div class="field"><label>İş türü</label><select data-wfilter="work_type">${textOptions("work_type","Tüm iş türleri")}</select></div>
+        <div class="field"><label>Birim</label><select data-wfilter="unit">${textOptions("unit","Tüm birimler")}</select></div>
+      </div><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-work-apply>Filtreleri uygula</button><button class="btn" data-go="#/isler">Tümünü temizle</button></div>
+    </details>
+    ${!state.error && rows.length ? `<div class="work-explorer-checks" aria-label="Seçili işler kontrolü">${[["noslip","fişsiz"],["fiyatsiz","fiyatsız"],["musterisiz","müşterisiz"],["driver","şoförden"]].filter(([k])=>counts[k]).map(([k,label])=>`<button class="btn sm" data-go="${esc(workURL(query,{f:k,period:state.period}))}">${counts[k]} ${label}</button>`).join("")}<button class="btn sm" data-work-csv>Filtreli CSV · ${rows.length} kayıt</button></div>` : ""}
+    <div data-list></div>
+    <div class="actionbar"><button class="btn primary" data-go="#/isler/new">+ Yeni İş Kaydı</button></div>`;
+
+  const listEl = qs("[data-list]", root);
+  if (!rows.length)
+    listEl.innerHTML = emptyState(
+      "⚒",
+      state.error ? "Tarih filtresini düzeltin" : "Bu filtrelere uyan kayıt yok",
+      '<button class="btn" data-go="#/isler">Filtreleri temizle</button> <button class="btn primary" data-go="#/isler/new">+ İş Kaydı</button>',
+    );
+  else {
+    // Gerçek iş tarihine göre gruplu (en yeni üstte); sayfalama tarih grubunu bölmez
+    const { groupByDate, pageGroups } = await import("./date-groups.js");
+    const pages = pageGroups(groupByDate(rows), 30);
+    const row = (w) => {
+      const flags = workFlags(w, internal, billed);
+      return `<a class="li work-explorer-row" href="#/isler/${esc(encodeURIComponent(w.id))}">
+        <div class="work-explorer-row-head"><strong>${esc(names.customers[w.customer_id] || "Müşteri yok")}</strong><strong class="work-explorer-quantity">${fmtNum(w.quantity)} ${esc(w.unit || "")}</strong></div>
+        <div class="small">${esc(w.work_type || "İş")}${w.site_id ? " · " + esc(names.sites[w.site_id] || "Şantiye arşivde") : ""}</div>
+        <div class="small muted">${esc(names.vehicles[w.vehicle_id] || "Araç belirtilmedi")} · ${esc(names.personnel[w.personnel_id] || "Personel belirtilmedi")}</div>
+        <div class="work-explorer-row-tags">${w.slip_id || w.digital_slip_no ? badge(w.digital_slip_no ? "Dijital fiş" : "Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : badge("Fiş yok", "")}${flags.fiyatsiz ? badge("Fiyat yok", "warn") : ""}${flags.driver ? badge("Şoförden", "info") : ""}${Number(w.customer_fuel_allowance_l)>0 ? badge("Mazot karşılığı", "info") : ""}${w.slip_no || w.digital_slip_no ? `<span class="tiny muted">${esc(w.slip_no || w.digital_slip_no)}</span>` : ""}</div>
+      </a>`;
+    };
+    let shown = 0;
+    const more = () => {
+      qs("[data-more]", listEl)?.remove();
+      for (const g of pages[shown] || [])
+        listEl.insertAdjacentHTML("beforeend", `<div class="section-title" data-dgroup="${esc(g.key)}" style="margin-top:12px;display:flex;justify-content:space-between;gap:8px"><span>${esc(g.label)}</span><span class="muted small nowrap">${g.items.length} iş</span></div>` + g.items.map(row).join(""));
+      shown++;
+      if (shown < pages.length) {
+        const left = pages.slice(shown).reduce((n, p) => n + p.reduce((m, g) => m + g.items.length, 0), 0);
+        listEl.insertAdjacentHTML("beforeend", `<button class="btn ghost block" data-more>Daha eski tarihler (${left} iş kaldı)</button>`);
+      }
+    };
+    listEl.addEventListener("click", (e) => { if (e.target.closest("[data-more]")) { e.preventDefault(); more(); } });
+    more();
+  }
+
+  let st;
+  const search = qs("[data-search]", root);
+  search.addEventListener("input", () => {
+    clearTimeout(st);
+    st = setTimeout(() => { if (location.hash === renderHash) go(workURL(query, { q: search.value, f: filter, period: state.period })); }, 450);
+  });
+  for (const button of qsa('button[data-go^="#/isler?"]', root)) button.addEventListener("click", () => {
+    clearTimeout(st);
+    const params = Object.fromEntries(new URLSearchParams(button.dataset.go.split("?")[1]));
+    button.dataset.go = workURL(params, { q: search.value });
+  });
+  qs("[data-work-apply]", root).onclick = () => {
+    clearTimeout(st);
+    const patch = Object.fromEntries(qsa("[data-wfilter]", root).map(el => [el.dataset.wfilter, el.value]));
+    go(workURL(query, { ...patch, q: search.value, f: filter, period: "all" }));
+  };
+  qs('[data-wfilter="customer_id"]', root).onchange = (ev) => {
+    const site = qs('[data-wfilter="site_id"]', root);
+    const owner = sites.find(s => s.id === site.value)?.customer_id;
+    const selected = owner && ev.target.value && owner !== ev.target.value ? "" : site.value;
+    site.innerHTML = options(sites.filter(s => !ev.target.value || s.customer_id === ev.target.value), selected, "Tüm şantiyeler");
+  };
+  qs("[data-work-csv]", root)?.addEventListener("click", async (ev) => {
+    const button = ev.currentTarget; button.disabled = true;
+    try { await shareOrDownload(new Blob([workCSV(rows, names)], { type: "text/csv;charset=utf-8" }), `SAHAPRO_Isler_${today}_${rows.length}.csv`, `${rows.length} filtreli iş kaydı`); }
+    catch (e) { if (e.name !== "AbortError") toast("CSV hazırlanamadı: " + (e.message || e), "err"); }
+    finally { button.disabled = false; }
+  });
+}
+
+async function workForm(ctx, editId) {
+  const { root, db, names, query } = ctx;
+  let formHash = location.hash;
+  const [customers, sites, vehicles, personnel, dumpSites, quarries] =
+    await Promise.all([
+      db.listActive("customers"),
+      db.listActive("sites"),
+      db.listActive("vehicles"),
+      db.listActive("personnel"),
+      db.listActive("dump_sites"),
+      db.listActive("quarries"),
+    ]);
+  if (location.hash !== formHash) return;
+  let rec = editId ? await db.get("work_records", editId) : null;
+  const linkedSlip = rec?.slip_id ? await db.get('slips',rec.slip_id) : null;
+  let planSource = !editId && query.plan_id ? await db.get("shift_assignments", query.plan_id) : null;
+  if (query.plan_id && !editId) {
+    if (!planSource || !isActive(planSource)) { root.innerHTML = appbar("Planlı görev") + notice("warn", "Plan kaydı bulunamadı veya silinmiş. Yeni işi ayrıca açabilirsiniz."); return; }
+    if (planSource.work_record_id) { go("#/isler/" + encodeURIComponent(planSource.work_record_id)); return; }
+    if (planSource.status !== "Planlı") { root.innerHTML = appbar("Planlı görev") + notice("warn", "Bu plan artık açık değil; yeni iş üretilmedi. Plan kaydını vardiya listesinden inceleyin.") + '<a class="btn" href="#/vardiya/' + esc(planSource.id) + '">Planı aç</a>'; return; }
+  }
+  const entry=!editId?entryContext(query,vehicles):null;
+  if(entry?.error){root.innerHTML=appbar('+ İş Kaydı')+entryContextHTML(entry);return;}
+
+  const current = () => root.isConnected && location.hash === formHash;
+  // A dialog belongs to this form route, not whichever screen opens next.
+  const routeDialog = async open => {
+    if (!current()) return null;
+    let close;
+    const abandoned = new Promise(resolve => { close = () => resolve(null); });
+    const oldModal = document.querySelector('#sheet-root .sheet');
+    const result = open();
+    const nextModal = document.querySelector('#sheet-root .sheet');
+    const modal = nextModal !== oldModal ? nextModal : null;
+    const overlay = modal?.previousElementSibling;
+    const check = () => {
+      if (current()) return;
+      modal?.remove(); overlay?.remove(); close();
+    };
+    const observer = new MutationObserver(check);
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('hashchange', check);
+    try { return await Promise.race([result, abandoned]); }
+    finally { observer.disconnect(); window.removeEventListener('hashchange', check); }
+  };
+  const chooseStart = () => routeDialog(() => new Promise(resolve => {
+    root.innerHTML = appbar("+ İş Kaydı") + `<section class="card" data-work-entry-conflict><h2>Yarım kalan iş taslağı var</h2><p>Yeni başlangıç önceki iş taslağının tamamının yerini alacak. Alanlar birleştirilmez; seçim yapmadan hiçbir taslak değişmez.</p><div class="row" style="flex-wrap:wrap;gap:8px"><button class="btn" data-work-entry-choice="keep">Taslağa dön</button><button class="btn primary" data-work-entry-choice="replace">Yeni başlangıcı aç</button></div></section>`;
+    qs('[data-work-entry-choice="keep"]', root).onclick = () => resolve(false);
+    qs('[data-work-entry-choice="replace"]', root).onclick = () => resolve(true);
+  }));
+  const capturedPrefill = window.__prefill;
+  if (!current()) return;
+  // Explicit repeat keeps its existing precedence and its whole-draft protection.
+  let prefill = null, repeatSource = null, repeatMissing = [], startKind = 'empty';
+  if (!editId && (query.repeat || query.copylast === "1")) {
+    repeatSource = query.repeat ? await db.get("work_records", query.repeat) : latestWork(await db.getAll("work_records"));
+    if (!current()) return;
+    if (!repeatSource || !isActive(repeatSource)) {
+      root.innerHTML = appbar("Benzer İş") + notice("warn", "Kaynak iş bulunamadı veya silinmiş. Yeni bir iş seçin.") + '<a class="btn" href="#/isler">İş kayıtlarına dön</a>'; return;
+    }
+    const draft = await db.draftGet("work");
+    if (!current()) return;
+    if (draft?._repeat_source === repeatSource.id) prefill = draft;
+    else {
+      const replaceDraft = !hasWorkDraft(draft) || await routeDialog(() => confirmDialog("Yarım kalan iş taslağı var", "Benzer iş açılırsa önceki iş taslağının yerini alacak. Taslağa dönmek için vazgeçin.", "Benzer işi aç"));
+      if (!current()) return;
+      if (!replaceDraft) { if (window.__prefill === capturedPrefill) window.__prefill = null; go("#/isler/new"); return; }
+      const prepared = repeatWork(repeatSource, { customers, sites, vehicles, personnel, dumpSites, quarries },entry?.values.date||todayStr());
+      prefill = { ...prepared.values, _repeat_source: repeatSource.id }; repeatMissing = prepared.missing;
+      await db.draftSave("work", prefill);
+    }
+    startKind = 'repeat';
+    if (window.__prefill === capturedPrefill) window.__prefill = null;
+  }
+  if (!editId && !prefill) {
+    const incoming = planSource ? plannedWorkDraft(planSource) : !entry ? window.__prefill : null;
+    const draft = await db.draftGet("work");
+    if (!current()) return;
+    let plan = workEntryPlan({ draft, incoming, customerId: query.customer_id || '', entry });
+    if (plan.collision) {
+      const replace = await chooseStart();
+      if (!current()) return;
+      if (!replace) plan = workEntryPlan({ draft });
+      // Do not clear first: a failed replacement must leave the old draft intact.
+      else await db.draftSave("work", plan.values);
+    }
+    if (!plan.collision && ['customer', 'message'].includes(plan.kind)) await db.draftSave("work", plan.values);
+    if (!current()) return;
+    if (window.__prefill === incoming) window.__prefill = null;
+    // The one-shot customer handoff is consumed. Reload continues this draft,
+    // even when the user subsequently changes customer; a later card click is new.
+    if (query.customer_id) {
+      const params = new URLSearchParams(formHash.split('?')[1] || '');
+      params.delete('customer_id');
+      formHash = '#/isler/new' + (params.size ? '?' + params : '');
+      history.replaceState(history.state, '', formHash);
+    }
+    prefill = plan.values;
+    startKind = plan.kind;
+  }
+  if (!current()) return;
+  const entryPreserved = startKind === 'draft' || startKind === 'repeat';
+  const v = rec || prefill || {};
+  if (!editId && (planSource?.id || null) !== (v._plan_id || null)) {
+    planSource = v._plan_id ? await db.get('shift_assignments',v._plan_id) : null;
+    if (!current()) return;
+  }
+
+  // Kendi depo iç müşterisi listede müşteri gibi görünmez; ayrı ve açık bir seçenek olarak en altta durur
+  const custOpts = [...customers.filter((c) => !c.internal).map((c) => ({ v: c.id, t: customerLabel(c, customers) })),
+    ...customers.filter((c) => c.internal).map((c) => ({ v: c.id, t: "📦 Kendi depodan çıkış (iç iş — para istenmez)" }))];
+  const siteModel = workSiteChoices(sites, v.customer_id, v.site_id, !!rec || startKind === "draft", names.sites);
+  const siteOpts = siteModel.options;
+  const vehOpts = vehicles.map((x) => ({ v: x.id, t: x.name }));
+  const perOpts = personnel.map((x) => ({ v: x.id, t: x.name }));
+
+  root.innerHTML =
+    appbar(
+      editId ? "İş Düzenle" : "+ İş Kaydı",
+      "Döküm satırlarını tek seferde kaydedin",
+    ) +
+    `
+    ${entryContextHTML(entry,entryPreserved)}
+    ${linkedSlip && isActive(linkedSlip) && (linkedSlip.status !== 'İptal' || linkedSlip.signed_at) ? `<div class="notice info" data-work-slip-protection>Bu iş dijital fişe bağlı. Hizmet bilgileri ve iş kaydı korunur; fiyatı ve notları tamamlayabilirsiniz. İmzasız yeni fişin hizmet düzeltmesini <a href="#/fisler/${esc(encodeURIComponent(linkedSlip.id))}">fiş ekranından</a> yapın.</div>` : ''}
+    ${realDate(query.review_date)?`<p class="notice info" data-work-day-return>Gün kontrolünden açıldı. <a href="#/isler/kontrol?date=${esc(query.review_date)}">Gün kontrolüne dön</a></p>`:''}
+    ${editId ? "" : notice("info", "Nakliyede döküm yerlerini + Satır ekle ile girin. Aynı fiyatlı seferler müşteriye tek satır görünür; döküm ayrıntıları içeride korunur.")}
+    ${planSource ? `<div class="notice info" data-plan-source="${esc(planSource.id)}"><b>Planlı görev taslağı:</b> ${esc(planSource.task || planSource.id)}<br>Miktar ve tarihi kontrol edin. Plan, kayıt öncesinde gelir veya gerçekleşen iş değildir; kayıt sonrası planla bu iş bağlanır.</div>` : repeatSource ? `<div class="notice info" data-repeat-info><div><b>Benzer iş için seçimler hazır.</b> Miktarı ve tarihi kontrol edin. Fiş, fotoğraf, imza, eski fiyat ve notlar yeni işe taşınmaz. Fiyat yeni kayıt koşullarına göre hesaplanır.<br><a href="#/isler/${esc(encodeURIComponent(repeatSource.id))}">Kaynak işi aç</a>${repeatMissing.length ? `<p>Artık kullanılamayan seçimler boş bırakıldı: ${esc(repeatMissing.join(", "))}</p>` : ""}</div></div>` : startKind === "draft" ? '<div class="notice info" data-work-start="draft">Yarım kalan iş taslağı yüklendi; önceki alanlar korundu.</div>' : startKind === "customer" ? '<div class="notice info" data-work-start="customer">Seçili müşteri için yeni iş. Miktarı ve diğer seçimleri girin.</div>' : startKind === "message" ? '<div class="notice info" data-work-start="message">Mesajdan yeni iş başlangıcı; kayıt henüz yapılmadı. Alanları kontrol edin.</div>' : ""}
+    <form data-form novalidate>
+      ${fDate("Tarih", "date", v.date)}
+      <div class="formgrid2">
+        ${fSelect("Müşteri", "customer_id", [...custOpts, { v: "__new__", t: "➕ Yeni müşteri…" }], v.customer_id)}
+        ${fSelect("Şantiye", "site_id", [...siteOpts, ...(v.customer_id ? [{ v: "__new__", t: "➕ Yeni şantiye…" }] : [])], siteModel.selected)}
+      </div>
+      <p class="tiny muted" data-site-context>${siteModel.legacy ? "Eski şantiye seçimi bu müşteriyle eşleşmiyor veya artık listede değil. Kayıt değiştirilmedi; kaydetmeden önce şantiyeyi kontrol edin." : !v.customer_id ? "Şantiye için önce müşteri seçin." : "Yalnız seçili müşterinin şantiyeleri gösterilir."}</p>
+      <div class="formgrid2">
+        ${fSelect("Araç / Makine", "vehicle_id", [...vehOpts, { v: "__new__", t: "➕ Yeni…" }], v.vehicle_id)}
+        ${fSelect("Şoför / Operatör", "personnel_id", [...perOpts, { v: "__new__", t: "➕ Yeni…" }], v.personnel_id)}
+      </div>
+      <div data-jobbox></div>
+      ${fSelect("İş Türü", "work_type", v.work_type&&!WORK_TYPES.includes(v.work_type)?[v.work_type,...WORK_TYPES]:WORK_TYPES, v.work_type || "")}
+      <div class="formgrid2">
+        ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
+        ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
+      </div>
+      <section data-work-time hidden><h3>Saat Puantajı (opsiyonel)</h3><div class="formgrid2">${fText("Başlangıç", "time_start", v.time_start || "", { type: "time" })}${fText("Bitiş", "time_end", v.time_end || "", { type: "time" })}</div>${fNum("Mola (dk)", "break_minutes", v.break_minutes ?? 0)}<button type="button" class="btn" data-time-calculate>Saat Miktarını Hesapla</button></section>
+      <section data-work-fuel-preview aria-live="polite" hidden></section>
+      ${fText("Malzeme", "material", v.material || "", { ph: "mıcır, kum…" })}
+      <div class="formgrid2">
+        ${fSelect("Döküm Sahası", "dump_site_id", [...dumpSites.map((r) => ({ v: r.id, t: r.name })), { v: "__new__", t: "+ Yeni Döküm Sahası" }], v.dump_site_id || "")}
+        ${fSelect("Malzeme Ocağı", "quarry_id", [...quarries.map((r) => ({ v: r.id, t: r.name })), { v: "__new__", t: "+ Yeni Malzeme Ocağı" }], v.quarry_id || "")}
+        ${fText("Diğer Döküm (opsiyonel)", "dump_area", v.dump_area || "")}
+        ${fText("Diğer Ocak (opsiyonel)", "quarry", v.quarry || "")}
+      </div>
+      <div class="formgrid2">
+        ${fSelect("Fiş Durumu", "slip_status", ["Fiş Var", "Fiş Yok"], v.slip_status || "")}
+        ${fText("Fiş No", "slip_no", v.slip_no || "")}
+      </div>
+      <div class="formgrid2">${fNum("Tonaj (fişteki net ton, opsiyonel)", "tonnage", v.tonnage ?? "", { step: "any" })}${fNum("Döküm maliyeti (₺, elle — opsiyonel)", "dump_cost", v.dump_cost ?? "", { step: "any" })}</div>
+      ${fSelect("Tonajın kapsamı (toplu seferde)","tonnage_scope",[{v:"unknown",t:"Bilinmiyor — tutar hesaplanamaz"},{v:"total",t:"Yazılan tonaj tüm seferlerin toplamı"},{v:"per_trip",t:"Yazılan tonaj bir sefer için"}],v.tonnage_scope||"unknown",{empty:false})}
+      <div class="muted tiny">Bu bilgiler yalnız maliyet tahminidir. Tonaj boşsa yeni işte aracın sefer başı tahmini yükü × sefer sayısı × tarife saklanır; araç kartı veya tarife değişince eski tahmin yenilenmez. Toplu seferde yazılan tonajın kapsamı bilinmiyorsa tahmin yapılmaz. Gerçek kesintiyi Ortak Döküm Hesabına fişle girin; yalnız fişin kapsadığı seferin tahmini kaldırılır. Döküm dahil müşteri fiyatına ayrıca borç eklenmez.</div>
+      <section class="card" style="margin:8px 0" data-slip-ai>
+        <div class="field"><label>Fiş / belge fotoğrafları (işe eklenir)</label><input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-wfiles></div>
+        <div class="row" style="gap:6px;flex-wrap:wrap" data-wthumbs></div>
+        <button type="button" class="btn block" style="margin-top:6px" data-wai>🤖 Gemini ile fişi oku (ton, fiş no, tarih, plaka)</button>
+        <div data-wai-out></div>
+      </section>
+      <div class="formgrid2">${fNum("Manuel birim fiyat (opsiyonel)", "manual_price", (!editId ? v.manual_price : undefined) ?? (v.price_snapshot?.price_source === "Manuel" ? v.price_snapshot.unit_price : ""), { step: "any" })}${fNum("KDV %", "manual_kdv", (!editId ? v.manual_kdv : undefined) ?? v.price_snapshot?.kdv_rate ?? 20, { step: "any" })}</div>
+      ${fNum("Mesafe (km, opsiyonel)", "distance_km", v.distance_km ?? "", { step: "any" })}
+      ${editId ? "" : '<section data-transport-batch hidden><div data-transport-rows></div><button type="button" class="btn" data-add-transport>+ Satır ekle</button><div class="notice" data-transport-total aria-live="polite"></div><p class="tiny">Ek satırda boş bırakılan araç, personel ve fiyat üstteki seçimden alınır. Her satır ayrı iş kaydı olarak saklanır.</p></section>'}
+      ${fArea("İş Açıklaması", "description", recordNoteText(v,'description',names,'work'))}
+      ${fArea("Müşteri Notu (PDF'te görünür)", "customer_note", v.customer_note || "")}
+      ${fArea("İç Not (müşteriye GÖSTERİLMEZ)", "internal_note", recordNoteText(v,'internal_note',names,'work'))}${recordSourceHTML(v,v.internal_note?'internal_note':'description',names,'work')}
+      ${editId ? "" : '<label class="history-check"><input type="checkbox" data-save-next> Bu kayıttan sonra benzer iş aç · miktarı yeniden gir</label>'}
+    </form>
+    <div class="actionbar">
+      ${editId ? "" : '<button class="btn" data-copylast>Son İşten Başla</button>'}
+      <button class="btn primary" data-save>Kaydet</button>
+    </div>`;
+
+  const form = qs("[data-form]", root);
+  // İş sözleşmesi: müşterinin açık sefer / m³ anlaşması varsa bu iş dahil mi ekstra mı (kayıttan önce açıkça gösterilir)
+  const J = await import("./job-core.js");
+  const dJob = await db.dumpAll();
+  if (!current() || !form.isConnected) return;
+  const jobInit = rec ? (rec.job_extra ? "ekstra" : J.isJobPriced(rec) ? "dahil" : "") :
+    ((startKind === "draft" || (repeatSource && v._repeat_source === repeatSource.id)) && ["dahil", "ekstra"].includes(v.job_scope) ? v.job_scope : "");
+  const jobDraw = () => {
+    const box = qs("[data-jobbox]", form);
+    const g = (n) => qs(`[name=${n}]`, form)?.value || "";
+    const cur = qs("[name=job_scope]", form)?.value || jobInit || "dahil";
+    const w = { customer_id: g("customer_id"), site_id: g("site_id").startsWith("__") ? "" : g("site_id"), date: g("date"), unit: g("unit"), quantity: Number(g("quantity")) || 0 };
+    const p = J.jobPreview(dJob, w, { extra: cur === "ekstra" });
+    if (!p || rec?.price_snapshot?.locked) { box.innerHTML = ""; return; }
+    if (p.kind === "ambiguous") { box.innerHTML = notice("warn", "📐 " + p.text); return; }
+    box.innerHTML = `<div class="notice ${p.kind === "extra" ? "warn" : "info"}" style="display:block"><div>📐 ${esc(p.text)}</div>
+      ${fSelect("Bu iş", "job_scope", [{ v: "dahil", t: "Sözleşmeye dahil" }, { v: "ekstra", t: "Ekstra iş (sözleşme dışı, ayrı fiyat)" }], cur, { empty: false })}</div>`;
+    qs("[name=job_scope]", box).addEventListener("change", jobDraw);
+  };
+  for (const n of ["customer_id", "site_id", "date", "unit", "quantity"]) qs(`[name=${n}]`, form)?.addEventListener("change", jobDraw);
+  jobDraw();
+  const fuelPreview=bindWorkFuelPreview({form,db,data:{customers,sites,quarries,dump_sites:dumpSites},previous:rec});
+  let draftTimer,
+    saving = false, copying = false, pendingCards = 0;
+  let formDirty = false;
+  form.addEventListener("input", () => { formDirty = true; });
+  form.addEventListener("change", () => { formDirty = true; });
+  // ---- Fiş fotoğrafı: işe eklenir; Gemini tonu ve fiş bilgisini okuyup boş alanları doldurur ----
+  let wfiles = [], wfilesGeneration = 0, wfilesPending = false;
+  const wIn = qs("[data-wfiles]", form), wOut = qs("[data-wai-out]", form);
+  wIn.addEventListener("change", async () => {
+    if (saving) return;
+    const generation = ++wfilesGeneration; wfilesPending = true;
+    try { const prepared = await Promise.all([...wIn.files].slice(0, 10).map(f => prepareAttachment(f))); if (generation !== wfilesGeneration) return; wfiles = prepared; }
+    catch (error) { if (generation === wfilesGeneration) { wIn.value = ""; toast(error.message,"err"); } return; }
+    finally { if (generation === wfilesGeneration) wfilesPending = false; }
+    qs("[data-wthumbs]", form).innerHTML = wfiles.map((f) => (f.type.startsWith("image/") ? `<img src="${URL.createObjectURL(f)}" alt="" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--border)">` : `<span class="chip">📄 ${esc(f.name)}</span>`)).join("");
+  });
+  qs("[data-wai]", form).addEventListener("click", async (ev) => {
+    const b = ev.currentTarget;
+    if (wfilesPending) return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin", "err");
+    const imgs = wfiles.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) return toast("Önce fiş fotoğrafı seçin", "err");
+    const { geminiSettings, withModelFallback, geminiJson, blobToBase64, shrink } = await import("./ai-gemini.js");
+    if (!(await geminiSettings(db)).ready) return toast("Ayarlar → Yapay Zeka'da Gemini anahtarını kaydedin", "err");
+    if (!navigator.onLine) return toast("İnternet yok", "err");
+    b.disabled = true;
+    wOut.innerHTML = '<div class="muted small" style="padding:6px">Gemini fişi okuyor…</div>';
+    try {
+      const { SLIP_PROMPT, slipSchema, validateSlips, slipFill } = await import("./slip-read.js");
+      const parts = [];
+      for (const f of imgs) { const img = await shrink(f); parts.push({ inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } }); }
+      parts.push({ text: `Fotoğraf sayısı: ${imgs.length} (sıra 0'dan başlar)` });
+      const obj = await withModelFallback(db, (o) => geminiJson(parts, { ...o, system: SLIP_PROMPT, schema: slipSchema() }));
+      const d = await db.dumpAll();
+      const res = validateSlips(obj, { d, count: imgs.length });
+      const cur = collectForm(form);
+      const fill = slipFill(res, cur, { d });
+      for (const [k, val] of Object.entries(fill)) { const el = qs(`[name=${k}]`, form); if (el) el.value = val; }
+      if (fill.work_type) qs("[name=work_type]", form).dispatchEvent(new Event("change"));
+      form.dispatchEvent(new Event("change"));
+      form.dispatchEvent(new Event("input"));
+      const vName = (id) => vehicles.find((x) => x.id === id)?.name || "";
+      wOut.innerHTML = `<div class="small" style="margin-top:6px">${res.rows.map((r) => `• Fiş ${r.photo + 1}: <b>${r.net_ton != null ? fmtNum(r.net_ton) + " ton" : "ton yok"}</b>${r.slip_no ? " · No " + esc(r.slip_no) : ""}${r.date ? " · " + trDate(r.date) : ""}${r.plate ? " · " + esc(r.plate) + (r.vehicle_id ? " (" + esc(vName(r.vehicle_id)) + ")" : "") : ""}${r.issues.length ? ` <span class="muted">⚠ ${esc(r.issues.join(", "))}</span>` : ""}`).join("<br>")}</div>
+        ${res.read ? `<div class="small" style="margin-top:4px">Toplam <b>${fmtNum(res.total_ton)} ton</b> (${res.read}/${imgs.length} fiş) — Tonaj alanına yazıldı${fill.quantity != null ? ", miktar dolduruldu" : ""}.</div>` : ""}
+        ${res.read && cur.unit !== "Ton" ? `<button type="button" class="btn block" style="margin-top:6px" data-wton>Ton hesabı: birimi Ton, miktarı ${fmtNum(res.total_ton)} yap</button>` : ""}
+        ${fill.material_hint ? `<div class="small" style="margin-top:4px">⚠ ${esc(fill.material_hint)}</div>` : ""}
+        <div class="muted tiny" style="margin-top:4px">Fişte yazmayan değer doldurulmadı. Kaydetmeden önce kontrol edin.</div>`;
+      qs("[data-wton]", wOut)?.addEventListener("click", () => {
+        qs("[name=unit]", form).value = "Ton";
+        qs("[name=quantity]", form).value = res.total_ton;
+        form.dispatchEvent(new Event("change"));
+        form.dispatchEvent(new Event("input"));
+        toast("Birim Ton yapıldı", "ok");
+      });
+    } catch (e) {
+      wOut.innerHTML = notice("warn", e.message || String(e));
+    }
+    b.disabled = false;
+  });
+  const attachFiles = async (id) => {
+    for (const f of wfiles) await db.addAttachment("work", id, f, { kind: "slip_photo" });
+  };
+  const timeSection = qs("[data-work-time]", form);
+  const syncTime = () => {
+    const active = qs("[name=unit]", form).value === "Saat";
+    timeSection.hidden = !active;
+    for (const input of qsa("input,button", timeSection))
+      input.disabled = !active;
+  };
+  form.addEventListener("change", syncTime);
+  syncTime();
+  qs("[data-time-calculate]", form).onclick = () => {
+    try {
+      qs("[name=quantity]", form).value = workHours(
+        qs("[name=time_start]", form).value,
+        qs("[name=time_end]", form).value,
+        qs("[name=break_minutes]", form).value,
+      );
+      form.dispatchEvent(new Event("input"));
+    } catch (e) {
+      toast(e.message, "err");
+    }
+  };
+  const batchSection = qs("[data-transport-batch]", form);
+  const batchActive = () =>
+    !!batchSection &&
+    ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye", "Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
+      qs("[name=work_type]", form).value,
+    ) &&
+    qs("[name=unit]", form).value === "Sefer";
+  const extraRows = () =>
+    qsa("[data-transport-row]", form).map((el) => collectForm(el));
+  const updateBatch = () => {
+    if (!batchSection) return;
+    const active = batchActive();
+    batchSection.hidden = !active;
+    for (const input of qsa("input,select,textarea", batchSection))
+      input.disabled = !active;
+    const extras = active ? extraRows() : [];
+    const total =
+      Number(qs("[name=quantity]", form).value || 0) +
+      extras.reduce((sum, r) => sum + Number(r.x_quantity || 0), 0);
+    qs("[data-transport-total]", form).textContent =
+      `${extras.length + 1} satır · Toplam ${fmtNum(total)} ${esc(qs('[name=unit]',root)?.value||'Sefer')}`;
+    qs("[data-save]", root).textContent = extras.length
+      ? "Tümünü kaydet"
+      : "Kaydet";
+  };
+  const addTransportRow = (row = {}) => {
+    const el = document.createElement("div");
+    el.className = "card";
+    el.dataset.transportRow = "";
+    el.innerHTML = `<div class="row between"><strong>Döküm satırı</strong><button type="button" class="btn sm danger" data-remove-transport>Satırı kaldır</button></div>${fSelect(
+      "Döküm Sahası",
+      "x_dump_site_id",
+      dumpSites.map((r) => ({ v: r.id, t: r.name })),
+      row.x_dump_site_id || "",
+    )}${fText("Diğer Döküm (opsiyonel)", "x_dump_area", row.x_dump_area || "")}${fNum("Sefer", "x_quantity", row.x_quantity ?? 1, { req: true, step: 1 })}<details><summary>Araç / personel / fiyat değiştir</summary>${fSelect(
+      "Araç (boşsa üstteki)",
+      "x_vehicle_id",
+      vehicles.map((r) => ({ v: r.id, t: r.name })),
+      row.x_vehicle_id || "",
+    )}${fSelect(
+      "Personel (boşsa üstteki)",
+      "x_personnel_id",
+      personnel.map((r) => ({ v: r.id, t: r.name })),
+      row.x_personnel_id || "",
+    )}${fNum("Birim fiyat (boşsa üstteki / fiyat listesi)", "x_manual_price", row.x_manual_price ?? "", { step: "any" })}${fNum("KDV % (boşsa üstteki)", "x_manual_kdv", row.x_manual_kdv ?? "", { step: "any" })}${fNum("Mesafe km (boşsa üstteki)", "x_distance_km", row.x_distance_km ?? "", { step: "any" })}</details>`;
+    qs("[data-transport-rows]", form).append(el);
+    qs("[data-remove-transport]", el).onclick = () => {
+      el.remove();
+      updateBatch();
+      form.dispatchEvent(new Event("input"));
+    };
+    updateBatch();
+  };
+  if (batchSection) {
+    qs("[data-add-transport]", form).onclick = () => {
+      addTransportRow();
+      form.dispatchEvent(new Event("input"));
+    };
+    for (const row of v._transport_rows || []) addTransportRow(row);
+    form.addEventListener("input", updateBatch);
+    form.addEventListener("change", updateBatch);
+  }
+  const dynamicWork = () => {
+    const type = qs("[name=work_type]", form).value;
+    const dump = ["Hafriyat Nakliye", "Moloz Nakliye", "Çöp Nakliye"].includes(
+        type,
+      ),
+      quarry = ["Mıcır Nakliye", "Kum Nakliye", "Gravak Nakliye"].includes(
+        type,
+      );
+    // Malzeme nakliyesinde döküm alanları "teslim yeri" olur (ör. Maslak gravak → Binkılıç dolgu)
+    const setLabel = (key, txt) => { const l = qs("[name=" + key + "]", form)?.closest(".field")?.querySelector("label"); if (l) l.textContent = txt; };
+    setLabel("dump_site_id", quarry ? "Teslim / Dolgu Yeri" : "Döküm Sahası");
+    setLabel("dump_area", quarry ? "Diğer Teslim Yeri (şantiye / adres)" : "Diğer Döküm (opsiyonel)");
+    for (const [key, visible] of [
+      ["dump_area", dump || quarry],
+      ["dump_site_id", dump || quarry],
+      ["quarry", quarry],
+      ["quarry_id", quarry],
+      ["material", dump || quarry],
+    ]) {
+      const input = qs("[name=" + key + "]", form);
+      input.closest(".field").hidden = !visible;
+      input.disabled = !visible;
+      if (!visible) input.value = "";
+    }
+    const unit = qs("[name=unit]", form),
+      allowed =
+        type === "Vinç Çalışması"
+          ? ["Saat"]
+          : type.includes("Nakliye")
+            ? ["Sefer", "Ton", "m³"]
+            : ["Saat", "Yevmiye"];
+    for (const option of unit.options)
+      option.hidden = !allowed.includes(option.value);
+    if (!allowed.includes(unit.value)) unit.value = allowed[0];
+    updateBatch();
+  };
+  qs("[name=work_type]", form).addEventListener("change", dynamicWork);
+  dynamicWork();
+  const customerSelect = qs('select[name=customer_id]', form);
+  const siteSelect = qs('select[name=site_id]', form);
+  siteSelect.dataset.workSiteOwner = ''; // Do not let generic form augmentation replace this owned control.
+  const syncSites = () => {
+    const cid = customerSelect.value;
+    const keepOld = (!!rec || startKind === "draft") && cid === v.customer_id && siteSelect.value === v.site_id;
+    const model = workSiteChoices(sites, cid, siteSelect.value, keepOld, names.sites);
+    siteSelect.innerHTML = '<option value="">— seç —</option>' + model.options.map(s => `<option value="${esc(s.v)}">${esc(s.t)}</option>`).join('') +
+      (cid && cid !== '__new__' ? '<option value="__new__">➕ Yeni şantiye…</option>' : '');
+    siteSelect.value = model.selected;
+    qs('[data-site-context]', form).textContent = model.legacy ? 'Eski şantiye seçimi bu müşteriyle eşleşmiyor veya artık listede değil. Kayıt değiştirilmedi; kaydetmeden önce şantiyeyi kontrol edin.' : cid ? 'Yalnız seçili müşterinin şantiyeleri gösterilir.' : 'Şantiye için önce müşteri seçin.';
+  };
+  // Preserve the previous selection on cancel, and never finish a stale prompt.
+  const bindNew = (name, store, label) => {
+    const sel = qs(`select[name=${name}]`, form);
+    let previous = sel.value, pending = false;
+    sel.addEventListener("change", async () => {
+      if (sel.value !== "__new__") { previous = sel.value; return; }
+      sel.value = previous;
+      jobDraw();
+      if (pending || !current() || !form.isConnected) return;
+      const selectedBefore = previous;
+      const customerBefore = customerSelect.value;
+      if (store === 'sites' && !customerBefore) return;
+      pending = true;
+      pendingCards++;
+      try {
+        const name2 = await routeDialog(() => promptDialog("Yeni " + label, "Ad"));
+        if (!name2 || !current() || !form.isConnected || sel.value !== selectedBefore || (store === 'sites' && customerSelect.value !== customerBefore)) return;
+        const fields = store === 'sites' ? { name: name2, customer_id: customerBefore, active: true } :
+          store === 'vehicles' ? { name: name2, type: 'Araç/Makine', ownership: 'Özmal', active: true } : { name: name2, active: true };
+        const created = await db.saveNew(store, fields);
+        const localList = { sites, vehicles, personnel, customers, dump_sites: dumpSites, quarries }[store];
+        localList?.push(created);
+        if (!current() || !form.isConnected || sel.value !== selectedBefore || (store === 'sites' && customerSelect.value !== customerBefore)) return;
+        sel.insertAdjacentHTML('beforeend', `<option value="${esc(created.id)}">${esc(store === 'customers' ? customerLabel(created, customers) : name2)}</option>`);
+        sel.value = created.id;
+        pending = false; pendingCards--;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        toast('Eklendi: ' + name2, 'ok');
+      } catch (e) { if (current()) toast('Kart eklenemedi: ' + (e.message || e), 'err'); }
+      finally { if (pending) { pending = false; pendingCards--; } }
+    });
+  };
+  bindNew("customer_id", "customers", "Müşteri");
+  bindNew("site_id", "sites", "Şantiye");
+  bindNew("vehicle_id", "vehicles", "Araç/Makine");
+  bindNew("personnel_id", "personnel", "Personel");
+  bindNew("dump_site_id", "dump_sites", "Döküm Sahası");
+  bindNew("quarry_id", "quarries", "Malzeme Ocağı");
+  customerSelect.addEventListener('change', () => {
+    syncSites();
+    siteSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    jobDraw();
+  });
+
+  // Both typing and committed selections (including newly created cards) persist.
+  if (!editId) {
+    const scheduleDraft = event => {
+      if (pendingCards || event.target?.value === "__new__") return;
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        if (!saving && current() && form.isConnected)
+          db.draftSave("work", {
+            ...collectForm(form),
+            _transport_rows: extraRows(),
+            ...(repeatSource ? { _repeat_source: repeatSource.id } : {}),
+            ...(v._plan_id ? { _plan_id: v._plan_id } : {}),
+          }).catch(e => { if (current()) toast("Taslak saklanamadı: " + (e.message || e) + ". Form açıkken kaydedin veya metni koruyun.", "err"); });
+      }, 600);
+    };
+    form.addEventListener('input', scheduleDraft);
+    form.addEventListener('change', scheduleDraft);
+  }
+  const copyBtn = qs("[data-copylast]", root);
+  if (copyBtn && !(dJob.work_records || []).some(isActive)) { copyBtn.disabled = true; copyBtn.title = "Henüz kopyalanacak iş yok"; }
+  if (copyBtn)
+    copyBtn.addEventListener("click", async () => {
+      if (saving || copying) return;
+      copying = true; copyBtn.disabled = true;
+      try {
+        if ((formDirty || wfiles.length || extraRows().length) && !(await confirmDialog("Form yerine son iş açılsın mı?", "Bu formdaki değişiklikler ve seçilen fotoğraflar yeni forma taşınmayacak. Önce kaydetmek için vazgeçin.", "Son işten başla"))) return;
+        if (!form.isConnected) return;
+        clearTimeout(draftTimer);
+        if (formDirty || wfiles.length || extraRows().length) await db.draftClear("work");
+        const next=entryRepeatHash(entry,collectForm(form));
+        go(next?next+'&open='+Date.now():"#/isler/new?copylast=1&open=" + Date.now());
+      } catch (e) { toast("Form açılamadı: " + (e.message || e), "err"); }
+      finally { copying = false; if (copyBtn.isConnected) copyBtn.disabled = false; }
+    });
+
+  qs("[data-save]", root).addEventListener("click", async () => {
+    if (saving || copying) return;
+    if (wfilesPending) return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin", "err");
+    saving = true;
+    qs("[data-save]", root).disabled = true;
+    clearTimeout(draftTimer);
+    try {
+      const val = collectForm(form);
+      if(!val.date){toast('Tarih seçin','err');return;}
+      const saveNext = !editId && !!qs("[data-save-next]", form)?.checked;
+      const afterSave = id => go(saveNext ? entryRepeatHash(entry,val,id)||"#/isler/new?repeat=" + encodeURIComponent(id) : entrySaveHash(entry,'work',val)||"#/isler/" + id);
+      const priceMemo = new Map();
+      if (!val.quantity || Number(val.quantity) <= 0) {
+        toast("Miktar girin (0'dan büyük)", "err");
+        return;
+      }
+      if (!val.customer_id || !val.vehicle_id || !val.work_type) {
+        toast("Müşteri, araç ve iş türü seçin", "err");
+        return;
+      }
+      if (!val.vehicle_id && !val.personnel_id) {
+        toast("Araç veya personel seçin", "err");
+        return;
+      }
+      const fields = {
+        date: val.date || todayStr(),
+        time: val.time || null,
+        time_start: val.unit === "Saat" ? val.time_start || null : null,
+        time_end: val.unit === "Saat" ? val.time_end || null : null,
+        break_minutes:
+          val.unit === "Saat" && val.time_start
+            ? Number(val.break_minutes || 0)
+            : null,
+        customer_id: val.customer_id || null,
+        site_id: val.site_id || null,
+        vehicle_id: val.vehicle_id || null,
+        personnel_id: val.personnel_id || null,
+        vehicle_type:
+          vehicles.find((v) => v.id === val.vehicle_id)?.type || null,
+        contractor_id:
+          vehicles.find((v) => v.id === val.vehicle_id)?.contractor_id || null,
+        work_type: val.work_type || "Diğer",
+        description: val.description || "",
+        material: val.material || "",
+        quantity: Number(val.quantity),
+        unit: val.unit || "Sefer",
+        dump_site_id: val.dump_site_id || null,
+        quarry_id: val.quarry_id || null,
+        dump_area:
+          dumpSites.find((d) => d.id === val.dump_site_id)?.name ||
+          val.dump_area ||
+          "",
+        quarry:
+          quarries.find((q) => q.id === val.quarry_id)?.name ||
+          val.quarry ||
+          "",
+        slip_status: val.slip_status || null,
+        slip_no: val.slip_no || "",
+        customer_note: val.customer_note || "",
+        internal_note: val.internal_note || "",
+        distance_km: val.distance_km ? Number(val.distance_km) : null,
+        tonnage: Number(val.tonnage) > 0 ? Number(val.tonnage) : null,
+        dump_cost: Number(val.dump_cost) > 0 ? Number(val.dump_cost) : null,
+        tonnage_scope: val.tonnage_scope || "unknown",
+        ...(v._plan_id ? { plan_assignment_id: v._plan_id } : {}),
+      };
+      Object.assign(fields,noteEditPatch(v,{description:fields.description,internal_note:fields.internal_note},names,'work'));
+      const selectedCustomer=await db.get("customers",fields.customer_id);
+      if(!selectedCustomer || !isActive(selectedCustomer))throw Error("Seçili müşteri artık kullanılamıyor; müşteriyi kontrol edin");
+      const fuelState=fuelPreview.check({customers:selectedCustomer?[selectedCustomer]:[],sites,quarries,dump_sites:dumpSites},fields);
+      if (!editId) {
+        // Eşit öncelikli farklı fiyat kuralı varsa sessizce seçilmez: kullanıcıya sorulur
+        const jobWill = (w) => { const j = J.jobFor(dJob, w); return j && !j.ambiguous && (val.job_scope || "dahil") !== "ekstra"; }; // sözleşme fiyatlayacaksa sorma
+        if (!(val.manual_price !== "" && val.manual_price != null) && !jobWill(fields) && !fuelState.only_pay) {
+          const { askPriceSnapshot } = await import("./price-pick.js");
+          const r = await askPriceSnapshot(await db.listActive("price_book"), priceVehicleContext(fields,vehicles.find((v) => v.id === fields.vehicle_id)),
+            { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }, { label: `${fields.date} · ${fields.quantity} ${fields.unit}`, memo: priceMemo });
+          if (r.cancel) return;
+          fields.price_snapshot = r.snap;
+        }
+      }
+      if (val.manual_price !== "" && val.manual_price != null) {
+        if (
+          !Number.isFinite(Number(val.manual_price)) ||
+          Number(val.manual_price) < 0
+        ) {
+          toast("Manuel fiyat geçersiz", "err");
+          return;
+        }
+        if (kdvRateOf(val.manual_kdv) == null) {
+          toast("Elle fiyat için KDV oranını yazın (KDV'siz iş: 0)", "err");
+          return;
+        }
+        fields.price_snapshot = {
+          unit_price: Number(val.manual_price),
+          kdv_rate: kdvRateOf(val.manual_kdv),
+          kdv_included: false,
+          amount: Number(val.manual_price) * fields.quantity,
+          price_source: "Manuel",
+          snapshot_at: new Date().toISOString(),
+        };
+      }
+      // Mazot karşılığı (müşteri kartındaki sefer başı mazot kuralı)
+      const { applyFuelPay } = await import("./assistant-rules.js");
+      const dAll = await db.dumpAll();
+      fuelPreview.check(dAll,fields);
+      const fuelText = (r) => [recordLocalText(r,dAll,'work'),r.material,r.quarry,r.dump_area].filter(Boolean).join(' ');
+      // Düzenlemede kayıtlı litre hakkı bugünkü kuralla SESSİZCE yeniden hesaplanmaz: müşteri / birim / miktar değişmediyse eski hak ve
+      // mazot karşılığı fiyatı korunur; miktar değiştiyse kayıtlı litre/birim oranıyla hesaplanır.
+      const oldL = editId && rec ? Number(rec.customer_fuel_allowance_l) || 0 : 0;
+      if (oldL > 0 && rec.customer_id === fields.customer_id && rec.unit === fields.unit) {
+        const per = Number(rec.price_snapshot?.fuel_liters_per_unit) || (Number(rec.quantity) > 0 ? oldL / Number(rec.quantity) : 0);
+        fields.customer_fuel_allowance_l = Number(rec.quantity) === Number(fields.quantity) ? oldL : Math.round(per * Number(fields.quantity) * 10) / 10;
+        fields.fuel_rule_id = rec.fuel_rule_id || null;
+        if (rec.price_snapshot?.price_source === "Mazot karşılığı" && fields.price_snapshot?.price_source !== "Manuel") fields.price_snapshot = { ...rec.price_snapshot, fuel_liters_per_unit: per };
+      } else Object.assign(fields, applyFuelPay(dAll, fields, fuelText(fields)));
+      const { applyYard } = await import("./yard-core.js");
+      Object.assign(fields, applyYard(dAll, fields));
+      if (!fields.customer_fuel_allowance_l) {
+        fields.customer_fuel_allowance_l = null;
+        fields.fuel_rule_id = null;
+        if(oldL > 0 && rec.price_snapshot?.price_source === "Mazot karşılığı" && fields.price_snapshot?.price_source !== "Manuel")fields.price_snapshot=null;
+      }
+      const jobScope = val.job_scope || "";
+      if (!editId) Object.assign(fields, J.applyJob(dAll, fields, { extra: jobScope === "ekstra" }));
+      else if (jobScope && jobScope !== jobInit) {
+        // Düzenlemede yalnız kullanıcı seçimi değiştirdiyse: dahil → sözleşme fiyatı; ekstra → fiyat listesi (yoksa fiyatsız)
+        const base = { ...rec, ...fields };
+        if (jobScope === "dahil") Object.assign(fields, J.applyJob(dAll, { ...base, price_snapshot: null }, { extra: false }));
+        else {
+          const { priceSnapshot } = await import("./business.js");
+          const j = J.jobFor(dAll, base);
+          if (j?.site) Object.assign(fields, { site_id: j.site.id, job_extra: true, price_snapshot: J.extraSnapshot(j.site, base) || priceSnapshot(priceVehicleContext(base,vehicles.find(v=>v.id===base.vehicle_id)), await db.listActive("price_book"), { first: await db.metaGet("crane_first_hour"), next: await db.metaGet("crane_next_hour") }) });
+        }
+      }
+      const extras = batchActive() ? extraRows() : [];
+      if (v._plan_id && extras.length) throw Error("Planlı görev tek işe bağlanır. Ek nakliye satırlarını bu işi kaydettikten sonra ayrıca ekleyin");
+      if (!editId && extras.length) {
+        const { priceSnapshot } = await import("./business.js");
+        const prices = await db.listActive("price_book");
+        const crane = {
+          first: await db.metaGet("crane_first_hour"),
+          next: await db.metaGet("crane_next_hour"),
+        };
+        const rows = [fields];
+        for (const row of extras) {
+          const vehicleId = row.x_vehicle_id || fields.vehicle_id;
+          const distance =
+            row.x_distance_km !== ""
+              ? Number(row.x_distance_km)
+              : fields.distance_km;
+          const r = {
+            ...fields,
+            vehicle_id: vehicleId,
+            vehicle_type:
+              vehicles.find((v) => v.id === vehicleId)?.type || null,
+            contractor_id:
+              vehicles.find((v) => v.id === vehicleId)?.contractor_id || null,
+            personnel_id: row.x_personnel_id || fields.personnel_id,
+            quantity: Number(row.x_quantity),
+            dump_site_id: row.x_dump_site_id || null,
+            dump_area:
+              dumpSites.find((d) => d.id === row.x_dump_site_id)?.name ||
+              row.x_dump_area ||
+              "",
+            distance_km: distance,
+          };
+          const manual =
+            row.x_manual_price !== "" ? row.x_manual_price : val.manual_price;
+          const rate = kdvRateOf(row.x_manual_kdv !== "" ? row.x_manual_kdv : val.manual_kdv) ?? NaN; // boş → geçersiz (sessizce %0 olmaz)
+          if ((manual === "" || manual == null) && !(J.jobFor(dJob, r) && !J.jobFor(dJob, r).ambiguous && (val.job_scope || "dahil") !== "ekstra") && !workFuelState(dAll,r).only_pay) {
+            const { askPriceSnapshot } = await import("./price-pick.js");
+            const pr = await askPriceSnapshot(prices, priceVehicleContext(r,vehicles.find(v=>v.id===r.vehicle_id)), crane, { label: `${r.date} · ${r.quantity} ${r.unit}`, memo: priceMemo });
+            if (pr.cancel) return;
+            r.price_snapshot = pr.snap;
+          }
+          if (manual !== "" && manual != null) {
+            if (
+              !Number.isFinite(Number(manual)) ||
+              Number(manual) < 0 ||
+              !Number.isFinite(rate) ||
+              rate < 0 ||
+              rate > 100
+            )
+              throw Error("Satır fiyatı veya KDV geçersiz");
+            r.price_snapshot = {
+              unit_price: Number(manual),
+              kdv_rate: rate,
+              kdv_included: false,
+              amount: Number(manual) * r.quantity,
+              price_source: "Manuel",
+              snapshot_at: new Date().toISOString(),
+            };
+          }
+          { const rr = applyYard(dAll, applyFuelPay(dAll, r, fuelText(r))); rows.push({ ...rr, ...J.applyJob(dAll, rr, { extra: (val.job_scope || "") === "ekstra" }) }); }
+        }
+        const sameDay = await db.listActive("work_records");
+        if (
+          rows.some((r) =>
+            sameDay.some(
+              (w) =>
+                w.date === r.date &&
+                w.vehicle_id === r.vehicle_id &&
+                w.customer_id === r.customer_id &&
+                w.site_id === r.site_id &&
+                w.work_type === r.work_type &&
+                w.dump_area === r.dump_area &&
+                Number(w.quantity) === r.quantity,
+            ),
+          )
+        ) {
+          if (
+            !(await confirmDialog(
+              "Olası mükerrer kayıt",
+              "Aynı döküm, gün, araç ve miktarla kayıt var. Tüm satırlar yine de kaydedilsin mi?",
+              "Kaydet",
+              false,
+            ))
+          )
+            return;
+        }
+        const created = await db.saveWorkBatch(rows);
+        await attachFiles(created[0].id);
+        await db.draftClear("work");
+        toast(
+          `${created.length} satır · ${fmtNum(created.reduce((s, r) => s + r.quantity, 0))} sefer kaydedildi`,
+          "ok",
+        );
+        afterSave(created[0].id);
+        return;
+      }
+      // Duplicate adayı uyarısı (otomatik engelleme YOK)
+      if (!editId) {
+        const sameDay = (await db.getAll("work_records")).filter(
+          (r) =>
+            isActive(r) &&
+            r.date === fields.date &&
+            r.vehicle_id === fields.vehicle_id &&
+            r.customer_id === fields.customer_id &&
+            r.work_type === fields.work_type &&
+            Number(r.quantity) === fields.quantity,
+        );
+        if (sameDay.length) {
+          const ok = await confirmDialog(
+            "Olası mükerrer kayıt",
+            "Aynı gün/araç/müşteri/iş/miktar ile kayıt var. Yine de kaydedilsin mi?",
+            "Kaydet",
+            false,
+          );
+          if (!ok) return;
+        }
+      }
+      if (editId) {
+        await db.saveExisting("work_records", rec, fields);
+        await attachFiles(editId);
+        toast("İş güncellendi", "ok");
+        go("#/isler/" + editId);
+      } else {
+        const created = v._plan_id ? await db.savePlannedWork(planSource, fields) : await db.saveNew("work_records", fields);
+        await attachFiles(created.id);
+        await db.draftClear("work");
+        toast(created._existing ? "Planla bağlı mevcut iş açıldı; ikinci kayıt oluşturulmadı" : v._plan_id ? "İş kaydedildi ve planla bağlandı" : "İş kaydedildi", "ok");
+        afterSave(created.id);
+      }
+    } catch (e) {
+      if (e?.code === "STALE" && e.current) {
+        // Çakışma: kayıttaki güncel değerle sizin girdiğinizi karşılaştır; yenileyince güncel hâl açılır
+        const L = { date: "Tarih", quantity: "Miktar", unit: "Birim", work_type: "İş türü", customer_id: "Müşteri", vehicle_id: "Araç", site_id: "Şantiye" };
+        const nm = (k, v) => (k === "customer_id" ? ctx.names.customers[v] : k === "vehicle_id" ? ctx.names.vehicles[v] : k === "site_id" ? ctx.names.sites[v] : v) ?? "—";
+        const diff = Object.keys(L).filter((k) => String(e.current[k] ?? "") !== String(e.mine?.[k] ?? "")).map((k) => `${L[k]}: kayıtta ${nm(k, e.current[k])} · sizde ${nm(k, e.mine?.[k])}`);
+        if (await confirmDialog("Kayıt başka yerde değişti", (diff.length ? diff.join(" | ") + ". " : "") + "Değişikliğiniz YAZILMADI (eski ekran yeni değişikliği ezmesin). Güncel hâli açıp yeniden düzenleyin.", "Güncel hâli aç")) ctx.reload();
+        return;
+      }
+      toast(e.message || "Kayıt kaydedilemedi", "err");
+    } finally {
+      saving = false;
+      const button = qs("[data-save]", root);
+      if (button) button.disabled = false;
+    }
+  });
+}
+
+const jobKv = (w, t) => `<div class="kv"><span class="k">İş sözleşmesi</span><span class="v"><a href="#/is-sozlesmesi/${esc(w.site_id || "")}">${esc(t)}</a></span></div>`;
+async function workDetail(ctx, id) {
+  const { root, db, names } = ctx;
+  const w = await db.get("work_records", id);
+  // Asistan "bu kayda fiş fotoğrafı ekle" için son açılan kayıt
+  try { sessionStorage.setItem("spx_v31105_last_record", JSON.stringify({ hash: "#/isler/" + id + "?foto=1", at: Date.now() })); } catch (e) {}
+  if (!w) {
+    root.innerHTML = appbar("İş") + emptyState("⚒", "Kayıt bulunamadı");
+    return;
+  }
+  const siblings = w.work_batch_id
+    ? (await db.listActive("work_records"))
+        .filter((r) => r.work_batch_id === w.work_batch_id)
+        .sort((a, b) => a.batch_row - b.batch_row)
+    : [];
+  const slip = w.slip_id ? await db.get("slips", w.slip_id) : null;
+  const slipProtected = slip && isActive(slip) && (slip.status !== 'İptal' || slip.signed_at);
+  const atts = await db.attachmentsFor("work", id);
+  const sst = w.digital_slip_no ? (await import("./driver-core.js")).slipState(w, atts, names) : { kind: "none", changes: [], original: null };
+  const slipChanges = sst.changes;
+  const inHakedis = (await db.getAll("hakedis")).some(
+    (h) =>
+      isActive(h) &&
+      h.status !== "İptal" &&
+      (h.items || []).some((it) => it.work_record_id === id),
+  );
+  root.innerHTML =
+    appbar("İş Detayı", trDate(w.date)) +
+    `
+    <div class="card">
+      <div class="row between"><span class="strong" style="font-size:16px">${esc(w.work_type || "İş")}</span><span class="amt">${fmtNum(w.quantity)} ${esc(w.unit || "")}</span></div>
+      <div class="divider"></div>
+      ${kv("Tarih", trDate(w.date) + (w.time ? " " + w.time : ""))}
+      ${kv("Müşteri", names.customers[w.customer_id] || "—")}
+      ${kv("Şantiye", names.sites[w.site_id] || "—")}
+      ${w.price_snapshot?.price_source === "Sözleşmeye dahil" ? jobKv(w, "Fiyata dahil — cariye ayrıca yazılmaz") : w.price_snapshot?.price_source === "İş sözleşmesi (sefer)" ? jobKv(w, "Sefer başı sözleşme fiyatı") : w.job_extra ? jobKv(w, "Ekstra iş (sözleşme dışı)") : ""}
+      ${kv("Araç/Makine", names.vehicles[w.vehicle_id] || "—")}
+      ${kv("Personel", names.personnel[w.personnel_id] || "—")}
+      ${w.material ? kv("Malzeme", w.material) : ""}
+      ${w.dump_area ? kv("Döküm", w.dump_area) : ""}
+      ${w.quarry ? kv("Ocak", w.quarry) : ""}
+      ${w.slip_status ? kv("Fiş", w.slip_status + (w.slip_no ? " #" + w.slip_no : "")) : ""}
+      ${w.tonnage ? kv("Tonaj", enteredTonnageText(w)) : ""}
+      ${w.dump_cost ? kv("Döküm maliyeti", fmtNum(w.dump_cost) + " ₺ (elle)") : ""}
+      ${w.customer_fuel_allowance_l ? kv("Mazot karşılığı", fmtNum(w.customer_fuel_allowance_l) + " L" + (w.price_snapshot?.price_source === "Mazot karşılığı" ? " (ücret yalnız mazot)" : "")) : ""}
+      ${recordNoteHTML(w,'description',names,'work',{source:false,label:'Açıklama'})}
+      ${w.customer_note ? kv("Müşteri Notu", w.customer_note) : ""}
+      ${recordNoteHTML(w,'internal_note',names,'work',{source:true,label:'İç Not'})}${!w.internal_note&&!w.assistant_origin?recordSourceHTML(w,'description',names,'work'):''}
+      ${w.invoice_no ? kv("Fatura", w.invoice_no + (w.invoice_date ? " · " + trDate(w.invoice_date) : "")) : ""}
+      ${slip ? kv("Dijital Fiş", "#" + String(slip.slip_no).padStart(6, "0") + " (" + slip.status + ")") : ""}
+      ${inHakedis ? kv("Hakediş", "Bu iş hakedişe dahil") : ""}
+    </div>
+    ${w.digital_slip_no ? `<div class="card" style="border-left:4px solid ${slipChanges.length || sst.kind === "legacy" ? "#d9534f" : "#2e9e6b"}">${slipChanges.length ? notice("warn", "Bu iş, müşterinin imzaladığı fişten SONRA değiştirildi: " + slipChanges.join(" · ") + ". İmzalı fiş PDF'i imzalanan hâli gösterir; yeni hâl için revizyon fişiyle müşteriden yeniden imza alın.") : ""}${sst.kind === "legacy" ? notice("warn", "İmza anındaki içerik doğrulanamıyor (bu iş, imzalanan içerik saklanmadan kaydedildi). İmzalı fiş üretilemez; " + (sst.original ? "aşağıdaki orijinal PDF'e bakın ya da " : "") + "revizyon fişiyle yeniden imza alın.") : ""}<div class="row between"><b>🧾 Dijital iş fişi ${esc(w.digital_slip_no)}</b><span class="badge ${sst.kind === "signed" && !slipChanges.length ? "ok" : "warn"}">${sst.kind === "signed" ? (slipChanges.length ? "imza sonrası değişti" : "imzalı") : sst.kind === "legacy" ? "imza içeriği doğrulanamıyor" : "imza yok"}</span></div>
+      <div class="small muted">${esc(w.slip_receiver ? "Teslim alan: " + w.slip_receiver : "")}${w.slip_signed_at ? " · " + esc(new Date(w.slip_signed_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })) : ""} · şoför sahada imzalattı</div>
+      ${sst.original ? await attachmentHTML(sst.original, {label:"📎 Orijinal fiş PDF (şoförün telefonunda üretilen)"}) : ""}
+      ${sst.kind === "signed" || sst.kind === "unsigned" ? `<button class="btn block" style="margin-top:8px" data-dslip>📄 ${sst.kind === "signed" ? "İmzalı fiş PDF — imzalanan hâl" : "Fiş PDF (imzasız taslak)"}</button>` : ""}
+      ${sst.kind === "legacy" || slipChanges.length ? `<button class="btn block" style="margin-top:8px" data-dslip-rev>📄 Revizyon fişi — güncel hâl (imzasız, yeniden imza için)</button>` : ""}</div>` : ""}
+    <div class="card"><div class="row between"><strong>Fiş / belge fotoğrafları (${atts.length})</strong><label class="btn sm">+ Ekle<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple data-watt hidden></label></div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:6px">${(await Promise.all(atts.map(a => attachmentHTML(a, {imageStyle:"width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border)"})))).join("") || '<span class="muted small">Fotoğraf yok</span>'}</div></div>
+    <div data-work-file-mount></div>
+    ${slipProtected ? notice('info','Dijital fişe bağlı hizmet bilgileri ve iş kaydı korunuyor. Fiyat ve notları tamamlayabilirsiniz; hizmet düzeltmesi için fişi inceleyin.') : ''}
+    <a class="btn block" data-repeat-work href="#/isler/new?repeat=${esc(encodeURIComponent(w.id))}">＋ Benzer iş oluştur</a>
+    ${siblings.length ? `<div class="card"><strong>Nakliye grubu · ${fmtNum(siblings.reduce((sum, r) => sum + Number(r.quantity), 0))} sefer</strong><p class="tiny">Müşteride aynı fiyatlı seferler birleşir. İç döküm ayrıntıları:</p>${siblings.map((r) => `<div class="row between"><a data-go="#/isler/${r.id}">${esc(r.dump_area || "Döküm")}</a><span>${fmtNum(r.quantity)} sefer · ${esc(names.vehicles[r.vehicle_id] || "")}</span></div>`).join("")}</div>` : ""}
+    <div class="actionbar">
+      ${slip ? `<button class="btn" data-go="#/fisler/${slip.id}">🧾 Fiş</button>` : `<button class="btn" data-mkslip>🧾 ${siblings.length ? "Toplam Sefer Fişi" : "Fiş Oluştur"}</button>`}
+      ${inHakedis ? "" : `<button class="btn" data-go="#/isler/${id}/edit">Düzenle</button>`}
+      <button class="btn danger" data-del ${slipProtected?'disabled title="Dijital fişe bağlı iş korunuyor"':''}>Sil</button>
+    </div>`;
+  {
+    const holder = qs("[data-work-file-mount]", root);
+    if (holder) {
+      try {
+        const [{ workFileModel }, { workFileHtml }] = await Promise.all([import("./work-file-core.js"), import("./work-file-ui.js")]);
+        const snapshot = await db.readSnapshot({attachments:true,meta:false});
+        const fileData = {...snapshot.data,attachments:snapshot.attachments};
+        holder.innerHTML = workFileHtml(workFileModel(fileData, id));
+      } catch (e) { holder.innerHTML = notice("warn", "İş dosyasının bağlantıları okunamadı: " + (e.message || e)); }
+    }
+  }
+  qs("[data-dslip]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    try {
+      const { workSlipSpec } = await import("./driver-core.js");
+      const { exportDocument } = await import("./document-engine.js");
+      const { COMPANY_NAME } = await import("./core.js");
+      const sig = atts.find((a) => a.kind === "signature")?.blob || null;
+      const photo = atts.find((a) => a.kind === "slip_photo" && String(a.type).startsWith("image/"))?.blob || null;
+      await exportDocument(workSlipSpec(w, names, { company: COMPANY_NAME, sigBlob: sig, photo }), "share");
+    } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
+    b.disabled = false;
+  });
+  qs("[data-dslip-rev]", root)?.addEventListener("click", async (ev) => {
+    const b = ev.currentTarget; b.disabled = true;
+    try {
+      const { workSlipSpec } = await import("./driver-core.js");
+      const { exportDocument } = await import("./document-engine.js");
+      const { COMPANY_NAME } = await import("./core.js");
+      const photo = atts.find((a) => a.kind === "slip_photo" && String(a.type).startsWith("image/"))?.blob || null;
+      await exportDocument(workSlipSpec(w, names, { company: COMPANY_NAME, sigBlob: null, photo, revision: true }), "share");
+    } catch (e) { toast("PDF oluşturulamadı: " + (e.message || e), "err"); }
+    b.disabled = false;
+  });
+  if (ctx.query?.foto && qs("[data-watt]", root)) { const el = qs("[data-watt]", root); el.scrollIntoView({ block: "center" }); (el.closest("label") || el).style.outline = "3px solid var(--brand-orange,#f5a623)"; (el.closest("label") || el).scrollIntoView({ block: "center" }); }
+  qs("[data-watt]", root)?.addEventListener("change", async (e) => {
+    try { const prepared = await Promise.all([...e.target.files].slice(0, 10).map(f => prepareAttachment(f))); for (const f of prepared) await db.addAttachment("work", id, f, { kind: "slip_photo" }); }
+    catch (error) { toast(error.message, "err"); return; }
+    toast("Eklendi", "ok");
+    ctx.reload();
+  });
+  const mk = qs("[data-mkslip]", root);
+  if (mk)
+    mk.addEventListener("click", () =>
+      go("#/fisler/new?work=" + id + (siblings.length ? "&batch=1" : "")),
+    );
+  qs("[data-del]", root).addEventListener("click", async () => {
+    const reason = await promptDialog(
+      "Kayıt siliniyor",
+      "Silme nedeni (çöp kutusuna taşınır)",
+    );
+    if (reason === null) return;
+    try { await db.softDelete("work_records", id, reason); }
+    catch(e) {toast(e.message || 'İş silinemedi; kayıt korunuyor.','err');return;}
+    toast("Çöp kutusuna taşındı", "ok");
+    go("#/isler");
+  });
+}
+
+// ============ DİJİTAL FİŞLER ============
+async function slips(ctx) {
+  const sub = ctx.parts[1];
+  if (sub === "new") return slipForm(ctx, null);
+  if (sub && ctx.parts[2] === "imza") return slipSign(ctx, sub);
+  if (sub && ctx.parts[2] === "is-kaydi") return (await import("./digital-slip-ui.js")).linkScreen(ctx,sub);
+  if (sub && ctx.parts[2] === "edit") return slipForm(ctx, sub);
+  if (sub) return slipDetail(ctx, sub);
+  return slipList(ctx);
+}
+
+const slipIcon = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M7 3h8l4 4v14H5V3h2Z M14 3v5h5 M8 12h8 M8 16h6"/></svg>';
+const slipSerial = (n) => `FS-${String(n || 0).padStart(6, "0")}`;
+async function slipList(ctx) {
+  const { root, db, names, query } = ctx;
+  const f = query.f || "all";
+  // Şoförün sahada imzalattığı dijital fişler iş kaydında durur; listede onlar da görünür (dokununca iş detayı ve PDF)
+  const sigIds = new Set((await db.getAll("attachments")).filter((a) => a.kind === "signature" && a.record_type === "work").map((a) => a.record_id));
+  const drv = (await db.listActive("work_records")).filter((w) => w.digital_slip_no).map((w) => ({ drv: true, id: w.id, w, date: w.date, status: sigIds.has(w.id) || w.slip_signed_at ? "İmzalandı" : "Taslak" }));
+  const own = (await db.getAll("slips")).filter(isActive);
+  const all = [...own, ...drv].sort((a,b)=>String(b.date||"").localeCompare(String(a.date||"")) || (b.slip_no||0)-(a.slip_no||0));
+  const rows = f === "all" ? all : f === "sofor" ? drv : all.filter(r=>r.status===f);
+  root.innerHTML = appbar("Dijital İş Fişleri", "Hizmet, teslim ve imza takibi") + `
+    <div class="slip-overview"><div><span>Toplam fiş</span><strong>${all.length}</strong></div><div><span>İmza bekleyen</span><strong>${all.filter(r=>r.status==='Taslak').length}</strong></div><div><span>İmzalı</span><strong>${all.filter(r=>r.status==='İmzalandı').length}</strong></div></div>
+    ${segBar([{v:"all",t:"Tümü"},{v:"Taslak",t:"Taslak"},{v:"İmzalandı",t:"İmzalı"},{v:"Revize",t:"Revize"},{v:"İptal",t:"İptal"},...(drv.length?[{v:"sofor",t:"Şoför"}]:[])],f,v=>`#/fisler?f=${v}`)}
+    <div class="slip-list" data-list></div>
+    <div class="actionbar"><button class="btn primary" data-go="#/fisler/new">Yeni Fiş Oluştur</button></div>`;
+  const el = qs("[data-list]",root);
+  if (!rows.length) el.innerHTML = '<div class="slip-empty">'+slipIcon+'<h2>Bu görünümde fiş bulunmuyor</h2><p>İş kaydından veya Yeni Fiş Oluştur ile başlayabilirsiniz.</p></div>';
+  else pagedRender(el,rows,s=>s.drv?`<a class="slip-list-card" href="#/isler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${esc(s.w.digital_slip_no)}</span>${statusBadge(s.status)}</div><h2>${esc(names.customers[s.w.customer_id]||"—")}</h2><p>${esc(names.sites[s.w.site_id]||"Şantiye belirtilmedi")} · 🚚 şoför${names.personnel?.[s.w.personnel_id]?" "+esc(names.personnel[s.w.personnel_id]):""}${s.w.slip_receiver?" · imzalayan: "+esc(s.w.slip_receiver):""}</p><div class="slip-card-bottom"><span>${trDate(s.w.date)}<small>${esc(s.w.work_type||"İş")}</small></span><strong>${fmtNum(s.w.quantity)} <small>${esc(s.w.unit||"")}</small></strong></div></a>`:`<a class="slip-list-card" href="#/fisler/${esc(s.id)}"><div class="slip-card-top"><span class="slip-number">${slipIcon}${slipSerial(s.slip_no)}</span>${statusBadge(s.status||"Taslak")}</div><h2>${esc(names.customers[s.customer_id]||"—")}</h2><p>${esc(names.sites[s.site_id]||"Şantiye belirtilmedi")}</p><div class="slip-card-bottom"><span>${trDate(s.date)}<small>${esc(s.work_text||"İş fişi")}</small></span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit||"")}</small></strong></div></a>`);
+}
+
+async function slipForm(ctx, editId) {
+  const { root, db, names, query } = ctx;
+  const [customers, sites, vehicles, personnel] = await Promise.all([
+    db.listActive("customers"),
+    db.listActive("sites"),
+    db.listActive("vehicles"),
+    db.listActive("personnel"),
+  ]);
+  let rec = editId ? await db.get("slips", editId) : null;
+  if (rec && (rec.status === "İmzalandı" || rec.signed_at)) {
+    toast("İmzalı fiş düzenlenemez — revizyon oluşturun", "err");
+    go("#/fisler/" + editId);
+    return;
+  }
+  let v = rec || {};
+  if (!editId && query.work) {
+    const w = await db.get("work_records", query.work);
+    if (w)
+      v = {
+        date: w.date,
+        customer_id: w.customer_id,
+        site_id: w.site_id,
+        vehicle_id: w.vehicle_id,
+        personnel_id: w.personnel_id,
+        work_text: w.work_type,
+        quantity: w.quantity,
+        unit: w.unit,
+        description: w.description,
+        work_record_id: w.id,
+      };
+    if (w && query.batch === "1" && w.work_batch_id) {
+      const rows = (await db.listActive("work_records")).filter(
+        (r) => r.work_batch_id === w.work_batch_id,
+      );
+      if (rows.some((r) => r.slip_id)) {
+        toast("Bu grubun işleri zaten fişe bağlı", "err");
+        go("#/isler/" + w.id);
+        return;
+      }
+      v = {
+        ...v,
+        quantity: rows.reduce((sum, r) => sum + Number(r.quantity), 0),
+        work_record_ids: rows.map((r) => r.id),
+        customer_items: rows.map((r) => ({
+          date: r.date,
+          site_id: r.site_id,
+          work_type: r.work_type,
+          material: r.material || "",
+          quantity: r.quantity,
+          unit: r.unit,
+          unit_price: r.price_snapshot?.unit_price ?? null,
+          kdv_rate: r.price_snapshot?.kdv_rate ?? 20,
+          kdv_included: !!r.price_snapshot?.kdv_included,
+        })),
+        vehicle_id: rows.every((r) => r.vehicle_id === w.vehicle_id)
+          ? w.vehicle_id
+          : null,
+        personnel_id: rows.every((r) => r.personnel_id === w.personnel_id)
+          ? w.personnel_id
+          : null,
+        description: w.customer_note || "",
+      };
+    }
+  }
+  const vehPlate = id => (vehicles.find(x=>x.id===id)||{}).plate||"";
+  const operationKey=ctx.core.uuid();
+  const linkedSource=v.work_record_id?await db.get('work_records',v.work_record_id):null;
+  const editableOwnDraft=!!rec&&rec.status==='Taslak'&&!rec.revision_of&&linkedSource?.digital_slip_source_id===(rec.revision_of||rec.id)&&linkedSource.price_snapshot==null&&linkedSource.customer_fuel_allowance_l==null;
+  const sourceLinked=!!v.work_record_id&&!v.revision_of&&!editableOwnDraft;
+
+  root.innerHTML =
+    appbar(
+      editId ? "Fiş Düzenle" : "Yeni Dijital İş Fişi",
+      editId
+        ? "Seri #" + String(rec.slip_no).padStart(6, "0")
+        : "Seri no otomatik verilir",
+    ) +
+    `
+    <form class="slip-form" data-form novalidate>
+      ${notice("info", editId ? (editableOwnDraft?"Bu fişten açılan fiyatsız iş de taslakla birlikte güncellenir. Fiyatlı / hakedişe bağlı hizmet değiştirilmez.":v.revision_of?"Revizyon yeni iş oluşturmaz. Hizmet değişirse kaynak işi ayrıca kontrol edin.":"İşe bağlı hizmet alanları kaynak kayıttan gelir; teslim alan ve açıklamayı düzenleyebilirsiniz.") : query.work?"Mevcut işe fiş bağlanır; ikinci iş oluşturulmaz.":"Fiş ve iş birlikte kaydedilir. İş, müşterinin Yapılan işler listesinde görünür; fiyat sonradan belirlenir.")}
+      <section class="slip-panel"><h2><span>01</span> Müşteri ve İş Yeri</h2><p class="slip-hint">Fişin teslim edileceği müşteri ve şantiye.</p>
+      ${fDate("Tarih", "date", v.date)}
+      <div class="formgrid2">
+        ${fSelect(
+          "Müşteri",
+          "customer_id",
+          customers.map((c) => ({ v: c.id, t: c.name })),
+          v.customer_id,
+          { req: true },
+        )}
+        ${fSelect(
+          "Şantiye",
+          "site_id",
+          sites.map((s) => ({ v: s.id, t: s.name })),
+          v.site_id,
+        )}
+      </div>
+      </section><section class="slip-panel"><h2><span>02</span> Araç ve Gerçekleşen Hizmet</h2>
+      <div class="formgrid2">
+        ${fSelect(
+          "Araç / Makine",
+          "vehicle_id",
+          vehicles.map((x) => ({ v: x.id, t: x.name })),
+          v.vehicle_id,
+        )}
+        ${fText("Plaka", "plate", v.plate || vehPlate(v.vehicle_id), {})}
+      </div>
+      ${fSelect(
+        "Personel",
+        "personnel_id",
+        personnel.map((x) => ({ v: x.id, t: x.name })),
+        v.personnel_id,
+      )}
+      ${fText("Yapılan İş", "work_text", v.work_text || "", { req: true, ph: "Hafriyat nakliye…" })}
+      <div class="formgrid2">
+        ${fNum("Miktar", "quantity", v.quantity ?? "", { req: true, step: "any" })}
+        ${fSelect("Birim", "unit", WORK_UNITS, v.unit || "Sefer", { empty: false })}
+      </div>
+      </section><section class="slip-panel"><h2><span>03</span> Teslim Bilgileri</h2><p class="slip-hint">Bu açıklama müşteri PDF’sinde görünür. İç not yazmayın.</p>
+      ${fArea("Müşteriye Açıklama", "description", v.description || "")}
+      ${fText("Teslim Alan (ad soyad)", "receiver_name", v.receiver_name || "")}
+      </section></form>
+    <div class="actionbar"><button class="btn primary" data-save>${editId ? "Kaydet" : "Kaydet ve İmzaya Geç"}</button></div>`;
+
+  const sourceBatch = (v.work_record_ids || []).length > 1;
+  if (sourceBatch || sourceLinked) {
+    for (const key of [
+      "date",
+      "customer_id",
+      "site_id",
+      "vehicle_id",
+      "personnel_id",
+      "plate",
+      "work_text",
+      "quantity",
+      "unit",
+    ])
+      qs("[name=" + key + "]", root).disabled = true;
+    if(sourceBatch)qs("[data-form]", root).insertAdjacentHTML(
+      "afterbegin",
+      `<div class="notice"><strong>Toplam ${fmtNum(v.quantity)} ${esc(String(v.unit||'').toLocaleLowerCase('tr-TR'))}</strong><p>Bağlı işlerden alınır; döküm yerleri müşteriye gösterilmez.</p>${customerWorkLines(
+        v.customer_items,
+      )
+        .map(
+          (r) =>
+            `<div>${esc(r.work_type)} · ${fmtNum(r.quantity)} ${esc(r.unit)}${r.unit_price == null ? "" : " · " + fmtTL(r.unit_price) + " TL/birim"}</div>`,
+        )
+        .join("")}</div>`,
+    );
+  }
+  qs("select[name=vehicle_id]", root).addEventListener("change", (e) => {
+    qs("input[name=plate]", root).value = vehPlate(e.target.value);
+  });
+
+  let saving=false;
+  qs("[data-save]", root).addEventListener("click", async () => {
+    if(saving)return;
+    const val = {
+      ...((sourceBatch || sourceLinked)
+        ? {
+            date: v.date,
+            customer_id: v.customer_id,
+            site_id: v.site_id,
+            vehicle_id: v.vehicle_id,
+            personnel_id: v.personnel_id,
+            plate: v.plate || "",
+            work_text: v.work_text,
+            quantity: v.quantity,
+            unit: v.unit,
+          }
+        : {}),
+      ...collectForm(qs("[data-form]", root)),
+    };
+    if (!val.customer_id) {
+      toast("Müşteri seçin", "err");
+      return;
+    }
+    if (!val.work_text) {
+      toast("Yapılan iş yazın", "err");
+      return;
+    }
+    if (!val.quantity || Number(val.quantity) <= 0) {
+      toast("Miktar girin", "err");
+      return;
+    }
+    const fields = {
+      date: val.date || todayStr(),
+      customer_id: val.customer_id,
+      site_id: val.site_id || null,
+      vehicle_id: val.vehicle_id || null,
+      plate: val.plate || "",
+      personnel_id: val.personnel_id || null,
+      work_text: val.work_text,
+      quantity: Number(val.quantity),
+      unit: val.unit,
+      description: val.description || "",
+      receiver_name: val.receiver_name || "",
+      work_record_id: v.work_record_id || null,
+      ...(sourceBatch
+        ? {
+            work_record_ids: v.work_record_ids,
+            customer_items: v.customer_items,
+          }
+        : {}),
+    };
+    const button=qs('[data-save]',root);saving=true;button.disabled=true;
+    try {
+      if(editId){
+        await updateDigitalSlipDraft(rec.id,rec,fields);toast('Fiş güncellendi','ok');go('#/fisler/'+editId);return;
+      }
+      let created;
+      if(sourceBatch){
+        const no=await db.nextSeq('slip');
+        created=await db.saveWorkSlip({...fields,slip_no:no,status:'Taslak',revision_no:1},v.work_record_ids);
+      }else{
+        let mode=v.work_record_id?'existing':'new',work_id=v.work_record_id||null,allow_separate=false;
+        if(mode==='new'){
+          if(!fields.vehicle_id){toast('İş kaydı için araç / makine seçin.','err');return;}
+          const data=await db.dumpAll(),matches=slipWorkCandidates(data,fields);
+          if(matches.length){
+            const choice=await choiceDialog('Benzer iş zaten kayıtlı','Aynı işi ikinci kez yazmamak için mevcut işi seçin. Bu ayrı bir hizmetse ayrıca onaylayabilirsiniz.',[
+              ...matches.map(w=>[w.slip_id?'open:'+w.slip_id:'work:'+w.id,`${w.slip_id?'Fişi olan işi incele':'Mevcut işe bağla'} · ${(vehicles.find(x=>x.id===w.vehicle_id)||{}).name||'Araç'} · ${w.quantity} ${w.unit} · ${w.work_type}`]),
+              ['new','Bu ayrı bir iş — yeni iş ve fiş oluştur']]);
+            if(!choice)return;
+            if(choice.startsWith('open:')){go('#/fisler/'+choice.slice(5));return;}
+            if(choice.startsWith('work:')){mode='existing';work_id=choice.slice(5);}else allow_separate=true;
+          }
+        }
+        created=(await createDigitalSlip(fields,{key:operationKey,mode,work_id,allow_separate})).slip;
+      }
+      toast('Fiş '+slipSerial(created.slip_no)+' ve iş bağlantısı kaydedildi','ok');go('#/fisler/'+created.id+'/imza');
+    }catch(e){toast(e.message,'err');}finally{saving=false;button.disabled=false;}
+
+  });
+}
+
+async function slipSign(ctx, id) {
+  const { root, db } = ctx;
+  const s = await db.get("slips", id);
+  if (!s) {
+    root.innerHTML = appbar("İmza") + emptyState("🧾", "Fiş yok");
+    return;
+  }
+  if (s.status === "İmzalandı") {
+    go("#/fisler/" + id);
+    return;
+  }
+  root.innerHTML =
+    appbar("Teslim ve İmza", slipSerial(s.slip_no)) +
+    `
+    <section class="slip-panel"><h2>Teslim Özeti</h2>${kv("Yapılan İş", s.work_text || "—")}${kv("Miktar", fmtNum(s.quantity)+" "+(s.unit||""))}${kv("Teslim Alan", s.receiver_name || "Belirtilmedi")}</section>
+    <section class="slip-panel"><h2>Teslim Alan İmzası</h2><p class="slip-hint">Aşağıdaki alana parmağınızla imza atın. İmzalı fiş korunur; düzeltme için ayrı revizyon açılır.</p>
+    <div class="sigframe"><canvas class="sigpad" data-pad></canvas></div>
+    <div class="row" style="margin-top:10px;gap:8px">
+      <button class="btn ghost grow" data-clear>Temizle</button>
+      <button class="btn ghost grow" data-skip>Taslak Olarak Bırak</button>
+      <button class="btn primary grow" data-sign>İmzayı Onayla</button>
+    </div></section>`;
+  const pad = qs("[data-pad]", root);
+  const rect = () => pad.getBoundingClientRect();
+  pad.width = 640;
+  pad.height = 320;
+  const c2 = pad.getContext("2d");
+  c2.lineWidth = 5;
+  c2.lineCap = "round";
+  c2.strokeStyle = "#12233a";
+  let drawing = false,
+    hasInk = false;
+  const pos = (e) => {
+    const r = rect();
+    const t = e.touches ? e.touches[0] : e;
+    return [
+      (t.clientX - r.left) * (pad.width / r.width),
+      (t.clientY - r.top) * (pad.height / r.height),
+    ];
+  };
+  const start = (e) => {
+    drawing = true;
+    const [x, y] = pos(e);
+    c2.beginPath();
+    c2.moveTo(x, y);
+    e.preventDefault();
+  };
+  const move = (e) => {
+    if (!drawing) return;
+    const [x, y] = pos(e);
+    c2.lineTo(x, y);
+    c2.stroke();
+    hasInk = true;
+    e.preventDefault();
+  };
+  const end = () => {
+    drawing = false;
+  };
+  pad.addEventListener("pointerdown", start);
+  pad.addEventListener("pointermove", move);
+  pad.addEventListener("pointerup", end);
+  pad.addEventListener("pointerleave", end);
+  pad.addEventListener("touchstart", start, { passive: false });
+  pad.addEventListener("touchmove", move, { passive: false });
+  pad.addEventListener("touchend", end);
+
+  qs("[data-clear]", root).addEventListener("click", () => {
+    c2.clearRect(0, 0, pad.width, pad.height);
+    hasInk = false;
+  });
+  qs("[data-skip]", root).addEventListener("click", () => go("#/fisler/" + id));
+  qs("[data-sign]", root).addEventListener("click", async () => {
+    if (!hasInk) {
+      toast("Önce imza atın", "err");
+      return;
+    }
+    const button = qs("[data-sign]", root);
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+    const blob = await new Promise((r) => pad.toBlob(r, "image/png"));
+    await db.signSlip(id, new File([blob], "imza.png", { type: "image/png" }));
+    // Revizyon zinciri: bu fiş bir revizyon ise orijinali "Revize" işaretle
+    if (s.revision_of) {
+      const orig = await db.get("slips", s.revision_of);
+      if (orig && orig.status === "İmzalandı")
+        await db.saveExisting(
+          "slips",
+          orig,
+          { status: "Revize" },
+          "Revizyon imzalandı: #" + s.slip_no,
+        );
+    }
+    toast("Fiş imzalandı ve kilitlendi", "ok");
+    go("#/fisler/" + id);
+    } catch(e) { toast(e.message || "İmza kaydedilemedi", "err"); }
+    finally { button.disabled = false; }
+  });
+}
+
+async function slipDetail(ctx, id) {
+  const { root, db, names } = ctx;
+  const s = await db.get("slips", id);
+  if (!s) {
+    root.innerHTML = appbar("Fiş") + emptyState("🧾", "Fiş yok");
+    return;
+  }
+  const workLink=slipWorkState(await db.dumpAll(),s);
+  const atts = await db.attachmentsFor("slip_signature", id);
+  const sig = atts.find((a) => a.kind === "signature");
+  const revisions = (await db.getAll("slips")).filter(
+    (x) => isActive(x) && x.revision_of === id,
+  );
+
+  root.innerHTML =
+    appbar("Dijital İş Fişi", slipSerial(s.slip_no) + " · " + trDate(s.date), {
+      right: statusBadge(s.status || "Taslak"),
+    }) +
+    `
+    <div class="slip-document-banner"><span>GERÇEKLEŞEN HİZMET</span><strong>${fmtNum(s.quantity)} <small>${esc(s.unit || "")}</small></strong><p>${esc(s.work_text || "—")}</p></div>
+    <section class="slip-panel"><h2>Müşteri ve İş Yeri</h2>
+      ${kv("Müşteri", names.customers[s.customer_id] || "—")}
+      ${kv("Şantiye", names.sites[s.site_id] || "—")}
+      </section><section class="slip-panel"><h2>Hizmet Bilgileri</h2>
+      ${kv("Araç / Plaka", (names.vehicles[s.vehicle_id] || s.plate || "—") + (s.plate && s.plate !== names.vehicles[s.vehicle_id] ? " / " + s.plate : ""))}
+      ${kv("Personel", names.personnel[s.personnel_id] || "—")}
+      ${kv("Yapılan İş", s.work_text || "—")}
+      ${kv("Miktar", fmtNum(s.quantity) + " " + (s.unit || ""))}
+      ${s.description ? kv("Açıklama", s.description) : ""}
+      </section><section class="slip-panel"><h2>Teslim ve Belge Durumu</h2>
+      ${kv("Teslim Alan", s.receiver_name || "—")}
+      ${s.signed_at ? kv("İmza Zamanı", new Date(s.signed_at).toLocaleString("tr-TR")) : ""}
+      ${s.revision_no > 1 ? kv("Revizyon", "v" + s.revision_no) : ""}
+    <p class="slip-hint">${s.status === "İmzalandı" ? "İmzalı kayıt kilitlidir. Düzeltmeler yeni revizyon olarak saklanır." : s.status === "Revize" ? "Bu kayıt korunmuştur; güncel revizyonu kontrol edin." : s.status === "İptal" ? "Bu fiş iptal edilmiştir." : "Taslak fiş: teslim alan imzası henüz alınmadı."}</p></section>
+    ${sig ? `<div class="section-title">İmza</div><div class="sigframe"><img data-sig alt="İmza"></div>` : ""}
+    ${revisions.length ? `<div class="section-title">Revizyonlar</div>` + revisions.map((r) => li({ ic: "🧾", href: "#/fisler/" + r.id, t1: `#${String(r.slip_no).padStart(6, "0")} (v${r.revision_no})`, badgeHtml: statusBadge(r.status) })).join("") : ""}
+    <section class="card" data-slip-work-state>
+      <h2>İş kaydı bağlantısı</h2>
+      ${workLink.state==='linked'?`<p>Bu fiş kayıtlı işe bağlıdır; ikinci iş oluşturulmaz. Fişi iptal etmek bağlı işi silmez.</p>${workLink.mismatch?notice('warn','Fişin hizmet bilgileri bağlı işten farklı. Kaynak işi inceleyin; fiş revizyonu iş miktarını veya fiyatı otomatik değiştirmez.'):''}${workLink.works.map(w=>`<a class="btn block" data-slip-work href="#/isler/${esc(encodeURIComponent(w.id))}">Müşteri işindeki kaydı aç →</a>`).join('')}`:workLink.state==='missing'?notice('warn','Fişin bağlı işi silinmiş veya bulunamıyor. Yeni kayıt açmadan Çöp Kutusunu inceleyin.'):`${notice('warn','Bu fiş henüz bir iş kaydına bağlı değil. Bu nedenle müşterinin Yapılan işler listesinde ve hakedişte görünmez.')}${['Taslak','İmzalandı'].includes(s.status)?`<a class="btn primary block" data-slip-link-work href="#/fisler/${esc(encodeURIComponent(s.id))}/is-kaydi">Fişi müşteri işlerine bağla</a>`:''}`}
+    </section>
+    <div class="actionbar slip-actions">
+      ${s.status === "Taslak" ? `<button class="btn ok" data-go="#/fisler/${id}/imza">İmzala</button><button class="btn" data-go="#/fisler/${id}/edit">Düzenle</button>` : ""}
+      ${s.status === "İmzalandı" ? `<button class="btn" data-revize>Revizyon</button>` : ""}
+      <button class="btn primary" data-pdf>PDF</button><button class="btn" data-slip-share>Paylaş</button><button class="btn" data-slip-print>Yazdır</button>
+      ${s.status !== "İmzalandı" ? '<button class="btn danger" data-del>İptal</button>' : ""}
+    </div>`;
+
+  if (sig) qs("[data-sig]", root).outerHTML = await attachmentHTML(sig, {imageStyle:"max-width:100%;height:100px;object-fit:contain"});
+  const rv = qs("[data-revize]", root);
+  if (rv)
+    rv.addEventListener("click", async () => {
+      const ok = await confirmDialog(
+        "Revizyon oluşturulsun mu?",
+        "Orijinal imzalı fiş korunur; yeni taslak kopya açılır.",
+        "Oluştur",
+      );
+      if (!ok) return;
+      const no = await db.nextSeq("slip");
+      const copy = {
+        ...s,
+        id: undefined,
+        slip_no: no,
+        status: "Taslak",
+        signed_at: null,
+        signature_attachment_id: null,
+        revision_of: s.revision_of || s.id,
+        revision_no: (s.revision_no || 1) + 1,
+        work_record_id: s.work_record_id,
+      };
+      delete copy.id;
+      delete copy.created_at;
+      delete copy.updated_at;
+      delete copy.deleted_at;
+      delete copy.schema_version;
+      delete copy.migration_status;
+      delete copy.source;
+      const created = await db.saveNew("slips", copy, "Revizyon #" + no);
+      toast("Revizyon taslağı #" + String(no).padStart(6, "0"), "ok");
+      go("#/fisler/" + created.id);
+    });
+  for (const [selector, mode] of [["[data-pdf]","download"],["[data-slip-share]","share"],["[data-slip-print]","print"]]) {
+    qs(selector,root).addEventListener("click",async()=>{
+      try {
+        const {slipSpec} = await import("./pdf.js");
+        const {exportDocument} = await import("./document-engine.js");
+        await exportDocument(slipSpec(s,names,sig?.blob || null),mode);
+      } catch(e) { toast(e.message || "Belge oluşturulamadı", "err"); }
+    });
+  }
+  const del = qs("[data-del]", root);
+  if (del)
+    del.addEventListener("click", async () => {
+      const reason = await promptDialog("Fiş iptali", "İptal nedeni");
+      if (!reason) return;
+      await db.saveExisting("slips", s, { status: "İptal" }, reason);
+      toast("Fiş iptal edildi", "ok");
+      ctx.reload();
+    });
+}
+
+// ============ WHATSAPP AYRIŞTIRICI ============
+async function whatsapp(ctx) {
+  const {root,db}=ctx;
+  root.innerHTML=appbar('WhatsApp Ayrıştırıcı','İnternetsiz · iş ve yakıt ayrı kontrol kartları')+`
+    <div class="notice info"><span>ℹ</span><span>Anahtar ve internet gerekmez. Tarih ve gönderen başlığı devam satırlarında korunur. Bilinmeyen alanlar sorulur; kayıt yalnız Kaydet ile yazılır.</span></div>
+    <div class="field"><label>Mesaj metni</label><textarea data-raw data-msg rows="6" placeholder="WhatsApp mesajını tarih ve gönderen başlığıyla yapıştırın"></textarea></div>
+    <div class="row" style="gap:8px;margin-bottom:12px"><button class="btn primary grow" data-parse data-ask>Ayrıştır</button>${voiceSupported()?'<button class="btn" data-voice>🎙 Sesli</button>':''}</div>
+    <div data-offline-result data-out></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap;margin-top:16px"><a class="btn" href="#/whatsapp-toplu">WhatsApp grubunu toplu işle</a><a class="btn" href="#/gecmis">Geçmiş İş Aktarımı</a></div>`;
+  const input=qs('[data-raw]',root),button=qs('[data-parse]',root),out=qs('[data-out]',root);let busy=false,edited=false;
+  out.addEventListener('input',()=>{edited=true;});out.addEventListener('change',()=>{edited=true;});
+  qs('[data-voice]',root)?.addEventListener('click',()=>startVoice(t=>{input.value=(input.value+'\n'+t).trim();},()=>{}));
+  button.addEventListener('click',async()=>{
+    if(busy)return;const message=input.value.trim();if(!message)return toast('Önce mesajı yapıştırın','err');
+    if(edited&&out.querySelector('[data-kind]')&&!(await confirmDialog('Kartlar yeniden oluşturulsun mu?','Kaydetmediğiniz kart düzenlemeleri değişir. Mevcut kartları korumak için vazgeçebilirsiniz.','Yeniden ayrıştır')))return;
+    busy=true;const controls=qsa('input,textarea,button',root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
+    try {
+      const [{offlinePlan},{renderOfflinePlan},{effectiveRules}]=await Promise.all([import('./offline-whatsapp.js'),import('./assistant.js'),import('./assistant-rules.js')]);
+      const d=await db.dumpAll(),rules=effectiveRules(await db.metaGet('assistant_rules'));
+      const v=offlinePlan(message,{d,today:todayStr(),rules});if(!root.isConnected)return;
+      if(!v||!v.works.length&&!v.fuel.length){out.innerHTML=notice('info',v?._offlineNotices?.map(esc).join(' ')||'İş veya yakıt satırı bulunamadı. Tarih, ödeme notu ve başlıklar boş iş kaydına çevrilmedi.');return;}
+      await renderOfflinePlan(ctx,out,v,d,{message});edited=false;
+    }catch(e){if(root.isConnected)out.innerHTML=notice('warn',esc(e.message||'Mesaj okunamadı; yeniden deneyin.'));}
+    finally{busy=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
+  });
+}

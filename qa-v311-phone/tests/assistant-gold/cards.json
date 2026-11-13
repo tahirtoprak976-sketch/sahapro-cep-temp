@@ -1,0 +1,80 @@
+{
+  "customers": [
+    {
+      "id": "TEST_C",
+      "name": "Alfa İnşaat"
+    },
+    {
+      "id": "TEST_B",
+      "name": "Beta Hafriyat"
+    },
+    {
+      "id": "TEST_PARENT",
+      "name": "Ulaş Rondela"
+    },
+    {
+      "id": "TEST_SUB",
+      "name": "Çatıcı",
+      "parent_customer_id": "TEST_PARENT"
+    },
+    {
+      "id": "TEST_TWIN1",
+      "name": "Ortak Yapı"
+    },
+    {
+      "id": "TEST_TWIN2",
+      "name": "Ortak Yapı"
+    }
+  ],
+  "vehicles": [
+    {
+      "id": "TEST_V",
+      "name": "JCB 3CX",
+      "type": "JCB"
+    },
+    {
+      "id": "TEST_TRUCK",
+      "name": "34TST627",
+      "plate": "34TST627",
+      "type": "TRUCK"
+    }
+  ],
+  "personnel": [
+    {
+      "id": "TEST_P",
+      "name": "Soner Kaya"
+    }
+  ],
+  "sites": [
+    {
+      "id": "TEST_SITE",
+      "name": "Kuzey Şantiyesi",
+      "customer_id": "TEST_C"
+    }
+  ],
+  "suppliers": [
+    {
+      "id": "TEST_SUP",
+      "name": "Yıldız Petrol"
+    }
+  ],
+  "bank_accounts": [
+    {
+      "id": "TEST_BANK",
+      "name": "Deneme Banka"
+    }
+  ],
+  "aliases": [],
+  "work_records": [],
+  "fuel_records": [],
+  "fuel_tank_movements": [
+    {
+      "id": "TEST_STOCK",
+      "date": "2026-01-01",
+      "move_type": "GİRİŞ",
+      "liters": 1000
+    }
+  ],
+  "documents": [],
+  "price_book": []
+}
