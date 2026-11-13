@@ -1,7 +1,7 @@
 import {offlinePlan} from '../../../js/offline-whatsapp.js';
 import {assistantQuestions} from '../../../js/assistant-questions.js';
 import {APP_VERSION} from '../../../js/core.js';
-import {readFileSync,writeFileSync} from 'node:fs';
+import {readTestJSON} from '../test-json.mjs';
 import {validatePlan,validateExtras} from '../../../js/assistant-core.js';
 import {analyzeMessage} from '../../../js/message-engine.js';
 import {confidenceValue} from '../../../js/assistant-confidence.js';
@@ -10,8 +10,8 @@ import {groupedDraftQuestions} from '../../../js/assistant-review-core.js';
 import {jobPreview} from '../../../js/job-core.js';
 import {foldTr} from '../../../js/parser.js';
 import {source,cases,fixture,message,id,fixtureSettings,records} from './fixture.mjs';
-export const photoCases=JSON.parse(readFileSync(new URL('./photo-cases.json',import.meta.url)));
-const recordings=JSON.parse(readFileSync(new URL('./recorded-v3.10.00.json',import.meta.url)));
+export const photoCases=await readTestJSON(new URL('./photo-cases.json',import.meta.url));
+const recordings=await readTestJSON(new URL('./recorded-v3.10.00.json',import.meta.url));
 const norm=x=>foldTr(String(x??'')).replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const kinds={work:'works',fuel:'fuel',collection:'collections',personnel:'personnel',expense:'expenses',tank:'tankIn',fuelout:'fuelOut',maintenance:'maintenance'};
 const category={r01:'Gönderen ve tek iş',r02:'Gönderen ve tek iş',r03:'Gönderen ve tek iş',r20:'Gönderen ve tek iş',r05:'Çok iş / eşleşme',r14:'Çok iş / eşleşme',r18:'Çok iş / eşleşme',r04:'Yakıt / yük ayrımı',r08:'Yakıt / yük ayrımı',r15:'Yakıt / yük ayrımı',r07:'Sefer / döküm / patron',r09:'Sefer / döküm / patron',r13:'Sefer / döküm / patron',r17:'Sefer / döküm / patron',r11:'Sözleşme',r12:'Sözleşme',r10:'Eksik / ortak bilgi',r16:'Eksik / ortak bilgi',r19:'Eksik / ortak bilgi',r06:'Mesai'};
@@ -88,4 +88,4 @@ export function measureReal({mode='assistant-validation',batch=false,photos=fals
  }
  return {version:APP_VERSION,mode,sampleSet:photos?'synthetic-photo-date':'owner-pseudonymized',realGemini:false,proposalOrigin:mode==='offline-review'?{origin:'phone offline reader executed deterministically',realGemini:false,oracleUsed:false}:photos?{origin:'synthetic canned proposals',realGemini:false,oracleUsed:false}:recordings.meta,categories,totals,failureReasons,details,limitations:[mode==='offline-review'?'Gemini yok; internetsiz okuyucu mevcut kayıtlarla doğrudan çalıştırıldı.':'Gemini yanıtı yok; planlar v3.10.00 yerel ayrıştırıcısından kaydedildi.','Sözleşmede yalnız açık TEST ücreti vardır; gerçek ücret değildir ve nonzero ücret doğruluğu puanlanmaz.','Soru sayıları mevcut grup/missing alan katmanından türetildi; henüz gerçek ekran testi değildir.']};
 }
-if(process.argv[1]?.endsWith('/measure.mjs')){const clock=process.argv.indexOf('--today');const report=measureReal({...(clock>=0?{today:process.argv[clock+1]}:{}),mode:process.argv.includes('--offline')?'offline-review':process.argv.includes('--local')?'local-parser':'assistant-validation',batch:process.argv.includes('--batch'),photos:process.argv.includes('--photos')});const at=process.argv.indexOf('--report');if(at>=0)writeFileSync(process.argv[at+1],JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({mode:report.mode,totals:report.totals,categories:report.categories,failureReasons:report.failureReasons},null,2));}
+if(typeof process!=='undefined'&&process.argv[1]?.endsWith('/measure.mjs')){const {writeFileSync}=await import('node:fs');const clock=process.argv.indexOf('--today');const report=measureReal({...(clock>=0?{today:process.argv[clock+1]}:{}),mode:process.argv.includes('--offline')?'offline-review':process.argv.includes('--local')?'local-parser':'assistant-validation',batch:process.argv.includes('--batch'),photos:process.argv.includes('--photos')});const at=process.argv.indexOf('--report');if(at>=0)writeFileSync(process.argv[at+1],JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({mode:report.mode,totals:report.totals,categories:report.categories,failureReasons:report.failureReasons},null,2));}

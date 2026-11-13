@@ -10,3 +10,8 @@ console.log('synthetic forged-success fixture rescored as15/38; never accepted a
 
 assert.ok(acceptanceCounts().node>=201&&acceptanceCounts().browser>=96&&acceptanceCounts().upgrades>=47);
 assert.ok(checkV311Acceptance({automation:{sourceSha:'TEST_SHA',runs:[{sha:'TEST_SHA',conclusion:'success'}],node:{expected:1,passed:1,failed:0},browser:{expected:1,passed:1,failed:0},upgrades:{expected:1,passed:1,failed:0}}}).blockers.some(s=>s.includes('CI kanıtı')),'declaring only one test cannot stand in for the full source suite');
+
+assert.ok(audited.blockers.some(s=>s.includes('ham güvenlik')),'declaring safety counters cannot replace raw independent safety replies');
+const {phoneSafetyIds}=await import('./assistant-gold/phone-safety.mjs');
+const emptySafety={...fakeLive,safety:{measured:true,silentWrong:0,moneyGuesses:0,mandatoryChecked:0,runs:[1,2,3].map(repeat=>({repeat,failures:[],responses:Object.fromEntries(phoneSafetyIds.map(id=>[id,{}])),measurement:{cardCountErrors:0}}))}};
+const guarded=checkV311Acceptance({automation:{sourceSha:'TEST_SHA'},live:emptySafety});assert.ok(guarded.blockers.some(s=>s.includes('yeniden hesaplanan güvenlik')));assert.ok(guarded.measurements.filter(m=>m.mode==='safety').every(m=>m.totals.cardCountErrors>0),'empty financial proposals are independently rejected rather than declared safe');

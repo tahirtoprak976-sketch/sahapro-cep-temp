@@ -1,7 +1,7 @@
 import {withBusinessRules} from '../../../js/assistant-business-rules.js';
-import {readFileSync} from 'node:fs';
-export const records=JSON.parse(readFileSync(new URL('./records.json',import.meta.url)));
-export const source=JSON.parse(readFileSync(new URL('./source.json',import.meta.url)));
+import {readTestJSON} from '../test-json.mjs';
+export const records=await readTestJSON(new URL('./records.json',import.meta.url));
+export const source=await readTestJSON(new URL('./source.json',import.meta.url));
 export const id=(store,value)=>value==null?null:'TEST_REAL_'+store+'_'+value;
 export function fixture(){
  const f=source.fixture,d={customers:[],personnel:[],vehicles:[],sites:[],quarries:[],dump_sites:[],aliases:[],work_records:[],fuel_records:[],fuel_tank_movements:[],price_book:[],documents:[],suppliers:[],bank_accounts:[]};

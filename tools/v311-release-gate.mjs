@@ -1,6 +1,7 @@
 // Read-only acceptance audit. Re-score raw live proposals; never trust declared score tables.
 import {readFileSync,writeFileSync,readdirSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
+import {phoneSafetyIds,measurePhoneSafety} from '../tests/assistant-gold/phone-safety.mjs';
 import {measureReal} from '../tests/assistant-gold/real-messages/measure.mjs';
 import {cases,source} from '../tests/assistant-gold/real-messages/fixture.mjs';
 export function acceptanceCounts(){const workflow=readFileSync(new URL('../.github/workflows/import-review-notes-ci.yml',import.meta.url),'utf8');return {node:readdirSync(new URL('../tests/',import.meta.url)).filter(f=>f.endsWith('.test.mjs')).length,browser:workflow.match(/suites=\(([^)]*)\)/)?.[1].trim().split(/\s+/).length||0,upgrades:[...workflow.matchAll(/tools\/e2e\/upgrade_(?:schema7|review_notes)\.py --source-root \./g)].length};}
@@ -19,6 +20,7 @@ export function checkV311Acceptance(evidence={}){
   }
   // These safety counters require a separate live safety evaluation; absence is never zero.
   if(!live.safety||live.safety.measured!==true||live.safety.silentWrong!==0||live.safety.moneyGuesses!==0||live.safety.mandatoryChecked!==0)blockers.push('Canlı para tahmini / hassas işaret / sessiz yanlış güvenlik ölçümü eksik veya başarısız.');
+  for(let repeat=1;repeat<=3;repeat++){const found=live.safety?.runs?.filter(r=>r.repeat===repeat)||[],run=found[0];if(found.length!==1||!Array.isArray(run.failures)||run.failures.length||!run.responses||Object.keys(run.responses).length!==phoneSafetyIds.length||phoneSafetyIds.some(id=>!Object.hasOwn(run.responses,id))){blockers.push('Canlı '+repeat+' ham güvenlik yanıtları eksik veya yinelenmiş.');continue;}try{const totals=measurePhoneSafety(run.responses);measurements.push({repeat,mode:'safety',totals});if(['silentWrong','moneyGuesses','mandatoryChecked','cardCountErrors'].some(k=>totals[k]!==0))blockers.push('Canlı '+repeat+' yeniden hesaplanan güvenlik ölçümü başarısız.');}catch{blockers.push('Canlı '+repeat+' güvenlik yanıtları yeniden puanlanamadı.');}}
  }
  return {ready:!blockers.length,expectedCounts:counts,blockers,measurements,limitations:['Kaynak raporunun gerçekliğini kriptografik olarak doğrulamaz; GitHub koşusu ve ölçüm kaynağı ayrıca incelenir.','Ana JSON çıkarımı puanlanır; araçlı sohbet, kota tepkisi ve fiziksel UX ayrı kabul kanıtlarıdır.','Bu araç merge, yayın veya işletme kaydı yazmaz.']};
 }
