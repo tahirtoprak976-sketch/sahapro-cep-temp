@@ -9,7 +9,7 @@ function badge(el,field,info){
  b.dataset.fieldConfidence=field;
  b.className='badge '+(info.level===CONFIDENCE.CERTAIN?'ok':info.level===CONFIDENCE.INFERRED?'warn':'');b.dataset.level=info.level;b.textContent=info.source==='user'?'Elle düzenlendi':info.source==='user_answer'?'Sizin seçiminiz':labels[info.level];b.title=info.reason||'';
 }
-export function mountConfidenceInputs(out,v){
+export function mountConfidenceInputs(out,v,{editable=true}={}){
  for(const card of out.querySelectorAll('.card[data-kind]')){
   const r=v[groups[card.dataset.kind]]?.[Number(card.dataset.i)];if(!r?.fieldConfidence)continue;
   for(const el of card.querySelectorAll('[name]')){
@@ -40,7 +40,7 @@ export function mountConfidenceInputs(out,v){
     if(priceInput&&!priceInput.value)badge(priceInput,'unit_price',{level:CONFIDENCE.UNKNOWN,reason:'Fiyat önizlemesinden güncel kuralı kontrol edin'});
    }
   };
-  card.addEventListener('input',edited,true);card.addEventListener('change',edited,true);
+  if(editable){card.addEventListener('input',edited,true);card.addEventListener('change',edited,true);}
  }
 }
 export function inferenceReason(row){return [...new Set(Object.values(row.fieldConfidence||{}).filter(f=>f.level===CONFIDENCE.INFERRED&&f.source!=='user').map(f=>f.reason))].join(' · ');}
