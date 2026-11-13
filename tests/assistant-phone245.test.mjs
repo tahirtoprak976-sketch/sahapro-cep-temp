@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {phoneSampleCount,safePhoneReport,runPhoneEvaluation} from './assistant-gold/phone-engine.mjs';
+assert.equal(phoneSampleCount(3,'both'),63);assert.equal(phoneSampleCount(1,'single'),20);assert.equal(phoneSampleCount(3,'batch'),3);
+assert.throws(()=>safePhoneReport({value:'SECRET_TEST'},'SECRET_TEST'),/anahtar/);assert.equal(JSON.parse(safePhoneReport({a:1})).a,1);
+await assert.rejects(runPhoneEvaluation({key:'TEST',model:'TEST',sourceSha:'bad',db:{}}),/kaynağı/);
+let calls=0,values={gemini_consent:true,gemini_daily_limit:2},progress=[];
+const db={metaTxn:async(_k,fn)=>{const r=fn(values);Object.assign(values,r.set);return r.result;},metaUpdate:async(k,fn)=>values[k]=fn(values[k])};
+const empty=async()=>{calls++;return new Response(JSON.stringify({candidates:[{content:{parts:[{text:'{"works":[],"fuel":[],"questions":[]}'}]},finishReason:'STOP'}]}),{status:200,headers:{'Content-Type':'application/json'}});};
+const result=await runPhoneEvaluation({key:'TEST_FAKE',model:'TEST_fake_model',db,sourceSha:'0'.repeat(40),repeats:1,mode:'both',fetchImpl:empty,onProgress:p=>progress.push(p.completed)});
+assert.equal(calls,2,'hard budget prevents a third network call');assert.equal(result.completed,false);assert.equal(result.realGemini,false,'mock transport is not a real model measurement');assert.equal(result.runs[0].failures[0].code,'LOCAL_LIMIT');assert.equal(result.runs[0].measurement,null);assert.equal(result.safety.measured,false);assert.equal(result.savedBusinessRecords,0);assert.equal(result.runs[0].responses.r03,undefined,'no frozen response fills a failed sample');assert.equal(safePhoneReport(result,'TEST_FAKE').includes('TEST_FAKE'),false);
+const controller=new AbortController();controller.abort();const cancelled=await runPhoneEvaluation({key:'TEST',model:'TEST',db,sourceSha:'0'.repeat(40),signal:controller.signal,fetchImpl:empty});assert.equal(cancelled.completed,false);assert.equal(calls,2);
+console.log('phone245 PASS: exact sample counts, secret-safe export, hard budget, no frozen fill, cancelled request and unmeasured live safety');
