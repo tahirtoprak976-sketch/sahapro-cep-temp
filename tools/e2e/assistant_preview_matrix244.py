@@ -34,8 +34,20 @@ def run(w,expanded=False,with_price=False):
  assert first.locator('[name=quantity]').input_value()=='4'and first.locator('[name=unit_price]').input_value()=='1700'
  assert p.evaluate("()=>window.__edited===document.querySelector('[data-kind=work][data-i=\"0\"] [name=quantity]')")
  assert p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()")==before
+ # A newly discovered money card keeps its ordinary visible approval frame.
+ p.reload();p.wait_for_function("()=>document.querySelector('[data-ask]')&&!document.querySelector('[data-ask]').disabled")
+ cash_text=header+' 19:30] Salih: Akasya Yapı 20 TL nakit aldık';p.fill('[data-msg]',text+'\n'+cash_text);p.click('[data-ask]');p.wait_for_function("()=>document.querySelectorAll('[data-stage-kind=work]').length===2&&document.querySelector('[data-stage-kind=fuel]')")
+ deadline=time.monotonic()+10
+ while len(pending)<3 and time.monotonic()<deadline:p.wait_for_timeout(20)
+ assert len(pending)==3
+ combined={**reply,'collections':[{'date':today,'customer_id':'TEST_C1','amount':20,'method':'Nakit','quote':cash_text}]}
+ pending[2].fulfill(status=200,content_type='application/json',body=json.dumps({'candidates':[{'content':{'parts':[{'text':json.dumps(combined)}]},'finishReason':'STOP'}]}));p.wait_for_function("()=>!document.querySelector('[data-ask]').disabled&&document.querySelector('[data-kind=collection]')")
+ cash=p.locator('[data-kind=collection]');assert not cash.locator('[data-pick]').is_checked()
+ assert cash.locator('[data-sensitive-approval]').count()==1 and cash.locator('[data-preview-notes] [data-sensitive-approval]').count()==0
+ assert p.locator('[data-out]').get_attribute('data-preview-expanded')is None
+ assert p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()")==before
  assert not errors,errors
- print(json.dumps({'expanded':expanded,'registeredPrice':with_price,'twoWorksOneFuel':True,'sameFieldNodes':True,'cls':result['cls'],'manualValuesSurviveFailedRefinement':True,'businessWrites':0,'modelCalls':len(pending),'pageErrors':errors}),flush=True);b.close()
+ print(json.dumps({'expanded':expanded,'registeredPrice':with_price,'twoWorksOneFuel':True,'sameFieldNodes':True,'cls':result['cls'],'manualValuesSurviveFailedRefinement':True,'sensitiveFallbackKeepsApprovalFrame':True,'businessWrites':0,'modelCalls':len(pending),'pageErrors':errors}),flush=True);b.close()
 with sync_playwright()as w:
  for expanded in (False,True):
   for with_price in (False,True):run(w,expanded,with_price)
