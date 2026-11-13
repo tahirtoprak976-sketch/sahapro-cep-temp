@@ -5,10 +5,11 @@ U=sys.argv[1]if len(sys.argv)>1 else'http://localhost:8897/'
 with sync_playwright()as w:
  b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':360,'height':850},is_mobile=True,has_touch=True,service_workers='block',accept_downloads=True)
  c.add_init_script("window.__opened=[];window.__originalOpen=indexedDB.open.bind(indexedDB);indexedDB.open=function(name,...rest){window.__opened.push(String(name));return window.__originalOpen(name,...rest)}")
- p=c.new_page();errors=[];calls=[];p.on('pageerror',lambda e:errors.append(str(e)))
- c.route('**/phone-source.json',lambda r:r.fulfill(status=200,content_type='application/json',body=json.dumps({'sourceSha':'0'*40,'appVersion':'SAHAPRO SOLO v3.11.05'})))
+ p=c.new_page();errors=[];calls=[];held=[];hold=False;p.on('pageerror',lambda e:errors.append(str(e)))
+ if '--package'not in sys.argv:c.route('**/phone-source.json',lambda r:r.fulfill(status=200,content_type='application/json',body=json.dumps({'sourceSha':'0'*40,'appVersion':'SAHAPRO SOLO v3.11.05'})))
  def provider(r):
   calls.append({'url':r.request.url,'body':r.request.post_data or''})
+  if hold and ':generateContent'in r.request.url:held.append(r);return
   if ':generateContent'not in r.request.url:reply={'models':[{'name':'models/gemini-test-free','displayName':'TEST model','supportedGenerationMethods':['generateContent']}]}
   else:reply={'candidates':[{'content':{'parts':[{'text':'{"works":[],"fuel":[],"questions":[]}'}]},'finishReason':'STOP'}]}
   r.fulfill(status=200,content_type='application/json',body=json.dumps(reply))
@@ -35,5 +36,16 @@ with sync_playwright()as w:
  p.reload();p.wait_for_function("()=>!document.querySelector('#models').disabled");assert p.locator('#key').input_value()=='';assert '64'in p.locator('#usage').inner_text()
  p.fill('#key',key);p.check('#consent');p.fill('#budget','64');p.click('#models');p.wait_for_function("()=>!document.querySelector('#models').disabled&&document.querySelector('#progress').textContent.includes('tamamlanamadı')")
  assert len(calls)==64,'Persisted daily counter cannot be reset by reloading or reducing limit'
+ # A real pending HTTP must abort when the owner revokes consent.
+ hold=True;p.goto(U+'tests/assistant-gold/phone.html?db=TEST_V311_CANCEL');p.wait_for_function("()=>!document.querySelector('#models').disabled")
+ p.fill('#key',key);p.check('#consent');p.click('#models');p.wait_for_function("()=>document.querySelector('#model').options.length===2&&!document.querySelector('#models').disabled");p.select_option('#model','gemini-test-free');p.click('#run')
+ deadline=__import__('time').monotonic()+10
+ while not held and __import__('time').monotonic()<deadline:p.wait_for_timeout(20)
+ assert len(held)==1
+ p.uncheck('#consent');p.wait_for_function("()=>!document.querySelector('#run').disabled&&document.querySelector('#progress').textContent.includes('Koşu durdu')")
+ held[0].abort('aborted')
+ with p.expect_download()as partial:p.click('#download')
+ partial.value.save_as('/tmp/SAHAPRO_phone245_cancelled_canned_only.json');cancelled=json.load(open('/tmp/SAHAPRO_phone245_cancelled_canned_only.json'));assert not cancelled['completed']and cancelled['runs'][0]['responses']=={}and cancelled['runs'][0]['failures'][0]['code']=='ASSISTANT_ABORT'
+ assert len(calls)==66 and p.evaluate("()=>window.__opened.every(n=>n.startsWith('sahapro_cep_db_TEST_V311_'))")
  assert not errors,errors
- print(json.dumps({'androidEmulationOnly':True,'realGemini':False,'cannedHTTP':len(calls),'noAutomaticCalls':True,'isolatedTestDBOnly':True,'businessWrites':0,'secretAbsentFromExport':True,'sameCorpusScorer':True,'sixRunsActuallyRescored':True,'counterSurvivesReload':True,'pageErrors':errors}),flush=True);b.close()
+ print(json.dumps({'androidEmulationOnly':True,'realGemini':False,'cannedHTTP':len(calls),'noAutomaticCalls':True,'isolatedTestDBOnly':True,'businessWrites':0,'secretAbsentFromExport':True,'sameCorpusScorer':True,'sixRunsActuallyRescored':True,'counterSurvivesReload':True,'revokingConsentAbortsPendingRequest':True,'pageErrors':errors}),flush=True);b.close()
