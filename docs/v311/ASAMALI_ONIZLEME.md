@@ -43,3 +43,12 @@ korundu. Yeni önizleme testi 320/360/390 pikselde görünür sonuç alanını �
 koşularında basit cümlenin ilk önizlemesi 10–14 ms aralığında görüldü. Bu,
 fiziksel Android gecikmesi veya bütün sayfanın CLS ölçümü değildir. Uzun ilk
 bloklar hızlı senkron yolu kullanmaz; arka plandaki okuyucuya bırakılır.
+
+Son geliştirme kontrolünde, yalnız dış sınır değil `PerformanceObserver`
+`layout-shift` girdileri de ölçüldü: tamamlanınca okuma durum şeridinin
+kaldırılması CLS ~0,04 yaratıyordu. Şerit aynı yükseklikte “Kartlar hazır”
+bağlantısına dönüşür; yeni istek veya Kaydet sırasında temizlenir. Bu düzeltme
+sonrası 320/360/390 piksel senaryosunda model yanıtı sırasında CLS girdisi
+yoktur (0). Test bunu sıfır beklentisiyle korur; iptal temizliği gerçek model
+isteğinin başlaması beklenerek sınanır. Sonuç, yalnız bu sentetik senaryoya
+aittir; fiziksel telefon veya bütün karmaşık kart türlerine genellenmez.

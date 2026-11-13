@@ -1,4 +1,4 @@
-import {startPreview,installPreviewHTML} from './assistant-preview-ui.js';
+import {startPreview,installPreviewHTML,completePreviewStatus,resetPreviewStatus} from './assistant-preview-ui.js';
 import {quickPreview} from './assistant-preview-stream.js';
 import {bindReceiptDesk,mountSerialReceiptQueue} from './assistant-receipts311.js';
 import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner,fillReceiptReferences,secondaryReviewTriggers,recoverableSchemaError} from './assistant-hybrid311.js';
@@ -74,6 +74,7 @@ export async function screen(ctx) {
     if(asking)return;
     if(!(await confirmDialog('Yeni sohbet','Bu telefondaki son sohbet temizlenecek. İş ve kasa kayıtlarınız korunur.','Yeni sohbet')))return;
     try {
+      qs('[data-read-status]',root).hidden=true;
       await conversation.reset();prev=null;manualRefine=null;activeTask=null;paintTask();
       qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
       qs('[data-msg]',root).value='';qs('[data-out]',root).innerHTML='';
@@ -366,6 +367,7 @@ export async function screen(ctx) {
   const runAssistantRequest=async () => {
     let pendingLocalFallback=null,stagedPreview=null,earlyPreviewNodes=null,stageSettled=false;
     if(asking)return;if(filesPending)return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin","err");asking=true;
+    resetPreviewStatus(root,()=>requestScope?.abort());
     const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
     for(const el of locked)el.disabled=true;
     let chatTurn=null,chatFinished=false;
@@ -799,7 +801,7 @@ export async function screen(ctx) {
       stagedPreview?.cancel();
       if(!stageSettled){const target=qs('[data-out]',root);target?.classList.remove('assistant-staged-results');if(target?.querySelector('[data-stage-pending]'))target.replaceChildren(...(earlyPreviewNodes||[]));}
       requestScope?.cleanup?.();requestScope?.dispose();requestScope=null;
-      if(msgEl.isConnected)qs('[data-read-status]',root).hidden=true;
+      if(msgEl.isConnected){if(stageSettled&&stagedPreview)completePreviewStatus(root);else qs('[data-read-status]',root).hidden=true;}
       if(chatTurn&&!chatFinished)await finishChat({status:'error',reply:qs('[data-out]',root)?.textContent?.slice(0,1200)||'İstek tamamlanamadı. Mesajı kontrol edip yeniden gönderin.'}).catch(()=>toast('Sohbet notu saklanamadı; mesajınız ekranda korunuyor.','err'));
       asking=false;
       for(const el of locked)if(el.isConnected)el.disabled=false;
@@ -1312,6 +1314,7 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
   const runSave=async (ev,selection=null) => {
     if (v._stagePending||saveInFlight) return;
     saveInFlight = true;
+    const readStatus=qs('[data-read-status]',ctx.root);if(readStatus?.hasAttribute('data-preview-complete'))readStatus.hidden=true;
     const btn = ev.currentTarget; btn.disabled = true;
     const controls=qsa('button,input,textarea,select',ctx.root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
     try {

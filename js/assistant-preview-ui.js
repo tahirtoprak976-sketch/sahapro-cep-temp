@@ -42,3 +42,18 @@ export function startPreview({out,text,d,today,rules,draw,WorkerClass=globalThis
  }catch{worker?.terminate();worker=null;}
  return {finish(){closed=true;worker?.terminate();worker=null;return current;},cancel(){closed=true;worker?.terminate();worker=null;current=null;}};
 }
+
+export function resetPreviewStatus(root,onAbort){
+ const status=root.querySelector('[data-read-status]');if(!status?.hasAttribute('data-preview-complete'))return;
+ status.removeAttribute('data-preview-complete');status.style.height='';status.firstChild.replaceWith(document.createTextNode('İstek okunuyor; henüz kayıt yazılmıyor.'));
+ const button=status.querySelector('[data-stop-reading]');button.textContent='Okumayı durdur';button.onclick=onAbort;
+}
+export function completePreviewStatus(root){
+ const status=root.querySelector('[data-read-status]');if(!status||status.hidden)return;
+ // Removing the reading strip moves every fixed composer control. Keep its exact slot until the next request.
+ const button=status.querySelector('[data-stop-reading]'),box=status.getBoundingClientRect(),css=getComputedStyle(status),buttonCss=getComputedStyle(button);
+ const textHeight=button.getBoundingClientRect().top-box.top-parseFloat(css.borderTopWidth)-parseFloat(css.paddingTop)-(parseFloat(buttonCss.marginTop)||0);
+ status.style.height=box.height+'px';status.dataset.previewComplete='';
+ const text=document.createElement('span');text.dataset.previewStatusText='';text.style.cssText='display:block;overflow:hidden;height:'+Math.max(0,textHeight)+'px';text.textContent='Kartlar hazır; henüz kayıt yazılmadı.';status.firstChild.replaceWith(text);
+ button.disabled=false;button.textContent='Kontrol kartlarına git';button.onclick=()=>root.querySelector('[data-out]')?.scrollIntoView({block:'start',behavior:'smooth'});
+}
