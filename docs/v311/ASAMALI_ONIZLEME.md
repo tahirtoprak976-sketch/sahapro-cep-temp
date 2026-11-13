@@ -52,3 +52,10 @@ sonrası 320/360/390 piksel senaryosunda model yanıtı sırasında CLS girdisi
 yoktur (0). Test bunu sıfır beklentisiyle korur; iptal temizliği gerçek model
 isteğinin başlaması beklenerek sınanır. Sonuç, yalnız bu sentetik senaryoya
 aittir; fiziksel telefon veya bütün karmaşık kart türlerine genellenmez.
+
+Görsel kontrolde, son kontrol panelinin eklenmesi asıl iş kartını aşağıya
+itiyordu. Artık yalnız tekil kaynak eşleşmesinde o anda görünen kartın üst
+konumu korunur; üst kontroller kaydırılarak erişilebilir. Alt komut çubuğunun
+gerçek yüksekliği kadar kaydırma payı vardır. Test hem dış alanın hem görünen
+kartın üst konumunun değişmediğini 320/360/390 pikselde doğrular. Diğer yerel
+formlara veya yeni sohbete geçildiğinde bu özel kaydırma düzeni temizlenir.

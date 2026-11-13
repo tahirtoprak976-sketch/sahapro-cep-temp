@@ -77,7 +77,7 @@ export async function screen(ctx) {
       qs('[data-read-status]',root).hidden=true;
       await conversation.reset();prev=null;manualRefine=null;activeTask=null;paintTask();
       qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
-      qs('[data-msg]',root).value='';qs('[data-out]',root).innerHTML='';
+      qs('[data-msg]',root).value='';qs('[data-out]',root).innerHTML='';qs('[data-out]',root).classList.remove('assistant-staged-results');
       qs('[data-clearfiles]',root).click();clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');
       try{sessionStorage.removeItem('sp_asst_ctx');}catch{}qs('[data-ctxchip]',root)?.remove();turnPreview();
     } catch(e){toast('Sohbet temizlenemedi: '+e.message,'err');}
@@ -125,6 +125,7 @@ export async function screen(ctx) {
       const turn=await conversation.begin(label);await conversation.finish(turn,{status:'draft',reply:'Bilgileri kontrol edip karttaki oluştur düğmesiyle onaylayın; henüz kayıt açılmadı.'});
       if(!root.isConnected)return;
       prev=null;manualRefine=null;qs('[data-refine-wrap]',root).hidden=true;qs('[data-refine]',root).checked=false;
+      qs('[data-out]',root).classList.remove('assistant-staged-results');qs('[data-read-status]',root).hidden=true;
       await build(turn);
     }finally{openingCard=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
   };
@@ -887,6 +888,9 @@ export async function renderOfflinePlan(ctx,out,v,d,{message}) {
 }
 
 function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore=null }) {
+  const previewCards=previewBefore?[...out.querySelectorAll('[data-stage-kind]')]:[],previewBounds=out.getBoundingClientRect();
+  const oldPreviewCard=previewCards.find(card=>{const r=card.getBoundingClientRect();return r.bottom>previewBounds.top&&r.top<previewBounds.bottom;})||previewCards[0];
+  const previewAnchor=oldPreviewCard?{kind:oldPreviewCard.dataset.stageKind,index:oldPreviewCard.dataset.i,top:oldPreviewCard.getBoundingClientRect().top}:null;
   // Şoförün fotoğrafı eksikse: burada seçilir, mesaj fotoğraflarla yeniden işlenir (WhatsApp'a dönmeye gerek yok)
   if(!stage)setTimeout(() => {
     const clear = qs("[data-drvclear]", out);
@@ -1197,7 +1201,8 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
     for(const el of qsa('input,select,textarea,button',out))el.disabled=true;
     return;
   }
-  installPreviewHTML(out,html,{before:previewBefore,after:v});
+  if(!previewBefore)out.classList.remove('assistant-staged-results');
+  const reusedPreview=installPreviewHTML(out,html,{before:previewBefore,after:v});
   mountConfidenceInputs(out,v);
   for(const b of qsa('[data-part-document-open]',out))b.onclick=async()=>{
     if(b.disabled)return;b.disabled=true;
@@ -1337,6 +1342,7 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
   const releaseDesk=bindReceiptDesk({...ctx,receiptNotice:message=>toast(message,'err')},out,v,d,{read:()=>review?.read()||[],saveScoped:cards=>runSave({currentTarget:qs('[data-save]',out)},cards)});
   const disposed=new MutationObserver(()=>{if(!out.isConnected||!out.querySelector('[data-review-overview]')){releaseDesk();disposed.disconnect();}});disposed.observe(out,{childList:true});
   Object.defineProperty(v,'_review',{enumerable:false,configurable:true,value:review});
+  if(reusedPreview&&previewAnchor){const card=out.querySelector('[data-kind="'+previewAnchor.kind+'"][data-i="'+previewAnchor.index+'"]');if(card){out.scrollTop+=card.getBoundingClientRect().top-previewAnchor.top;const remainder=previewAnchor.top-card.getBoundingClientRect().top;if(Math.abs(remainder)<1)card.style.translate='0 '+remainder+'px';}}
 }
 
 async function save(ctx, out, v, d, { message, files, selection=null, preserveDrafts=false }) {

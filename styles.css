@@ -1337,3 +1337,5 @@ body.assistant-evening .appbar{background:#1b2028;color:#e9eef5;border-color:#38
 /* Reserve the closed resume header before its task is stored, rather than pushing cards down. */
 .assistant-workspace:has(.assistant-staged-results) [data-resume-panel][hidden] { display: block !important; visibility: hidden; }
 .assistant-workspace:has(.assistant-staged-results) .assistant-conversation { display: block; height: min(30vh, 240px); overflow: auto; overscroll-behavior: contain; }
+
+.assistant-staged-results { padding-bottom: calc(var(--assistant-composer-height, 300px) + 24px); }

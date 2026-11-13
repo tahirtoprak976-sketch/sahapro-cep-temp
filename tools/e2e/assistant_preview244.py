@@ -16,7 +16,7 @@ def run(w,width):
  p.reload();p.wait_for_function("()=>document.querySelector('[data-msg]')&&!document.querySelector('[data-msg]').readOnly&&!document.querySelector('[data-ask]').disabled");before=p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()");text='['+today[8:10]+'/'+today[5:7]+'/'+today[:4]+' 19:00] Salih: Akasya Yapı Kazıcı 8 2 saat çalıştı'
  p.fill('[data-msg]',text);p.evaluate("()=>{window.__previewTiming={};document.querySelector('[data-ask]').addEventListener('click',()=>window.__previewTiming.sent=performance.now(),{once:true,capture:true});const obs=new MutationObserver(()=>{if(document.querySelector('[data-stage-pending]')){window.__previewTiming.first=performance.now();obs.disconnect();}});obs.observe(document.querySelector('[data-out]'),{childList:true,subtree:true});}");p.click('[data-ask]');p.wait_for_function("()=>document.querySelector('[data-stage-kind=work]')");p.wait_for_function("()=>window.__previewPacketsDone||document.querySelector('[data-stage-kind=work] select[name=work_type]').value")
  p.evaluate("async()=>{document.querySelector('[data-out]').scrollIntoView({block:'start'});await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}")
- timing=p.evaluate("()=>({firstPreviewMs:window.__previewTiming.first-window.__previewTiming.sent,top:document.querySelector('[data-out]').getBoundingClientRect().top,height:document.querySelector('[data-out]').getBoundingClientRect().height})")
+ timing=p.evaluate("()=>({firstPreviewMs:window.__previewTiming.first-window.__previewTiming.sent,cardTop:document.querySelector('[data-stage-kind=work]').getBoundingClientRect().top,top:document.querySelector('[data-out]').getBoundingClientRect().top,height:document.querySelector('[data-out]').getBoundingClientRect().height})")
  assert p.locator('[data-stage-pending]').count()==1
  assert p.locator('[data-out] [data-save]').count()==0
  assert p.locator('[data-stage-kind=work] [name=quantity]').input_value()=='2'
@@ -34,9 +34,10 @@ def run(w,width):
  p.evaluate("async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}")
  timing['layoutShiftEntries']=p.evaluate("()=>{window.__previewObserver.disconnect();return window.__previewCLS;}")
  assert sum(entry['value']for entry in timing['layoutShiftEntries'])==0,timing
- timing['finalGeometry']=p.evaluate("()=>({top:document.querySelector('[data-out]').getBoundingClientRect().top,height:document.querySelector('[data-out]').getBoundingClientRect().height})")
+ timing['finalGeometry']=p.evaluate("()=>({cardTop:document.querySelector('[data-kind=work]').getBoundingClientRect().top,top:document.querySelector('[data-out]').getBoundingClientRect().top,height:document.querySelector('[data-out]').getBoundingClientRect().height})")
  assert abs(timing['top']-timing['finalGeometry']['top'])<0.01,timing
  assert timing['height']==timing['finalGeometry']['height'],timing
+ assert abs(timing['cardTop']-timing['finalGeometry']['cardTop'])<0.01,timing
  p.locator('[data-kind=work] [data-record-summary]').click()
  p.locator('[data-kind=work] [name=quantity]').fill('4')
  assert p.locator('[data-kind=work] [name=quantity]').input_value()=='4'
