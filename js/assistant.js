@@ -1,3 +1,4 @@
+import {bindReceiptDesk,mountSerialReceiptQueue} from './assistant-receipts311.js';
 import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner,fillReceiptReferences,secondaryReviewTriggers,recoverableSchemaError} from './assistant-hybrid311.js';
 import {preserveFirstReviewHolds,localFallbackAllowed,oneSecondaryRead} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
@@ -222,6 +223,7 @@ export async function screen(ctx) {
   };
   photosIn.addEventListener("change",()=>selectFiles(photosIn,false));
   const addPhotos=qs("[data-addphotos]",root);addPhotos.addEventListener("change",()=>selectFiles(addPhotos,true));
+  page.onDispose(mountSerialReceiptQueue(ctx,{getFiles:()=>files,isBusy:()=>asking||filesPending||switchingTask,accept:async selected=>{await selectFiles({files:selected,value:''},true);if(attachmentError)throw Error(attachmentError);clearTimeout(fileDraftT);await fileDraftWrite;await(await import('./assistant-task-files.js')).savePendingFiles(db,[...files]);}}));
   qs('[data-part-document]',root).onclick=async()=>{
     if(asking)return;if(filesPending)return toast('Dosyalar doğrulanıyor; tamamlanmasını bekleyin','err');asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
     try{if(files.some(isTransfer))throw Error('Şoför aktarımı kendi akışından okunmalı. Parça belgesini ayrı seçin.');await stagePartDocuments(ctx,files,{message:msgEl.value});}
@@ -1283,7 +1285,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     };
     card.addEventListener('input',update);update();
   }
-  qs("[data-save]", out)?.addEventListener("click", async (ev) => {
+  const runSave=async (ev,selection=null) => {
     if (saveInFlight) return;
     saveInFlight = true;
     const btn = ev.currentTarget; btn.disabled = true;
@@ -1292,10 +1294,11 @@ function render(ctx, out, v, d, { message, files, ms }) {
       const rows = { work: v.works, fuel: v.fuel, expense: v.expenses, maintenance: v.maintenance };
       const affected = v.driverPhotoBlocked && qsa(".card[data-kind]", out).some(c => qs("[data-pick]", c)?.checked && rows[c.dataset.kind]?.[Number(c.dataset.i)]?.driver_entry_id);
       if (affected && !(await confirmDialog("Dosyalar eklenmeden kaydedilsin mi?", "Şoför dosyaları güvenle eşleştirilemedi. Seçili şoför kayıtlarına bu paketin fotoğrafları ve dosya olarak gelen imzaları eklenmeyecek. Sonradan aynı kodu tekrar almak dosyaları tamamlamaz; kayıt ayrıntısından elle eklemeniz gerekir. Önce dosyaları düzeltmek için vazgeçin.", "Dosyasız kaydet"))) return;
-      if (out.isConnected) await save(ctx, out, v, d, { message, files });
+      if (out.isConnected) await save(ctx, out, v, d, { message, files, selection, preserveDrafts:!!selection });
     } catch (e) { toast("Kaydedilemedi: " + (e?.message || String(e)), "err"); }
-    finally { saveInFlight = false;for(const el of controls)if(el.isConnected&&el.closest('[data-saved]')?.dataset.saved!=='1')el.disabled=false; if (btn.isConnected) btn.disabled = false; }
-  });
+    finally { saveInFlight = false;for(const el of controls)if(el.isConnected&&el.closest('[data-saved]')?.dataset.saved!=='1')el.disabled=false; if (btn.isConnected) btn.disabled = false;if(out.querySelector('[data-review-overview]')){v._workflow?.refresh();v._review?.update();await v._receiptDesk?.refresh();} }
+  };
+  qs("[data-save]",out)?.addEventListener("click",ev=>runSave(ev));
   // Önizlemesi açılamayan fotoğraf: yerine yazı (CSP satır içi onerror'a izin vermez)
   for (const img of qsa("img[data-imgfb]", out)) img.addEventListener("error", () => img.replaceWith(Object.assign(document.createElement("div"), { className: "small muted", textContent: img.alt })));
   // Belge kartı: "Yeni personel / araç" seçilince ilgili alanlar görünür
@@ -1303,18 +1306,21 @@ function render(ctx, out, v, d, { message, files, ms }) {
     sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
   v._workflow=bindDraftWorkflow(out,v,d);
   if(!v._localOnly)bindBulkEntry(ctx,out,v,d,{message,files});
-  bindAssistantReview(ctx,out,v,d);
+  const review=bindAssistantReview(ctx,out,v,d);
+  const releaseDesk=bindReceiptDesk({...ctx,receiptNotice:message=>toast(message,'err')},out,v,d,{read:()=>review?.read()||[],saveScoped:cards=>runSave({currentTarget:qs('[data-save]',out)},cards)});
+  const disposed=new MutationObserver(()=>{if(!out.isConnected||!out.querySelector('[data-review-overview]')){releaseDesk();disposed.disconnect();}});disposed.observe(out,{childList:true});
+  Object.defineProperty(v,'_review',{enumerable:false,configurable:true,value:review});
 }
 
-async function save(ctx, out, v, d, { message, files }) {
+async function save(ctx, out, v, d, { message, files, selection=null, preserveDrafts=false }) {
   const originalDb=ctx.db;
   const undo=await import("./undo.js"),snap0=undo.beginUndo(originalDb),db=snap0.db;
   ctx={...ctx,db};
   const cards = qsa(".card[data-kind]", out)
-    .filter((c) => qs("[data-pick]", c).checked)
+    .filter((c) => c.dataset.saved!=='1'&&(selection?selection.includes(c):qs("[data-pick]", c).checked))
     .sort((a, b) => (["card", "memory", "tank", "price", "action", "setting"].includes(a.dataset.kind) ? 0 : 1) - (["card", "memory", "tank", "price", "action", "setting"].includes(b.dataset.kind) ? 0 : 1));
   if (!cards.length) return toast("Kaydedilecek kart seçin", "err");
-  const workflowRows=v._workflow?.read().filter(r=>r.selected)||[];
+  const workflowRows=v._workflow?.read().filter(r=>selection?cards.some(c=>c.dataset.kind===r.kind&&Number(c.dataset.i)===r.index):r.selected)||[];
   const {effectiveRules}=await import('./assistant-rules.js');
   if(v._businessRulesSnapshot!==undefined&&v._businessRulesSnapshot!==effectiveRules(await db.metaGet("assistant_rules")))throw Error("Asistan kuralları değişti. Kaydetmeden önce mesajı yeniden kontrol edin.");
   const preflightData=await db.dumpAll();
@@ -1450,7 +1456,8 @@ async function save(ctx, out, v, d, { message, files }) {
     // İşlenen kart işaretten çıkar ve kilitlenir: arada hata olursa "Kaydet"e yeniden basmak kaydedilenleri ikinci kez yazmaz
     const markDone = (x) => { const pk = qs("[data-pick]", x); if (pk) { pk.checked = false; pk.disabled = true; } x.dataset.saved = "1"; x.style.opacity = "0.55"; };
     for (const c of cards) {
-      if (current) markDone(current);
+      if (!preserveDrafts&&current) markDone(current);
+      const beforeDone={...done};try{
       current = c;
       const k = c.dataset.kind;
       if (k === "memory") {
@@ -2059,14 +2066,15 @@ async function save(ctx, out, v, d, { message, files }) {
         for (const pi of (r.photos?.length ? r.photos : r.photo != null ? [r.photo] : [])) if (files[pi]) await db.addAttachment("fuel", rec.id, files[pi]);
         done.fuel++;
       }
+      }finally{if(preserveDrafts&&([({work:'work',expense:'expense',fuel:'fuel',collection:'collection',personnel:'personnel',fuelout:'fuelOut',tank:'tank'})[c.dataset.kind],'already',...(c.dataset.kind==='expense'?['dumpdep','dumpinv','dumpinvPaid']:[])].some(k=>k&&done[k]>beforeDone[k])))markDone(c);}
     }
     const parts = [[done.already, "kayıt bu mesajdan zaten yazılmıştı (yeniden yazılmadı)"], [done.conflict, "satır daha önce farklı bilgilerle kaydedildiği için atlandı"], [done.action, "kart değişikliği"], [done.setting, "ayar"], [done.price, "fiyat kuralı"], [done.priced, "eski işe fiyat uygulandı"], [done.tank, "depo girişi"], [done.tankLinked, "fatura elle girilmiş depo girişine bağlandı (yeni giriş açılmadı)"], [done.ticket, "döküm fişi"], [done.doc, "belge"], [done.docSame, "belge zaten kayıtlıydı (yeniden eklenmedi)"], [done.work, "iş"], [done.expense, "gider"], [done.dumpdep, "döküm hesabına yükleme (gider sayılmaz, dökümde düşer)"], [done.dumpinv, "döküm faturası döküm hesabına bağlandı (gider yazılmadı)"], [done.dumpinvPaid, "geçmiş dönem döküm faturası ödenmiş sayıldı (giderlerde görünür; kâr-zararda dökümler ayrıca sayıldığı için iki kez girmez)"], [done.fuel, "yakıt"], [done.fuelOut, "müşteriye mazot teslimi (depodan düştü, TL borç yazıldı)"], [done.collection, "tahsilat"], [done.maintenance, "arıza/bakım"], [done.personnel, "personel hareketi"], [done.edit, "düzeltme"], [done.customer, "yeni müşteri"], [done.site, "yeni şantiye"], [done.vupd, "kart belgeye göre güncellendi (araç/personel/şirket)"], [done.pcards, "yeni personel kartı"], [done.cards, "yeni kart (araç/personel/esnaf/ocak/döküm yeri)"], [done.learned, "yeni eşleştirme hafızaya alındı"]].filter(([n]) => n).map(([n, t]) => n + " " + t);
     const plan = await undo.saveUndo(db, snap0, parts.join(", "));
     if(snap0.unsafe)parts.push("Güvenli geri alma kapsamı doğrulanamadı; bu işlem için kayıtları tek tek inceleyin");
-    v._done = true;
+    v._done = preserveDrafts?!qsa('.card[data-kind]',out).some(c=>c.dataset.saved!=='1'):true;
     // WhatsApp toplu işlemeden geldiyse: bu günün mesajları işlendi sayılır
     let waNext = "";
-    if (ctx.query?.wa) {
+    if (ctx.query?.wa&&!preserveDrafts) {
       const wa = await db.metaGet("wa_bulk_pending");
       if (wa?.keys?.length) {
         const { markDone } = await import("./wa-bulk-core.js");
@@ -2097,6 +2105,11 @@ async function save(ctx, out, v, d, { message, files }) {
     const receiptRows=[...snap0.writes.values()].filter(w=>w.after&&!w.after.deleted_at&&receiptRoutes[w.store]);
     const recordLink=w=>`<a class="btn" data-saved-record="${esc(w.store+':'+w.id)}" href="#/${receiptRoutes[w.store][0]}/${encodeURIComponent(w.id)}">${receiptRoutes[w.store][1]} kaydını aç</a>`;
     const receiptLinks=receiptRows.slice(0,20).map(recordLink).join('')+(receiptRows.length>20?`<details data-receipt-more><summary>Diğer ${receiptRows.length-20} kaydı göster</summary>${receiptRows.slice(20).map(recordLink).join('')}</details>`:'');
+    if(preserveDrafts){
+      let receipt=out.querySelector('[data-scoped-save-receipt]');if(!receipt){receipt=document.createElement('section');receipt.className='card';receipt.dataset.scopedSaveReceipt='';out.prepend(receipt);}
+      receipt.innerHTML=notice('ok','Bu grubun sonucu: '+(parts.join(', ')||'Yeni kayıt oluşturulmadı')+'. Diğer taslaklar ve elle düzeltmeler korundu.')+receiptLinks;
+      v._workflow?.refresh();v._review?.update();await v._receiptDesk?.refresh();return;
+    }
     out.innerHTML = notice("ok", "Kaydedildi: " + (parts.join(", ") || "hiçbir şey") + ".") + (receiptLinks?'<div class="card assistant-receipt"><b>Kayıt sonucu</b><p class="small">Doğrulanan kayıtları açıp inceleyebilirsiniz.</p>'+receiptLinks+'</div>':'') + dslipBtns +
       '<div class="row" style="gap:8px"><button class="btn grow" data-go="#/isler">İşler</button><button class="btn grow" data-go="#/gider">Giderler</button></div>' +
       (plan ? '<button class="btn block" style="margin-top:8px" data-undo>↩️ Yanlış oldu — bu kaydı geri al</button>' : "") + waNext;
