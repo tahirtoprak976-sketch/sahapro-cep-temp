@@ -57,3 +57,15 @@ export function completePreviewStatus(root){
  const text=document.createElement('span');text.dataset.previewStatusText='';text.style.cssText='display:block;overflow:hidden;height:'+Math.max(0,textHeight)+'px';text.textContent='Kartlar hazır; henüz kayıt yazılmadı.';status.firstChild.replaceWith(text);
  button.disabled=false;button.textContent='Kontrol kartlarına git';button.onclick=()=>root.querySelector('[data-out]')?.scrollIntoView({block:'start',behavior:'smooth'});
 }
+
+// Expanded forms keep variable explanations below the editor in a bounded, scrollable note area.
+// The fields themselves keep the same grid positions while evidence and cari notes arrive.
+export function arrangeExpandedPreview(out){
+ if(!out.hasAttribute('data-preview-expanded'))return;
+ for(const card of out.querySelectorAll('.assistant-record')){
+  let notes=card.querySelector('[data-preview-notes]');if(!notes){notes=document.createElement('section');notes.dataset.previewNotes='';notes.setAttribute('aria-label','Kaynak ve kontrol notları');card.append(notes);}
+  const detail=card.querySelector('[data-record-details]');
+  if(detail)for(const node of [...detail.children])if(!node.matches('summary,.formgrid2,.field')&&!node.querySelector('input,select,textarea')&&!node.matches('input,select,textarea,label'))notes.append(node);
+  for(const node of [...card.children])if(node!==notes&&node!==detail&&!node.matches('.history-check'))notes.append(node);
+ }
+}

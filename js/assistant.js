@@ -1,14 +1,14 @@
-import {startPreview,installPreviewHTML,completePreviewStatus,resetPreviewStatus} from './assistant-preview-ui.js';
+import {startPreview,installPreviewHTML,completePreviewStatus,resetPreviewStatus,arrangeExpandedPreview} from './assistant-preview-ui.js';
 import {quickPreview} from './assistant-preview-stream.js';
 import {bindReceiptDesk,mountSerialReceiptQueue} from './assistant-receipts311.js';
 import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner,fillReceiptReferences,secondaryReviewTriggers,recoverableSchemaError} from './assistant-hybrid311.js';
 import {preserveFirstReviewHolds,localFallbackAllowed,oneSecondaryRead} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
-import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence} from './assistant-confidence-ui.js';
+import {mountConfidenceInputs,clearRuleConfidence,paintRuleConfidence,repaintConfidenceBadges} from './assistant-confidence-ui.js';
 import {priceVehicleContext} from "./core.js";
 import * as priceCore from "./price-rule-core.js";
-import {hasAssistantDraft,assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
+import {hasAssistantDraft,detailedAssistant,assistantPageHTML,mountAssistantPage,conversationHTML,showAssistantRequestError} from "./assistant-page-ui.js";
 import {bindAssistantReview,openReviewCard} from "./assistant-review-ui.js";
 import { prepareAttachment, prepareAudioPreview } from "./attachment-safety.js";
 import {withRecordSource} from './record-notes.js';
@@ -1195,13 +1195,19 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked || v.partDocuments?.length ? "" : fallbackHtml(v, d, message));
   if(stage){
     out.classList.add('assistant-staged-results');
-    out.innerHTML='<p class="notice info" data-stage-pending role="status">Yerel önizleme · Doğrulama sürüyor. Henüz kayıt yapılamaz.</p>'+html;
+    out.innerHTML='<p class="notice info" data-stage-pending role="status">Yerel önizleme · Doğrulama sürüyor. Henüz kayıt yapılamaz.</p><div data-preview-review></div>';
+    const previewRoot=qs('[data-preview-review]',out);previewRoot.innerHTML=html;
+    out.toggleAttribute('data-preview-expanded',detailedAssistant());
+    if(detailedAssistant()){
+      for(const card of qsa('[data-kind]',previewRoot))repaintConfidenceBadges(card,v[card.dataset.kind==='work'?'works':'fuel']?.[Number(card.dataset.i)]||{});
+      bindAssistantReview(ctx,previewRoot,v,d);arrangeExpandedPreview(out);previewRoot.inert=true;
+    }
     for(const card of qsa('[data-kind]',out)){card.dataset.stageKind=card.dataset.kind;delete card.dataset.kind;}
     const saveButton=qs('[data-save]',out);if(saveButton){saveButton.removeAttribute('data-save');saveButton.setAttribute('data-stage-save','');}
     for(const el of qsa('input,select,textarea,button',out))el.disabled=true;
     return;
   }
-  if(!previewBefore)out.classList.remove('assistant-staged-results');
+  if(!previewBefore){out.classList.remove('assistant-staged-results');out.removeAttribute('data-preview-expanded');}
   const reusedPreview=installPreviewHTML(out,html,{before:previewBefore,after:v});
   mountConfidenceInputs(out,v);
   for(const b of qsa('[data-part-document-open]',out))b.onclick=async()=>{
@@ -1342,7 +1348,8 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
   const releaseDesk=bindReceiptDesk({...ctx,receiptNotice:message=>toast(message,'err')},out,v,d,{read:()=>review?.read()||[],saveScoped:cards=>runSave({currentTarget:qs('[data-save]',out)},cards)});
   const disposed=new MutationObserver(()=>{if(!out.isConnected||!out.querySelector('[data-review-overview]')){releaseDesk();disposed.disconnect();}});disposed.observe(out,{childList:true});
   Object.defineProperty(v,'_review',{enumerable:false,configurable:true,value:review});
-  if(reusedPreview&&previewAnchor){const card=out.querySelector('[data-kind="'+previewAnchor.kind+'"][data-i="'+previewAnchor.index+'"]');if(card){out.scrollTop+=card.getBoundingClientRect().top-previewAnchor.top;const remainder=previewAnchor.top-card.getBoundingClientRect().top;if(Math.abs(remainder)<1)card.style.translate='0 '+remainder+'px';}}
+  arrangeExpandedPreview(out);
+  if(reusedPreview&&previewAnchor){const card=out.querySelector('[data-kind="'+previewAnchor.kind+'"][data-i="'+previewAnchor.index+'"]');if(card){out.scrollTop+=card.getBoundingClientRect().top-previewAnchor.top;const remainder=previewAnchor.top-card.getBoundingClientRect().top;if(Math.abs(remainder)<1)for(const rowCard of out.querySelectorAll('[data-kind=work],[data-kind=fuel]'))rowCard.style.translate='0 '+remainder+'px';}}
 }
 
 async function save(ctx, out, v, d, { message, files, selection=null, preserveDrafts=false }) {

@@ -59,3 +59,13 @@ konumu korunur; üst kontroller kaydırılarak erişilebilir. Alt komut çubuğu
 gerçek yüksekliği kadar kaydırma payı vardır. Test hem dış alanın hem görünen
 kartın üst konumunun değişmediğini 320/360/390 pikselde doğrular. Diğer yerel
 formlara veya yeni sohbete geçildiğinde bu özel kaydırma düzeni temizlenir.
+
+## Çoklu kart ve açık ayrıntı kontrolü
+
+İki iş ve bir yakıt kartıyla eklenen test, önceki f544d82 kaynağında ayrıntı
+modunda CLS ve alan konumu kaymasını yeniden üretir. Aynı test adayda normal
+ve ayrıntı modlarında sıfır CLS bekler; miktar/litre düğümleri aynı kalır.
+Açık ayrıntılarda değişken kaynak/fiyat/cari açıklamaları, düzenlenebilir
+alanların altında kaydırılabilir not bölümündedir; etiket satırları ayrılır.
+Bir sonraki istek hatayla döndüğünde elle girilen miktar ve birim fiyatın
+hem değerleri hem alan düğümleri korunur. Hiçbir iş/kasa kaydı yazılmaz.

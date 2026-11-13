@@ -1339,3 +1339,10 @@ body.assistant-evening .appbar{background:#1b2028;color:#e9eef5;border-color:#38
 .assistant-workspace:has(.assistant-staged-results) .assistant-conversation { display: block; height: min(30vh, 240px); overflow: auto; overscroll-behavior: contain; }
 
 .assistant-staged-results { padding-bottom: calc(var(--assistant-composer-height, 300px) + 24px); }
+.assistant-staged-results[data-preview-expanded] .assistant-record { display: flex; flex-direction: column; }
+.assistant-staged-results[data-preview-expanded] .assistant-record > .history-check { min-height: 44px; }
+.assistant-staged-results[data-preview-expanded] .assistant-record-details > summary { height: 112px; overflow: auto; box-sizing: border-box; }
+.assistant-staged-results[data-preview-expanded] .field > label { height: 54px; overflow: auto; }
+.assistant-staged-results[data-preview-expanded] [data-preview-notes] { height: 140px; flex-shrink: 0; overflow: auto; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 10px; }
+.assistant-workspace:has(.assistant-staged-results) [data-refine-wrap] { height: 128px; overflow: auto; }
+.assistant-workspace:has(.assistant-staged-results) [data-refine-wrap][hidden] { display: flex !important; visibility: hidden; }
