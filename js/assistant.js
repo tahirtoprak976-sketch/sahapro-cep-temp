@@ -1,3 +1,5 @@
+import {startPreview,installPreviewHTML} from './assistant-preview-ui.js';
+import {quickPreview} from './assistant-preview-stream.js';
 import {bindReceiptDesk,mountSerialReceiptQueue} from './assistant-receipts311.js';
 import {buildHybridEnvelope,suppressResolvedQuestions,hybridReadRunner,fillReceiptReferences,secondaryReviewTriggers,recoverableSchemaError} from './assistant-hybrid311.js';
 import {preserveFirstReviewHolds,localFallbackAllowed,oneSecondaryRead} from './assistant-resilience.js';
@@ -98,6 +100,8 @@ export async function screen(ctx) {
       qs("[data-ctxclear]", box).onclick = () => { try { sessionStorage.removeItem("sp_asst_ctx"); } catch (e) {} box.remove(); };
     }
   }
+  let previewRecords=null;
+  if(g.ready)Promise.all(['customers','sites','vehicles','personnel','aliases'].map(async store=>[store,await db.listActive(store)])).then(entries=>{if(root.isConnected)previewRecords=Object.fromEntries(entries);}).catch(()=>{});
   let prev = null,manualRefine=null,asking=false,requestScope=null; // pending result and explicit per-turn override
   qs('[data-stop-reading]',root).onclick=()=>requestScope?.abort();
   const resolveTurn=(text,transfer=false)=>{
@@ -360,13 +364,17 @@ export async function screen(ctx) {
     finally{asking=false;for(const el of controls)if(el.isConnected)el.disabled=false;}
   });
   const runAssistantRequest=async () => {
-    let pendingLocalFallback=null;
+    let pendingLocalFallback=null,stagedPreview=null,earlyPreviewNodes=null,stageSettled=false;
     if(asking)return;if(filesPending)return toast("Dosyalar doğrulanıyor; tamamlanmasını bekleyin","err");asking=true;
     const locked=qsa('input,select,textarea,button',root).filter(el=>!el.disabled);
     for(const el of locked)el.disabled=true;
     let chatTurn=null,chatFinished=false;
     const finishChat=async result=>{if(!chatTurn)return true;const ok=await conversation.finish(chatTurn,result);chatFinished=true;return ok;};
     try {
+    if(g.ready&&navigator.onLine&&previewRecords&&!prev&&!files.length&&!taskOpen(activeTask)&&!attachmentError){
+      const value=quickPreview(msgEl.value.trim(),{d:previewRecords,today:todayStr()});
+      if(value){const target=qs('[data-out]',root);earlyPreviewNodes=[...target.childNodes];render(ctx,target,value,previewRecords,{message:msgEl.value,files:[],ms:0,stage:true});}
+    }
     if (attachmentError) return toast(attachmentError, "err");
     try { files = await Promise.all(files.map(prepareInput)); }
     catch (error) { attachmentError = error.message; return toast(attachmentError, "err"); }
@@ -538,9 +546,9 @@ export async function screen(ctx) {
     await db.metaSet("assistant_draft", message);
     if(!localPlan&&!navigator.onLine){pendingLocalFallback={message:msgEl.value,reason:'İnternet yok.'};await finishChat({status:'clarify',reply:'İnternet yok; metin yerel okuyucuyla hazırlanacak. Ekler ve açık kartlar korunur.'});return;}
     const out = qs("[data-out]", root), btn = qs("[data-ask]", root);
-    const priorNodes=[...out.childNodes];
+    const priorNodes=earlyPreviewNodes||[...out.childNodes];
     btn.disabled = true;
-    out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
+    if(!earlyPreviewNodes)out.innerHTML = '<div class="muted small" style="padding:10px">' + (transferFiles.length ? 'Şoför aktarımı kontrol ediliyor…' : 'Kayıtlar okunuyor…') + '</div>';
     try {
       const { geminiJson, blobToBase64, shrink, audioToWav,assistantRequestScope } = await import("./ai-gemini.js");
       requestScope=assistantRequestScope();
@@ -551,6 +559,10 @@ export async function screen(ctx) {
       // Sorgulama ve plan hazırlama işletme kartı/iş kaydı oluşturmaz.
       let d = await db.dumpAll();
       const today = todayStr();
+      if(!refine&&!files.length&&!localPlan&&!prev&&!taskOpen(activeTask)&&!/SP1:/.test(message)){
+        const {effectiveRules}=await import('./assistant-rules.js');
+        stagedPreview=startPreview({out,text:message,d,today,rules:effectiveRules(await db.metaGet('assistant_rules')),draw:value=>render(ctx,out,value,d,{message,files:[],ms:Date.now()-t0,stage:true})});
+      }
       // Şoför ekranından gelen kayıtlar (SP1 kodu): Gemini'siz, birebir; fotoğraflar sırayla o işlere. Kalan serbest metin Gemini'ye gider.
       const drv = await import("./driver-core.js");
       const drvAll = await drv.extractPayloads(message);
@@ -771,9 +783,10 @@ export async function screen(ctx) {
       msgEl.value = "";
       msgEl.placeholder = "Yeni istek veya düzeltme yazın. Örn: Kaya 2 sefer moloz / müşteri Kaya olacak";
       qs("[data-refine-prev]", root).textContent = typed ? `Önceki mesaj: "${typed.slice(0, 120)}${typed.length > 120 ? "…" : ""}"` : "";
-      render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0 });
-      turnPreview();
+      render(ctx, out, v, d, { message: vmsg, files: images, ms: Date.now() - t0, previewBefore:stagedPreview?.finish() });
+      stageSettled=true;turnPreview();
     } catch (e) {
+      stagedPreview?.cancel();out.classList.remove("assistant-staged-results");
       if(localFallbackAllowed(e,{message:typed,files:files.length,online:navigator.onLine}))pendingLocalFallback={message:msgEl.value,reason:'Gemini bağlantısı veya kota uygun değil.'};
       if(msgEl.isConnected){
         showAssistantRequestError(out,(e.message||String(e))+(priorNodes.some(n=>n.nodeType===1&&!n.matches('[data-assistant-request-error]'))?' Önceki kontrol kartları aşağıda korunuyor.':''),priorNodes);
@@ -783,6 +796,8 @@ export async function screen(ctx) {
     } catch(error) {
       if(msgEl.isConnected)showAssistantRequestError(qs('[data-out]',root),'İstek tamamlanamadı. Mesaj ve önceki kartlar korunuyor. Kontrol edip tekrar deneyin. '+(error.message||error));
     } finally {
+      stagedPreview?.cancel();
+      if(!stageSettled){const target=qs('[data-out]',root);target?.classList.remove('assistant-staged-results');if(target?.querySelector('[data-stage-pending]'))target.replaceChildren(...(earlyPreviewNodes||[]));}
       requestScope?.cleanup?.();requestScope?.dispose();requestScope=null;
       if(msgEl.isConnected)qs('[data-read-status]',root).hidden=true;
       if(chatTurn&&!chatFinished)await finishChat({status:'error',reply:qs('[data-out]',root)?.textContent?.slice(0,1200)||'İstek tamamlanamadı. Mesajı kontrol edip yeniden gönderin.'}).catch(()=>toast('Sohbet notu saklanamadı; mesajınız ekranda korunuyor.','err'));
@@ -869,9 +884,9 @@ export async function renderOfflinePlan(ctx,out,v,d,{message}) {
   if(v._offlineNotices?.length)out.insertAdjacentHTML('afterbegin',notice('info',v._offlineNotices.map(esc).join(' ')));
 }
 
-function render(ctx, out, v, d, { message, files, ms }) {
+function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore=null }) {
   // Şoförün fotoğrafı eksikse: burada seçilir, mesaj fotoğraflarla yeniden işlenir (WhatsApp'a dönmeye gerek yok)
-  setTimeout(() => {
+  if(!stage)setTimeout(() => {
     const clear = qs("[data-drvclear]", out);
     if (clear) clear.onclick = () => {
       qs("[data-clearfiles]", ctx.root).click();
@@ -914,7 +929,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   const nameOf = (s, id) => (d[s] || []).find((x) => x.id === id)?.name || id || "—";
   const checkedTools={find_records:'Kayıt araması',get_records:'Kayıt incelemesi',work_totals:'İş toplamı',customer_balance:'Müşteri bakiyesi',fuel_totals:'Yakıt toplamı',expense_totals:'Gider toplamı',collection_totals:'Tahsilat toplamı',tank_status:'Depo durumu',customer_fuel:'Mazot hesabı',yard_stock:'Depo stoku',receivables:'Alacaklar',vehicle_profit:'Araç kârlılığı',customer_profit:'Müşteri kârlılığı',price_check:'Fiyat kontrolü',business_review:'İşletme değerlendirmesi',quote_price:'Teklif hesabı',payroll_status:'Puantaj / maaş',maintenance_due:'Bakım takvimi',esnaf_debt:'Esnaf borcu'};
   const checks=(v.agentTrace||[]).filter(t=>checkedTools[t.name]);
-  out.innerHTML =
+  const html =
     (v._localReadNote?'<p class="notice info" data-local-read-note>'+esc(v._localReadNote)+'</p>':'')+
     (v._strongReviewNote?'<p class="notice info" data-strong-review-note>'+esc(v._strongReviewNote)+'</p>':'')+
     (v.agentGoal?`<div class="card" data-agent-goal><b>Anladığım istek</b><p class="small">${esc(v.agentGoal)}</p>${checks.length?`<details data-agent-checks><summary>Kontrol edilenler (${checks.length})</summary>${checks.map(t=>`<p class="small">${esc(checkedTools[t.name])}: ${esc(t.result?.error?'Tamamlanamadı — '+t.result.error:t.result?.records?`${t.result.records.length} kayıt gösterildi${t.result.truncated?' (sonuç sınırlı)':''}`:'Hesaplandı')}</p>`).join('')}</details>`:''}</div>`:'') +
@@ -1172,6 +1187,15 @@ function render(ctx, out, v, d, { message, files, ms }) {
         ${issues(r)}</div>`)
       .join("") +
     (total ? '<button class="btn primary block" data-save>✓ Seçilenleri Kaydet</button>' : v.answer || v.open || v.asked || v.partDocuments?.length ? "" : fallbackHtml(v, d, message));
+  if(stage){
+    out.classList.add('assistant-staged-results');
+    out.innerHTML='<p class="notice info" data-stage-pending role="status">Yerel önizleme · Doğrulama sürüyor. Henüz kayıt yapılamaz.</p>'+html;
+    for(const card of qsa('[data-kind]',out)){card.dataset.stageKind=card.dataset.kind;delete card.dataset.kind;}
+    const saveButton=qs('[data-save]',out);if(saveButton){saveButton.removeAttribute('data-save');saveButton.setAttribute('data-stage-save','');}
+    for(const el of qsa('input,select,textarea,button',out))el.disabled=true;
+    return;
+  }
+  installPreviewHTML(out,html,{before:previewBefore,after:v});
   mountConfidenceInputs(out,v);
   for(const b of qsa('[data-part-document-open]',out))b.onclick=async()=>{
     if(b.disabled)return;b.disabled=true;
@@ -1286,7 +1310,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
     card.addEventListener('input',update);update();
   }
   const runSave=async (ev,selection=null) => {
-    if (saveInFlight) return;
+    if (v._stagePending||saveInFlight) return;
     saveInFlight = true;
     const btn = ev.currentTarget; btn.disabled = true;
     const controls=qsa('button,input,textarea,select',ctx.root).filter(el=>!el.disabled);for(const el of controls)el.disabled=true;
@@ -1313,6 +1337,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
 }
 
 async function save(ctx, out, v, d, { message, files, selection=null, preserveDrafts=false }) {
+  if(v._stagePending)throw Error("Önizleme doğrulanmadan kayıt yapılamaz.");
   const originalDb=ctx.db;
   const undo=await import("./undo.js"),snap0=undo.beginUndo(originalDb),db=snap0.db;
   ctx={...ctx,db};
