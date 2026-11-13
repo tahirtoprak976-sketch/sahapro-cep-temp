@@ -15,3 +15,6 @@ assert.equal(draftCariEffect({kind:'collection',fields:{customer:'TEST_C',amount
 
 assert.equal(normalGroupEligible({...row,r:{fieldConfidence:{date:{level:'BILINMIYOR'}}}}),false,'visible but unverified required field is not a ready group');
 assert.equal(normalGroupEligible({...row,r:{needsApproval:true}}),false);
+const unsureQuantity={kind:'work',fields,r:{fieldConfidence:{quantity:{level:'BILINMIYOR'}}}};
+assert.equal(draftCariEffect(unsureQuantity,d).delta,null,'unverified quantity must not become a definite money preview');
+assert.equal(draftCariEffect({kind:'collection',fields:{customer:'TEST_C',amount:'20'},r:{fieldConfidence:{customer_id:{level:'BILINMIYOR'}}}},d).delta,null,'unverified counterparty cannot get a definite balance effect');
