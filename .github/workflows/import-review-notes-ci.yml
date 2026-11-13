@@ -163,6 +163,18 @@ jobs:
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 42aaa42706ab23dcbb841c8d6807702557602aaf
 
+      - name: Prove bounded normalization cache absent on unchanged acceptance source
+        run: |
+          baseline=$(mktemp -d /tmp/solo-textmemo-baseline-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive bfb005501dde80e46f8515d9939d6e6132fb8819 | tar -x -C "$baseline"
+          cp tests/text-memo.test.mjs "$baseline/tests/"
+          if (cd "$baseline" && node tests/text-memo.test.mjs) > /tmp/solo-textmemo-baseline.log 2>&1; then
+            cat /tmp/solo-textmemo-baseline.log
+            exit 1
+          fi
+          grep -F 'ERR_MODULE_NOT_FOUND' /tmp/solo-textmemo-baseline.log
+          grep -F 'text-memo.js' /tmp/solo-textmemo-baseline.log
+
       - name: Verify receipts to acceptance draft preservation
         run: |
           /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref 6a1ade306775ba6cd24485d084f6ea68c5f3fcf1

@@ -4,7 +4,7 @@
 
 Önce/sonra bütün planın JSON çıktısı byte byte aynıydı: SHA256 95466250f7ce38c1bc1e244b13a0b933891803c032c6f9fdf7bfca6178aaeb54. Bu eşitlik yalnız bu sentetik/takmaadlı korpusun çıktısı içindir; gerçek Gemini başarısı anlamına gelmez. Eski tests/gold beklentileri değişmedi;202Node ve offline_whatsapp104/assistant_turn/assistant_large_batch/assistant_receipts311 tarayıcı kontrolleri geçti.
 
-Önbellekte yalnız saf metin dönüşümü vardır; müşteri/araç kimliği veya eşleşme sonucu tutulmaz. Silinen/değişen kayıtlar ve farklı veritabanları bu yüzden önceki kimliği kullanmaz.512girdi/131072toplamkarakter sınırı vardır;2048karakterden uzun metin ve metin olmayan girdi saklanmaz. Bu bellek uygulama kapanınca kaybolur; IndexedDB, öğrenme hafızası, fiyat, sağlayıcı veya işlem kuralları değişmez.
+Önbellekte yalnız saf metin dönüşümü vardır; müşteri/araç kimliği veya eşleşme sonucu tutulmaz. Silinen/değişen kayıtlar ve farklı veritabanları bu yüzden önceki kimliği kullanmaz.Her dönüşümün önbelleğinde512girdi/131072toplamkarakter sınırı vardır;2048karakterden uzun metin ve metin olmayan girdi saklanmaz. Bu bellek uygulama kapanınca kaybolur; IndexedDB, öğrenme hafızası, fiyat, sağlayıcı veya işlem kuralları değişmez.
 
 Tekrar ölçüm: `node tools/benchmark-assistant-offline.mjs`. Koşucu yalnız kayıtlı takma adlı fixtürü kullanır, API/veritabanı/Kaydet çağrısı yapmaz. Yeni fixtür/tarih/değişiklikte hash farklı olabilir; eski hash'i zorla eşitlemek için kaynak veya beklenti değiştirilmez.
 
