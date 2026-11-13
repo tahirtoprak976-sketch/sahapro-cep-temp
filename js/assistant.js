@@ -1200,7 +1200,9 @@ function render(ctx, out, v, d, { message, files, ms, stage=false, previewBefore
     out.toggleAttribute('data-preview-expanded',detailedAssistant());
     if(detailedAssistant()){
       mountConfidenceInputs(previewRoot,v,{editable:false});
-      bindAssistantReview(ctx,previewRoot,v,d);arrangeExpandedPreview(out);previewRoot.inert=true;
+      bindAssistantReview(ctx,previewRoot,v,d);arrangeExpandedPreview(out);
+      for(const marker of ['data-review-overview','data-review-questions'])for(const node of previewRoot.querySelectorAll('['+marker+']')){node.removeAttribute(marker);node.setAttribute(marker.replace('data-review','data-stage-review'),'');}
+      previewRoot.inert=true;
     }
     for(const card of qsa('[data-kind]',out)){card.dataset.stageKind=card.dataset.kind;delete card.dataset.kind;}
     const saveButton=qs('[data-save]',out);if(saveButton){saveButton.removeAttribute('data-save');saveButton.setAttribute('data-stage-save','');}
