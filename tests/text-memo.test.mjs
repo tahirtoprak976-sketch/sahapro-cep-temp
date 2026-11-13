@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {memoizeText} from '../js/text-memo.js';
+import {foldTr} from '../js/parser.js';
+let calls=0;const memo=memoizeText(value=>{calls++;return String(value??'').toLocaleLowerCase('tr-TR');});
+assert.equal(memo('İŞ IĞDIR'),'iş ığdır');assert.equal(memo('İŞ IĞDIR'),'iş ığdır');assert.equal(calls,1);
+for(let i=0;i<600;i++)memo('TEST_'+i);const before=calls;assert.equal(memo('İŞ IĞDIR'),'iş ığdır');assert.equal(calls,before+1,'bounded cache evicts an old entry instead of retaining all messages');
+const large='İ'.repeat(2049),largeBefore=calls;assert.equal(memo(large),'i'.repeat(2049));memo(large);assert.equal(calls,largeBefore+2,'large messages are not retained');
+let nonString=0;const typed=memoizeText(v=>{nonString++;return v===0?'zero':v==null?'empty':String(v);});assert.equal(typed(0),'zero');assert.equal(typed(0),'zero');assert.equal(nonString,2,'non-string argument semantics stay with original function');
+assert.equal(foldTr('Çatıcı (Ulaş) İŞ 3CX “A”'),'catici (ulas) is 3cx “a”');assert.equal(foldTr(0),'0');assert.equal(foldTr(null),'');
+const first={id:'TEST_A',name:'İŞ'},second={id:'TEST_B',name:'İŞ'};const lookup=rows=>rows.find(r=>foldTr(r.name)===foldTr('iş'))?.id;assert.equal(lookup([first]),'TEST_A');assert.equal(lookup([second]),'TEST_B');first.name='Başka';assert.equal(lookup([first]),undefined,'only text is cached; changed records and another DB cannot reuse prior entity IDs');
+console.log('bounded transient text normalization; eviction, long-input bypass, Turkish semantics and fresh entity lookup PASS');
