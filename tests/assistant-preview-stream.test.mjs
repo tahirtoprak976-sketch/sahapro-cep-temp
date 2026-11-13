@@ -29,3 +29,5 @@ const worker=WorkerStub.last;assert.equal(worker.request.kind,'prepare');assert.
 worker.send({kind:'packet',id:99,...encodePreview(packets[0].value)});assert.equal(shown.length,1,'unrelated generation cannot replace preview');
 const result=controller.finish();assert.equal(result,shown[0]);assert.equal(worker.terminated,true);worker.send({kind:'packet',id:1,...encodePreview(packets[0].value)});assert.equal(shown.length,1,'late worker cannot draw after final model or cancellation');
 console.log('request worker is isolated, terminated at final result, and rejects stale packets PASS');
+
+assert.equal(quickPreview('[12/11/2026 19:00] Salih: '+ 'x'.repeat(2001)+' 2 saat çalıştı',{d:fastData,today:'2026-11-12'}),null,'large first blocks stay off the synchronous fast path');

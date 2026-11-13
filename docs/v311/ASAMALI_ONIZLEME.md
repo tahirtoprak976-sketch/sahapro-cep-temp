@@ -32,3 +32,14 @@ kalması; eski tarih/yanlış plaka/gelecek iş korumaları; geç paket reddi;
 gerçek Chromium Worker; model öncesi kilitli kart; model sonrası aynı alan
 düğümünün korunması ve elle düzenlenebilmesi; yeni tahsilatın işaretsiz
 çıkması; iptalde önizlemenin kaldırılması. Model yanıtları taklittir.
+
+## Yerel geliştirme ölçümü
+
+203 Node test dosyası geçti. Mevcut turn, large_batch, workflow, evening,
+receipts ve workspace109 tarayıcı senaryoları değiştirilmeden geçti. Gerçek
+0ff9edad servis çalışanından yükseltmede kayıt/taslak/orijinal dosya baytları
+korundu. Yeni önizleme testi 320/360/390 pikselde görünür sonuç alanını ölçer;
+üst sınırı ve yüksekliği yanıt öncesi/sonrası aynıdır. Ayrı geliştirme
+koşularında basit cümlenin ilk önizlemesi 10–14 ms aralığında görüldü. Bu,
+fiziksel Android gecikmesi veya bütün sayfanın CLS ölçümü değildir. Uzun ilk
+bloklar hızlı senkron yolu kullanmaz; arka plandaki okuyucuya bırakılır.

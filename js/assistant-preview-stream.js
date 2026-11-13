@@ -8,7 +8,7 @@ export function* previewPackets(text,{d,today,rules='',cancelled=()=>false}={}){
  const blocks=offlineBlocks(text,today),policy=readBatchPolicy(text,today),directive=[policy.date?'Tüm işler '+policy.date+' olsun.':'',policy.deferPrices?'Fiyatlar beklesin.':''].filter(Boolean).join('\n');let count=0;
  for(let index=0;index<blocks.length;index++){
   if(cancelled())return;const value=offlinePlan([directive,blocks[index].raw].filter(Boolean).join('\n'),{d,today,rules});if(!value)continue;
-  count+=value.works.length+value.fuel.length;if(count>100)throw Error('Bir önizlemede en fazla100iş/yakıt kartı hazırlanır.');
+  count+=value.works.length+value.fuel.length;if(count>100)throw Error('Bir önizlemede en fazla 100 iş/yakıt kartı hazırlanır.');
   yield {index,total:blocks.length,value};
  }
 }
@@ -30,7 +30,7 @@ export function samePreviewShape(before,after){
 // It intentionally declines ambiguous, payment, fuel and future-work wording.
 export function quickPreview(text,{d,today,rules=''}={}){
  if(typeof text!=='string'||text.length>500000||/SP1:/.test(text))return null;
- const block=offlineBlocks(text,today)[0];if(!block)return null;
+ const block=offlineBlocks(text,today)[0];if(!block||block.body.length>2000)return null;
  const norm=s=>foldTr(String(s||'')).replace(/[^\p{L}\p{N}]+/gu,' ').trim().replace(/\s+/g,' '),body=norm(block.body);
  if(/\b(?:tl|lira|avans|maas|mesai|ucret|odeme|tahsilat|teklif|calisacak|yapilacak|yapacak|talep|plan|izin|rapor|mazot|motorin|benzin|akaryakit)\b/.test(body)||/₺/.test(block.body))return null;
  const quantities=[...block.body.matchAll(/(?<![\p{L}\d])(\d+(?:[.,]\d+)?)\s*(saat|sa|sefer|yevmiye|ton|m3|m³|adet)(?![\p{L}\d])/giu)];if(quantities.length!==1)return null;

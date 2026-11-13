@@ -2,8 +2,8 @@
 import json,sys,uuid
 from playwright.sync_api import sync_playwright
 U=sys.argv[1]if len(sys.argv)>1 else'http://localhost:8891/'
-with sync_playwright()as w:
- b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':360,'height':850},service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')");p=c.new_page();errors=[];calls=[];pending=[];p.on('pageerror',lambda e:errors.append(str(e)))
+def run(w,width):
+ b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':width,'height':850},service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')");p=c.new_page();errors=[];calls=[];pending=[];p.on('pageerror',lambda e:errors.append(str(e)))
  def model(r):
   calls.append(r.request.post_data);pending.append(r)
  c.route('https://generativelanguage.googleapis.com/**',model);p.goto(U+'index.html?db=TEST_hybrid311_'+uuid.uuid4().hex+'#/akilli-asistan');p.wait_for_function("()=>document.querySelector('[data-msg]')&&!document.querySelector('[data-msg]').readOnly")
@@ -26,6 +26,8 @@ with sync_playwright()as w:
  assert p.evaluate("()=>window.__stageQuantity===document.querySelector('[data-kind=work] [name=quantity]')"),'existing field must survive final validated render'
  p.evaluate("async()=>{await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));}")
  timing['finalGeometry']=p.evaluate("()=>({top:document.querySelector('[data-out]').getBoundingClientRect().top,height:document.querySelector('[data-out]').getBoundingClientRect().height})")
+ assert abs(timing['top']-timing['finalGeometry']['top'])<0.01,timing
+ assert timing['height']==timing['finalGeometry']['height'],timing
  p.locator('[data-kind=work] [data-record-summary]').click()
  p.locator('[data-kind=work] [name=quantity]').fill('4')
  assert p.locator('[data-kind=work] [name=quantity]').input_value()=='4'
@@ -49,4 +51,7 @@ with sync_playwright()as w:
  pending[-1].abort('aborted')
  assert p.evaluate("async()=>await(await import('./js/db.js')).dumpAll()")==before
  assert not errors,errors
- print(json.dumps({'lockedPreviewBeforeModel':True,'sameFieldNodeAfterValidation':True,'finalFieldEditable':True,'sensitiveFallbackUnchecked':True,'cancellationClearsPreview':True,'moneyNotGuessed':True,'businessWrites':0,'desktopTimingOnly':timing,'cannedModelCalls':len(calls),'pageErrors':errors}),flush=True);b.close()
+ print(json.dumps({'lockedPreviewBeforeModel':True,'sameFieldNodeAfterValidation':True,'finalFieldEditable':True,'sensitiveFallbackUnchecked':True,'cancellationClearsPreview':True,'moneyNotGuessed':True,'businessWrites':0,'width':width,'desktopTimingOnly':timing,'cannedModelCalls':len(calls),'pageErrors':errors}),flush=True);b.close()
+
+with sync_playwright()as w:
+ for width in (320,360,390):run(w,width)
