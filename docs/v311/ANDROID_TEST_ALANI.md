@@ -9,3 +9,7 @@ Telefon sınavı: anahtar yalnız bellekte; açık izin, dinamik model seçimi v
 Otomatik doğrulama: canlı dosyaların SHA karşılaştırması; adayın telefon dosyalarının birebir kaynak karşılaştırması; uygulama iş kodunda yalnız depolama adı değişikliği; aktarım payload'larının dışlanması; gerçek üretilen telefon paketinin tarayıcıda açılması; kök servis çalışanıyla birlikte örnek alanın açılması ve çevrimdışı yeniden açılmada test taslağının korunması.
 
 Ölçüm önce → sonra: kök canlı sürüm 3.10.13 → 3.10.13; canlı işletme dosyası değişikliği 0 → 0. Dondurulmuş toplu ölçüm 15/38 hazır, 14 gereksiz soru, 3 yanlış alan; tekil 25/38, 3 soru, 3 yanlış alan. Bu PR ölçüm sonucunu değiştirmez. Gerçek Gemini ve fiziksel Android kabulü henüz yapılmadı; rapor gelmeden v3.11 ana yayını yapılmaz.
+
+## 14 Kasım — eksik rapordaki hata teşhisi
+
+İlk gerçek raporda r01 için sıfır yanıt ve yalnız FAILED kodu vardı. Bu bilgi gerçek nedeni ayırmaya yetmez. Telefon aracı artık ilk sağlayıcı/yanıt hatasını tek istek korumasının arkasında kaybetmez; HTTP kodu ve sabit Türkçe neden gösterir. Anahtar, URL veya ham sağlayıcı hata metni teşhise girmez. Yeni altı taklit HTTP testi reddedilen istek, ücretsiz erişim yokluğu ve çıktı sınırını ayırır; eski 102 taklit istek testi korunur. Ürün/kök uygulama v3.10.13, örnek uygulama v3.11.05 kalır. Corpus, iş kodu, veritabanı ve sayaçlar değiştirilmez veya sıfırlanmaz. Gerçek ilk hatanın kökü henüz bilinmiyor.
