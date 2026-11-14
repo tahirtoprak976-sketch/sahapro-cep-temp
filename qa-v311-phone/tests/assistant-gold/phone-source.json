@@ -1,5 +1,5 @@
 {
-  "sourceSha": "f0fdc3443a4dbe18282e897b7a64c85ff1af6e3c",
+  "sourceSha": "7cbd39031768f7655f71bd173e2f5c6b9faaaacc",
   "appVersion": "SAHAPRO SOLO v3.11.05",
   "files": {
     "js/ai-assist.js": "374f087750185082cd82f851c7f1784f9eb689eecf72f579ce4e9eeb6e45bbc7",
@@ -252,8 +252,8 @@
     "tests/assistant-gold/phone.html": "51475c940aa672bc19c12fafa30ef95aec69680b46234af0b4a73c5b72b2d63e",
     "tests/assistant-gold/phone.css": "1060190ffcc46199fb4d5ebef8cf61601125c514b80d439b3e523ff01fd33b10",
     "tests/assistant-gold/phone-page.mjs": "2bbe403c91e7c30596806a1cf081cdb4282baca73ffc1ae67656a607320b12e3",
-    "tests/assistant-gold/phone-engine.mjs": "285327b0280bdcc8cb73919cc8d900c897bf16755581e361c45d9ffb2adda2bc",
-    "tests/assistant-gold/phone-errors.mjs": "cf8ceb01fbc1b2c46e523ac05d84b12bca291f7d6b9506603647ea593b3fc61c",
+    "tests/assistant-gold/phone-engine.mjs": "04d0fff470b4328266fb4e94f4a50e8476ab3487a38fb9b256024489c6f59e0a",
+    "tests/assistant-gold/phone-errors.mjs": "9cd88de943308c234fa6b5883b86c9f39be65e586ad61ca14518a282ea5ea1ae",
     "tests/assistant-gold/phone-safety.mjs": "35542e34a74668074d33f4b76c50c66aa22b08d4bf7ec3b29b45fea95b4c1a32",
     "tests/assistant-gold/replay.mjs": "68085ed844b14f2d2c708e0a0068d628dd4d75fe6f718c28f6d717da247570d7",
     "tests/assistant-gold/cases.json": "cbf9e8b2962d0cb62c2fe50822fa4a42882f6d5df56061c73b40aa150d953395",
