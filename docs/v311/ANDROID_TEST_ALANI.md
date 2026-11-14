@@ -13,3 +13,9 @@ Otomatik doğrulama: canlı dosyaların SHA karşılaştırması; adayın telefo
 ## 14 Kasım — eksik rapordaki hata teşhisi
 
 İlk gerçek raporda r01 için sıfır yanıt ve yalnız FAILED kodu vardı. Bu bilgi gerçek nedeni ayırmaya yetmez. Telefon aracı artık ilk sağlayıcı/yanıt hatasını tek istek korumasının arkasında kaybetmez; HTTP kodu ve sabit Türkçe neden gösterir. Anahtar, URL veya ham sağlayıcı hata metni teşhise girmez. Yeni altı taklit HTTP testi reddedilen istek, ücretsiz erişim yokluğu ve çıktı sınırını ayırır; eski 102 taklit istek testi korunur. Ürün/kök uygulama v3.10.13, örnek uygulama v3.11.05 kalır. Corpus, iş kodu, veritabanı ve sayaçlar değiştirilmez veya sıfırlanmaz. Gerçek ilk hatanın kökü henüz bilinmiyor.
+
+## HTTP400 için uyumlu ilk istek
+
+Modelin kendisinin bildirdiği çıktı sınırı, zaten yapılan model listesi sorgusundan alınır; yeni sorgu eklenmez. İlk istek, SDK'nın mevcut şemasız JSON yoluyla gönderilir; JSON modu ve tam yerel doğrulama korunur. Sınav tek istek kuralı böylece normal şema alternatifiyle çatışmaz. Gerçek HTTP400'ün tam alan nedeni henüz kanıtlanmış değildir; bu sınıfı reddeden taklit modelde aynı test eski kodda kırmızı, yeni kodda yeşildir.
+
+Google teknik yanıtı anahtar ve API anahtarı kalıpları ayıklandıktan sonra yalnız telefon ekranında gösterilir, JSON rapora/IndexedDB'ye/sunucuya yazılmaz. Raporda kullanılan JSON yolu ve çıktı sınırı açıklanır. diag=3 giriş URL'leri aynı TEST sayacını korur. Ana ürün/kayıtlar/SW/corpus değişmez; gerçek Gemini yeniden denenene kadar başarı iddiası yoktur.
