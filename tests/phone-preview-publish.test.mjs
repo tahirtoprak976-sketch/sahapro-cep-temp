@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';import {readFileSync,readdirSync} from 'node:fs';import {execFileSync} from 'node:child_process';import {createHash} from 'node:crypto';import {join} from 'node:path';
-const base='c1a3c1668b1c4870fd5b5d5b020a3a2fdf3d8dfe',canonical='7cbd39031768f7655f71bd173e2f5c6b9faaaacc',qa='qa-v311-phone';
+const base='c1a3c1668b1c4870fd5b5d5b020a3a2fdf3d8dfe',canonical='3477543bdea63562dbda2ae7a7767a5727bde53c',qa='qa-v311-phone';
 const bytes=(ref,path)=>execFileSync('git',['show',ref+':'+path],{maxBuffer:16*1024*1024});
 const oldFiles=execFileSync('git',['ls-tree','-r','--name-only',base],{encoding:'utf8'}).trim().split('\n');
 for(const path of oldFiles.filter(p=>p.startsWith('js/')||p.startsWith('icons/')||['sw.js','index.html','styles.css','manifest.webmanifest'].includes(p)))assert.deepEqual(readFileSync(path),bytes(base,path),'live application file changed: '+path);
