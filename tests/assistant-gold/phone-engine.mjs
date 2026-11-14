@@ -1,3 +1,4 @@
+import {phoneFailure,phoneResponseIssue} from './phone-errors.mjs';
 import {buildHybridEnvelope} from '../../js/assistant-hybrid311.js';
 import {assistantContext,assistantSystem,assistantSchema} from '../../js/assistant-core.js';
 import {geminiJson,gatedFetch,assistantRequestScope} from '../../js/ai-gemini.js';
@@ -12,16 +13,18 @@ export async function runPhoneEvaluation({key,model,db,sourceSha,repeats=3,mode=
  const report={protocol:'v311-primary-json',sourceSha,mode:'live-owner-pseudonymized',realGemini:fetchImpl===globalThis.fetch,model,usedRealNames:false,savedBusinessRecords:0,safety:{measured:false,silentWrong:null,moneyGuesses:null,mandatoryChecked:null,cardCountErrors:null,runs:[]},runs:[],completed:false,limitations:['Yalnız takma adlı sınav, sentetik güvenlik mesajları ve ana JSON çıkarımı ölçülür; araçlı sohbet ve fiziksel telefon kabulü ayrıdır.','Güvenlik sayıları mevcut bağımsız altın kümeden hesaplanır; tüm kullanım biçimlerinin hatasızlığı anlamına gelmez.','Anahtar rapora eklenmez; eksik yanıtlar dondurulmuş yanıtla tamamlanmaz.']};
  let completed=0,stop=false;const total=phoneRequestCount(repeats,mode,includeSafety);
  const read=async(d,text,today,rules='')=>{
-  let requests=0;const http=gatedFetch(db,fetchImpl),once=async(url,init)=>{if(requests++)throw Object.assign(Error('Örnek başına tek istek.'),{code:'SAMPLE_ONCE'});return http(url,init);};
+  let requests=0,originalIssue=null;const http=gatedFetch(db,fetchImpl),once=async(url,init)=>{if(requests++)throw Object.assign(Error('Örnek başına tek istek.'),{code:'SAMPLE_ONCE'});return http(url,init);};
   const scope=assistantRequestScope({fetchImpl:once}),abort=()=>scope.abort();signal?.addEventListener('abort',abort,{once:true});
-  try{if(signal?.aborted)scope.abort();scope.check();const envelope=buildHybridEnvelope(d,text,today,rules),parts=[{text:JSON.stringify({context:assistantContext(envelope.data,today,text),phone_hints:envelope.hints,candidate_bounds:envelope.bounds,note:envelope.note,message:text})}];const response=await geminiJson(parts,{key,model,system:assistantSystem(rules),schema:assistantSchema(),fetchFn:scope.fetchFn});scope.check();completed++;return response;}finally{scope.dispose();signal?.removeEventListener('abort',abort);}
+  const observedFetch=async(...args)=>{const response=await scope.fetchFn(...args);const data=await response.clone().json().catch(()=>null);originalIssue=phoneResponseIssue(response.status,data)||originalIssue;return response;};
+  try{if(signal?.aborted)scope.abort();scope.check();const envelope=buildHybridEnvelope(d,text,today,rules),parts=[{text:JSON.stringify({context:assistantContext(envelope.data,today,text),phone_hints:envelope.hints,candidate_bounds:envelope.bounds,note:envelope.note,message:text})}];const response=await geminiJson(parts,{key,model,system:assistantSystem(rules),schema:assistantSchema(),fetchFn:observedFetch});scope.check();completed++;return response;}catch(error){throw originalIssue||phoneFailure(error);}finally{scope.dispose();signal?.removeEventListener('abort',abort);}
  };
- const failure=(run,sample,error)=>{run.failures.push({id:sample.id,code:['RATE','NO_FREE','LOCAL_LIMIT','NO_CONSENT','ASSISTANT_ABORT','ASSISTANT_TIMEOUT','MODEL_GONE'].includes(error.code)?error.code:'FAILED',message:'Canlı yanıt tamamlanamadı; eski yanıt kullanılmadı.'});stop=true;};
+ const failure=(run,sample,error)=>{run.failures.push({id:sample.id,...phoneFailure(error),...(Number.isInteger(error.httpStatus)?{httpStatus:error.httpStatus}:{}),...(error.providerStatus?{providerStatus:error.providerStatus}:{})});stop=true;};
  for(let repeat=1;repeat<=repeats&&!stop;repeat++)for(const batch of mode==='both'?[false,true]:[mode==='batch']){
   if(stop||signal?.aborted){stop=true;break;}
   const samples=batch?[source.cases.find(c=>c.id==='r00_tumu')]:cases,run={repeat,mode:batch?'batch':'single',responses:{},failures:[],measurement:null};report.runs.push(run);
   for(const sample of samples){
    if(signal?.aborted){stop=true;break;}
+   onProgress({completed,total,repeat,mode:run.mode,pending:sample.id,report});
    try{run.responses[sample.id]=await read(fixture(),message(sample),source.today_for_test,fixtureSettings().assistant_rules);}catch(error){failure(run,sample,error);}
    onProgress({completed,total,repeat,mode:run.mode,report});if(stop)break;
   }

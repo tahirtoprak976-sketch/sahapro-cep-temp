@@ -64,3 +64,9 @@ Paketin kendisi tarayıcı testinde açılır; yalnız kaynak klasörüne bakıl
 İlk bağımsız paket kontrolü ortak doğrulayıcının JSON katalog bağımlılığını
 buldu. `data/reference-dump-sites.json` aynı committen, hash doğrulamasıyla
 pakete dahil edilir; işletme kaydı veya şoför aktarım dosyası alınmaz.
+
+## İlk gerçek denemede teşhis boşluğu
+
+Sahibin paylaştığı raporda r01 için hiç yanıt bulunmuyor; kod yalnız FAILED. Dolayısıyla model, kota veya bağlantı hakkında kesin kök neden çıkarılamaz. Başarısız istekler de sayaçtan düştüğünden kullanım sayısı başarı sayısı değildir.
+
+Ölçüm aracı artık sınırlı/anahtarsız teşhis kaydeder: HTTP kodu, izinli sağlayıcı durum kodu ve sabit Türkçe açıklama. İç JSON/şema yeniden deneme girişiminin örnek başına tek istek korumasına takılması ilk HTTP hatasını gizlemez. Ek istek veya otomatik yeniden deneme eklenmez. Ham sağlayıcı hata metni, anahtar ve URL rapora/ekrana taşınmaz. Başarı hedefleri, corpus ve eski model yanıtları değişmez. Bu yalnız ölçüm aracı düzeltmesidir; uygulamanın sürümü, iş kodu ve servis çalışanı değişmez.
