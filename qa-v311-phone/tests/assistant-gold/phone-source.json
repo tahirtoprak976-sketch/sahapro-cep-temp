@@ -1,5 +1,5 @@
 {
-  "sourceSha": "e0f0605318f8e3bbabbdba29242f0bb0e7276db6",
+  "sourceSha": "7cbd39031768f7655f71bd173e2f5c6b9faaaacc",
   "appVersion": "SAHAPRO SOLO v3.11.05",
   "files": {
     "js/ai-assist.js": "374f087750185082cd82f851c7f1784f9eb689eecf72f579ce4e9eeb6e45bbc7",
@@ -249,10 +249,11 @@
     "js/yard-core.js": "82223a9a2aff8494bf96de1de1f701a687d9fccab3def5e2a24dfb2cfb6c605a",
     "js/yard.js": "4c24f9e05894cec1b3b3dd2fed48a4793f10c62a38a21f8448ab91c59b8e7550",
     "data/reference-dump-sites.json": "7aaab5fad5081955dec391832be8bee1a458667ed8bfdf4fd7e55132e974682b",
-    "tests/assistant-gold/phone.html": "cd09e8ef94325c261506d3457f5b66aea68bdebdb7b45e83758a4429a54ad737",
+    "tests/assistant-gold/phone.html": "51475c940aa672bc19c12fafa30ef95aec69680b46234af0b4a73c5b72b2d63e",
     "tests/assistant-gold/phone.css": "1060190ffcc46199fb4d5ebef8cf61601125c514b80d439b3e523ff01fd33b10",
-    "tests/assistant-gold/phone-page.mjs": "386faf4496b77adb03df1e4db77f38c9c7bda06ad376bed27c93a94b7d49a1d7",
-    "tests/assistant-gold/phone-engine.mjs": "d21399a08843dffd82e88d76a265ed93df44d51db1e5890bc3ea680befb8ed01",
+    "tests/assistant-gold/phone-page.mjs": "2bbe403c91e7c30596806a1cf081cdb4282baca73ffc1ae67656a607320b12e3",
+    "tests/assistant-gold/phone-engine.mjs": "04d0fff470b4328266fb4e94f4a50e8476ab3487a38fb9b256024489c6f59e0a",
+    "tests/assistant-gold/phone-errors.mjs": "9cd88de943308c234fa6b5883b86c9f39be65e586ad61ca14518a282ea5ea1ae",
     "tests/assistant-gold/phone-safety.mjs": "35542e34a74668074d33f4b76c50c66aa22b08d4bf7ec3b29b45fea95b4c1a32",
     "tests/assistant-gold/replay.mjs": "68085ed844b14f2d2c708e0a0068d628dd4d75fe6f718c28f6d717da247570d7",
     "tests/assistant-gold/cases.json": "cbf9e8b2962d0cb62c2fe50822fa4a42882f6d5df56061c73b40aa150d953395",
