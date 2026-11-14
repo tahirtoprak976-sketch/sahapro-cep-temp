@@ -1,9 +1,10 @@
-import {phoneFailure} from './phone-errors.mjs?diag=2';
-import {runPhoneEvaluation,safePhoneReport,phoneRequestCount} from './phone-engine.mjs?diag=2';
+import {phoneFailure,phonePrivateDetail} from './phone-errors.mjs?diag=3';
+import {runPhoneEvaluation,safePhoneReport,phoneRequestCount} from './phone-engine.mjs?diag=3';
 import {listModels,gatedFetch,assistantRequestScope,usageTotal} from '../../js/ai-gemini.js';
 import {source} from './real-messages/fixture.mjs';
 import {APP_VERSION} from '../../js/core.js';
-const el=id=>document.getElementById(id);let report=null,controller=null,busy=false,config=null,db=null;
+const el=id=>document.getElementById(id);let report=null,controller=null,busy=false,config=null,db=null;const modelLimits=new Map();
+function technical(text){const box=el('technical');if(!box)return;box.hidden=!text;box.textContent=text?'Google teknik açıklaması (anahtar gizlendi; rapora yazılmaz): \n'+text:'';}
 function renderReport(value){
  const box=el('result');box.replaceChildren();if(!value)return;
  const title=document.createElement('p');title.textContent=value.completed?'İstenen yanıtların tümü alındı.':'Koşu eksik; tamamlanmış kabul edilmez.';box.append(title);
@@ -17,15 +18,15 @@ function lock(value){busy=value;for(const id of ['key','budget','model','repeats
 async function budget(){const n=Number(el('budget').value);if(!el('consent').checked||!el('key').value||!Number.isInteger(n)||n<1||n>100)throw Error('Önce anahtar, izin ve 1–100 günlük sınırı tamamlayın.');await db.metaSet('gemini_consent',true);await db.metaSet('gemini_daily_limit',n);}
 async function refreshUsage(){const d=new Date(),day=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');el('usage').textContent='Bu ayrı sınav ortamında bugün kullanılan: '+usageTotal(await db.metaGet('gemini_usage'),day)+' istek. Sayaç yeniden başlatınca sıfırlanmaz.';}
 async function action(kind){
- if(busy||!config||!db)return;controller=new AbortController();lock(true);
+ if(busy||!config||!db)return;controller=new AbortController();technical('');lock(true);
  try{
   await budget();
   if(kind==='models'){
    const scope=assistantRequestScope({fetchImpl:gatedFetch(db)}),abort=()=>scope.abort();controller.signal.addEventListener('abort',abort,{once:true});
-   try{const items=await listModels(el('key').value,scope.fetchFn);scope.check();el('model').replaceChildren(new Option('Model seçin',''),...items.map(m=>new Option(m.label,m.id)));el('progress').textContent='Modeller listelendi. Ücretsiz erişiminiz olan modeli seçin.';}finally{scope.dispose();controller.signal.removeEventListener('abort',abort);}
+   try{const items=await listModels(el('key').value,async(...args)=>{const response=await scope.fetchFn(...args),body=await response.clone().json().catch(()=>null);if(Array.isArray(body?.models)){modelLimits.clear();for(const item of body.models)if(Number.isInteger(item.outputTokenLimit)&&item.outputTokenLimit>0)modelLimits.set(String(item.name||'').replace(/^models\//,''),Math.min(16384,item.outputTokenLimit));}if(!response.ok)technical(phonePrivateDetail(body,el('key').value));return response;});scope.check();el('model').replaceChildren(new Option('Model seçin',''),...items.map(m=>new Option(m.label,m.id)));el('progress').textContent='Modeller listelendi. Ücretsiz erişiminiz olan modeli seçin.';}finally{scope.dispose();controller.signal.removeEventListener('abort',abort);}
   }else{
    if(!el('model').value)throw Error('Önce model seçin.');const repeats=Number(el('repeats').value);const currentDay=new Date(),day=currentDay.getFullYear()+'-'+String(currentDay.getMonth()+1).padStart(2,'0')+'-'+String(currentDay.getDate()).padStart(2,'0');if(Number(el('budget').value)-usageTotal(await db.metaGet('gemini_usage'),day)<phoneRequestCount(repeats,'both')){el('progress').textContent='Kalan günlük bütçe bu koşuya yetmiyor. Daha az tekrar seçin veya ertesi gün deneyin.';return;}el('progress').textContent='0 / '+phoneRequestCount(repeats,'both')+' · Canlı ölçüm başlıyor.';
-   report=await runPhoneEvaluation({key:el('key').value,model:el('model').value,db:{metaTxn:db.metaTxn,metaUpdate:db.metaUpdate},sourceSha:config.sourceSha,repeats,mode:'both',signal:controller.signal,onProgress:state=>{report=state.report;el('progress').textContent=state.completed+' / '+state.total+' yanıt · '+state.repeat+'. tur / '+state.mode+(state.pending?' · '+state.pending+' yanıtı bekleniyor…':'');}});
+   report=await runPhoneEvaluation({key:el('key').value,model:el('model').value,db:{metaTxn:db.metaTxn,metaUpdate:db.metaUpdate},sourceSha:config.sourceSha,repeats,mode:'both',maxOutputTokens:modelLimits.get(el('model').value)||16384,onDiagnostic:technical,signal:controller.signal,onProgress:state=>{report=state.report;el('progress').textContent=state.completed+' / '+state.total+' yanıt · '+state.repeat+'. tur / '+state.mode+(state.pending?' · '+state.pending+' yanıtı bekleniyor…':'');}});
    renderReport(report);el('progress').textContent=report.completed?'Canlı yanıtlar alındı. Sonuç ve ham yanıtları indirebilirsiniz.':'Koşu durdu veya eksik kaldı. Eksik rapor indirilebilir; eski yanıt kullanılmadı.';
   }
  }catch(error){const failure=phoneFailure(error);el('progress').textContent=controller.signal.aborted?'Durduruldu; yeni istek gönderilmeyecek.':'İşlem tamamlanamadı · '+failure.code+': '+failure.message;}
