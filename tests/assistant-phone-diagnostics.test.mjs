@@ -6,3 +6,6 @@ await attempt(403,{error:{status:'PERMISSION_DENIED',message:'TEST_SECRET_123 PR
 await attempt(429,{error:{status:'RESOURCE_EXHAUSTED',message:'quota limit: 0 PRIVATE_PROVIDER_DETAIL'}},'NO_FREE');
 await attempt(200,{candidates:[{finishReason:'MAX_TOKENS',content:{parts:[{text:'{"works":['}]}}]},'OUTPUT_LIMIT');
 console.log('phone diagnostics PASS: original failure survives internal retry guard; exactly one call, no secret/provider text, no fabricated response');
+
+const {phoneFailure}=await import('./assistant-gold/phone-errors.mjs');assert.equal(phoneFailure(new TypeError('PRIVATE_PROVIDER_DETAIL')).code,'FAILED','a local TypeError is not proof of a network failure');
+let networkValues={gemini_consent:true,gemini_daily_limit:100};const networkDB={metaTxn:async(_,fn)=>{const r=fn(networkValues);Object.assign(networkValues,r.set);return r.result;},metaUpdate:async(k,fn)=>networkValues[k]=fn(networkValues[k])};const network=await runPhoneEvaluation({key:'TEST_SECRET_123',model:'TEST_model',sourceSha:'0'.repeat(40),db:networkDB,repeats:1,fetchImpl:async()=>{throw new TypeError('PRIVATE_PROVIDER_DETAIL');}});assert.equal(network.runs[0].failures[0].code,'NETWORK');assert.equal(network.runs[0].failures[0].stage,'provider');assert.ok(!safePhoneReport(network,'TEST_SECRET_123').includes('PRIVATE_PROVIDER_DETAIL'));
