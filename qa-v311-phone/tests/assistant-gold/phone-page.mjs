@@ -1,5 +1,5 @@
-import {phoneFailure} from './phone-errors.mjs';
-import {runPhoneEvaluation,safePhoneReport,phoneRequestCount} from './phone-engine.mjs';
+import {phoneFailure} from './phone-errors.mjs?diag=2';
+import {runPhoneEvaluation,safePhoneReport,phoneRequestCount} from './phone-engine.mjs?diag=2';
 import {listModels,gatedFetch,assistantRequestScope,usageTotal} from '../../js/ai-gemini.js';
 import {source} from './real-messages/fixture.mjs';
 import {APP_VERSION} from '../../js/core.js';
