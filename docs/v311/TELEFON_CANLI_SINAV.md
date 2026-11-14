@@ -70,3 +70,11 @@ pakete dahil edilir; işletme kaydı veya şoför aktarım dosyası alınmaz.
 Sahibin paylaştığı raporda r01 için hiç yanıt bulunmuyor; kod yalnız FAILED. Dolayısıyla model, kota veya bağlantı hakkında kesin kök neden çıkarılamaz. Başarısız istekler de sayaçtan düştüğünden kullanım sayısı başarı sayısı değildir.
 
 Ölçüm aracı artık sınırlı/anahtarsız teşhis kaydeder: HTTP kodu, izinli sağlayıcı durum kodu ve sabit Türkçe açıklama. İç JSON/şema yeniden deneme girişiminin örnek başına tek istek korumasına takılması ilk HTTP hatasını gizlemez. Ek istek veya otomatik yeniden deneme eklenmez. Ham sağlayıcı hata metni, anahtar ve URL rapora/ekrana taşınmaz. Başarı hedefleri, corpus ve eski model yanıtları değişmez. Bu yalnız ölçüm aracı düzeltmesidir; uygulamanın sürümü, iş kodu ve servis çalışanı değişmez.
+
+## HTTP400 sonrasında uyumlu tek JSON isteği
+
+İkinci gerçek deneme ilk mesajda REQUEST_REJECTED/HTTP400 döndü. Tam parametre nedeni hâlâ bilinmiyor. Bunun yanında kodda sınanabilir bir uyumsuzluk var: normal SDK'nın şemasız JSON alternatifi, sınavın tek HTTP kuralıyla kullanılamıyordu. Sınav artık ilk istekte mevcut şemasız JSON yolunu kullanır; responseMimeType=application/json ve sistemin alan tanımları korunur. Tüm yerel kart/alan/para doğrulamaları aynıdır. Model listesi yanıtındaki outputTokenLimit bellekte tutulup çıktı üst sınırı buna göre daraltılır; yeni model sorgusu eklenmez, isim sabitlenmez.
+
+Rapor transport bölümünde providerSchema=false ve kullanılan sınırı açıkça yazar; dondurulmuş yanıtlar/ölçütler yenilenmez veya değiştirilmez. Yerel doğrulama gevşetilmez. Bu değişikliğin gerçek Gemini'de sorunu çözdüğü henüz denenmedi.
+
+Google teknik açıklaması, tam anahtar ve API anahtarı kalıpları ayıklandıktan sonra yalnız telefon ekranında gösterilebilir. Bu teknik metin JSON rapora, IndexedDB'ye veya sunucuya yazılmaz. Raporun sabit hata kodları ve bütçe/izin/90s/tek istek korumaları sürer. Giriş modülleri diag=3 ile eski önbellekten ayrılır; aynı TEST sayacı kullanılır.
