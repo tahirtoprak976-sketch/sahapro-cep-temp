@@ -1,4 +1,4 @@
-import {phoneFailure,phoneResponseIssue} from './phone-errors.mjs';
+import {phoneFailure,phoneResponseIssue} from './phone-errors.mjs?diag=2';
 import {buildHybridEnvelope} from '../../js/assistant-hybrid311.js';
 import {assistantContext,assistantSystem,assistantSchema} from '../../js/assistant-core.js';
 import {geminiJson,gatedFetch,assistantRequestScope} from '../../js/ai-gemini.js';
