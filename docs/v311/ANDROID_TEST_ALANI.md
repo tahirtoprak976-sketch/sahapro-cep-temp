@@ -19,3 +19,9 @@ Otomatik doğrulama: canlı dosyaların SHA karşılaştırması; adayın telefo
 Modelin kendisinin bildirdiği çıktı sınırı, zaten yapılan model listesi sorgusundan alınır; yeni sorgu eklenmez. İlk istek, SDK'nın mevcut şemasız JSON yoluyla gönderilir; JSON modu ve tam yerel doğrulama korunur. Sınav tek istek kuralı böylece normal şema alternatifiyle çatışmaz. Gerçek HTTP400'ün tam alan nedeni henüz kanıtlanmış değildir; bu sınıfı reddeden taklit modelde aynı test eski kodda kırmızı, yeni kodda yeşildir.
 
 Google teknik yanıtı anahtar ve API anahtarı kalıpları ayıklandıktan sonra yalnız telefon ekranında gösterilir, JSON rapora/IndexedDB'ye/sunucuya yazılmaz. Raporda kullanılan JSON yolu ve çıktı sınırı açıklanır. diag=3 giriş URL'leri aynı TEST sayacını korur. Ana ürün/kayıtlar/SW/corpus değişmez; gerçek Gemini yeniden denenene kadar başarı iddiası yoktur.
+
+## Dakikada 15 istek sınırı
+
+Gerçek ekranın bildirdiği 15/dakika sınırı için sınavın gönderimleri en az 6 saniye ayrılır. Bekleme ekranda görünür ve Durdur/izin iptaliyle kesilir. Bütçe, bekleme tamamlandıktan sonra ayrılır; beklerken iptal yeni istek tüketmez. Tek örnek isteği, günlük sınır, izin ve 90 saniye sınırı korunur. Otomatik yeniden deneme yoktur. Aynı TEST sayacı ve gold verileri korunur; giriş diag=4. Üretilen sentetik fişlerin tarihi test gününe ilerler; gerçek kayıtlara dokunulmaz.
+
+Mevcut testlerin doğruluk/çağrı/iptal/bütçe beklentileri aynıdır. Sahte taşıyıcılı Node testleri beklemeyi açıkça sıfırlar; eski tarayıcı testleri resmî Playwright sanal saatinde her sahte yanıt için 6 saniye ilerler. Yeni test gerçek 15/dakika sınırlı taklitle 33 örneği tamamlar ve bekleme iptalinde sonraki API çağrısının/bütçe ayrımının olmadığını doğrular. Gerçek Gemini ve fiziksel Android henüz yeniden denenmedi.
