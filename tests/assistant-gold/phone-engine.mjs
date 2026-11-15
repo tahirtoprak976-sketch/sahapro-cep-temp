@@ -1,4 +1,4 @@
-import {phoneFailure,phoneResponseIssue,phonePrivateDetail} from './phone-errors.mjs?diag=3';
+import {phoneFailure,phoneResponseIssue,phonePrivateDetail} from './phone-errors.mjs?diag=4';
 import {buildHybridEnvelope} from '../../js/assistant-hybrid311.js';
 import {assistantContext,assistantSystem} from '../../js/assistant-core.js';
 import {geminiJson,gatedFetch,assistantRequestScope} from '../../js/ai-gemini.js';
@@ -8,13 +8,21 @@ import {phoneSafetyCases,phoneSafetyFixture,measurePhoneSafety} from './phone-sa
 export const phoneSampleCount=(repeats,mode)=>(mode==='both'?cases.length+1:mode==='batch'?1:cases.length)*repeats;
 export const phoneRequestCount=(repeats,mode,safety=true)=>phoneSampleCount(repeats,mode)+(safety?phoneSafetyCases.length*repeats:0);
 export function safePhoneReport(report,key=''){const text=JSON.stringify(report,null,2);if(key&&text.includes(key))throw Error('Gizli anahtar içeren rapor indirilemez.');return text;}
-export async function runPhoneEvaluation({key,model,db,sourceSha,repeats=3,mode='both',includeSafety=true,signal,onProgress=()=>{},onDiagnostic=()=>{},maxOutputTokens=16384,fetchImpl=globalThis.fetch}){
+export const PHONE_REQUEST_INTERVAL_MS=6000;
+const aborted=()=>Object.assign(new Error('Bekleme durduruldu.'),{name:'AbortError',code:'ASSISTANT_ABORT'});
+export function phoneWait(ms,signal){return new Promise((resolve,reject)=>{if(signal?.aborted){reject(aborted());return;}const cancel=()=>{clearTimeout(timer);signal?.removeEventListener('abort',cancel);reject(aborted());},timer=setTimeout(()=>{signal?.removeEventListener('abort',cancel);resolve();},ms);signal?.addEventListener('abort',cancel,{once:true});});}
+export function createPhonePacer({intervalMs=PHONE_REQUEST_INTERVAL_MS,now=()=>performance.now(),delay=phoneWait}={}){
+ if(!Number.isInteger(intervalMs)||intervalMs<0||intervalMs>60000)throw Error('Geçerli istek aralığı gerekir.');let last=null;
+ return {sent(){last=now();},async wait(signal,onWait=()=>{}){while(true){if(signal?.aborted)throw aborted();const remaining=last===null?0:Math.ceil(intervalMs-(now()-last));if(remaining<=0)return;onWait(remaining);await delay(remaining,signal);}}};
+}
+export async function runPhoneEvaluation({key,model,db,sourceSha,repeats=3,mode='both',includeSafety=true,signal,onProgress=()=>{},onDiagnostic=()=>{},maxOutputTokens=16384,requestIntervalMs=PHONE_REQUEST_INTERVAL_MS,pacingClock,pacingDelay,fetchImpl=globalThis.fetch}){
  if(!Number.isInteger(maxOutputTokens)||maxOutputTokens<1||maxOutputTokens>16384)throw Error('Geçerli model çıktı sınırı gerekir.');
  if(!key||!/^[a-z0-9._-]+$/i.test(model||'')||!Number.isInteger(repeats)||repeats<1||repeats>3||!['single','batch','both'].includes(mode)||!/^[a-f0-9]{40}$/i.test(sourceSha||''))throw Error('Anahtar, model ve geçerli sınav kaynağı gerekir.');
- const report={protocol:'v311-primary-json',transport:{jsonMode:true,providerSchema:false,maxOutputTokens},sourceSha,mode:'live-owner-pseudonymized',realGemini:fetchImpl===globalThis.fetch,model,usedRealNames:false,savedBusinessRecords:0,safety:{measured:false,silentWrong:null,moneyGuesses:null,mandatoryChecked:null,cardCountErrors:null,runs:[]},runs:[],completed:false,limitations:['Yalnız takma adlı sınav, sentetik güvenlik mesajları ve ana JSON çıkarımı ölçülür; araçlı sohbet ve fiziksel telefon kabulü ayrıdır.','Güvenlik sayıları mevcut bağımsız altın kümeden hesaplanır; tüm kullanım biçimlerinin hatasızlığı anlamına gelmez.','Anahtar rapora eklenmez; eksik yanıtlar dondurulmuş yanıtla tamamlanmaz.']};
+ const pacer=createPhonePacer({intervalMs:requestIntervalMs,...(pacingClock?{now:pacingClock}:{}),...(pacingDelay?{delay:pacingDelay}:{})});
+ const report={pacing:{minRequestIntervalMs:requestIntervalMs},protocol:'v311-primary-json',transport:{jsonMode:true,providerSchema:false,maxOutputTokens},sourceSha,mode:'live-owner-pseudonymized',realGemini:fetchImpl===globalThis.fetch,model,usedRealNames:false,savedBusinessRecords:0,safety:{measured:false,silentWrong:null,moneyGuesses:null,mandatoryChecked:null,cardCountErrors:null,runs:[]},runs:[],completed:false,limitations:['Yalnız takma adlı sınav, sentetik güvenlik mesajları ve ana JSON çıkarımı ölçülür; araçlı sohbet ve fiziksel telefon kabulü ayrıdır.','Güvenlik sayıları mevcut bağımsız altın kümeden hesaplanır; tüm kullanım biçimlerinin hatasızlığı anlamına gelmez.','Anahtar rapora eklenmez; eksik yanıtlar dondurulmuş yanıtla tamamlanmaz.']};
  let completed=0,stop=false;const total=phoneRequestCount(repeats,mode,includeSafety);
- const read=async(d,text,today,rules='')=>{
-  let requests=0,originalIssue=null,stage='prepare',lastStatus=null;const http=gatedFetch(db,async(...args)=>{try{return await fetchImpl(...args);}catch{throw phoneFailure({code:'NETWORK'});}}),once=async(url,init)=>{if(requests++)throw Object.assign(Error('Örnek başına tek istek.'),{code:'SAMPLE_ONCE'});return http(url,init);};
+ const read=async(d,text,today,rules='',state={})=>{
+  let requests=0,originalIssue=null,stage='prepare',lastStatus=null;const http=gatedFetch(db,async(...args)=>{try{pacer.sent();onProgress({completed,total,...state,report});return await fetchImpl(...args);}catch{throw phoneFailure({code:'NETWORK'});}}),once=async(url,init)=>{if(requests++)throw Object.assign(Error('Örnek başına tek istek.'),{code:'SAMPLE_ONCE'});await pacer.wait(init?.signal,waitMs=>onProgress({completed,total,...state,waitMs,report}));return http(url,init);};
   const scope=assistantRequestScope({fetchImpl:once}),abort=()=>scope.abort();signal?.addEventListener('abort',abort,{once:true});
   const observedFetch=async(...args)=>{const response=await scope.fetchFn(...args);lastStatus=response.status;const data=await response.clone().json().catch(()=>null);originalIssue=phoneResponseIssue(response.status,data)||originalIssue;if(!response.ok){const detail=phonePrivateDetail(data,key);if(detail)onDiagnostic(detail);}return response;};
   try{if(signal?.aborted)scope.abort();scope.check();const envelope=buildHybridEnvelope(d,text,today,rules),parts=[{text:JSON.stringify({context:assistantContext(envelope.data,today,text),phone_hints:envelope.hints,candidate_bounds:envelope.bounds,note:envelope.note,message:text})}];stage='provider';const response=await geminiJson(parts,{key,model,system:assistantSystem(rules),schema:null,maxTokens:maxOutputTokens,fetchFn:observedFetch});scope.check();completed++;return response;}catch(error){throw {...(originalIssue||phoneFailure(stage==='prepare'&&!error.code?{code:'LOCAL_PREPARE'}:error)),stage,...(lastStatus?{httpStatus:lastStatus}:{}),...(['TypeError','RangeError','SyntaxError','Error','AbortError'].includes(error.name)?{errorType:error.name}:{})};}finally{scope.dispose();signal?.removeEventListener('abort',abort);}
@@ -26,7 +34,7 @@ export async function runPhoneEvaluation({key,model,db,sourceSha,repeats=3,mode=
   for(const sample of samples){
    if(signal?.aborted){stop=true;break;}
    onProgress({completed,total,repeat,mode:run.mode,pending:sample.id,report});
-   try{run.responses[sample.id]=await read(fixture(),message(sample),source.today_for_test,fixtureSettings().assistant_rules);}catch(error){failure(run,sample,error);}
+   try{run.responses[sample.id]=await read(fixture(),message(sample),source.today_for_test,fixtureSettings().assistant_rules,{repeat,mode:run.mode,pending:sample.id});}catch(error){failure(run,sample,error);}
    onProgress({completed,total,repeat,mode:run.mode,report});if(stop)break;
   }
   if(!run.failures.length&&Object.keys(run.responses).length===samples.length){run.measurement=measureReal({batch,responses:run.responses});run.measurement.realGemini=report.realGemini;run.measurement.proposalOrigin={origin:'Live response transport; provider authenticity checked separately',model,repeat};run.measurement.limitations=[...report.limitations];}
@@ -34,7 +42,7 @@ export async function runPhoneEvaluation({key,model,db,sourceSha,repeats=3,mode=
  }
  if(includeSafety)for(let repeat=1;repeat<=repeats&&!stop;repeat++){
   if(signal?.aborted){stop=true;break;}const run={repeat,responses:{},failures:[],measurement:null};report.safety.runs.push(run);
-  for(const sample of phoneSafetyCases){if(signal?.aborted){stop=true;break;}try{run.responses[sample.id]=await read(phoneSafetyFixture(sample),sample.message,'2026-11-02');}catch(error){failure(run,sample,error);}onProgress({completed,total,repeat,mode:'safety',report});if(stop)break;}
+  for(const sample of phoneSafetyCases){if(signal?.aborted){stop=true;break;}try{run.responses[sample.id]=await read(phoneSafetyFixture(sample),sample.message,'2026-11-02','',{repeat,mode:'safety',pending:sample.id});}catch(error){failure(run,sample,error);}onProgress({completed,total,repeat,mode:'safety',report});if(stop)break;}
   if(!run.failures.length&&Object.keys(run.responses).length===phoneSafetyCases.length)run.measurement=measurePhoneSafety(run.responses);
  }
  if(includeSafety&&!stop&&report.safety.runs.length===repeats&&report.safety.runs.every(r=>r.measurement)){
