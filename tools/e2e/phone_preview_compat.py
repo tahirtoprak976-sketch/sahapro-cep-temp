@@ -2,11 +2,13 @@
 import sys,json,subprocess,tempfile,zipfile,threading,functools,pathlib,uuid
 from http.server import ThreadingHTTPServer,SimpleHTTPRequestHandler
 from playwright.sync_api import sync_playwright
+from datetime import datetime,timezone
 sys.argv=[sys.argv[0],sys.argv[1].rstrip('/')+'/qa-v311-phone/','--package']
 U=sys.argv[1]
 with sync_playwright()as w:
- b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':360,'height':850},is_mobile=True,has_touch=True);p=c.new_page();calls=[];errors=[];p.on('pageerror',lambda e:errors.append(str(e)));reject=False
+ b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':360,'height':850},is_mobile=True,has_touch=True);p=c.new_page();p.clock.install(time=datetime(2026,11,15,12,tzinfo=timezone.utc));calls=[];errors=[];p.on('pageerror',lambda e:errors.append(str(e)));reject=False
  def provider(r):
+  if ":generateContent"in r.request.url and not False:p.clock.fast_forward(6000)
   calls.append(r.request.url)
   if ':generateContent'not in r.request.url:body={'models':[{'name':'models/gemini-test-free','displayName':'TEST model','outputTokenLimit':8192,'supportedGenerationMethods':['generateContent']}]};status=200
   else:
