@@ -78,3 +78,9 @@ Sahibin paylaştığı raporda r01 için hiç yanıt bulunmuyor; kod yalnız FAI
 Rapor transport bölümünde providerSchema=false ve kullanılan sınırı açıkça yazar; dondurulmuş yanıtlar/ölçütler yenilenmez veya değiştirilmez. Yerel doğrulama gevşetilmez. Bu değişikliğin gerçek Gemini'de sorunu çözdüğü henüz denenmedi.
 
 Google teknik açıklaması, tam anahtar ve API anahtarı kalıpları ayıklandıktan sonra yalnız telefon ekranında gösterilebilir. Bu teknik metin JSON rapora, IndexedDB'ye veya sunucuya yazılmaz. Raporun sabit hata kodları ve bütçe/izin/90s/tek istek korumaları sürer. Giriş modülleri diag=3 ile eski önbellekten ayrılır; aynı TEST sayacı kullanılır.
+
+## Ücretsiz dakikalık kota: 15 istek
+
+Gerçek ekran Google'ın dakikada 15 generateContent isteği sınırını bildirdi. Sınav artık gerçek gönderim başlangıçlarını en az 6 saniye ayırır (tek koşuda en fazla yaklaşık 10/dakika). Saat ölçümü monotondur; erken uyanan zamanlayıcı yeniden kontrol edilir. Bekleme, bütçe ayrılmadan önce gerçekleşir; iptal beklemeyi keser ve yeni istek/bütçe tüketmez. Aynı izin, günlük bütçe, tek örnek isteği ve 90 saniye sınırı sürer. Otomatik tekrar eklenmez. Başka cihazdaki aynı anahtar kullanımı veya Google'ın farklı kotaları ayrıca sınır koyabilir.
+
+Raporda minRequestIntervalMs yazılır, ekranda kota beklemesi görünür. Eski Node testleri sahte taşıyıcı için sıfır beklemeyi açıkça seçer; eski tarayıcı testleri resmî Playwright sanal saatini her sahte yanıt için 6 saniye ilerletir. Mevcut doğruluk, çağrı sayısı, bütçe, iptal ve anahtar beklentileri aynen korunur. Yeni test sahte 15/dakika sağlayıcısıyla eski kodda kırmızı, hızlandırılmış saatte yeni kodda yeşildir. Gerçek telefon ve Gemini yeniden denenmedi. Giriş diag=4; mevcut sayaç sıfırlanmaz.

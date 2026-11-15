@@ -2,6 +2,7 @@
 import json,sys,uuid,subprocess,tempfile,zipfile,threading,pathlib,functools
 from http.server import ThreadingHTTPServer,SimpleHTTPRequestHandler
 from playwright.sync_api import sync_playwright
+from datetime import datetime,timezone
 if '--package'not in sys.argv:
  with tempfile.TemporaryDirectory(prefix='sahapro-phone-browser-package-')as tmp:
   output=pathlib.Path(tmp)/'phone.zip';subprocess.check_call([sys.executable,'tools/preview/build_phone.py','--output',str(output)]);folder=pathlib.Path(tmp)/'site';folder.mkdir()
@@ -18,9 +19,10 @@ def await_default_sentinel(p):
 with sync_playwright()as w:
  b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':360,'height':850},is_mobile=True,has_touch=True,service_workers='allow',accept_downloads=True)
  c.add_init_script("window.__opened=[];window.__originalOpen=indexedDB.open.bind(indexedDB);indexedDB.open=function(name,...rest){window.__opened.push(String(name));return window.__originalOpen(name,...rest)}")
- p=c.new_page();errors=[];calls=[];held=[];hold=False;p.on('pageerror',lambda e:errors.append(str(e)))
+ p=c.new_page();p.clock.install(time=datetime(2026,11,15,12,tzinfo=timezone.utc));errors=[];calls=[];held=[];hold=False;p.on('pageerror',lambda e:errors.append(str(e)))
  if '--package'not in sys.argv:c.route('**/phone-source.json',lambda r:r.fulfill(status=200,content_type='application/json',body=json.dumps({'sourceSha':'0'*40,'appVersion':'SAHAPRO SOLO v3.11.05'})))
  def provider(r):
+  if ":generateContent"in r.request.url and not hold:p.clock.fast_forward(6000)
   calls.append({'url':r.request.url,'body':r.request.post_data or''})
   if hold and ':generateContent'in r.request.url:held.append(r);return
   if ':generateContent'not in r.request.url:reply={'models':[{'name':'models/gemini-test-free','displayName':'TEST model','supportedGenerationMethods':['generateContent']}]}
