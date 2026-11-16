@@ -17,7 +17,7 @@ Eski izin formları/arşivleri görüntülenir; yeni form ve onaylar yeni akış
 - Hesaplanan tarih/gün dökümü izin kaydında donar. Sonraki hafta tatili ayarı eski izin günlerini değiştirmez. Mazeret, rapor, ücretsiz ve yol izni yıllık bakiyeden düşmez; mazeretin hak sahibi/olay belgesi işletme sahibince kontrol edilir.
 - İzin ve rapor ile çalışma çakışması aynı yazma transaction'ında engellenir. Koruma tekil iş, toplu iş, asistan/şoför yazımı, eski personel hareketi ve import yollarını kapsar. İkame çalışma başka personelin açık kimliğiyle yazılır; izinli zimmet sahibine otomatik iş yazılmaz.
 - Fiilî ara dinlenmesi onaylanmadan net saat kesinleşmez. Mola yalnız önerilir; kullanılmayan mola kullanılmış gibi düşülmez. Günlük >11 saat, eksik mola, gece, genç çalışan, yarım gün tatil veya tatil çakışması kayıt üzerinde uyarılır. Gece/özel işkolu/denkleştirme/çocuk ve genç işçi rejimlerinde genel 11 saat eşiği uygunluk kanıtı değildir.
-- Haftalık 45 saat, daha kısa sözleşmede fazla sürelerle çalışma ve günlük aşım ayrı saf hesaplanır. UI eksik kayıtlı haftadan/yıldan kesin ücret veya mevzuata uygunluk üretmez; saptanan alt sınır ile 240/270 riskini gösterir. UBGT ve hafta tatili ücretleri otomatik kesin bordroya çevrilmez. Eski ücret tahakkukları değişmez.
+- Haftalık 45 saat, daha kısa sözleşmede fazla sürelerle çalışma ve günlük aşım ayrı saf hesaplanır. UI eksik kayıtlı haftadan/yıldan kesin ücret veya mevzuata uygunluk üretmez; saptanan alt sınır ile 240/270 riskini gösterir. UBGT ve hafta tatili ücretleri otomatik kesin bordroya çevrilmez. Eski ücret tahakkukları değişmez. Yedekten geri yüklenen tarihsel hareketler yeni hukuk onayı sayılmaz; eski kesinti/çakışma gerçeği otomatik düzeltilmez veya atılmaz. İmzalı mevcut dönem kilidi geri yüklemede de korunur.
 - Tek taraflı ceza/hasar Kesinti yazımı ortak kapıda kapalıdır. Belgeli avans mevcut Avans akışından izlenir; ikinci kez Kesinti açılarak düşülmez. Somut muvafakatlı mahsup için saf doğrulama API'si kişi/tutar/orijinal belge/hukuki inceleme/mahsup sınırı ister; genel bir checkbox ücret kesmeye yetki vermez. Bu sürüm genel otomatik muvafakatlı mahsup ekranı açmaz.
 - Fazla mesai muvafakat tarihi kaydedilebilir; tarih belge yerine geçmez. Yönetmelikteki 30 gün önce yazılı geri alma hakkı ekranda belirtilir; yıllık muvafakat zorunluluğu varsayılmaz.
 
@@ -25,7 +25,7 @@ Eski izin formları/arşivleri görüntülenir; yeni form ve onaylar yeni akış
 
 İzin talebi gelecekteki kullanım için “kullandım” demez. Dönüş sonrası kullanım ve bakiye mutabakatı ayrı PDF'dir; önceki devir + yeni hak - önceki kullanım/plan - bu izin = kalan açıkça yazılır. Yalnız işçi (ad/T.C./imza) ve işveren (imza/kaşe) olmak üzere iki imza alanı vardır. Tek sayfalık PDF gerçek motorla kontrol edilmiştir.
 
-Islak imzalı orijinal fotoğraf/PDF güvenli dosya yolundan geçer, sıkıştırılmaz, SHA-256 ve kaynak dosya bytes'ıyla atomik saklanır. İki imzayı insan kontrol eder; yüklemek veya hash eşleşmesi ıslak imzanın sahihliğinin otomatik kanıtı değildir. İmzalı kayıt/dosya ve imzalı aylık dönem değiştirilemez; yeni puantaj da eklenemez. Ayrı gerekçeli düzeltme/uyuşmazlık süreci olmadan kilit açılmaz.
+Islak imzalı orijinal fotoğraf/PDF güvenli dosya yolundan geçer, sıkıştırılmaz, SHA-256 ve kaynak dosya bytes'ıyla atomik saklanır. İki imzayı insan kontrol eder; yüklemek veya hash eşleşmesi ıslak imzanın sahihliğinin otomatik kanıtı değildir. İmzalı talep değişmeden kalır; dönüşteki kullanım mutabakatı ikinci ve ayrı, kaynak revizyonuna bağlı imzalı belge olarak eklenir. Her iki orijinal ekrandan indirilebilir. İmzasız kayıtlar aynı kimlik ve strict revizyon kontrolüyle düzenlenir; izin ikinci kez düşmez. Dönem kapatırken kullanıcının gördüğü bütün kayıt kimlik/revizyonları taze transaction ile karşılaştırılır; arada değişiklik olduysa kapatılmaz. İmzalı kayıt/dosya ve imzalı aylık dönem değiştirilemez; yeni puantaj da eklenemez. Ayrı gerekçeli düzeltme/uyuşmazlık süreci olmadan kilit açılmaz.
 
 ## Test sözleşmesi
 
@@ -36,3 +36,7 @@ Yerel saf testler, sentetik transaction/arşiv/yedek turu ve 320/360/768 mobil e
 ## Yayın / geri dönüş
 
 APP_VERSION=3.10.14, schema8, yeni SW cache ve bütün HR modülleri ASSETS'te. Kapılar geçmeden merge yok. Şema8 açıldıktan sonra schema7 kodunu doğrudan dağıtmak VersionError verir; geri dönüş gerektiğinde v8 depolarını/yedek desteğini koruyan uyumlu düzeltme veya revert PR kullanılmalı. Depolama/veritabanı silinmez; yeni kayıtlar atılmaz.
+
+## İlk CI ve düzeltme
+
+5615f91 üzerindeki 43888458439 koşusunda Node/HR/yükseltme kapıları geçti; tam kapı baseline hub ispatında ve payment_agenda okuma-hatası testinde kaldı. Hub aracı aday db.js dosyasını eski sunucuya enjekte ediyordu; artık hedef sunucunun aynı dosyasına yalnız aynı gecikme eklenir, orijinal beklentiler korunur. HR transaction sarmalayıcısı native metodu erken bağlayarak sonraki hata enjeksiyonunu görmüyordu; native metoda çağrı anında delegasyon yapıldı. Değişmemiş payment_agenda testi düzeltmeden sonra geçti. İlk başarısız tam koşu sayısı 1'dir; ikinci tam koşu da başarısızsa merge/yayın yapılmadan durulur.

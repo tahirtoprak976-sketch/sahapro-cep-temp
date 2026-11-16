@@ -2,8 +2,9 @@ import {legalDate,LEAVE_TYPES,attendanceHours} from './core.js';
 import {active,error} from './workflow.js';
 // Read-only validation; never repairs or assigns a year to a historical record.
 export async function validatePersonnelRestore(data,attachments,{pendingParts=false}={}){
- const people=new Set((data.personnel||[]).filter(active).map(p=>p.id));
+ const people=new Set((data.personnel||[]).filter(p=>!p.deleted_at).map(p=>p.id));
  const originals=new Map(attachments.map(a=>[a.id,a]));
+ const periods=new Map();for(const r of (data.puantaj_kayitlari||[]).filter(active)){const key=r.personelId+':'+String(r.tarih).slice(0,7),status=periods.get(key);if(status&&status!==r.donemKilitDurumu)error('RESTORE_LEGAL','Aynı dönemde açık ve imzalı kapalı kayıt birleştirilemez');periods.set(key,r.donemKilitDurumu);}
  for(const name of ['izin_kayitlari','puantaj_kayitlari'])for(const row of data[name]||[]){
   if(!row.id||!people.has(row.personelId))error('RESTORE_LEGAL','İzin/puantaj kaydının personeli eksik');
   if(name==='izin_kayitlari'){
@@ -23,6 +24,14 @@ export async function validatePersonnelRestore(data,attachments,{pendingParts=fa
    const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await a.blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
    if(hash!==ref.sha256)error('RESTORE_SIGNATURE','İmzalı orijinal belge özeti uyuşmuyor');
   }
+ }
+ for(const row of (data.documents||[]).filter(r=>r.legal_leave_ack)){
+  const leave=(data.izin_kayitlari||[]).find(r=>r.id===row.legal_leave_id),ref=row.imzaliBelgeData,a=originals.get(ref?.attachmentId);
+  if(!leave||leave.belgeDurumu!=='imzali_arsiv'||leave.imzaliBelgeData?.documentPurpose!=='talep'||row.legal_source_revision!==leave.rev||row.owner_id!==leave.personelId||legalDate(row.date)<leave.bitisTarihi||!/^([a-f0-9]{64})$/i.test(ref?.sha256??''))error('RESTORE_SIGNATURE','Kullanım mutabakatının kaynak izni/tarihi/özeti tutarsız');
+  if(!a){if(pendingParts)continue;error('RESTORE_SIGNATURE','Kullanım mutabakatının orijinali eksik');}
+  if(a.record_type!=='legal_leave_ack'||a.record_id!==row.id||!a.blob)error('RESTORE_SIGNATURE','Mutabakat dosyası başka kayda bağlı');
+  const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await a.blob.arrayBuffer()))].map(n=>n.toString(16).padStart(2,'0')).join('');
+  if(hash!==ref.sha256)error('RESTORE_SIGNATURE','Kullanım mutabakatı dosya özeti uyuşmuyor');
  }
  return true;
 }

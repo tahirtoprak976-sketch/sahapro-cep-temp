@@ -95,10 +95,11 @@ export function dayTypeEvidence(date,person,{calendar}={}){
  const holiday=Math.max(fixed,calendar?.holidays?.[date]??0),rest=(person.haftaTatiliGunleri??[0]).includes(new Date(date+'T12:00:00Z').getUTCDay());
  return {type:holiday?'ubgt':rest?'hafta_tatili':'normal',halfDay:holiday===.5,restAndHoliday:rest&&!!holiday,calendarKnown:calendar?.coveredYears?.includes(Number(date.slice(0,4)))===true};
 }
-export function validateAttendance(row,{leaves=[],legacyEvents=[],existing=[],overnight=false,breakConfirmed=false,personnel=[],current=null,calendar}={}){
+export function validateAttendance(row,{leaves=[],legacyEvents=[],existing=[],overnight=false,breakConfirmed=false,personnel=[],current=null,calendar,today}={}){
  assertUnlocked(current);
  if(!row.id||!personnel.some(p=>active(p)&&p.id===row.personelId))fail('PERSONNEL','Kayıtlı personel seçin');
  if(existing.some(r=>active(r)&&r.personelId===row.personelId&&r.donemKilitDurumu==='imzali_kapali'&&r.tarih?.slice(0,7)===row.tarih?.slice(0,7)))fail('SIGNED_LOCK','Bu personelin dönemi imzalı kapalı');
+ if(today&&legalDate(row.tarih)>legalDate(today))fail("FUTURE_SHIFT","Gelecekteki çalışma fiilî puantaj olarak kaydedilemez");
  const hours=attendanceHours(row,{overnight,breakConfirmed});
  const last=overnight?add(row.tarih,1):row.tarih;
  if(leaves.filter(active).some(r=>r.personelId===row.personelId&&r.baslangicTarihi<=last&&r.bitisTarihi>=row.tarih)||legacyEvents.filter(active).some(e=>e.personnel_id===row.personelId&&['İzin','Rapor'].includes(e.event_type)&&e.date>=row.tarih&&e.date<=last))fail('ON_LEAVE','Personel bu tarihte izinli/raporlu, puantaj girilemez');

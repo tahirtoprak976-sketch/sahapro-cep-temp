@@ -70,3 +70,7 @@ assert.deepEqual(L.validateAnnualSplit({pieces:[7],proposed:7,remainingAfter:0,m
 assert.deepEqual(L.validateAnnualSplit({pieces:[],proposed:7,remainingAfter:7,mode:'draft'}).warnings,['TEN_DAYS']);
 error('TEN_DAYS',()=>L.validateAnnualSplit({pieces:[7],proposed:7,remainingAfter:0,mode:'approval'}));
 error('FUTURE_ACTUAL',()=>L.validateLeave(annual,{person:p,calendar,availableDays:40,yearAllocation:allocation,mode:'actual',today:'2026-11-01'}));
+
+error('FUTURE_SHIFT',()=>L.validateAttendance({...shift,tarih:'2027-01-01'},{personnel:[p],today:'2026-11-16',breakConfirmed:true}));
+assert.equal(L.dayTypeEvidence('2026-11-15',p,{calendar}).type,'hafta_tatili');
+assert.equal(L.dayTypeEvidence('2026-03-20',p,{calendar}).type,'ubgt');

@@ -30,7 +30,7 @@ export function saveLeave(fields,{mode='draft',current=null}={}){
 export function saveAttendance(fields,{current=null}={}){
  const id=current?.id??uuid();return write('puantaj_kayitlari',id,current?.rev,'attendance',(data,fresh)=>{
   const row={...newAttendanceDraft(fields,{id}),geceYarisiAsiyor:fields.geceYarisiAsiyor===true,molaDogrulandi:fields.molaDogrulandi===true};
-  const valid=validateAttendance(row,{leaves:data.izin_kayitlari.filter(effectiveLeave),legacyEvents:data.personnel_events,existing:data.puantaj_kayitlari,personnel:data.personnel,current:fresh,calendar:legalCalendar,overnight:row.geceYarisiAsiyor,breakConfirmed:row.molaDogrulandi});
+  const valid=validateAttendance(row,{leaves:data.izin_kayitlari.filter(effectiveLeave),legacyEvents:data.personnel_events,existing:data.puantaj_kayitlari,personnel:data.personnel,current:fresh,calendar:legalCalendar,today:todayStr(),overnight:row.geceYarisiAsiyor,breakConfirmed:row.molaDogrulandi});
   if(!valid.confirmed)error('BREAK_CONFIRM','Fiilen kullanılan ara dinlenmesini doğrulayın');
   return newRecord({...valid,id,rev:(fresh?.rev??0)+1,created_at:fresh?.created_at??nowISO()});
  });
@@ -49,7 +49,7 @@ export async function archiveLeave(row,file,{signaturesVerified=false,documentPu
   tx.objectStore('attachments').add(attachment);return {...archived,rev:current.rev+1,updated_at:nowISO()};
  });
 }
-export async function closeAttendance(row,file,{signaturesVerified=false}={}){
+export async function closeAttendance(row,file,{signaturesVerified=false,expectedRows=[row]}={}){
  if(!signaturesVerified)error('SIGNATURE','İşçi ve işveren ıslak imzalarını kontrol edin');
  const attachment=await original(file,'puantaj_donemi',row.personelId+':'+row.tarih.slice(0,7));
  // Lock all existing rows and the entire person/month against later inserts.
@@ -58,6 +58,8 @@ export async function closeAttendance(row,file,{signaturesVerified=false}={}){
   const tx=connection.transaction(['puantaj_kayitlari','attachments','audit_log'],'readwrite');let failed,count=0;
   const q=tx.objectStore('puantaj_kayitlari').getAll();q.onsuccess=()=>{try{
    const records=q.result.filter(r=>active(r)&&r.personelId===row.personelId&&r.tarih.slice(0,7)===row.tarih.slice(0,7));
+   const scope=rows=>JSON.stringify(rows.map(r=>[r.id,r.rev]).sort((a,b)=>a[0].localeCompare(b[0])));
+   if(scope(records)!==scope(expectedRows))error('STALE','Dönemin kayıtları kontrolünüzden sonra değişti; yenileyip tekrar inceleyin');
    if(!records.length||records.some(r=>r.donemKilitDurumu==='imzali_kapali'))error('SIGNED_LOCK','Dönem boş veya zaten kapalı');
    // Per-row permit is captured by the transaction guard at validation time.
    permitPersonnelWrite(tx,{store:'puantaj_kayitlari',action:'close',period:row.tarih.slice(0,7),personelId:row.personelId});
@@ -73,4 +75,23 @@ export async function saveProfile(person,fields){
  if(fields.dogumTarihi>fields.iseGirisTarihi)error('BIRTH','Doğum tarihi işe girişten sonra olamaz');
  if(fields.izinHesapAcilisi){leaveLedger({izin_kayitlari:[],personnel_events:[]},{...person,...fields},fields.izinHesapAcilisi.asOf);}
  const db=await import('../db.js');return db.saveExisting('personnel',person,fields,'İzin/puantaj başlangıç bilgileri sahibi tarafından doğrulandı');
+}
+// A signed request stays immutable. Actual-use evidence is appended as a NEW
+// document after the leave, rather than unlocking or rewriting the request.
+export async function archiveUsageAcknowledgement(row,file,{signaturesVerified=false}={}){
+ if(!signaturesVerified)error('SIGNATURE','İşçi ve işverenin iki ıslak imzasını doğrulayın');
+ const id='legal-ack-'+row.id,attachment=await original(file,'legal_leave_ack',id),db=await import('../db.js'),connection=await db.openDB();
+ return new Promise((resolve,reject)=>{
+  const tx=connection.transaction(['izin_kayitlari','documents','attachments','audit_log'],'readwrite');
+  permitPersonnelWrite(tx,{store:'documents',id,action:'acknowledge',sourceLeaveId:row.id});let failed,out;
+  const q=tx.objectStore('izin_kayitlari').get(row.id);q.onsuccess=()=>{try{
+   const current=q.result;
+   if(!current||current.rev!==row.rev)error('STALE','İzin kaydı değişti; yenileyin');
+   if(current.belgeDurumu!=='imzali_arsiv'||current.imzaliBelgeData?.documentPurpose!=='talep'||todayStr()<current.bitisTarihi)error('FUTURE_ACK','Yalnız bitmiş, imzalı talebin kullanım mutabakatı ayrıca arşivlenebilir');
+   out=newRecord({id,category:'İzin Kullanım Mutabakatı',doc_no:'IZ-MUT-'+row.id.slice(0,8),date:todayStr(),owner_type:'personnel',owner_id:current.personelId,personnel_id:current.personelId,legal_leave_ack:true,legal_leave_id:current.id,legal_source_revision:current.rev,imzaliBelgeData:{attachmentId:attachment.id,sha256:attachment.src_sha256,documentPurpose:'kullanim_mutabakati'}});
+   tx.objectStore('documents').add(out);tx.objectStore('attachments').add(attachment);
+   tx.objectStore('audit_log').add(newRecord({entity:'documents',entity_id:id,action:'leave_usage_acknowledged',new_value:out,reason:'İmzalı talep değiştirilmeden kullanım ve bakiye mutabakatı eklendi'}));
+  }catch(e){failed=e;tx.abort()}};
+  tx.oncomplete=()=>resolve(out);tx.onabort=tx.onerror=()=>reject(failed??personnelTransactionError(tx)??tx.error??Error('Mutabakat kaydedilemedi'));
+ });
 }

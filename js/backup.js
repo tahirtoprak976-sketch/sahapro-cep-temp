@@ -486,6 +486,7 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
         contract_signature: "contracts",
         leave_signature: "documents",
         izin_kaydi: "izin_kayitlari",
+        legal_leave_ack: "documents",
         tank: "fuel_tank_movements",
         payable: "payables",
         work: "work_records",

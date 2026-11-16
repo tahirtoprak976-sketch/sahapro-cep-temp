@@ -4,7 +4,7 @@ import {leaveDocument} from '../js/personnel-legal/document.js';
 import {validatePersonnelRestore} from '../js/personnel-legal/restore.js';
 import {legalLeaveEvents,leaveSummary} from '../js/leave-core.js';
 import {marksOf} from '../js/payroll-core.js';
-const person={id:'TEST_P',name:'TEST Çalışan',iseGirisTarihi:'2020-01-01',dogumTarihi:'1990-01-01',izinHesapAcilisi:{asOf:'2026-08-31',confirmedOn:'2026-11-16',years:[{yearKey:'2026-01-01',days:14,pieces:[]}]}};
+const person={id:'TEST_P',name:'TEST Çalışan',iseGirisTarihi:'2025-01-01',dogumTarihi:'1990-01-01',izinHesapAcilisi:{asOf:'2026-08-31',confirmedOn:'2026-11-16',years:[{yearKey:'2026-01-01',days:14,pieces:[]}]}};
 const data={personnel:[person],personnel_events:[],work_records:[],izin_kayitlari:[],puantaj_kayitlari:[],vehicles:[]};
 const fields={id:'TEST_LEAVE',personelId:person.id,izinTuru:'yillik',izinHakYili:'2026-01-01',baslangicTarihi:'2026-09-01',bitisTarihi:'2026-09-08',isbasiTarihi:'2026-09-09'};
 const error=(code,fn)=>assert.throws(fn,e=>e.code===code);
@@ -26,7 +26,7 @@ assert.equal(marksOf({...data,izin_kayitlari:[actual]},person,'2026-09').get('20
 error('CALENDAR',()=>prepareLeave(data,{...fields,baslangicTarihi:'2027-01-04',bitisTarihi:'2027-01-05',isbasiTarihi:'2027-01-06'},{mode:'approval',today:'2026-11-16'}));
 const doc=leaveDocument(actual,person,{purpose:'kullanim_mutabakati',today:'2026-11-16'});
 assert.deepEqual(doc.sections.find(s=>s.headers?.[0]==='Önceki devir').rows,[['14','0','0','7','7']]);
-assert.equal(doc.sections.find(s=>s.title==='Islak imzalar').headers.length,2);
+assert.equal(doc.sections.find(s=>s.title==='Islak imzalar').headers.length,2);assert.equal(doc.audience,'internal');
 assert.match(doc.sections.find(s=>s.title==='Beyan').text,/ibraname değildir/);
 assert.throws(()=>leaveDocument(actual,person,{purpose:'kullanim_mutabakati',today:'2026-09-01'}));
 assert.doesNotMatch(leaveDocument(actual,person).sections.find(s=>s.title==='Beyan').text,/iznimi kullandığımı/);
