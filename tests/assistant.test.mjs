@@ -14,7 +14,8 @@ v = validatePlan({ works: [{ customer_id: 'CMH', vehicle_id: 'T14', work_type: '
 assert.equal(v.works[0].quantity, 0.5); assert.equal(v.works[0].ok, false);
 // yeni müşteri: mesajda geçmeli; benzer kart varsa yeni açılmaz
 v = validatePlan({ works: [{ new_customer: 'Kaya İnşaat', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Kaya İnşaat 34 ABC 123 3 sefer moloz', d, today });
-assert.equal(v.works[0].new_customer, 'Kaya İnşaat'); assert.deepEqual(v.newCustomers, ['Kaya İnşaat']); assert.equal(v.works[0].ok, true);
+// 2026-11-16 işletme kararı: açık yeni müşteri adı da ayrıca onay bekler.
+assert.equal(v.works[0].new_customer, 'Kaya İnşaat'); assert.deepEqual(v.newCustomers, ['Kaya İnşaat']); assert.equal(v.works[0].ok, false);
 v = validatePlan({ works: [{ new_customer: 'Uydurma AŞ', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Kaya İnşaat 34 ABC 123 3 sefer moloz', d, today });
 assert.equal(v.works[0].new_customer, 'Kaya İnşaat', 'uydurma ad yerine mesajdaki ad önerilir'); assert.equal(v.works[0].ok, false);
 v = validatePlan({ works: [{ new_customer: 'Gumus Yapi', vehicle_id: 'V1', work_type: 'Moloz Nakliye', quantity: 3, unit: 'Sefer' }] }, { message: 'Gumus Yapi 34 ABC 123 3 sefer', d, today });

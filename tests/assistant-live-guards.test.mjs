@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {validatePlan} from '../js/assistant-core.js';
+import {fixture,fixtureSettings,message,source} from './assistant-gold/real-messages/fixture.mjs';
+const recorded=JSON.parse(readFileSync(new URL('./assistant-gold/real-messages/recorded-live-ee50.json',import.meta.url),'utf8'));
+const text=message(source.cases.find(c=>c.id==='r00_tumu'));
+const plan=validatePlan(structuredClone(recorded.batch.r00_tumu),{d:fixture(),message:text,today:source.today_for_test,rules:fixtureSettings().assistant_rules});
+const pending=plan.works.filter(r=>r.new_customer);assert.ok(pending.length);assert.ok(pending.every(r=>!r.ok),'proposed new customers need a human customer choice before work is ready');
+const unsupported=plan.works.filter(r=>/pano tasindi|hafriyat yukleme/.test((r.source_quote||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i').toLowerCase())&&!/\d+\s*saat/.test(r.source_quote||''));
+assert.ok(unsupported.length>=3,'recorded batch includes three rows without explicit duration');
+for(const row of unsupported)assert.notEqual(row.fieldConfidence.quantity?.level,'KESIN','another row must not prove a missing quantity');
+console.log('live guards PASS: no new-customer auto-readiness and no whole-message quantity proof');

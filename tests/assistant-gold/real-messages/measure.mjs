@@ -1,3 +1,4 @@
+import {descriptionMatches} from './description-match.mjs';
 import {offlinePlan} from '../../../js/offline-whatsapp.js';
 import {assistantQuestions} from '../../../js/assistant-questions.js';
 import {APP_VERSION} from '../../../js/core.js';
@@ -26,8 +27,8 @@ function actualField(row,field,d){
  if(field==='vehicle_level'||field==='customer_level'){const k=field==='vehicle_level'?'vehicle_id':'customer_id';return row.fieldConfidence?.[k]?.level??null;}
  const key=keys[field]||field;return confidenceValue(row,key,row[key])??null;
 }
-function same(field,got,want){
- if(field==='description')return !!got&&norm(got).includes(norm(want));
+function same(field,got,want,row=null){
+ if(field==='description')return descriptionMatches(got,want,row?.source_quote||row?.quote||'');
  if(field==='note')return !!got&&/pazar mesa[yi]s/.test(norm(got));
  if(field.endsWith('_level'))return got===(want.startsWith('ÇIKARIM')?'CIKARIM':'KESIN');
  if(field==='site'&&typeof want==='string')want=want.replace(/\s*\(takma ad:.*\)$/i,'');
@@ -71,7 +72,7 @@ export function measureReal({mode='assistant-validation',batch=false,photos=fals
     if(['kind','checked'].includes(field))continue;
     // The fixture intentionally supplies no numeric trip tariff; do not invent it.
     if(field==='price'&&!value.includes('0'))continue;
-    const want=mapExpected(field,value),got=actualField(a,field,d);if(!same(field,got,want)){errors.push(field);wrong.push({expectedRow:ei,actualRow:ai,field,want,got});failureReasons[field]=(failureReasons[field]||0)+1;stat.wrongFields++;}
+    const want=mapExpected(field,value),got=actualField(a,field,d);if(!same(field,got,want,a)){errors.push(field);wrong.push({expectedRow:ei,actualRow:ai,field,want,got});failureReasons[field]=(failureReasons[field]||0)+1;stat.wrongFields++;}
    }
    if(a.ok&&errors.length===0&&e.checked!==false)stat.readyCorrect++;
    if(a.ok&&(errors.length>0||e.checked===false))stat.silentWrong++;
