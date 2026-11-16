@@ -1,6 +1,6 @@
-# Bakım, doğrulanmış sayaç ve tek harcama — v3.10.16
+# Bakım, doğrulanmış sayaç ve tek harcama — v3.10.17
 
-Taban: v3.10.15 / `475a2dce093bb2aef2b8ee5b1dfd920052d841ae`. Tahir yeni bakım kayıtlarında `cost_mode`, `cost_source_store`, `cost_source_id`, `meter_reading_id` eklenmesini açıkça onayladı. Şema **8** kalır; eski kayıtlara alan eklenmez, geçmiş kayıt/fotoğraf/okuma topluca değiştirilmez. YZ2 değişmez.
+Taban: v3.10.16 / `87411c0642bab0ed3f3f1acbaf6f5d5865fc3567`. Tahir yeni bakım kayıtlarında `cost_mode`, `cost_source_store`, `cost_source_id`, `meter_reading_id` eklenmesini açıkça onayladı. Şema **8** kalır; eski kayıtlara alan eklenmez, geçmiş kayıt/fotoğraf/okuma topluca değiştirilmez. YZ2 değişmez.
 
 ## Kullanım
 
@@ -21,7 +21,9 @@ Kaynak bağlantıları bakım ayrıntısında açılır. İptal edilmiş/kayıp 
 ## Kanıt ve sınırlar
 
 - Saf test: KDV net/brüt, bilinmeyen maliyet, kaynak damgası, ayrı onay, kural seçimi ve yeni kayıtların yedek tutarlılığı.
-- Gerçek Chromium/IndexedDB: eski 4512 tahminin onaysız mühürlenmesi v115'te üretilir; adayda 4502 açık okuma, 4752 hedef, kaynak maliyetinin bir kez kalması, idempotency/OP_CONFLICT/transaction rollback, kanıt düzenleme koruması, manuel form ve asistan + düzeltme akışı, 360px.
+- Gerçek Chromium/IndexedDB: eski 4512 tahminin onaysız mühürlenmesi v116'da üretilir; adayda 4502 açık okuma, 4752 hedef, kaynak maliyetinin bir kez kalması, idempotency/OP_CONFLICT/transaction rollback, kanıt düzenleme koruması, manuel form ve asistan + düzeltme akışı, 360px.
 - Gerçek SW yükseltmesi: şema8→8, mevcut bakım, okuma, metadata, gerçek PNG TEST baytları ve açık form taslağı birebir korunur; üç modül cache'e alınır ve offline açılır. Test sunucusu her GET'te aktif ağacı seçer ve aynı saniyede değişen dosya için mtime/304 yanılsaması oluşturmaz.
 - Tüm Node / mevcut CI tarayıcı / eski yükseltme denetimleri yayın kapısıdır. Çalıştırılmayan test PASS sayılmaz.
 - Dondurulmuş asistan altın seti ve yerel ayrıştırıcı ayrı ölçülür. Gerçek telefon, gerçek WhatsApp, gerçek Gemini ve üretici bakım periyotları denenmez. Reçete/filtre muadilliği, stok envanteri ve otomatik parça ömrü bu ilk paketin kapsamında değildir.
+
+Paralel yayımlanan #261 personel başlangıcı korunarak taban v3.10.16, bakım sürümü v3.10.17 olarak yenilendi. Personel UI / kılavuz dosyaları yeni tabanla byte eşittir; onun tarayıcı/baseline testleri de CI’de korunur.
