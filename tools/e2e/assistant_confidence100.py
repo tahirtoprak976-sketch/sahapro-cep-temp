@@ -11,7 +11,7 @@ work={'date':'2026-11-02','vehicle_id':'TEST_V','work_type':'Makine Çalışmas�
 previous={'id':'TEST_PREVIOUS','date':'2026-11-02','customer_id':'TEST_C','vehicle_id':'TEST_V','work_type':'Makine Çalışması','quantity':1,'unit':'Saat'}
 with sync_playwright() as pw:
  browser=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
- for scenario in ['new-customer-confirmation','same-day','site-owner','alias-certain','ambiguous','unknown-quantity','wrong-unit','registered-price','credit-unknown','local-edits','missing-quantity','date-conflict','relative-conflict','header-conflict','photo-date-fuel','photo-date-expense','tank-credit-unknown']:
+ for scenario in ['loading-recipient','loading-conflict','customer-depot-in','new-customer-confirmation','same-day','site-owner','alias-certain','ambiguous','unknown-quantity','wrong-unit','registered-price','credit-unknown','local-edits','missing-quantity','date-conflict','relative-conflict','header-conflict','photo-date-fuel','photo-date-expense','tank-credit-unknown']:
   patch={};plan={'works':[dict(work)]};message='02.11.2026 JCB 3CX 2 saat çalıştı';photo=False;kind='work'
   if scenario in ['same-day','local-edits']:patch={'work_records':[previous]}
   if scenario=='site-owner':message='02.11.2026 Kuzey Şantiyesi JCB 3CX 2 saat çalıştı'
@@ -31,6 +31,12 @@ with sync_playwright() as pw:
    case=next(c for c in json.loads((root/'tests/assistant-gold/confidence-cases.json').read_text()) if c['id']=='confidence100-photo-multi-date-'+scenario.rsplit('-',1)[1]);message=case['message'];plan=case['recordedResponse'];photo=True;kind=scenario.rsplit('-',1)[1]
   if scenario=='tank-credit-unknown':
    message='02.11.2026 depoya 100 litre mazot 5000 TL veresiye aldık';plan={'tank_in':[{'date':'2026-11-02','liters':100,'total':5000,'supplier_id':'TEST_SUP','credit':True}]};kind='tank'
+  if scenario in ['loading-recipient','loading-conflict']:
+   message='02.11.2026 Alfa İnşaat JCB 3CX 2 saat kum yüklendi nakliyeciye'
+   plan={'works':[{**work,'customer_id':'TEST_C','material':'kum','description':'kum yüklendi'+(' kamyoncuya' if scenario=='loading-conflict' else ''),'quote':message}]}
+  if scenario=='customer-depot-in':
+   message='Alfa İnşaat sefer karşılığı depoya 100 litre mazot verdi';kind='tank'
+   plan={'customer_fuel':[{'date':date.today().isoformat(),'customer_id':'TEST_C','liters':100,'total':None,'unit_price':None,'machine':'Forklift','source':'Depo Tankı','quote':message}]}
   if scenario=='new-customer-confirmation':
    message='02.11.2026 Yeni Ufuk İnşaat JCB 3CX 2 saat çalıştı\n02.11.2026 Alfa İnşaat JCB 3CX 3 saat çalıştı'
    plan={'works':[{**work,'new_customer':'Yeni Ufuk İnşaat','quote':message.split('\n')[0]},{**work,'customer_id':'TEST_C','quantity':3,'quote':message.split('\n')[1]}]}
@@ -75,6 +81,17 @@ with sync_playwright() as pw:
    assert card.locator('[name=customer]').input_value()=='new:Yeni Ufuk İnşaat' and not pick.is_checked()
    assert second.locator('[name=quantity]').input_value()=='9' and second.locator('[name=customer]').input_value()=='TEST_C'
    assert snap()==before
+  if scenario=='loading-recipient':
+   assert pick.is_checked() and 'nakliyeciye' in card.locator('[name=description]').input_value()
+   page.click('[data-save]');page.wait_for_selector('.assistant-receipt');added=[r for r in snap()['work_records'] if r['id'] not in {b['id'] for b in before['work_records']}]
+   assert len(added)==1 and 'nakliyeciye' in added[0]['description'] and added[0]['quantity']==2 and 'descriptionConflict' not in added[0] and 'fieldConfidence' not in added[0]
+  if scenario=='loading-conflict':
+   assert not pick.is_checked() and card.locator('[name=description]').input_value()=='kum yüklendi kamyoncuya'
+   assert page.locator('[data-question="work:0:description"]').count()==1 and snap()==before
+  if scenario=='customer-depot-in':
+   assert not pick.is_checked() and card.locator('[name=tank_customer]').input_value()=='TEST_C'
+   assert card.locator('[name=liters]').input_value()=='100' and card.locator('[name=total]').input_value()=='' and card.locator('[name=unit_price]').input_value()==''
+   assert page.locator('[data-kind=fuelout]').count()==0 and snap()==before
   if scenario=='missing-quantity':assert not pick.is_checked() and card.locator('[name=quantity]').input_value()=='' and card.locator('[data-field-confidence=quantity]').get_attribute('data-level')=='BILINMIYOR'
   if scenario in ['date-conflict','relative-conflict','header-conflict']:
    assert not pick.is_checked() and card.locator('[name=date]').input_value()==date.today().isoformat();assert card.locator('[data-field-confidence=date]').get_attribute('data-level')=='BILINMIYOR'
