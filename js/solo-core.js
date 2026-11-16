@@ -787,6 +787,14 @@ export function localAnswer(question, d) {
 export function validateSoloData(d) {
   for (const s of SOLO_STORES)
     if (d[s] && !Array.isArray(d[s])) throw Error("Geçersiz defter: " + s);
+  for(const r of live(d,"maintenance_records"))if(r.cost_mode!=null){
+    if(!['new_expense','existing','tracking'].includes(r.cost_mode))throw Error('Bakım maliyet kaynağı geçersiz');
+    if(r.cost_mode!=='new_expense'&&r.cost!=null)throw Error('Bağlı / takip bakımında ikinci maliyet olamaz');
+    if(r.cost_mode==='existing'&&(!['expense_records','payables'].includes(r.cost_source_store)||!(d[r.cost_source_store]||[]).some(x=>x.id===r.cost_source_id)))throw Error('Bakım maliyet kaynağı eksik');
+    if(r.cost_mode!=='existing'&&(r.cost_source_id||r.cost_source_store))throw Error('Bakım maliyet bağlantısı tutarsız');
+    if(r.meter_reading_id){const m=(d.meter_readings||[]).find(x=>x.id===r.meter_reading_id);if(!m||m.vehicle_id!==r.vehicle_id||m.date!==r.date||(m.kind==='km'?r.km:r.machine_hours)!==Number(m.value))throw Error('Bakım sayaç kanıtı tutarsız');}
+    else if(r.km!=null||r.machine_hours!=null)throw Error('Bakım sayacı için onaylı okuma gerekli');
+  }
   for (const r of live(d, "meter_readings")) {
     reference(d, "vehicles", r.vehicle_id);
     validDate(r.date);

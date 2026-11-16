@@ -1,12 +1,12 @@
 {
-  "version": "3.10.15",
+  "version": "3.10.16",
   "schema": 8,
-  "purpose": "Authorized personnel guide release; HR rules and schema8 unchanged; QA application unchanged",
+  "purpose": "Authorized maintenance review release; personnel guide and HR rules retained unchanged, schema8 unchanged, QA application unchanged",
   "files": {
     "js/app.js": "273ccca5af7da65aaeb7bb53a827a16df0d75bb046c6095641378276c5abdaab",
     "js/backup.js": "d2548639e53f75902886ba19fd3778bcbb792da085a6c307edfef3516b56da91",
-    "js/core.js": "d9784da175a52a0ad79d727ce165468cb001aa634db9cd5b3c5e15dd4f125b9d",
-    "js/db.js": "c63c911e461b1d64118cd51dd3c691b21be80eb393641a2e31e50820e05d4af7",
+    "js/core.js": "dce73a23435bb19ee8817c3316b838093bae4902521ae7410b2eaf89365e8df1",
+    "js/db.js": "c09a824f434582c3119a942f6cc30b1fa8ad667d36469b58d504f3ae0479d1e0",
     "js/enterprise-db.js": "8d04a7a1188d6d00da5931e63b9f2c189f4f6262218c92c64a3dd92294669001",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
     "js/leave-form.js": "9cb664fdc8e07a09f69ae999323b23e3dc60978c6c18783a56351b195436fb41",
@@ -24,6 +24,15 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "f5f5087caf07c16320810bfa8b49140e12562675b3d30197dbe1c8195c326292",
     "kilavuz/izin-puantaj.pdf": "7e372e49803aa0b8698c8217de2c57ebb9d160f32f2c1160d0923acf7d58af28",
-    "sw.js": "3a2e41edc68f87f2edecaf876a9cf1320dd61cad77329069f1b4edb10665e14b"
+    "sw.js": "dd88ff6bbd317a51c375b3c610bee0877b24ce803019c37c40eb9d0203949113",
+    "js/assistant.js": "83d713a4f650740d36bfba8dabde68917d90c609b2631a0eae471646fb083cda",
+    "js/m-ops.js": "2de1e5f1003ec1ec4a7d93518fa5feaa876c0afd7e73948672efbb3ad4d95fd2",
+    "js/maint-core.js": "81adb10478b94d9498866d6ba150eff682c1d3928dee9ad65ca19414ff669f82",
+    "js/maint.js": "490f70399320c748edfaf5e17a3fdc272c7d44fa231ce33a9aec184b54c8b845",
+    "js/maintenance-history-core.js": "c1f8b561c2d0c86093e0746467d793ae57b0d4908a5b02613abd391c8b7434ba",
+    "js/maintenance-review-core.js": "2125360f92a365087ac2acb133bd93ef58fc64a607841d00c923950d602938d1",
+    "js/maintenance-review-db.js": "05d35291651278871be0edf15bed72f20fa69e1166bebe2e4f4bdba43c2d3bde",
+    "js/maintenance-review-ui.js": "1e082f7d3fc37f33b698c3ac42b24f1080926a64c3e57575d395deecd54096e1",
+    "js/solo-core.js": "0aa38313fd989c3e55f1f6817d3665e3b3970d9c4fc1a517560a6c8bcdbf8382"
   }
 }

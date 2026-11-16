@@ -81,9 +81,9 @@ const kwList = (rule) => (rule.keywords ? String(rule.keywords).split(",") : [fo
 export function lastDone(d, v, rule, {today=todayStr()}={}) {
   const ms = live(d, "maintenance_records").filter((m) => m.vehicle_id === v.id && m.status === "Tamamlandı" && validDate(m.date) && m.date<=today).sort((a, b) => b.date.localeCompare(a.date));
   const kws = kwList(rule);
-  const m = ms.find((x) => x.service_rule_id === rule.id) || ms.find((x) => { const t = fold([x.maint_type, x.description].join(" ")); return kws.some((k) => t.includes(k)); });
+  const m = ms.find((x) => x.service_rule_id === rule.id) || ms.find((x) => { if(x.cost_mode)return false; const t = fold([x.maint_type, x.description].join(" ")); return kws.some((k) => t.includes(k)); });
   const base = rule.last && (rule.last.date || rule.last.km || rule.last.hours) ? rule.last : null;
-  if (m && (!base || m.date >= (base.date || ""))) return { date: m.date, km: Number(m.km) || meterAt(d, v, "km", m.date), hours: Number(m.machine_hours) || meterAt(d, v, "hours", m.date), src: "bakım kaydı", id: m.id };
+  if (m && (!base || m.date >= (base.date || ""))) return { date: m.date, km: Number(m.km) || (m.cost_mode?null:meterAt(d, v, "km", m.date)), hours: Number(m.machine_hours) || (m.cost_mode?null:meterAt(d, v, "hours", m.date)), src: "bakım kaydı", id: m.id };
   if (base) return { date: base.date || null, km: Number(base.km) || null, hours: Number(base.hours) || null, src: "elle" };
   return null;
 }

@@ -1,3 +1,4 @@
+import {guardReviewedMaintenanceEdit} from './maintenance-review-core.js';
 import {upgradePersonnelLegal} from './personnel-legal/migration.js';
 import {installPersonnelGuard,personnelTransactionError} from './personnel-legal/guard.js';
 import {normalizedVehicleFields,canonicalVehicleType} from "./vehicle-type-core.js";
@@ -1181,6 +1182,7 @@ export async function saveExisting(store, rec, fields, auditReason, _retry = 0, 
     throw Error("İşletme defteri ilgili işlem ekranından güncellenmeli");
   if ((await getAll("maintenance_parts")).some(r => isActive(r) && r.tracking && r.cost_source_store === store && r.cost_source_id === rec.id) && Object.keys(fields).some(k => ['amount','total','cost','kdv_rate','date','vehicle_id','site_id','customer_id'].includes(k))) throw Error('Parça / garanti kaydına bağlı maliyet değiştirilemez; önce parça ekranından bağlantıyı kaldırın');
   const current = await get(store, rec.id);
+  if(store==="maintenance_records")guardReviewedMaintenanceEdit(current,fields);
   if(store==='fuel_tank_movements'&&current?.fuel_record_id&&Object.keys(fields).some(k=>['date','liters','move_type','vehicle_id','personnel_id','fuel_record_id','event_id','deleted_at'].includes(k)&&(k==='liters'?Number(fields[k])!==Number(current[k]):JSON.stringify(fields[k]??null)!==JSON.stringify(current[k]??null))))throw Error('Yakıt kaydına bağlı depo hareketi tek başına değiştirilemez; yakıt kaydını kontrol edin.');
   if(store==='fuel_records'&&current?.tank_movement_id&&Object.keys(fields).some(k=>['date','liters','fuel_source','vehicle_id','tank_movement_id','event_id','deleted_at'].includes(k)&&(k==='liters'?Number(fields[k])!==Number(current[k]):JSON.stringify(fields[k]??null)!==JSON.stringify(current[k]??null))))throw Error('Depoya bağlı yakıtın tarihi, litresi veya kaynağı tek başına değiştirilemez; yanlışsa yakıt işlemini silip doğru bilgilerle yeniden girin.');
   if (store === "work_records") for (const key of ["dump_tariff_snapshot", "dump_estimate_snapshot"])

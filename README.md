@@ -4,7 +4,9 @@ Statik PWA. Backend yok; tüm veriler cihazda (IndexedDB) tutulur. Ana SAHAPRO d
 
 Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
-Sürüm: **SAHAPRO SOLO v3.9.98** — 02.11.2026
+Sürüm: **SAHAPRO SOLO v3.10.16** — 16.11.2026
+
+Bakım ve sayaç kontrolü: Akıllı Asistan, Bakım Takvimi ve yeni bakım formunda mevcut alışa bağlantı / yeni harcama / yalnız takip ayrılır. Sayaç ayrıca onaylanır; işlerden hesaplanan tahmin kesin okumaya dönüşmez. [Kapsam, kayıt biçimi ve testler](docs/MAINTENANCE_REVIEW_116.md).
 
 Asistan artık bir istekte **100 iş satırına kadar** kontrol eder; doğrulama, görev saklama, düzeltme ve toplu onayda satır sonları kesilmez. Fotoğraflı karma mesajlar aynı önizlemede incelenir; uzun kayıt sonucundaki bütün bağlantılara erişilir. [Kapsam ve doğrulama](docs/ASSISTANT_LARGE_BATCH_v3998.md).
 
