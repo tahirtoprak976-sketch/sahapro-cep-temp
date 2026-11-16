@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - feat/v311-source-details-255
       - feat/v311-live-guards-253
       - fix/v311-phone-rate-limit
       - fix/v311-phone-json-compat
@@ -121,6 +122,9 @@ jobs:
           echo "RESULT files=$files passed=$((files - failed)) failed=$failed"
           test "$files" -gt 0
           test "$failed" -eq 0
+
+      - name: Prove source detail and depot direction defects on unchanged v3.11.06
+        run: node tests/assistant-gold/prove-source-details.mjs
 
       - name: Retain complete Node diagnostics before browser validation
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
