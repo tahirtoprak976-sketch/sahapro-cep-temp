@@ -1,3 +1,4 @@
+import {personnelTransactionError} from './personnel-legal/guard.js';
 import {matchingRequest} from './enterprise-retry.js';
 import {journalTransaction,rememberWrites} from './write-receipt.js';
 import {recordsCommitted} from "./record-refresh.js";
@@ -117,7 +118,7 @@ export async function transaction(stores, fn) {
     }
     t.oncomplete = () => {recordsCommitted(connection.name,stores);resolve(rememberWrites(result,t));};
     t.onerror = t.onabort = () =>
-      reject(error || t.error || Error("İşlem tamamlanamadı"));
+      reject(error || personnelTransactionError(t) || t.error || Error("İşlem tamamlanamadı"));
   });
 }
 export async function saveSupplier(f, key = uuid()) {

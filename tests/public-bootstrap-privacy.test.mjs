@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {SEED_VEHICLES,SEED_PERSONNEL,SEED_ALIASES,SCHEMA_VERSION} from '../js/core.js';
 import {KNOWN_VEHICLE_TYPES,seedVehicleTypes} from '../js/yard-core.js';
-assert.equal(SCHEMA_VERSION,7);
+assert.equal(SCHEMA_VERSION,8);
 assert.ok(isDeepStrictEqual(SEED_VEHICLES,[]),'New installations must not ship a private fleet');
 assert.ok(isDeepStrictEqual(SEED_PERSONNEL,[]),'New installations must not ship private staff');
 assert.ok(isDeepStrictEqual(SEED_ALIASES,[]),'Private fleet aliases must come from local records');

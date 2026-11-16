@@ -1,3 +1,4 @@
+import {effectiveLeave,kindName,addDay,leaveDaysView,leaveLedger} from './personnel-legal/workflow.js';
 // İzin takibi — SAF katman. İzinler personel hareketi olarak tutulur (event_type "İzin" / "Rapor", leave_kind ile türü);
 // puantaj ve maaş aynı kayıtları okur. Yıllık ücretli izin hakkı İş Kanunu md. 53'e göre kıdemden hesaplanır:
 // 1–5 yıl (5 dahil) 14 gün, 5–15 yıl 20 gün, 15 yıl ve üstü 26 gün; 18 yaş ve altı ile 50 yaş ve üstüne en az 20 gün.
@@ -38,11 +39,20 @@ export function daysForYear(k, ageAtAnniv = null) {
 }
 const anniv = (start, k) => `${Number(start.slice(0, 4)) + k}${start.slice(4)}`;
 
+export function legalLeaveEvents(d,pid) {
+ const person=(d.personnel||[]).find(p=>p.id===pid);if(!person)return [];
+ return (d.izin_kayitlari||[]).filter(r=>effectiveLeave(r)&&r.personelId===pid).flatMap(r=>{
+  let days=[];
+  if(r.izinTuru==='yillik')days=leaveDaysView(r,person).rows.filter(x=>x.charged>0).map(x=>({date:x.date,charge:x.charged}));
+  else for(let day=r.baslangicTarihi;day<=r.bitisTarihi;day=addDay(day))days.push({date:day,charge:1});
+  return days.map(x=>({id:r.id+':'+x.date,...x,kind:kindName[r.izinTuru],group:r.id,note:'Yeni izin kaydı',legal:true}));
+ });
+}
 // Kişinin izin kayıtları (gün gün) — türüyle
 export function leaveEvents(d, pid) {
-  return live(d, "personnel_events")
+  return [...live(d, "personnel_events")
     .filter((e) => e.personnel_id === pid && (e.event_type === "İzin" || e.event_type === "Rapor"))
-    .map((e) => ({ id: e.id, date: e.date, kind: e.leave_kind || (e.event_type === "Rapor" ? "Rapor" : "İzin (türü yazılmamış)"), note: e.description || "", group: e.leave_group || null }))
+    .map((e) => ({ id: e.id, date: e.date, kind: e.leave_kind || (e.event_type === "Rapor" ? "Rapor" : "İzin (türü yazılmamış)"), note: e.description || "", group: e.leave_group || null })),...legalLeaveEvents(d,pid)]
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 // Ardışık günleri (aradaki pazar/tatil boşluğu dahil) aynı türde tek satırda topla
@@ -56,16 +66,16 @@ export function leaveRanges(events) {
       while (d < e.date && (isSunday(d) || isHoliday(d))) d = addDays(d, 1);
       contiguous = d === e.date;
     }
-    if (contiguous) { last.to = e.date; last.days++; last.ids.push(e.id); }
-    else out.push({ from: e.date, to: e.date, days: 1, kind: e.kind, note: e.note, group: e.group, ids: [e.id] });
+    if (contiguous) { last.to = e.date; last.days+=e.charge??1; last.ids.push(e.id); }
+    else out.push({ from: e.date, to: e.date, days: e.charge??1, kind: e.kind, note: e.note, group: e.group, ids: [e.id] });
   }
   return out;
 }
 
 // Yıllık izin özeti. p.start_date: işe giriş; p.leave_open_days + p.leave_open_date: o tarihteki kalan (geçmiş için elle)
 export function leaveSummary(d, p, { today = todayStr() } = {}) {
-  const start = validD(p.start_date);
-  const birth = validD(p.birth_date);
+  const start = validD(p.iseGirisTarihi??p.start_date);
+  const birth = validD(p.dogumTarihi??p.birth_date);
   const ev = leaveEvents(d, p.id);
   const annual = ev.filter((e) => e.kind === "Yıllık izin");
   const openDate = validD(p.leave_open_date);
@@ -80,26 +90,32 @@ export function leaveSummary(d, p, { today = todayStr() } = {}) {
   }
   const earned = earnedList.reduce((n, x) => n + x.days, 0) + (hasOpen ? Number(p.leave_open_days) : 0);
   const usedAll = annual.filter((e) => !hasOpen || e.date > openDate);
-  const used = usedAll.filter((e) => e.date <= today).length;
-  const planned = usedAll.filter((e) => e.date > today).length;
+  const used = usedAll.filter((e) => e.date <= today).reduce((n,e)=>n+(e.charge??1),0);
+  const planned = usedAll.filter((e) => e.date > today).reduce((n,e)=>n+(e.charge??1),0);
   const nextAt = start ? anniv(start, (years || 0) + 1) : null;
   const nextDays = start ? daysForYear((years || 0) + 1, birth ? fullYears(birth, nextAt) : null) : null;
   const yearStart = today.slice(0, 4) + "-01-01";
   const thisYear = (kind) => ev.filter((e) => e.kind === kind && e.date >= yearStart && e.date <= today).length;
   const ready = !!start || hasOpen;
-  return {
+  const result = {
     ready, start, years, earned, earnedList, used, planned, remaining: ready ? earned - used - planned : null,
     nextAt, nextDays, hasOpen: !!hasOpen,
     year: { annual: thisYear("Yıllık izin"), unpaid: thisYear("Ücretsiz izin"), excuse: thisYear("Mazeret izni"), report: thisYear("Rapor"), other: thisYear("İzin (türü yazılmamış)") },
     ranges: leaveRanges(ev).reverse(),
   };
+  if(p.izinHesapAcilisi){try{
+    const ledger=leaveLedger(d,p,today),asOf=p.izinHesapAcilisi.asOf;
+    const counted=annual.filter(e=>e.date>asOf),used=counted.filter(e=>e.date<=today).reduce((n,e)=>n+(e.charge??1),0),planned=counted.filter(e=>e.date>today).reduce((n,e)=>n+(e.charge??1),0);
+    Object.assign(result,{ready:true,hasOpen:true,earned:ledger.reduce((n,y)=>n+y.opening+y.earned,0),used,planned,remaining:ledger.reduce((n,y)=>n+y.availableDays,0)});
+  }catch(e){Object.assign(result,{ready:false,remaining:null,legalWarning:e.message})}}
+  return result;
 }
 
 // Bugün / önümüzdeki günlerde izinde olanlar
 export function offBetween(d, from, to) {
   const ps = new Map(live(d, "personnel").map((p) => [p.id, p]));
   const out = new Map();
-  for (const e of live(d, "personnel_events")) {
+  for (const e of [...live(d, "personnel_events"),...live(d,"personnel").flatMap(p=>legalLeaveEvents(d,p.id).map(e=>({...e,personnel_id:p.id,event_type:e.kind==='Rapor'?'Rapor':'İzin',leave_kind:e.kind})))]) {
     if ((e.event_type !== "İzin" && e.event_type !== "Rapor") || e.date < from || e.date > to || !ps.has(e.personnel_id)) continue;
     const o = out.get(e.personnel_id) || { p: ps.get(e.personnel_id), dates: [], kind: e.leave_kind || e.event_type };
     o.dates.push(e.date);

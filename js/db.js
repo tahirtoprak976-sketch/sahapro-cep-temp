@@ -1,3 +1,5 @@
+import {upgradePersonnelLegal} from './personnel-legal/migration.js';
+import {installPersonnelGuard,personnelTransactionError} from './personnel-legal/guard.js';
 import {normalizedVehicleFields,canonicalVehicleType} from "./vehicle-type-core.js";
 import {journalTransaction,rememberWrites,transactionWrites} from './write-receipt.js';
 import { prepareAttachment, prepareInvoiceOriginal } from "./attachment-safety.js";
@@ -33,7 +35,7 @@ import {
 } from "./core.js";
 
 const DB_NAME = "sahapro_cep_db"; // v1 ile AYNI isim — veri bu DB'de
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 let _db = null;
 
 // Test harness için: ?db=<isim> ile ayrı DB açılabilir (migration simülasyonu)
@@ -75,6 +77,7 @@ export async function openDB() {
           if (!st.indexNames.contains(key))
             st.createIndex(key, key, { unique: false });
       }
+      if (ev.oldVersion < 8) upgradePersonnelLegal(db, ev.target.transaction, ev.oldVersion);
       if (!db.objectStoreNames.contains("attachments"))
         db.createObjectStore("attachments", { keyPath: "id" });
       if (!db.objectStoreNames.contains("meta"))
@@ -83,7 +86,7 @@ export async function openDB() {
         db.createObjectStore("drafts", { keyPath: "form" });
     };
     req.onsuccess = () => {
-      _db = req.result;
+      _db = installPersonnelGuard(req.result);
       _db.onversionchange = () => {
         _db.close();
         _db = null;
@@ -108,7 +111,7 @@ function wrap(req) {
 
 // Request error events bubble before IDBTransaction.error is necessarily populated.
 // Always reject with an Error so callers can report failure and offer recovery.
-const transactionError = (t, event) => t.error || event?.target?.error || Error("Veritabanı işlemi iptal edildi");
+const transactionError = (t, event) => personnelTransactionError(t) || t.error || event?.target?.error || Error("Veritabanı işlemi iptal edildi");
 
 // These guards run inside the same write transaction as their protected row.
 // Dedicated audited merge/event paths remain separate; generic editing must not
@@ -204,7 +207,7 @@ export async function put(store, rec) {
     if(store==='fuel_tank_movements'){const ids=[...new Set([q.result?.fuel_record_id,rec.fuel_record_id].filter(Boolean))];let left=ids.length;if(!left){write();return;}for(const id of ids){const p=t.objectStore('pending_fuel_records').get(id);p.onsuccess=()=>{if(p.result&&['date','liters','move_type','vehicle_id','personnel_id','fuel_record_id','event_id','deleted_at'].some(k=>changedField(q.result,rec,k))){error=Error('Mutabakat depo eş kaydı doğrudan değiştirilemez.');t.abort();return;}if(!--left)write();};}}
     else if(store==='fuel_records'){const p=t.objectStore('pending_fuel_records').get(rec.id);p.onsuccess=()=>{if(p.result){error=Error('Geçmiş yakıt için ayrılmış kimlik doğrudan kullanılamaz.');t.abort();return;}write();};}else write();};
     t.oncomplete=()=>{recordsCommitted(db.name,[store]);resolve(result);};
-    t.onerror=t.onabort=()=>reject(error||t.error||Error("Kayıt işlemi iptal edildi"));
+    t.onerror=t.onabort=()=>reject(error||personnelTransactionError(t)||t.error||Error("Kayıt işlemi iptal edildi"));
   });
 }
 export async function get(store, id) {
@@ -1085,7 +1088,7 @@ export async function saveWorkBatch(rows) {
     }
     t.oncomplete = () => {recordsCommitted(d.name,["work_records"]);resolve(validated);};
     t.onabort = t.onerror = () =>
-      reject(t.error || Error("Satırlar kaydedilemedi"));
+      reject(personnelTransactionError(t) || t.error || Error("Satırlar kaydedilemedi"));
   });
 }
 
@@ -1686,7 +1689,7 @@ export async function cancelCustomerFuelDelivery(id, reason) {
         } catch(e) {error=e;t.abort();}
       };
     };
-    t.oncomplete=()=>{recordsCommitted(d.name,['fuel_tank_movements','cari_movements']);resolve(result);};t.onabort=t.onerror=()=>reject(error||t.error||Error('Teslim iptal edilemedi'));
+    t.oncomplete=()=>{recordsCommitted(d.name,['fuel_tank_movements','cari_movements']);resolve(result);};t.onabort=t.onerror=()=>reject(error||personnelTransactionError(t)||t.error||Error('Teslim iptal edilemedi'));
   });
 }
 

@@ -497,7 +497,7 @@ with sync_playwright() as playwright:
             restored = restored_page.evaluate("""async backup=>{const d=await import('./js/db.js'),B=await import('./js/backup.js');await B.restoreBackup(d,backup);return B.fullBackup(d,{encrypted:false,attachments:'base64'});}""", backup)
             assert {x["id"]: (x["name"], x["type"], x["size"], x["base64"]) for x in restored["attachments"]} == originals, "Backup/restore changed original files or metadata"
             assert restored["data"]["work_records"] == backup["data"]["work_records"], "Work explanations/history changed"
-            assert restored["schema_version"] == 7
+            assert restored["schema_version"] == 8
             visit(restored_page, restored_db, "#/isler/" + ids["work"])
             quarantine(restored_page, 5, "restored-work-driver-original")
             assert restored_page.locator('[data-safe-attachment]').count() == 5

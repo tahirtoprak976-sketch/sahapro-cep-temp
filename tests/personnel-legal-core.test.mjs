@@ -37,7 +37,7 @@ assert.equal(overtime.fazlaMesaiSaati,3);assert.equal(overtime.fazlaSurelerleCal
 error('WEEK_INCOMPLETE',()=>L.weeklyOvertime([480]));
 assert.deepEqual([240,241,270,271].map(L.overtimeLimit),['normal','yellow','yellow','red']);
 for(const field of ['donemKilitDurumu','belgeDurumu'])error('SIGNED_LOCK',()=>L.assertUnlocked({[field]:field==='belgeDurumu'?'imzali_arsiv':'imzali_kapali'}));
-assert.equal(L.excuseLeaveDays('babalik').annualLeaveDeduction,0);assert.equal(L.excuseLeaveDays('evlilik').calendarDays,3);
+assert.equal(L.excuseLeaveDays('babalik','2026-11-16').annualLeaveDeduction,0);assert.equal(L.excuseLeaveDays('evlilik').calendarDays,3);
 error('DEDUCTION',()=>L.validateWageDeduction({type:'hasar',amount:500,evidence:{signedAttachmentId:'TEST',specificClaim:true,legalReviewApproved:true},consentAmount:500}));
 error('DEDUCTION',()=>L.validateWageDeduction({type:'muvafakatli_mahsup',amount:500,evidence:{signedAttachmentId:'TEST'},consentAmount:500}));
 error('DEDUCTION',()=>L.validateWageDeduction({type:'avans',amount:500,evidence:{advanceRecordId:'TEST_ADVANCE'}}));
@@ -63,3 +63,10 @@ assert.equal(L.chargeableLeaveDays('2026-01-01','2026-01-01',{calendar:{coveredY
 assert.equal(L.newLeaveDraft({...leave,belgeDurumu:'imzali_arsiv',imzaliBelgeData:'fake',dusulenIsGunu:999},{id:'TEST_NEW',now:'2026-11-16T10:00:00Z'}).belgeDurumu,'imza_bekliyor');
 assert.equal(L.newAttendanceDraft({...shift,donemKilitDurumu:'imzali_kapali',fiiliCalismaSaati:1},{id:'TEST_NEW_T'}).fiiliCalismaSaati,null);
 assert.equal(L.weeklyOvertime([720,720,720],{complete:true}).requiresLegalReview,true);
+
+assert.equal(L.excuseLeaveDays('babalik','2026-04-30').calendarDays,5);
+assert.equal(L.excuseLeaveDays('babalik','2026-05-01').calendarDays,10);
+assert.deepEqual(L.validateAnnualSplit({pieces:[7],proposed:7,remainingAfter:0,mode:'actual'}).warnings,['TEN_DAYS']);
+assert.deepEqual(L.validateAnnualSplit({pieces:[],proposed:7,remainingAfter:7,mode:'draft'}).warnings,['TEN_DAYS']);
+error('TEN_DAYS',()=>L.validateAnnualSplit({pieces:[7],proposed:7,remainingAfter:0,mode:'approval'}));
+error('FUTURE_ACTUAL',()=>L.validateLeave(annual,{person:p,calendar,availableDays:40,yearAllocation:allocation,mode:'actual',today:'2026-11-01'}));

@@ -40,20 +40,23 @@ export function chargeableLeaveDays(from,to,{calendar,weeklyRestDays=[0],halfDay
  }
  return {days:rows.reduce((n,r)=>n+r.charged,0),rows};
 }
-export function validateAnnualSplit({pieces,proposed,remainingAfter,closeYear=false}){
+export function validateAnnualSplit({pieces,proposed,remainingAfter,closeYear=false,mode="approval"}){
  const all=[...pieces,proposed];all.forEach(n=>nonnegative(n,'İzin parçası'));nonnegative(remainingAfter,'Kalan izin');
  const hasTen=all.some(n=>n>=10);
- if(!hasTen&&(remainingAfter<10||closeYear))fail('TEN_DAYS','İzin yılındaki parçalardan en az biri 10 gün olmalı; kalan bakiyede bu parça için yer bırakın');
- return {hasTen,pendingTenDayPart:!hasTen};
+ const violation=!hasTen&&(remainingAfter<10||closeYear);
+ if(violation&&mode==='approval')fail('TEN_DAYS','İzin yılındaki parçalardan en az biri 10 gün olmalı; kalan bakiyede bu parça için yer bırakın');
+ return {hasTen,pendingTenDayPart:!hasTen,warnings:violation?["TEN_DAYS"]:[]};
 }
-export function validateLeave(row,{person,calendar,weeklyRestDays,halfDayPolicy,availableDays,yearAllocation,otherLeaves=[],workRows=[],personnel=[],closeYear=false,current=null}){
+export function validateLeave(row,{person,calendar,weeklyRestDays,halfDayPolicy,availableDays,yearAllocation,otherLeaves=[],workRows=[],personnel=[],closeYear=false,current=null,mode="approval",today=null}){
  assertUnlocked(current);
  if(!row.id||!row.personelId||!active(person)||row.personelId!==person.id||!LEAVE_TYPES.includes(row.izinTuru))fail('LEAVE','Personel/izin türü doğrulanmalı');
  const from=legalDate(row.baslangicTarihi),to=legalDate(row.bitisTarihi);if(to<from)fail('RANGE','İzin tarihleri ters');
  if(legalDate(row.isbasiTarihi)<=to)fail('RETURN','İşbaşı tarihi izin bitişinden sonra olmalı');
  if(otherLeaves.filter(active).some(r=>r.id!==row.id&&r.personelId===person.id&&r.baslangicTarihi<=to&&r.bitisTarihi>=from))fail('OVERLAP','İzin kayıtları çakışıyor');
  if(workRows.filter(active).some(r=>(r.personelId??r.personnel_id)===person.id&&(r.tarih??r.date)>=from&&(r.tarih??r.date)<=to))fail('LEAVE_WORK','Bu tarihlerde çalışma kaydı var; geçmiş çalışma otomatik silinmez');
- let days=0;
+ if(!["approval","draft","actual"].includes(mode))fail("MODE","Kayıt amacı doğrulanmalı");
+ if(mode==="actual"&&(!today||legalDate(today)<to))fail("FUTURE_ACTUAL","Gelecekteki izin kullanılmış olarak kaydedilemez");
+ let days=0,warnings=[];
  if(row.izinTuru==='yillik'){
   if(!annualEntitlement(person,from).eligible)fail('TENURE','Bir yıl dolmadan yıllık ücretli izin girilemez');
   days=chargeableLeaveDays(from,to,{calendar,weeklyRestDays,halfDayPolicy}).days;
@@ -65,14 +68,14 @@ export function validateLeave(row,{person,calendar,weeklyRestDays,halfDayPolicy,
   nonnegative(yearAllocation.availableDays,'Seçili hak yılı bakiyesi');
   if(days>yearAllocation.availableDays)fail('BALANCE','Seçili hak yılının bakiyesi yetersiz');
   if(!Array.isArray(yearAllocation.pieces)||yearAllocation.pieces.some(r=>r.yearKey!==row.izinHakYili||r.personelId!==person.id))fail('LEAVE_YEAR','Farklı yılların/personellerin izin parçaları birleştirilemez');
-  validateAnnualSplit({pieces:yearAllocation.pieces.map(r=>r.days),proposed:days,remainingAfter:yearAllocation.availableDays-days,closeYear});
+  warnings=validateAnnualSplit({pieces:yearAllocation.pieces.map(r=>r.days),proposed:days,remainingAfter:yearAllocation.availableDays-days,closeYear,mode}).warnings;
  }
  if(row.ikameOperatorId){
   if(row.ikameOperatorId===person.id||!personnel.some(p=>active(p)&&p.id===row.ikameOperatorId))fail('SUBSTITUTE','Geçerli ikame operatör seçin');
   if(otherLeaves.filter(active).some(r=>r.personelId===row.ikameOperatorId&&r.baslangicTarihi<=to&&r.bitisTarihi>=from))fail('SUBSTITUTE','İkame operatör de izinli/raporlu');
   if(workRows.filter(active).some(r=>(r.personelId??r.personnel_id)===row.ikameOperatorId&&(r.tarih??r.date)>=from&&(r.tarih??r.date)<=to))fail('SUBSTITUTE','İkame operatörün aynı tarihte başka çalışması var; saat/makine çakışmasını çözün');
  }
- return {...row,dusulenIsGunu:days,belgeDurumu:'imza_bekliyor',imzaliBelgeData:null}; // Never trust the caller's cached deduction.
+ return {...row,warnings,dusulenIsGunu:days,belgeDurumu:'imza_bekliyor',imzaliBelgeData:null}; // Never trust the caller's cached deduction.
 }
 const time=s=>{if(typeof s!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(s))fail('TIME','Saat HH:MM biçiminde olmalı');return Number(s.slice(0,2))*60+Number(s.slice(3));};
 export function minimumBreak(netMinutes){return netMinutes<=240?15:netMinutes<=450?30:60;}
@@ -87,7 +90,12 @@ export function attendanceHours(row,{overnight=false,breakConfirmed=false}={}){
  if(rest>=span)fail('BREAK','Ara dinlenmesi vardiyadan uzun olamaz');const net=span-rest;
  return {confirmed:true,fiiliCalismaSaati:net/60,netMinutes:net,minimumBreak:minimumBreak(net),warnings:[...(rest<minimumBreak(net)?['BREAK_SHORT']:[]),...(net>660?['DAILY_11_HOURS']:[])]};
 }
-export function validateAttendance(row,{leaves=[],legacyEvents=[],existing=[],overnight=false,breakConfirmed=false,personnel=[],current=null}={}){
+export function dayTypeEvidence(date,person,{calendar}={}){
+ legalDate(date);const md=date.slice(5),fixed=['01-01','04-23','05-01','05-19','07-15','08-30','10-29'].includes(md)?1:md==='10-28'?.5:0;
+ const holiday=Math.max(fixed,calendar?.holidays?.[date]??0),rest=(person.haftaTatiliGunleri??[0]).includes(new Date(date+'T12:00:00Z').getUTCDay());
+ return {type:holiday?'ubgt':rest?'hafta_tatili':'normal',halfDay:holiday===.5,restAndHoliday:rest&&!!holiday,calendarKnown:calendar?.coveredYears?.includes(Number(date.slice(0,4)))===true};
+}
+export function validateAttendance(row,{leaves=[],legacyEvents=[],existing=[],overnight=false,breakConfirmed=false,personnel=[],current=null,calendar}={}){
  assertUnlocked(current);
  if(!row.id||!personnel.some(p=>active(p)&&p.id===row.personelId))fail('PERSONNEL','Kayıtlı personel seçin');
  if(existing.some(r=>active(r)&&r.personelId===row.personelId&&r.donemKilitDurumu==='imzali_kapali'&&r.tarih?.slice(0,7)===row.tarih?.slice(0,7)))fail('SIGNED_LOCK','Bu personelin dönemi imzalı kapalı');
@@ -98,6 +106,9 @@ export function validateAttendance(row,{leaves=[],legacyEvents=[],existing=[],ov
  const start=new Date(row.tarih+'T00:00:00Z').getTime()/60000+time(row.baslangicSaati),end=start+(overnight?1440:0)+time(row.bitisSaati)-time(row.baslangicSaati);
  if(existing.filter(active).some(r=>{if(r.id===row.id)return false;const a=new Date(legalDate(r.tarih)+'T00:00:00Z').getTime()/60000+time(r.baslangicSaati),b=a+time(r.bitisSaati)-time(r.baslangicSaati)+(time(r.bitisSaati)<=time(r.baslangicSaati)?1440:0);return (r.personelId===row.personelId||r.makinePlakaId&&r.makinePlakaId===row.makinePlakaId)&&a<end&&b>start;}))fail('SHIFT_OVERLAP','Personel veya makine vardiyası çakışıyor');
  if(!['normal','hafta_tatili','ubgt'].includes(row.gunTipi))fail('DAY_TYPE','Gün türü doğrulanmalı');
+ const person=personnel.find(p=>p.id===row.personelId),day=dayTypeEvidence(row.tarih,person,{calendar});
+ if(calendar&&day.calendarKnown&&row.gunTipi!==day.type)fail('DAY_TYPE','Tatil / hafta tatili türü kayıtlı takvim ve personel düzeniyle uyuşmuyor');
+ hours.warnings=[...(hours.warnings??[]),...(calendar&&!day.calendarKnown?['CALENDAR_UNKNOWN']:[]),...(day.halfDay?['HALF_HOLIDAY_REVIEW']:[]),...(day.restAndHoliday?['REST_HOLIDAY_REVIEW']:[]),...(person.dogumTarihi||person.birth_date?fullYears(person.dogumTarihi??person.birth_date,row.tarih)<18?['YOUNG_WORKER_REVIEW']:[]:['AGE_UNKNOWN']),...(overnight?['NIGHT_WORK_REVIEW']:[])];
  return {...row,...hours,personelId:row.personelId,fiiliCalismaSaati:hours.fiiliCalismaSaati,fazlaMesaiSaati:null,donemKilitDurumu:'acik',annualLeaveDeduction:0};
 }
 // Call with a complete, approved workweek; a machine's hours are not a worker's hours.
@@ -136,7 +147,7 @@ export function validateSignedArchive(row,{attachment,signaturesVerified=false,d
  if(!signaturesVerified||!attachment?.id||attachment.owner_id!==row.id||attachment.owner_type!=='izin_kaydi'||!/^([a-f0-9]{64})$/i.test(attachment.sha256||'')||!['application/pdf','image/jpeg','image/png','image/webp'].includes(attachment.mime))fail('SIGNATURE','İmzalı belge dosyası ve iki imza insan tarafından doğrulanmalı');
  return {...row,belgeDurumu:'imzali_arsiv',imzaliBelgeData:{attachmentId:attachment.id,sha256:attachment.sha256,documentPurpose}};
 }
-export function excuseLeaveDays(reason){const days={evlilik:3,evlat_edinme:3,olum:3,babalik:5}[reason];if(!days)fail('EXCUSE','Mazeret türü ve belge doğrulanmalı');return {calendarDays:days,annualLeaveDeduction:0};}
+export function excuseLeaveDays(reason,eventDate){if(reason==='babalik')legalDate(eventDate);const days={evlilik:3,evlat_edinme:3,olum:3,babalik:eventDate>='2026-05-01'?10:5}[reason];if(!days)fail('EXCUSE','Mazeret türü ve belge doğrulanmalı');return {calendarDays:days,annualLeaveDeduction:0};}
 
 // Recorded overtime must have been calculated from validated complete weeks by
 // the future transactional writer, never accepted from a model/personnel cache.

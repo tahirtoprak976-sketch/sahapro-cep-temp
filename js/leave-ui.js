@@ -11,57 +11,13 @@ const addD = (t, n) => { const x = new Date(t + "T12:00:00Z"); x.setUTCDate(x.ge
 const rng = (a, b) => (a === b ? trDate(a) : `${trDate(a)} – ${trDate(b)}`);
 
 // İzin girme penceresi (personel seçili ya da seçilecek)
-export function leaveSheet(ctx, d, { pid = "", onDone } = {}) {
-  const { db } = ctx;
-  const today = todayStr();
-  const people = (d.personnel || []).filter((p) => isActive(p) && p.active !== false);
-  const sh = sheet(`<h3>🏖 İzin gir</h3>
-    <div class="field"><label>Personel</label><select data-p>${people.map((p) => `<option value="${esc(p.id)}" ${p.id === pid ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
-    <div class="field"><label>Türü</label><select data-k>${LEAVE_KINDS.map((k) => `<option>${k}</option>`).join("")}</select></div>
-    <div class="formgrid2"><div class="field"><label>Başlangıç</label><input type="date" data-a value="${today}"></div>
-    <div class="field"><label>Bitiş (dahil)</label><input type="date" data-b value="${today}"></div></div>
-    <div class="field"><label>Not (isteğe bağlı)</label><input data-n placeholder="ör. memlekete gidecek, doktor raporu"></div>
-    <div data-info class="small" style="margin:6px 0"></div>
-    <div class="row" style="gap:8px"><button class="btn ghost grow" data-x>Vazgeç</button><button class="btn primary grow" data-ok>Kaydet</button></div>`, { modal: true });
-  const info = () => {
-    const a = qs("[data-a]", sh).value, b = qs("[data-b]", sh).value, k = qs("[data-k]", sh).value;
-    const days = leaveDays(a, b);
-    const p = people.find((x) => x.id === qs("[data-p]", sh).value);
-    const s = p ? leaveSummary(d, p, { today }) : null;
-    let t = b < a ? '<span style="color:#d9534f">Bitiş başlangıçtan önce</span>' : `<b>${days.length} gün</b> izin sayılır (pazar ve resmi tatiller hariç; dini bayram varsa o günleri sonra silin).`;
-    if (k === "Yıllık izin" && s?.remaining != null) t += `<br>Kalan yıllık izin: ${s.remaining} gün${days.length > s.remaining ? ` — <span style="color:#d9534f">${days.length - s.remaining} gün fazla</span>` : ` → sonra ${s.remaining - days.length} gün`}`;
-    if (k === "Yıllık izin" && s && !s.ready) t += `<br><span class="muted">İşe giriş tarihi girilmemiş; hak hesaplanamıyor (İzinler → kişi → ayarlar).</span>`;
-    if (k === "Ücretsiz izin") t += `<br><span class="muted">Aylık maaştan gün başı maaş/30 düşülür.</span>`;
-    qs("[data-info]", sh).innerHTML = t;
-  };
-  for (const el of qsa("select,input", sh)) el.addEventListener("change", info);
-  qs("[data-a]", sh).addEventListener("change", () => { if (qs("[data-b]", sh).value < qs("[data-a]", sh).value) qs("[data-b]", sh).value = qs("[data-a]", sh).value; info(); });
-  info();
-  qs("[data-x]", sh).onclick = () => sheetClose();
-  qs("[data-ok]", sh).onclick = async () => {
-    const p = qs("[data-p]", sh).value, k = qs("[data-k]", sh).value, a = qs("[data-a]", sh).value, b = qs("[data-b]", sh).value;
-    const days = leaveDays(a, b);
-    if (!p) return toast("Personel seçin", "err");
-    if (!days.length) return toast("Tarih aralığında izin günü yok", "err");
-    const fresh = await db.dumpAll();
-    // O günlerde başka işaret (çalıştı/izin/rapor…) varsa yerine geçer; iş kaydı varsa uyarır
-    const MARK = new Set(["Çalıştı", "Yarım Gün", "İzin", "Rapor", "Devamsızlık"]);
-    const old = (fresh.personnel_events || []).filter((e) => isActive(e) && e.personnel_id === p && MARK.has(e.event_type) && days.includes(e.date));
-    const pp = fresh.personnel.find((x) => x.id === p);
-    const myV = new Set([pp?.vehicle_id, ...(fresh.vehicles || []).filter((v) => isActive(v) && v.assignee_id === p).map((v) => v.id)].filter(Boolean));
-    const worked = [...new Set((fresh.work_records || []).filter((w) => isActive(w) && days.includes(w.date) && (w.personnel_id === p || (!w.personnel_id && myV.has(w.vehicle_id)))).map((w) => w.date))];
-    if (worked.length && !(await confirmDialog("Bu günlerde iş kaydı var", `${worked.map(trDate).join(", ")} tarihlerinde bu kişinin (ya da aracının) işi kayıtlı. Yine de izinli yazılsın mı?`, "Evet, izinli"))) return;
-    const group = `L${Date.now().toString(36)}`;
-    for (const e of old) await db.softDelete("personnel_events", e.id, "İzin girildi");
-    for (const x of days) await db.saveNew("personnel_events", { date: x, personnel_id: p, event_type: eventTypeOf(k), leave_kind: k, leave_group: group, amount: null, hours_days: 1, description: qs("[data-n]", sh).value.trim() || k, source: "izin" }, "İzin");
-    sheetClose();
-    toast(`${days.length} gün ${k.toLocaleLowerCase("tr-TR")} kaydedildi`, "ok");
-    onDone ? onDone() : ctx.reload();
-  };
+export function leaveSheet(ctx, d, { pid = "" } = {}) {
+  location.hash = "#/izin-puantaj?pid=" + encodeURIComponent(pid);
 }
 
 export async function screen(ctx) {
   if (ctx.parts[0] !== "izinler") return false;
+  if(ctx.query?.eski!=="1"&&ctx.parts[1]!=="form")return (await import("./personnel-legal/ui.js")).screen({...ctx,parts:["izin-puantaj"],query:{...ctx.query,pid:ctx.parts[1]??ctx.query?.pid}});
   if (ctx.parts[1] === "form") return (await import("./leave-form.js")).formScreen(ctx);
   const { root, db } = ctx;
   const today = todayStr();

@@ -1,3 +1,5 @@
+import {validatePersonnelRestore} from './personnel-legal/restore.js';
+import {permitPersonnelWrite,personnelTransactionError} from './personnel-legal/guard.js';
 import {validatePendingFuelData} from './historical-fuel.js';
 import {assertRecordEdit} from './db.js';
 import {validateDumpData} from "./dump-ledger-core.js";
@@ -229,6 +231,8 @@ export async function restoreBackup(db, obj, replace = false) {
     decoded.push({ ...fields, blob: new Blob([bytes], { type: a.type }) });
     a.base64 = null; // çözülen metin hemen bırakılır (tepe bellek düşer)
   }
+  const legalData=Object.fromEntries(ENTITY_STORES.map(s=>{const rows=new Map((basis[s]||[]).map(r=>[r.id,r]));for(const r of obj.data[s]||[])if(!rows.has(r.id)||replace)rows.set(r.id,r);return [s,[...rows.values()]]}));
+  await validatePersonnelRestore(legalData,[...(await db.getAll("attachments")),...decoded],{pendingParts:!!obj.part});
   // Yeni telefon (henüz işletme kaydı yok): ilk açılışta oluşturulan başlangıç kartları, yedekteki aynı adlı kartların
   // yerine geçer. Yoksa araç / personel / döküm sahası / eşleştirme / fiyat ikişer olur.
   const drop = freshDeviceDrops(basis, obj);
@@ -236,6 +240,7 @@ export async function restoreBackup(db, obj, replace = false) {
     stores = [...ENTITY_STORES, "attachments", "meta"];
   return await new Promise((resolve, reject) => {
     const t = connection.transaction(stores, "readwrite");
+    permitPersonnelWrite(t,{restore:true});
     let error;
     // Recheck isolated historical evidence against a coherent, serialized snapshot.
     const fresh={};let reads=ENTITY_STORES.length;
@@ -331,7 +336,7 @@ export async function restoreBackup(db, obj, replace = false) {
     }
     t.oncomplete = () => resolve({ ...preview, part: obj.part || null, set: setState });
     t.onabort = t.onerror = () =>
-      reject(error || t.error || Error("Geri yükleme iptal edildi"));
+      reject(error || personnelTransactionError(t) || t.error || Error("Geri yükleme iptal edildi"));
   });
   } finally { release(); }
 }
@@ -480,11 +485,16 @@ export function validateRestoreLinks(local, obj, preview, replace = false) {
         slip_signature: "slips",
         contract_signature: "contracts",
         leave_signature: "documents",
+        izin_kaydi: "izin_kayitlari",
         tank: "fuel_tank_movements",
         payable: "payables",
         work: "work_records",
         fuel: "fuel_records",
       }[a.record_type] || a.record_type;
+    if(a.record_type==="puantaj_donemi"){
+      if(![...merged.puantaj_kayitlari.values()].some(r=>r.personelId+":"+r.tarih.slice(0,7)===a.record_id&&r.imzaliBelgeData?.attachmentId===a.id))throw Error("Yedekte puantaj dönemine bağlı olmayan imzalı dosya");
+      continue;
+    }
     if (!merged[type]?.has(a.record_id))
       throw Error("Yedekte kaydına bağlı olmayan dosya eki");
   }

@@ -1,3 +1,4 @@
+import {legalLeaveEvents} from './leave-core.js';
 // Puantaj ve maaş — SAF katman. Gün durumu: elle işaret (personel hareketi) > iş kaydı (şoför/operatör ya da zimmetli aracı) > pazar.
 // Maaş: aylık (devamsızlık günü maaş/30 düşer) ya da yevmiye (çalışılan gün × yevmiye; yarım gün yarım) + mesai saat × mesai ücreti.
 // Düşülenler: avans (saha hareketi + ücret defteri), kesinti, yapılmış ödemeler. Masraf, ay kapatılınca "Ücret Tahakkuku" ile BİR KEZ sayılır.
@@ -36,6 +37,7 @@ export function marksOf(d, p, period) {
   const evs = live(d, "personnel_events").filter((e) => e.personnel_id === p.id && String(e.date).startsWith(period) && MARK_OF[e.event_type]);
   evs.sort((a, b) => String(a.updated_at || a.created_at || "").localeCompare(String(b.updated_at || b.created_at || "")));
   for (const e of evs) out.set(e.date, { mark: MARK_OF[e.event_type], id: e.id, kind: e.leave_kind || null });
+  for(const e of legalLeaveEvents(d,p.id).filter(e=>e.date.startsWith(period)))out.set(e.date,{mark:e.kind==='Rapor'?'R':'I',id:e.id,kind:e.kind,legal:true});
   return out;
 }
 

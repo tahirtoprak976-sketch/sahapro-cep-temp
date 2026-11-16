@@ -38,3 +38,7 @@ Resmî kontrol adresleri: https://www.mevzuat.gov.tr/MevzuatMetin/1.5.4857.pdf v
 ## Test
 
 Tüm mevcut Node testleri korunmuştur. Yeni saf testler kıdem/yaş, geçersiz tarih, eksik takvim, yarım tatil, hak yılı, 7+7/4+10, mazeret, çakışma/ikame, gece yarısı, dönem kilidi, mola, haftalık/günlük fazla mesai, yıllık limit, eksik yıllık veri ve belge kontrollerini kapsar. Chromium testi yalnız TEST IndexedDB'lerinde v7→v8 eklemeyi, eski nesneler ve PDF blob bytes'ının aynen korunmasını ve abort ile tam rollback'i doğrular. Yerel 200/200 Node test dosyası ve gerçek Chromium geçiş/rollback testi geçti. Tam CI taslak PR üzerinde çalıştırılır; geçmeden birleştirme yapılmaz. Gerçek işletme kaydı/yedeği/şoför bağlantısı kullanılmaz. PDF, yeni UI ve gerçek telefon bu aşamada test edilmedi.
+
+## 16.11.2026 sonraki karar ve kaynak güncellemesi
+
+Bu belge ilk, etkin olmayan be72cbd taslağının tarihsel açıklamasıdır. Kullanıcı daha sonra canlı entegrasyonu yetkilendirdi. Güncel kapsam, doğrulanmış mevzuat, 01.05.2026 sonrası **10 günlük** babalık izni ve yayın kapıları `PERSONNEL_LEGAL_RELEASE.md` / `PERSONNEL_LEGAL_SOURCES.json` içindedir. Yukarıdaki “kaynağa ulaşılamadı / babalık 5” notları ilk hazırlık anına aittir; güncel hüküm olarak kullanılmamalıdır.

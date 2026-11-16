@@ -6,8 +6,8 @@ import {pendingFuelSummary} from './historical-fuel.js';
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.10.13";
-export const SCHEMA_VERSION = 7;
+export const APP_VERSION = "SAHAPRO SOLO v3.10.14";
+export const SCHEMA_VERSION = 8;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
 export const SW_CACHE = "sahapro-solo-v2";
@@ -28,6 +28,8 @@ export const ENTITY_STORES = [
   "maintenance_records",
   "cash_records",
   "personnel_events",
+  "izin_kayitlari", "puantaj_kayitlari", // v8 additive; legacy rows are not rewritten
+
   "documents",
   // v2 yeniler
   "slips",

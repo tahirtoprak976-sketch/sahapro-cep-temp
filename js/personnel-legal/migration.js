@@ -1,5 +1,4 @@
-// Prepared v7 -> v8 upgrade. Not activated by openDB until all writers, backup,
-// restore and UI adapters support the new stores. Never rewrite legacy rows.
+// Additive v7 -> v8 upgrade, activated in v3.10.14. Never rewrite legacy rows.
 export const PERSONNEL_LEGAL_SCHEMA_VERSION=8;
 export const PERSONNEL_LEGAL_STORES=['izin_kayitlari','puantaj_kayitlari'];
 export const PERSONNEL_LEGAL_FIELDS=['iseGirisTarihi','dogumTarihi','devredenIzinBakiye','hakEdilenYillikIzin','kullanilanYillikIzin','kalanYillikIzin','fazlaMesaiMuvafakatTarihi','yillikFazlaMesaiSaat'];
@@ -16,7 +15,7 @@ export function upgradePersonnelLegal(db,transaction,oldVersion){
  // No cursor/update/put: old personnel/events/work/attachments stay byte-identical.
 }
 
-export const PERSONNEL_LEGAL_ASSETS=['./js/personnel-legal/core.js','./js/personnel-legal/migration.js'];
+export const PERSONNEL_LEGAL_ASSETS=['core','migration','calendar','workflow','guard','api','document','ui','restore'].map(name=>'./js/personnel-legal/'+name+'.js');
 export function assertPersonnelLegalActivation({schemaVersion,backupStores=[],restoreStores=[],swAssets=[],guardedWriters=[],legacyBridgeReady=false}){
  if(schemaVersion!==8||!legacyBridgeReady||PERSONNEL_LEGAL_STORES.some(s=>!backupStores.includes(s)||!restoreStores.includes(s))||PERSONNEL_LEGAL_ASSETS.some(s=>!swAssets.includes(s))||['leave','attendance','work_records','personnel_events','assistant','import'].some(s=>!guardedWriters.includes(s)))throw Error('İzin/puantaj geçişi: yedek, geri yükleme, çevrimdışı dosyalar ve bütün yazma kapıları tamamlanmadan etkinleştirilemez');
  return true;

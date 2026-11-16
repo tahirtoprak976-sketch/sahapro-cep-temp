@@ -1,0 +1,27 @@
+{
+  "version": "3.10.14",
+  "schema": 8,
+  "purpose": "Authorized additive personnel leave/timekeeping release; QA application unchanged",
+  "files": {
+    "js/app.js": "273ccca5af7da65aaeb7bb53a827a16df0d75bb046c6095641378276c5abdaab",
+    "js/backup.js": "a67bebf97646b71cd7401f01b5f6a76e0b75ab811e9371d85a36ffc20acb184f",
+    "js/core.js": "ef04102252105a590865e310d5dc90e6234529233bbd9f7749ea89833d4d5b1e",
+    "js/db.js": "c63c911e461b1d64118cd51dd3c691b21be80eb393641a2e31e50820e05d4af7",
+    "js/enterprise-db.js": "8d04a7a1188d6d00da5931e63b9f2c189f4f6262218c92c64a3dd92294669001",
+    "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
+    "js/leave-form.js": "9cb664fdc8e07a09f69ae999323b23e3dc60978c6c18783a56351b195436fb41",
+    "js/leave-ui.js": "a9d0dcd7047b9747e301df655f45b1cb0f83389147863b1fcf6662e9b9a21c25",
+    "js/payroll-core.js": "a139b7e01a9f43491b6f9d15f09f4b0dd6764bcc127b05cba2814c5351013439",
+    "js/payroll.js": "8b814afdaddd0255971fb3cd0585b605574913b5976240c92a6c573e9a9a898f",
+    "js/personnel-legal/api.js": "d1fb64795121397217890d8c4ed6a87ff26347afd53df018b717554cf6624f08",
+    "js/personnel-legal/calendar.js": "18a9df9e56c476a60592ff3b27e9ec1c7d7905524d5f5cb13cb53285269efe79",
+    "js/personnel-legal/core.js": "72c7d2ed04b86d8a6efba23e1e878277e62d6782cfc181a1145474a58353a802",
+    "js/personnel-legal/document.js": "28cd53d54f124a2e3f29fb9ac9c74fcb3afe2c33e1a407fc621f89e480a1de02",
+    "js/personnel-legal/guard.js": "36428fe0e61b0683860239aa7b56a8a204dedc705be17e10b79ae2a5be612249",
+    "js/personnel-legal/migration.js": "120c0092fc5715b6de1df7218a1ec51a9e76d6e9b5d8c40b22101046e19f8cb3",
+    "js/personnel-legal/restore.js": "ce60e84b278b3437f787ce260e05703c444f710de17843a2bf4bedf9460e5d63",
+    "js/personnel-legal/ui.js": "176265831588af8e7da3099ea5d78832126e47ea56224eef1360b16d07d5d102",
+    "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
+    "sw.js": "ffc4205e07a81cdd600d58f240c618739a0755b1790364162cf0a511034c209c"
+  }
+}
