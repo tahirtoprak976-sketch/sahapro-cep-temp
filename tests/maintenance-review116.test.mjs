@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {maintenanceReview,maintenanceStamp,guardReviewedMaintenanceEdit} from '../js/maintenance-review-core.js';
+import {maintenanceReview,maintenanceStamp,guardReviewedMaintenanceEdit,maintenanceDraftKey} from '../js/maintenance-review-core.js';
 import {validateSoloData} from '../js/solo-core.js';
 import {lastDone,ruleStatus} from '../js/maint-core.js';
 const v={id:'V',name:'TEST DX',service_rules:[{id:'R',title:'Motor yağı',every_hours:250}]};
@@ -7,7 +7,10 @@ const source={id:'E',date:'2026-01-01',amount:5000,description:'TEST yağ'};
 const d={vehicles:[v],expense_records:[source],payables:[],meter_readings:[{id:'M',vehicle_id:'V',date:'2026-01-02',kind:'hours',value:4502}],work_records:[],fuel_records:[],maintenance_records:[]};
 const meter_stamp=maintenanceStamp(d.meter_readings[0]);
 const f={meter_stamp,date:'2026-01-02',vehicle_id:'V',description:'TEST bakım',status:'Tamamlandı',cost_mode:'new_expense',cost:2520,tax_basis:'included',kdv_rate:20};
-const before=JSON.stringify(d);assert.equal(maintenanceReview(d,f).fields.cost,2520);
+const before=JSON.stringify(d);
+const identity={source_quote:'TEST shared quote for two repairs',description:'TEST first repair',vehicle_id:'V',date:'2026-01-02'};
+assert.notEqual(maintenanceDraftKey(identity,0),maintenanceDraftKey({...identity,description:'TEST second repair'},0));
+assert.equal(maintenanceDraftKey(identity,0),maintenanceDraftKey({...identity},0));assert.equal(maintenanceReview(d,f).fields.cost,2520);
 assert.equal(maintenanceReview(d,{...f,cost:2100,tax_basis:'excluded'}).fields.cost,2520);
 const x=maintenanceReview(d,{...f,cost:null,cost_mode:'existing',cost_source_store:'expense_records',cost_source_id:'E',source_stamp:maintenanceStamp(source)});assert.equal(x.fields.cost,null);assert.equal(x.fields.cost_source_id,'E');
 assert.throws(()=>maintenanceReview(d,{...f,cost_mode:'existing'}),/tutar/);

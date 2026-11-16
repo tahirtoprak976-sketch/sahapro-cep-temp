@@ -1,7 +1,7 @@
 import {esc,fmtNum} from './ui.js';
 import {isActive} from './core.js';
 import {meterNow} from './maint-core.js';
-import {maintenanceStamp} from './maintenance-review-core.js';
+import {maintenanceStamp,maintenanceDraftKey} from './maintenance-review-core.js';
 const options=rows=>'<option value="">— seçin —</option>'+rows.map(([id,text])=>`<option value="${esc(id)}">${esc(text)}</option>`).join('');
 export function maintenanceReviewHTML(row){return `<details data-maint-review><summary>Bakım, sayaç ve maliyet kaynağı</summary>
 <div class="field"><label>Maliyet kaynağı</label><select name="cost_mode"><option value="new_expense" selected>Yeni fatura / dış servis / işçilik</option><option value="existing">Önceki alıştan malzeme kullanıldı · yeni gider yok</option><option value="tracking" >Yalnız bakım takibi · yeni gider yok</option></select></div>
@@ -18,8 +18,9 @@ export function bindMaintenanceReview(root,d,context=null){
  const scope=context?String(context.message||'').split('\n[DÜZELTME]')[0]:null;
  let cache=draftCache.get(root);if(!cache||cache.scope!==scope){cache={scope,rows:new Map()};draftCache.set(root,cache);}
  for(const c of root.querySelectorAll('[data-kind="maintenance"]')){
-  const original=context?.rows?.[Number(c.dataset.i)],cacheKey=String(original?.source_quote||original?.description||'')+'|'+c.dataset.i;
+  const original=context?.rows?.[Number(c.dataset.i)];
   const q=n=>c.querySelector(`[name="${n}"]`)||(n==='vehicle'?c.querySelector('[name="vehicle_id"]'):n==='maint_kdv'?c.querySelector('[name="kdv_rate"]'):null),cost=q('cost');let remembered=cost.value;
+  const cacheKey=()=>maintenanceDraftKey({...original,description:q('description')?.value||original?.description||'',vehicle_id:q('vehicle').value,date:q('date').value},c.dataset.i);
   const mode=()=>{const fresh=q('cost_mode').value==='new_expense';if(!fresh&&cost.value!==''){remembered=cost.value;cost.value='';}cost.disabled=!fresh;q('cost_source').disabled=q('cost_mode').value!=='existing';q('tax_basis').disabled=q('maint_kdv').disabled=!fresh;};
   let lastVehicle=null;
   const refresh=()=>{
@@ -33,13 +34,13 @@ export function bindMaintenanceReview(root,d,context=null){
   q('cost_mode').addEventListener('change',()=>{if(q('cost_mode').value==='new_expense')cost.value=remembered;mode();});
   for(const n of ['vehicle','date'])q(n).addEventListener('change',refresh);
   refresh();
-  const old=context?cache.rows.get(cacheKey):null;
+  const old=context?cache.rows.get(cacheKey()):null;
   if(old&&old.vehicle===q('vehicle').value&&old.date===q('date').value){
    for(const [n,value]of Object.entries(old.fields)){const el=q(n);if(!el||el.type==='checkbox')continue;if(el.tagName!=='SELECT'||[...el.options].some(o=>o.value===value))el.value=value;}
    remembered=old.remembered;cost.value=old.cost;
   }
   mode();
-  if(context){const remember=()=>cache.rows.set(cacheKey,{vehicle:q('vehicle').value,date:q('date').value,cost:cost.value,remembered,fields:Object.fromEntries([...c.querySelectorAll('[data-maint-review] [name]')].filter(el=>el.type!=='checkbox').map(el=>[el.name,el.value]))});for(const event of ['input','change'])c.addEventListener(event,remember);}
+  if(context){const remember=()=>cache.rows.set(cacheKey(),{vehicle:q('vehicle').value,date:q('date').value,cost:cost.value,remembered,fields:Object.fromEntries([...c.querySelectorAll('[data-maint-review] [name]')].filter(el=>el.type!=='checkbox').map(el=>[el.name,el.value]))});for(const event of ['input','change'])c.addEventListener(event,remember);}
 
  }
 }

@@ -2,6 +2,7 @@
 import {isActive,stableStringify,toKurus,fromKurus,MAINT_TYPES,MAINT_STATUS} from './core.js';
 import {validPast,meterFields} from './solo-core.js';
 export const maintenanceStamp=r=>r?stableStringify(r):'';
+export const maintenanceDraftKey=(row,index)=>stableStringify([row?.source_quote||'',row?.description||'',row?.vehicle_id||'',row?.date||'',String(index)]);
 export function maintenanceReview(d,f){
  const vehicle=(d.vehicles||[]).find(r=>r.id===f.vehicle_id&&isActive(r));
  if(!vehicle)throw Error('Araç seçin');validPast(f.date);

@@ -31,8 +31,8 @@
     "js/maint.js": "490f70399320c748edfaf5e17a3fdc272c7d44fa231ce33a9aec184b54c8b845",
     "js/maintenance-history-core.js": "c1f8b561c2d0c86093e0746467d793ae57b0d4908a5b02613abd391c8b7434ba",
     "js/solo-core.js": "0aa38313fd989c3e55f1f6817d3665e3b3970d9c4fc1a517560a6c8bcdbf8382",
-    "js/maintenance-review-core.js": "79606c512f7fd4b49c535e4b0e65cadcbb648a9d8ff70e7aeb6ab16ccdca76b1",
+    "js/maintenance-review-core.js": "3aef1bd266e1b0c4e5c61d9962c7cd24ff05cc7ebaa656ff00d22aa6d6a76c4c",
     "js/maintenance-review-db.js": "abce31b91fc3c10dba1aebc74324245b67ac75a0c44a68404e366965323506cf",
-    "js/maintenance-review-ui.js": "1e082f7d3fc37f33b698c3ac42b24f1080926a64c3e57575d395deecd54096e1"
+    "js/maintenance-review-ui.js": "142749ee01bfefeb9a0a11101cda8a1f555310acfeb35337e38751b48badc7a2"
   }
 }
