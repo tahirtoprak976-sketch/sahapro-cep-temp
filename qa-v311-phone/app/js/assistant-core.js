@@ -662,12 +662,13 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.issues=issues;
     const evidenceText=w.quote&&quoteFound(w.quote,message)?String(w.quote):message;
     if(!w.quote||quoteFound(w.quote,message))fillWorkEvidence(r,{d,text:evidenceText,hasUnknownName:nameInMessage(d,evidenceText),negative:negatives.some(n=>n.alias&&quoteFound(n.alias,evidenceText))});
-    if(!fromDriver&&w.quote&&quoteFound(w.quote,message)){
-      const detail=loadingDescription(r.description,String(w.quote));r.description=detail.description;
+    const operational=sourceProof(w);carrySourceProof(r,operational);
+    const detailQuote=operational?.quote||w.quote;
+    if(!fromDriver&&detailQuote&&quoteFound(detailQuote,message)){
+      const detail=loadingDescription(r.description,String(detailQuote));r.description=detail.description;
       if(detail.restored)r._fieldEvidence.description={value:r.description,level:'KESIN',reason:'Kaynak alıntıdaki yükleme alıcısı açıklamaya eklendi',source:'source_quote'};
       if(detail.conflict){r.descriptionConflict=true;issues.push('Yüklemenin alıcısı veya açıklaması kaynakla doğrulanamadı; açıklamayı kontrol edin');}
     }
-    const operational=sourceProof(w);carrySourceProof(r,operational);
     if(operational&&!fromDriver){
       if(operational.includedWork)r.contractIncluded=true;
       if(operational.quantityUnspecified&&r.quantity!=null){r.guessed=true;issues.push('Bu satırda süre/miktar yazmıyor; model önerisini doğrulayın');}

@@ -132,7 +132,7 @@ export function sourceCandidates(message,d,today,rulesText=''){
     if(customer)fields.customer_id=cs.length?CERTAIN(customer.id,'Satırdaki tek müşteri eşleşmesi'):INFERRED(customer.id,inheritedSite?'Şantiyenin kayıtlı müşterisi':'Aynı iş bloğunun müşteri bağlamı');
     if(inheritedSite)fields.site_id=ss.length&&!siteEvidence.inferred?CERTAIN(inheritedSite.id,'Satırdaki kayıtlı şantiye'):INFERRED(inheritedSite.id,siteEvidence.inferred?'Uzun şantiye adında tek harf farkıyla tek kayıt adayı':'Aynı sefer bloğunun şantiyesi');
     const job=jobFor(d,row),included=job&&!job.ambiguous&&!checkDeal(job.site.deal)&&job.site.deal.basis==='Sefer'&&row.unit!=='Sefer';
-    row[PROOF]={scope:{...line.scope,customer:customer?.id||null,site:site?.id||context.site_id||null},sender:line.sender,dateIssue:line.dateIssue,unknownVehicle:unknownVehicle?unknownVehicleLabel:null,bossCustomerIds:blocked,bossNames:names,unknownCustomer:unresolvedSite?.name||(!customer&&dispatch?'İşi isteyen müşteri':null),place:unresolvedSite?.name||null,weekdayConflict:line.weekdayConflict,includedWork:!!included,quantityUnspecified:q.quantity==null,material:row.material,fields};works.push(row);
+    row[PROOF]={scope:{...line.scope,customer:customer?.id||null,site:site?.id||context.site_id||null},sender:line.sender,dateIssue:line.dateIssue,unknownVehicle:unknownVehicle?unknownVehicleLabel:null,bossCustomerIds:blocked,bossNames:names,unknownCustomer:unresolvedSite?.name||(!customer&&dispatch?'İşi isteyen müşteri':null),place:unresolvedSite?.name||null,weekdayConflict:line.weekdayConflict,includedWork:!!included,quantityUnspecified:q.quantity==null,material:row.material,quote:row.quote,fields};works.push(row);
    }
   }
  }
@@ -201,6 +201,8 @@ export function loadingDescription(description,quote){
  const recipients=unique([...text.matchAll(roles)].map(m=>m[0]));
  if(!recipients.length||!/(?:yuklendi|yukleme|yukledik|yukledim)/.test(n))return {description:before};
  if(recipients.length!==1||/yuklenmedi|yuklenmeyecek|yukleme yok|yukleme yapilmadi|degil|\?/.test(n))return {description:before,conflict:true};
+ const actions=[...n.matchAll(/\b(?:yuklendi|yukleme|yukledik|yukledim|indirildi|indirdi|bosaltildi|tasindi|verildi|aldi|verdik)\b/g)];
+ if(actions.length!==1||/\b(?:sonra|ardindan|ayrica)\b/.test(n))return {description:before,conflict:true};
  const named=[...before.matchAll(roles)];
  if(named.some(m=>norm(m[0])!==norm(recipients[0])))return {description:before,conflict:true};
  if(current.includes(norm(recipients[0])))return {description:before};

@@ -1,5 +1,5 @@
 {
-  "sourceSha": "35cfca7addfa10da181e66f08dac63a8147a1a97",
+  "sourceSha": "2fb612e3ebdedaf930e77c33a84595c885ea31dc",
   "appVersion": "SAHAPRO SOLO v3.11.07",
   "files": {
     "js/ai-assist.js": "374f087750185082cd82f851c7f1784f9eb689eecf72f579ce4e9eeb6e45bbc7",
@@ -15,7 +15,7 @@
     "js/assistant-confidence-ui.js": "71303a3c0d32b770aea3f8cd8b4d2f6f1eb2f70f94fad86a13721d670e075930",
     "js/assistant-confidence.js": "34249ada224a8257b7c3499f01a2878d42f6030ea19c751ea93b7773a5d9f81b",
     "js/assistant-conversation.js": "dcdabad1b419e4cd0e9bc793cc9e067ffda27f0de983a0c7a61c2147836ff2fe",
-    "js/assistant-core.js": "250b03aa8be930d59636787d4faefd7ddba9e531ddb95efa11cb9f71a5b901d9",
+    "js/assistant-core.js": "a8616bfe076ca4982236894c8f6b1fb0bcb2470b79c2034e566416b0e19bcf2a",
     "js/assistant-customer.js": "95847fa3a6ca82ea7e854b963b79e366437b962e39f292fae9969b1d774bb282",
     "js/assistant-directory.js": "703fb285aafefda8d13148c3a8dc55e7e5188b2372333914c79a7c370118bdf9",
     "js/assistant-docs.js": "8b5fff478da2db9573997467f58b37e0c0343d42f1f849f55fc86ce22b4d8425",
@@ -38,7 +38,7 @@
     "js/assistant-rules.js": "379d69bbd87bf745d1f3b1727c3171b7f2c2ac9f1b9bd1062b8116c53911ea19",
     "js/assistant-safety.js": "7b867bc119db65849c34c88e63613e03288c4c0a6576d5aff5c08cf8e5f164af",
     "js/assistant-site.js": "5a0a47f3e0e2cefd66abcf1a66f4f2c64da45e42393b83dd2b78c0c66091681f",
-    "js/assistant-source-context.js": "acf6d51f761a64d1114db35c07c23d80713170bebca536226d57ed0d3f3829b4",
+    "js/assistant-source-context.js": "3bed00e0bace21fc6e833b312043706d88d3aa69bcbdd79f38cb58376e53d42f",
     "js/assistant-task-center-ui.js": "81632addf0e0e47332a429093c2ee774467b565e3a0bb5cb796dfbdb51b6550a",
     "js/assistant-task-center.js": "7a8db39f191271727b9f2be11f8759cbec8fee6d4cc15211478841a60117e984",
     "js/assistant-task-files.js": "6cd60e67b0407838abfbf392413c792c6ec8b9f45bc8c10886174cb82951a9fa",
