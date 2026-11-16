@@ -36,6 +36,11 @@ with sync_playwright() as p:
  page.select_option('[data-kind]','rapor');assert page.locator('[data-setup-panel]').is_hidden();assert page.locator('[data-year]').is_hidden()
  page.click('[data-saveleave]');page.wait_for_selector('[data-legal-leave]')
  report=page.evaluate("async pid=>(await(await import('./js/db.js')).listActive('izin_kayitlari')).find(r=>r.personelId===pid)",ids['b']);assert report['izinTuru']=='rapor' and report['dusulenIsGunu']==0 and report['izinHakYili'] is None
+ page.select_option('[data-person]',ids['a']);page.wait_for_selector('[data-editleave]');page.click('[data-editleave]');page.fill('[data-site]','TEST yerel düzenleme');page.select_option('[data-person]',ids['b']);page.wait_for_function("id=>document.querySelector('[data-person]')?.value===id",arg=ids['b'])
+ page.evaluate("""async pid=>{const d=await import('./js/db.js'),a=await import('./js/personnel-legal/api.js'),r=(await d.listActive('izin_kayitlari')).find(r=>r.personelId===pid);await a.saveLeave({...r,santiyeAdi:'TEST diğer sekme'},{mode:'actual',current:r})}""",ids['a'])
+ page.select_option('[data-person]',ids['a']);page.wait_for_function("()=>document.querySelector('[data-error]')?.textContent.includes('Düzenlenen kayıt değişmiş')")
+ page.click('[data-editleave]');assert page.input_value('[data-site]')=='TEST diğer sekme';assert page.locator('[data-error]').inner_text()==''
+ assert page.evaluate("async()=>(await(await import('./js/db.js')).listActive('izin_kayitlari')).length")==2
  for width in [320,360,768]:page.set_viewport_size({'width':width,'height':800});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
  assert not errors,errors
- print(json.dumps({'singleActionableWarning':True,'backendOpeningGuardRetained':True,'existingDatesReadWithoutBalanceGuess':True,'returnsToSameEmployeeAndDraft':True,'saveStillExplicit':True,'actualTenDayWarningRetained':True,'documentShortcut':True,'crossEmployeeIsolation':True,'reportWithoutAnnualSetup':True,'widths':[320,360,768],'errors':errors}),flush=True);b.close()
+ print(json.dumps({'singleActionableWarning':True,'backendOpeningGuardRetained':True,'existingDatesReadWithoutBalanceGuess':True,'returnsToSameEmployeeAndDraft':True,'saveStillExplicit':True,'actualTenDayWarningRetained':True,'documentShortcut':True,'crossEmployeeIsolation':True,'changedRecordRequiresExplicitReview':True,'reportWithoutAnnualSetup':True,'widths':[320,360,768],'errors':errors}),flush=True);b.close()

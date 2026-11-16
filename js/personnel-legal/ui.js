@@ -54,7 +54,7 @@ export async function screen(ctx){
   const savedDraft=leaveFormDrafts.get(pid);
   let editingLeave=savedDraft?.editingId?leaves.find(r=>r.id===savedDraft.editingId&&r.rev===savedDraft.editingRev&&r.belgeDurumu!=='imzali_arsiv')??null:null;
   if(savedDraft&&(!savedDraft.editingId||editingLeave))for(const [key,val]of Object.entries(savedDraft.values)){const el=qs('[data-'+key+']',body);if(el)el.value=val;}
-  else if(savedDraft?.editingId){leaveFormDrafts.delete(pid);qs('[data-error]',body).textContent='Düzenlenen kayıt değişmiş veya kilitlenmiş; karttan yeniden inceleyin.';qs('[data-error]',body).dataset.code='STALE';}
+  else if(savedDraft?.editingId){leaveFormDrafts.delete(pid);qs('[data-error]',body).textContent='Düzenlenen kayıt değişmiş veya kilitlenmiş; sayfayı yenileyip karttan yeniden inceleyin.';qs('[data-error]',body).dataset.code='STALE';}
   if(editingLeave)qs('[data-saveleave]',body).textContent='Değişiklikleri kaydet';
   const remember=()=>leaveFormDrafts.set(pid,{values:Object.fromEntries(['kind','purpose','from','to','return','year','sub','vehicle','site'].map(k=>[k,value(k)])),editingId:editingLeave?.id??null,editingRev:editingLeave?.rev??null});
   const fields=()=>({personelId:pid,izinTuru:value('kind'),baslangicTarihi:value('from'),bitisTarihi:value('to'),isbasiTarihi:value('return'),izinHakYili:value('kind')==='yillik'?(value('year')||null):null,ikameOperatorId:value('sub')||null,makinePlakaId:value('vehicle')||null,santiyeAdi:value('site')||null});
@@ -100,7 +100,7 @@ export async function screen(ctx){
    const task=(sel,fn)=>{const b=qs(sel,card);if(b)b.onclick=async()=>{b.disabled=true;try{await fn()}catch(e){toast(e.message,'err')}finally{if(b.isConnected)b.disabled=false}}};
    const pdf=async purpose=>{const {exportDocument}=await import('../document-engine.js');await exportDocument(leaveDocument({...r,ikameAdi:people.find(p=>p.id===r.ikameOperatorId)?.name},person,{purpose,today,companyName:COMPANY_NAME}),'download')};
    task('[data-editleave]',()=>{
-    editingLeave=r;const values={kind:r.izinTuru,purpose:r.kayitSekli==='fiili'?'actual':r.planDurumu==='taslak'?'draft':'approval',from:r.baslangicTarihi,to:r.bitisTarihi,return:r.isbasiTarihi,year:r.izinHakYili??'',sub:r.ikameOperatorId??'',vehicle:r.makinePlakaId??'',site:r.santiyeAdi??''};
+    editingLeave=r;qs('[data-error]',body).textContent='';qs('[data-error]',body).dataset.code='';const values={kind:r.izinTuru,purpose:r.kayitSekli==='fiili'?'actual':r.planDurumu==='taslak'?'draft':'approval',from:r.baslangicTarihi,to:r.bitisTarihi,return:r.isbasiTarihi,year:r.izinHakYili??'',sub:r.ikameOperatorId??'',vehicle:r.makinePlakaId??'',site:r.santiyeAdi??''};
     for(const [key,val]of Object.entries(values))qs('[data-'+key+']',body).value=val;qs('[data-saveleave]',body).textContent='Değişiklikleri kaydet';preview();qs('[data-kind]',body).scrollIntoView({block:'center'});
    });
    task('[data-subshift]',()=>{const s=substituteDraft(r,{date:r.baslangicTarihi});location.hash='#/izin-puantaj?tab=puantaj&pid='+encodeURIComponent(s.personelId)+'&date='+s.tarih+'&vehicle='+encodeURIComponent(s.makinePlakaId??'')+'&ikame=1'});
