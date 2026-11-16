@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - docs/personnel-guide-259
       - feat/personnel-legal-release-258
       - feat/personnel-legal-core-257
       - fix/v311-source-details-publish

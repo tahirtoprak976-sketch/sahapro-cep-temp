@@ -15,7 +15,7 @@ export async function screen(ctx){
  const {root,db}=ctx,data=await db.dumpAll(),today=todayStr(),people=(data.personnel||[]).filter(active);
  const pid=ctx.query?.pid??people[0]?.id??'',person=people.find(p=>p.id===pid);
  const mode=ctx.query?.tab??'izin';
- root.innerHTML=appbar('İzin ve Puantaj','Kayıt, onay ve imzalı arşiv')+`<div class="card">${field('Personel',`<select data-person>${people.map(p=>`<option value="${esc(p.id)}" ${p.id===pid?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`)}<div class="row" style="gap:8px;flex-wrap:wrap">${[['izin','İzinler'],['puantaj','Saatli puantaj'],['ayar','Başlangıç bilgileri']].map(([tab,label])=>`<button class="btn ${mode===tab?'primary':'ghost'}" data-tab="${tab}">${label}</button>`).join('')}</div></div><div data-body></div>`;
+ root.innerHTML=appbar('İzin ve Puantaj','Kayıt, onay ve imzalı arşiv')+`<div class="card"><a class="btn ghost" data-personnel-guide href="./kilavuz/izin-puantaj.html" target="_blank" rel="noopener" style="margin-bottom:12px">Kullanım kılavuzu</a>${field('Personel',`<select data-person>${people.map(p=>`<option value="${esc(p.id)}" ${p.id===pid?'selected':''}>${esc(p.name)}</option>`).join('')}</select>`)}<div class="row" style="gap:8px;flex-wrap:wrap">${[['izin','İzinler'],['puantaj','Saatli puantaj'],['ayar','Başlangıç bilgileri']].map(([tab,label])=>`<button class="btn ${mode===tab?'primary':'ghost'}" data-tab="${tab}">${label}</button>`).join('')}</div></div><div data-body></div>`;
  const route=(tab,p=pid)=>{location.hash='#/izin-puantaj?pid='+encodeURIComponent(p)+'&tab='+tab};
  qs('[data-person]',root).onchange=e=>route(mode,e.target.value);
  qsa('[data-tab]',root).forEach(b=>b.onclick=()=>route(b.dataset.tab));

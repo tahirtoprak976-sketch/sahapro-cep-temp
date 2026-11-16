@@ -1,11 +1,11 @@
 {
-  "version": "3.10.14",
+  "version": "3.10.15",
   "schema": 8,
-  "purpose": "Authorized additive personnel leave/timekeeping release; QA application unchanged",
+  "purpose": "Authorized personnel guide release; HR rules and schema8 unchanged; QA application unchanged",
   "files": {
     "js/app.js": "273ccca5af7da65aaeb7bb53a827a16df0d75bb046c6095641378276c5abdaab",
     "js/backup.js": "d2548639e53f75902886ba19fd3778bcbb792da085a6c307edfef3516b56da91",
-    "js/core.js": "ef04102252105a590865e310d5dc90e6234529233bbd9f7749ea89833d4d5b1e",
+    "js/core.js": "d9784da175a52a0ad79d727ce165468cb001aa634db9cd5b3c5e15dd4f125b9d",
     "js/db.js": "c63c911e461b1d64118cd51dd3c691b21be80eb393641a2e31e50820e05d4af7",
     "js/enterprise-db.js": "8d04a7a1188d6d00da5931e63b9f2c189f4f6262218c92c64a3dd92294669001",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -20,8 +20,10 @@
     "js/personnel-legal/guard.js": "00f37232fd696990c1c2285a21321cd93383130993cb4e1d961f9c41082bee31",
     "js/personnel-legal/migration.js": "120c0092fc5715b6de1df7218a1ec51a9e76d6e9b5d8c40b22101046e19f8cb3",
     "js/personnel-legal/restore.js": "65a7056ce1ab3cf5a37976c2bf7d025b3d46924ee87ff36b9fc98b6db0e9eaf1",
-    "js/personnel-legal/ui.js": "00d68ff67a7d5909887d6ea0f26701ccffcde6aa7bebb2de4e716e9a74d98faa",
+    "js/personnel-legal/ui.js": "be722391a19f61fa80d4fb83d5354b32e034e4f6e754b054aaf3c4922144cd82",
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
-    "sw.js": "ffc4205e07a81cdd600d58f240c618739a0755b1790364162cf0a511034c209c"
+    "kilavuz/izin-puantaj.html": "f5f5087caf07c16320810bfa8b49140e12562675b3d30197dbe1c8195c326292",
+    "kilavuz/izin-puantaj.pdf": "7e372e49803aa0b8698c8217de2c57ebb9d160f32f2c1160d0923acf7d58af28",
+    "sw.js": "3a2e41edc68f87f2edecaf876a9cf1320dd61cad77329069f1b4edb10665e14b"
   }
 }
