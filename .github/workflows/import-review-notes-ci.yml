@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - fix/v311-source-details-publish
       - fix/v311-live-guards-publish
       - fix/v311-phone-rate-publish
       - fix/v311-phone-json-publish

@@ -89,3 +89,22 @@ export function validateCustomerFuelLinks(d) {
   }
   for (const c of cari.values()) if (c.type === 'MazotTeslimi' && (moves.get(c.ref_id)?.delivery_kind !== 'customer_fuel' || moves.get(c.ref_id)?.cari_movement_id !== c.id)) throw Error('Sahipsiz müşteri mazot borcu');
 }
+
+// Correct a model's reversed bucket only for an exact, standalone incoming
+// customer-to-depot statement. Money, date and extra operations are not inferred.
+export function routeCustomerDepotReceipt(plan,{message,d,today}){
+ const rows=plan?.customer_fuel;
+ if(!Array.isArray(rows)||rows.length!==1||String(message).length>500)return plan;
+ if(['works','expenses','fuel','tank_in','collections','personnel','maintenance','photo_texts'].some(k=>plan[k]?.length))return plan;
+ const text=String(message).trim(),n=fold(text).replace(/\s+/g,' '),row=rows[0];
+ if(fold(String(row.quote||'').trim()).replace(/\s+/g,' ')!==n||row.date&&row.date!==today)return plan;
+ const match=/^(.+?) sefer karsiligi depoya (\d+(?:[.,]\d+)?) (?:litre|lt) (?:mazot|motorin) verdi[.!]?$/.exec(n);
+ if(!match)return plan;
+ const spans=customerSpans(text,(d.customers||[]).filter(isActive),(d.aliases||[]).filter(isActive));
+ const ids=[...new Set(spans.filter(s=>!spans.some(t=>t.start<=s.start&&t.end>=s.end&&t.key.length>s.key.length)).map(s=>s.id))];
+ if(ids.length!==1||ids[0]!==row.customer_id||Number(row.liters)!==parseTrNumber(match[2]))return plan;
+ const key=s=>fold(s).trim().replace(/\s+/g,' '),customer=(d.customers||[]).find(c=>isActive(c)&&c.id===ids[0]);
+ if(!customer)return plan;
+ if(key(customer.name)!==match[1]&&!(d.aliases||[]).some(a=>isActive(a)&&a.active!==false&&a.target_type==='customer'&&a.target_id===customer.id&&key(a.alias)===match[1]))return plan;
+ return {...plan,customer_fuel:[],tank_in:[{date:today,customer_id:ids[0],liters:parseTrNumber(match[2]),total:null,unit_price:null,quote:text}]};
+}

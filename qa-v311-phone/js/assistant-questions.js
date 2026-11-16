@@ -2,7 +2,7 @@ import {pendingNewCustomer} from './assistant-confidence.js';
 import {sourceProof} from './assistant-source-context.js';
 // Draft-only question queue. Answers authorize one explicit field change, never Save.
 const raw={customer:'customer_id',vehicle:'vehicle_id',site:'site_id',personnel:'personnel_id',unit_price:'unit_price'};
-const label={source:'Yakıt nereden alındı?',date:'Tarihi doğrulayın',customer:'Müşteri kim?',vehicle:'Hangi araç?',work_type:'İş türü nedir?',quantity:'Miktar / süre ne kadar?',unit:'Birimi nedir?',material:'Hangi malzeme?',unit_price:'Birim fiyatı doğrulayın'};
+const label={description:'İş açıklamasını doğrulayın',source:'Yakıt nereden alındı?',date:'Tarihi doğrulayın',customer:'Müşteri kim?',vehicle:'Hangi araç?',work_type:'İş türü nedir?',quantity:'Miktar / süre ne kadar?',unit:'Birimi nedir?',material:'Hangi malzeme?',unit_price:'Birim fiyatı doğrulayın'};
 export function assistantQuestions(rows){
  const groups=new Map();
  for(const row of rows.filter(r=>!r.saved)){
