@@ -1,5 +1,5 @@
 // Versioned atomic app shell. Existing cached assets are never mixed with a new release.
-const CACHE = "sahapro-onizleme-v31105-v3-20261113-phone-evaluation-31105";
+const CACHE = "sahapro-onizleme-v31105-v3-20261113-live-guards-31106";
 const CDN_CACHE = "sahapro-onizleme-v31105-cdn-v1";
 const ASSETS = [
   "./preview-start.mjs",
