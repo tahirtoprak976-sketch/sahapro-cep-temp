@@ -288,6 +288,7 @@ export function assistantSystem(rules = "") {
     "Her iş/gider/yakıt/tahsilat/arıza/personel satırına \"quote\" ekle: o satırı doğuran mesaj parçasını BİREBİR kopyala (değiştirme, özetleme).",
     "not_aliases listesi kullanıcının reddettiği eşleşmelerdir: o ifade için o kartı seçme.",
     "examples: bu işletmenin daha önce onaylanmış mesaj→kayıt örnekleridir; aynı yazış alışkanlıklarını izle.",
+    "Süre/miktar yazılmamışsa quantity=null döndür; başka satırdaki sayıyı alma ve 1 varsayma. Tam gün/yevmiye açıkça yazıyorsa bir günlük iş ayrı kuraldır.",
     "Kurallar: Kartı listeden ID ile seç. Mesajda listede olmayan bir müşteri adı geçiyorsa customer_id=null ve new_customer=mesajda yazdığı haliyle ad.",
     "Mesajda geçen kişi/firma adı (örn. 'Süleyman Kaya', 'Ahmet Bey', 'Müşteri A') personel, araç, ocak veya döküm yeri değilse BÜYÜK İHTİMALLE MÜŞTERİDİR: listede varsa onu seç, yoksa new_customer olarak yaz. Yalnız mesajın açıkça desteklediği müşteriyi seç. Birden fazla olası müşteri varsa customer_id=null bırakıp hangi iş için hangi müşteri olduğunu questions ile sor; tahminle ana firma/taşeron seçme.",
     "Araç listede yoksa vehicle_id=null. Sayı uydurma: miktar, tutar, litre mesajda veya fişte yazmıyorsa null ver ve questions'a sor.",
@@ -662,6 +663,8 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     const operational=sourceProof(w);carrySourceProof(r,operational);
     if(operational&&!fromDriver){
       if(operational.includedWork)r.contractIncluded=true;
+      if(operational.quantityUnspecified&&r.quantity!=null){r.guessed=true;issues.push('Bu satırda süre/miktar yazmıyor; model önerisini doğrulayın');}
+      if(operational.material&&r.material&&norm(operational.material).startsWith(norm(r.material)+' ')&&norm(evidenceText).includes(norm(operational.material)))r.material=operational.material;
       if(operational.dateIssue){r.calendarConflict=true;r.dateUnsure=true;r._fieldEvidence.date={value:null,level:'BILINMIYOR',reason:'Mesajdaki tarih geçersiz veya birden fazla tarih çelişiyor',source:'source_row'};issues.push('Mesajdaki tarih geçersiz veya çelişkili; doğru tarihi seçin?');}
       const provenSite=(d.sites||[]).find(s=>s.id===operational.fields.site_id?.value&&s.customer_id===r.customer_id);
       if(provenSite&&!r.site_id){r.site_id=provenSite.id;r.siteHint=null;for(let i=issues.length-1;i>=0;i--)if(/^Şantiye .*mesajda yazmıyor/.test(issues[i]))issues.splice(i,1);}

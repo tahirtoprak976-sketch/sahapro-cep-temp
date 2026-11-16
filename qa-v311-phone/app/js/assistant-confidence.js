@@ -99,13 +99,17 @@ function unitEvidence(r,d,text){
  const found=Object.entries(units).filter(([,re])=>re.test(foldTr(text))).map(([u])=>u);
  if(found.length===1&&found[0]===r.unit)return certain(r.unit,'Mesajda açık çalışma birimi');
  if(found.length)return unknown('Mesajdaki birim bu satıra kesin bağlanamadı');
+ const phone=sourceProof(r),vehicle=live(d,'vehicles').find(v=>v.id===r.vehicle_id);
+ if(phone?.quantityUnspecified&&phone.fields.vehicle_id?.value===r.vehicle_id&&vehicle&&isMachineKind(vehicle)&&r.unit==='Saat')return inferred(r.unit,'Kayıtlı iş makinesinin varsayılan çalışma birimi','vehicle_work_unit');
  const previous=live(d,'work_records').filter(w=>w.date===r.date&&w.vehicle_id===r.vehicle_id&&w.customer_id===r.customer_id);
  if(previous.length===1&&previous[0].unit===r.unit)return inferred(r.unit,'Aynı gün aracın tek işindeki çalışma birimi','vehicle_day_unit');
  return unknown('Birim için mesaj/kayıt dayanağı yok');
 }
+export function pendingNewCustomer(row){return !!row.new_customer&&!['user','user_answer'].includes(row.fieldConfidence?.customer_id?.source);}
 const required={work:['date','customer_id','vehicle_id','work_type','quantity','unit'],expense:['date','amount','category'],fuel:['date','vehicle_id','liters','source'],tank:['date','liters'],collection:['date','customer_id','amount','method'],personnel:['date','personnel_id','event_type'],maintenance:['date','vehicle_id','description']};
 export function confidenceReady(row,kind='work'){
  if(!row.fieldConfidence)return true;
+ if(kind==='work'&&pendingNewCustomer(row))return false;
  const fields=[...(required[kind]||[])];
  if(kind==='fuel'&&row.source==='Müşteri Verdi')fields.push('customer_id');
  if(kind==='collection'&&row.method==='Havale')fields.push('bank_account_id');

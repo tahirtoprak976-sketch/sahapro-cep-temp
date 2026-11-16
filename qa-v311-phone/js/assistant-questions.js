@@ -1,3 +1,4 @@
+import {pendingNewCustomer} from './assistant-confidence.js';
 import {sourceProof} from './assistant-source-context.js';
 // Draft-only question queue. Answers authorize one explicit field change, never Save.
 const raw={customer:'customer_id',vehicle:'vehicle_id',site:'site_id',personnel:'personnel_id',unit_price:'unit_price'};
@@ -10,6 +11,7 @@ export function assistantQuestions(rows){
    const name=Object.keys(raw).find(k=>raw[k]===field)||field;
    if(f.level==='BILINMIYOR'&&(fields.has(name)||row.fields?.[name]!==undefined&&row.fields[name]!==''&&row.fields[name]!=null))fields.add(name);
   }
+  if(row.kind==='work'&&pendingNewCustomer(r))fields.add('customer');
   if(r.calendarConflict||r.dateConflict)fields.add('date');
   if(r.sourceNeedsMaterial)fields.add('material');
   if(r.sourceUncertain)fields.add('source');

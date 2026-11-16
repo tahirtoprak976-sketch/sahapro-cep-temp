@@ -66,6 +66,6 @@ const box=document.querySelector('#receipts');for(let i=1;i<=4;i++){const a=docu
   im=Image.new('RGB',(720,900),'white');draw=ImageDraw.Draw(im);lines=['ÖRNEK PETROL','TEST FİŞİ — GERÇEK İŞLEM DEĞİL','Fiş no: TEST-FIS-'+str(i).zfill(3),'Tarih: '+stamp,'Şirket deposuna alım','Ürün: Motorin','Miktar: '+str(litres)+' litre','Birim fiyat: 50 TL','TOPLAM: '+str(litres*50)+' TL','Ödeme: Nakit','KDV: 0 TL','Yalnız telefon kabul denemesi']
   for n,line in enumerate(lines):draw.text((35,40+n*63),line,font=font,fill='black')
   im.save(rec/('TEST_FIS_'+str(i)+'.png'))
- meta={'canonicalSourceSha':args.source,'rootAppVersion':'v3.10.13','previewAppVersion':'v3.11.05','scope':'Static test hosting only; same-origin namespace separation is not a security boundary.','files':{str(x.relative_to(target)):hashlib.sha256(x.read_bytes()).hexdigest()for x in sorted(target.rglob('*'))if x.is_file()}}
+ meta={'canonicalSourceSha':args.source,'rootAppVersion':'v3.10.13','previewAppVersion':re.search(r'export const APP_VERSION = "SAHAPRO SOLO ([^"]+)"', (target/'js/core.js').read_text())[1],'scope':'Static test hosting only; same-origin namespace separation is not a security boundary.','files':{str(x.relative_to(target)):hashlib.sha256(x.read_bytes()).hexdigest()for x in sorted(target.rglob('*'))if x.is_file()}}
  (target/'QA-MANIFEST.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2)+'\n')
  print(json.dumps({'qa':str(target),'canonicalSourceSha':args.source,'files':len(meta['files'])}))
