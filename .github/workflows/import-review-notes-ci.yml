@@ -148,6 +148,34 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+      - name: Verify installed schema8 maintenance release preservation
+        run: |
+          set -euo pipefail
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_maintenance116.py --source-root . --artifacts /tmp/solo-maintenance-upgrade116
+
+      - name: Reproduce estimated meter recorded on unchanged v3.10.15
+        run: |
+          set -euo pipefail
+          maintenance_baseline=$(mktemp -d /tmp/solo-maintenance115-XXXXXX)
+          git -c safe.directory="$GITHUB_WORKSPACE" archive 475a2dce093bb2aef2b8ee5b1dfd920052d841ae | tar -x -C "$maintenance_baseline"
+          python3 -m http.server 8892 --bind 127.0.0.1 --directory "$maintenance_baseline" > /tmp/solo-maintenance115-http.log 2>&1 &
+          maintenance_pid=$!
+          trap 'kill "$maintenance_pid" 2>/dev/null || true; rm -rf "$maintenance_baseline"' EXIT
+          python3 - <<'PYREADY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8892/index.html', timeout=1) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 59:
+                      raise
+                  time.sleep(0.5)
+          PYREADY
+          /tmp/solo-e2e-venv/bin/python tools/e2e/maintenance_review116.py http://localhost:8892/ --baseline-proof --artifacts /tmp/solo-maintenance115-baseline
+
       - name: Reproduce finance safety failures with identical tests on unchanged live v3.9.98
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
         run: |
@@ -1182,21 +1210,6 @@ jobs:
           echo 'BASELINE ONLY: successful reproduction proves the old defect, not candidate correctness.'
           /tmp/solo-e2e-venv/bin/python tools/e2e/work_entry_safety.py http://localhost:8842/ --baseline-proof
           /tmp/solo-e2e-venv/bin/python tools/e2e/hakedis_price_probe.py http://localhost:8842/
-
-      - name: Verify installed schema8 maintenance release preservation
-        run: |
-          set -euo pipefail
-          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_maintenance116.py --source-root . --artifacts /tmp/solo-maintenance-upgrade116
-
-      - name: Reproduce estimated meter recorded on unchanged v3.10.15
-        run: |
-          set -euo pipefail
-          maintenance_baseline=$(mktemp -d /tmp/solo-maintenance115-XXXXXX)
-          git -c safe.directory="$GITHUB_WORKSPACE" archive 475a2dce093bb2aef2b8ee5b1dfd920052d841ae | tar -x -C "$maintenance_baseline"
-          python3 -m http.server 8892 --bind 127.0.0.1 --directory "$maintenance_baseline" > /tmp/solo-maintenance115-http.log 2>&1 &
-          maintenance_pid=$!
-          trap 'kill "$maintenance_pid" 2>/dev/null || true; rm -rf "$maintenance_baseline"' EXIT
-          /tmp/solo-e2e-venv/bin/python tools/e2e/maintenance_review116.py http://localhost:8892/ --baseline-proof --artifacts /tmp/solo-maintenance115-baseline
 
       - name: Verify the test files stayed unchanged
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}

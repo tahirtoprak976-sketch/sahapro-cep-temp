@@ -1,6 +1,6 @@
 """Actual schema8 -> schema8 installed SW upgrade, synthetic records and bytes."""
 import argparse,functools,hashlib,io,json,shutil,subprocess,tarfile,tempfile,threading,uuid
-from pathlib import Path
+from pathlib import Path,PurePosixPath
 from http.server import SimpleHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
@@ -9,7 +9,18 @@ ap=argparse.ArgumentParser();ap.add_argument('--source-root',default='.');ap.add
 with tempfile.TemporaryDirectory(prefix='solo-maintenance-upgrade116-') as tmp:
  old=Path(tmp)/'old';old.mkdir();archive=subprocess.check_output(['git','archive',a.baseline_ref],cwd=root)
  with tarfile.open(fileobj=io.BytesIO(archive)) as t:
-  members=[m for m in t.getmembers() if not m.name.startswith('data/transfers/')];t.extractall(old,members=members,filter='data')
+  # Python3.11 in the existing CI image has no extractall(filter=...).
+  # Materialize only regular repository files; reject traversal and archive links.
+  for member in t.getmembers():
+   path=PurePosixPath(member.name)
+   if path.is_absolute() or '..' in path.parts:raise ValueError('Unsafe archive path')
+   if member.name.startswith('data/transfers/'):continue
+   target=old.joinpath(*path.parts)
+   if member.isdir():target.mkdir(parents=True,exist_ok=True)
+   elif member.isfile():
+    target.parent.mkdir(parents=True,exist_ok=True)
+    with t.extractfile(member) as stream:target.write_bytes(stream.read())
+   else:raise ValueError('Only regular repository files are supported')
  active={'root':old}
  class Handler(SimpleHTTPRequestHandler):
   def __init__(self,*args,**kwargs):super().__init__(*args,directory=str(active['root']),**kwargs)
