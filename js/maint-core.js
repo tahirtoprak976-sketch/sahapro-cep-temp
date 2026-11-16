@@ -38,9 +38,9 @@ export const templatesFor = (v) => (isTrailer(v) ? TEMPLATES.trailer : isRoadVeh
 export function meterPoints(d, v, kind) {
   const f = kind === "km" ? "km" : "machine_hours";
   const pts = [];
-  for (const r of live(d, "meter_readings")) if (r.vehicle_id === v.id && r.kind === (kind === "km" ? "km" : "hours") && Number(r.value) > 0) pts.push({ date: r.date, value: Number(r.value), src: "okuma" });
+  for (const r of live(d, "meter_readings")) if (r.vehicle_id === v.id && r.kind === (kind === "km" ? "km" : "hours") && r.value!=null && r.value!=="" && Number.isFinite(Number(r.value)) && Number(r.value) >= 0) pts.push({ date: r.date, value: Number(r.value), src: "okuma" });
   for (const r of live(d, "fuel_records")) if (r.vehicle_id === v.id && Number(r[f]) > 0) pts.push({ date: r.date, value: Number(r[f]), src: "yakıt" });
-  for (const r of live(d, "maintenance_records")) if (r.vehicle_id === v.id && Number(r[f]) > 0) pts.push({ date: r.date, value: Number(r[f]), src: "bakım" });
+  for (const r of live(d, "maintenance_records")) if (r.vehicle_id === v.id && (Number(r[f]) > 0 || r.cost_mode&&r.meter_reading_id&&r[f]===0)) pts.push({ date: r.date, value: Number(r[f]), src: "bakım" });
   if (Number(v[f]) > 0) pts.push({ date: String(v.meter_date || v.updated_at || v.created_at || "").slice(0, 10) || "0000-00-00", value: Number(v[f]), src: "kart" });
   return pts.sort((a, b) => a.date.localeCompare(b.date) || a.value - b.value);
 }
@@ -83,7 +83,7 @@ export function lastDone(d, v, rule, {today=todayStr()}={}) {
   const kws = kwList(rule);
   const m = ms.find((x) => x.service_rule_id === rule.id) || ms.find((x) => { if(x.cost_mode)return false; const t = fold([x.maint_type, x.description].join(" ")); return kws.some((k) => t.includes(k)); });
   const base = rule.last && (rule.last.date || rule.last.km || rule.last.hours) ? rule.last : null;
-  if (m && (!base || m.date >= (base.date || ""))) return { date: m.date, km: Number(m.km) || (m.cost_mode?null:meterAt(d, v, "km", m.date)), hours: Number(m.machine_hours) || (m.cost_mode?null:meterAt(d, v, "hours", m.date)), src: "bakım kaydı", id: m.id };
+  if (m && (!base || m.date >= (base.date || ""))) return { date: m.date, km: m.cost_mode?(m.km==null?null:Number(m.km)):Number(m.km)||meterAt(d,v,"km",m.date), hours: m.cost_mode?(m.machine_hours==null?null:Number(m.machine_hours)):Number(m.machine_hours)||meterAt(d,v,"hours",m.date), src: "bakım kaydı", id: m.id };
   if (base) return { date: base.date || null, km: Number(base.km) || null, hours: Number(base.hours) || null, src: "elle" };
   return null;
 }

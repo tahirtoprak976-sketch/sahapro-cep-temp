@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {maintenanceReview,maintenanceStamp} from '../js/maintenance-review-core.js';
 import {validateSoloData} from '../js/solo-core.js';
-import {lastDone} from '../js/maint-core.js';
+import {lastDone,ruleStatus} from '../js/maint-core.js';
 const v={id:'V',name:'TEST DX',service_rules:[{id:'R',title:'Motor yağı',every_hours:250}]};
 const source={id:'E',date:'2026-01-01',amount:5000,description:'TEST yağ'};
 const d={vehicles:[v],expense_records:[source],payables:[],meter_readings:[{id:'M',vehicle_id:'V',date:'2026-01-02',kind:'hours',value:4502}],work_records:[],fuel_records:[],maintenance_records:[]};
@@ -24,5 +24,9 @@ assert.throws(()=>maintenanceReview(d,{...f,cost:null,cost_mode:'existing',cost_
 validateSoloData({...d,maintenance_records:[{...reviewed.fields,id:'B'}]});
 assert.throws(()=>validateSoloData({...d,maintenance_records:[{...reviewed.fields,id:'B',meter_reading_id:'missing'}]}),/kanıtı/);
 assert.throws(()=>validateSoloData({...d,maintenance_records:[{...x.fields,cost:5}]}),/ikinci/);
+const zero={...reviewed.fields,id:'ZERO',cost:null,cost_mode:'tracking',date:'2026-01-01',machine_hours:0,meter_reading_id:'Z'};
+const dz={vehicles:[v],meter_readings:[{id:'Z',vehicle_id:'V',date:'2026-01-01',kind:'hours',value:0}],maintenance_records:[zero]};
+assert.equal(lastDone(dz,v,v.service_rules[0],{today:'2026-01-01'}).hours,0);
+assert.equal(ruleStatus(dz,v,v.service_rules[0],{today:'2026-01-01'}).leftHours,250);
 assert.equal(JSON.stringify(d),before);
 console.log('maintenance review116 PASS: gross/net, unknown tax, source stamp/no second cost, explicit meter, rule-specific baseline, no input mutations');
