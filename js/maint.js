@@ -1,5 +1,8 @@
+import {maintenanceReviewHTML,bindMaintenanceReview,maintenanceCardIntent} from './maintenance-review-ui.js';
+import {saveMaintenanceReview} from './maintenance-review-db.js';
+import {uuid} from './core.js';
 // Bakım Takvimi (#/bakim-takvimi, #/bakim-takvimi/{araç}): hangi aracın hangi bakımı ne zaman geliyor.
-// Kurallar araç kartında (service_rules). "✓ Yapıldı" bakım kaydı açar (kurala bağlı, km/saat ile) → sayaç sıfırlanır.
+// Kurallar araç kartında (service_rules). "✓ Yapıldı" bakım kaydı açar (kurala bağlı, km/saat ile) → yalnız ilgili bakımın başlangıcı güncellenir.
 import { qs, qsa, esc, appbar, toast, notice, fmtNum, todayStr, trDate, confirmDialog, promptDialog } from "./ui.js";
 import { isActive } from "./core.js";
 
@@ -104,15 +107,20 @@ export async function screen(ctx) {
     saveRules(rules.map((x) => (x.id === r.id ? { ...x, last } : x)), "Son bakım girildi");
   });
   for (const b of qsa("[data-done]", root)) b.addEventListener("click", async () => {
-    const r = rules[Number(b.dataset.done)];
-    const costS = await promptDialog(`${r.title} — yapıldı`, "Tutar ₺ (boş = bilinmiyor)", "");
-    if (costS == null) return;
-    const cost = Number(String(costS).replace(/\./g, "").replace(",", ".")) || null;
-    await db.saveNew("maintenance_records", {
-      date: today, vehicle_id: v.id, personnel_id: null, maint_type: "Bakım", status: "Tamamlandı", description: r.title, cost, kdv_rate: null, service_company: "",
-      km_hours: [curKm ? curKm + " km" : "", curH ? curH + " saat" : ""].filter(Boolean).join(" · "), km: curKm, machine_hours: curH, service_rule_id: r.id,
-    }, "Bakım takvimi: yapıldı");
-    toast("Bakım kaydedildi; sayaç sıfırlandı", "ok"); ctx.reload();
+    if(qs('[data-maint-completion]',root))return;
+    const r=rules[Number(b.dataset.done)],key=uuid();
+    root.insertAdjacentHTML('beforeend',`<section class="card" data-kind="maintenance" data-maint-completion><b>${esc(r.title)} — bakım ve sayaç kontrolü</b>
+      <input type="hidden" name="vehicle" value="${esc(v.id)}"><input type="hidden" name="status" value="Tamamlandı"><input type="hidden" name="maint_type" value="Bakım"><input type="hidden" name="description" value="${esc(r.title)}"><input type="hidden" name="service_company" value="">
+      <div class="field"><label>Gerçek bakım tarihi</label><input type="date" name="date" value="${today}"></div><div class="field"><label>Belgedeki tutar (boş = bilinmiyor)</label><input type="number" step="any" name="cost"></div>
+      ${maintenanceReviewHTML({cost:null})}<button class="btn primary" data-completion-save>Kontrol ettim · Kaydet</button><button class="btn" data-completion-cancel>Vazgeç</button><div data-completion-result></div></section>`);
+    const panel=qs('[data-maint-completion]',root);bindMaintenanceReview(root,d);qs('[name=service_rule_id]',panel).value=r.id;qs('details',panel).open=true;panel.scrollIntoView({block:'start'});
+    qs('[data-completion-cancel]',panel).onclick=()=>panel.remove();let busy=false;
+    qs('[data-completion-save]',panel).onclick=async()=>{if(busy)return;busy=true;try{
+      const get=n=>qs(`[name="${n}"]`,panel)?.value||'';
+      const f=maintenanceCardIntent(panel,d,{vehicle_id:v.id,date:get('date'),description:r.title,maint_type:'Bakım',status:'Tamamlandı',service_company:''});
+      const hash=await db.opHash(f);if(!panel.isConnected)return;
+      await saveMaintenanceReview(f,[],{id:'maintenance-calendar:'+key,hash});toast('Bakım kaydedildi; toplam sayaç sıfırlanmadı','ok');ctx.reload();
+    }catch(e){qs('[data-completion-result]',panel).textContent=e.message;}finally{busy=false;}};
   });
   return true;
 }

@@ -1,3 +1,5 @@
+import {maintenanceReviewHTML,bindMaintenanceReview,maintenanceCardIntent} from './maintenance-review-ui.js';
+import {saveMaintenanceReview} from './maintenance-review-db.js';
 import {strongReviewOnce,preserveFirstReviewHolds,localFallbackAllowed} from './assistant-resilience.js';
 import {sourceContextHints} from './assistant-source-context.js';
 import {mountAssistantHub,updateHubConversation} from './assistant-hub-ui.js';
@@ -1097,7 +1099,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
           <div class="field"><label>Servis / usta</label><input name="service_company" value="${esc(r.service_company)}"></div>
           <div class="field"><label>Veresiye esnaf</label><select name="supplier">${opt(suppliers, r.credit ? r.supplier_id : "", "— peşin / yok —")}</select></div>
         </div>
-        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.description)}"></div>${issues(r)}</div>`)
+        <div class="field"><label>Açıklama</label><input name="description" value="${esc(r.description)}"></div>${maintenanceReviewHTML(r)}${issues(r)}</div>`)
       .join("") +
     v.personnel
       .map((r, i) => `<div class="card" data-kind="personnel" data-i="${i}">
@@ -1283,6 +1285,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
   // Belge kartı: "Yeni personel / araç" seçilince ilgili alanlar görünür
   for (const sel of qsa('[data-kind=doc] select[name="owner"]', out))
     sel.addEventListener("change", () => { for (const f of qsa("[data-np]", sel.closest(".card"))) f.hidden = sel.value !== "newper"; });
+  bindMaintenanceReview(out,d,{message,rows:v.maintenance});
   v._workflow=bindDraftWorkflow(out,v,d);
   if(!v._localOnly)bindBulkEntry(ctx,out,v,d,{message,files});
   bindAssistantReview(ctx,out,v,d);
@@ -1899,7 +1902,7 @@ async function save(ctx, out, v, d, { message, files }) {
             const { maintenanceHint } = await import("./receipt-detail.js");
             const h = maintenanceHint(D.items);
             await db.saveNew("maintenance_records", { date: f.date, vehicle_id: f.vehicle_id, maint_type: MAINT_TYPES.includes("Periyodik Bakım") ? "Periyodik Bakım" : MAINT_TYPES[0], status: MAINT_STATUS.includes("Tamamlandı") ? "Tamamlandı" : MAINT_STATUS.at(-1),
-              description: h.title + ": " + D.items.map((i) => i.desc).join(", ").slice(0, 400), cost: 0, service_company: val(c, "company") || null, expense_id: rec.id, note: "Maliyet gider kaydında (" + (D.no || "fiş") + ")" }, "Asistan: faturadan bakım");
+              description: h.title + ": " + D.items.map((i) => i.desc).join(", ").slice(0, 400), cost: null, cost_mode: "existing", cost_source_store: "expense_records", cost_source_id: rec.id, meter_reading_id: null, service_company: val(c, "company") || null, expense_id: rec.id, note: "Maliyet gider kaydında (" + (D.no || "fiş") + ")" }, "Asistan: faturadan bakım");
             done.maintenance++;
           }
           done.expense++;
@@ -1961,35 +1964,27 @@ async function save(ctx, out, v, d, { message, files }) {
         }
         done.collection++;
       } else if (k === "maintenance") {
-        const cost = Number(val(c, "cost")) || null;
         const mr = (v.maintenance || [])[Number(c.dataset.i)] || {};
-        if (mr.driver_entry_id && (await db.dumpAll()).maintenance_records.some((x) => isActive(x) && x.driver_entry_id === mr.driver_entry_id)) { toast("Şoför arıza kaydı zaten alınmış, atlandı", "err"); continue; }
-        const files0 = mr.driver_entry_id ? null : mr.photo!=null ? files[mr.photo] : null;
-        const cepM = mr.driver_pay === "cep" && cost;
-        let mg = null;
-        if (!mr.driver_entry_id) {
-          mg = await opGate("maintenance", c.dataset.i, { date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), description: val(c, "description"), cost }, `Arıza/bakım ${val(c, "date") || todayStr()}`);
-          if (!mg) continue;
-          if (mg.existing) { if (files0) await db.addAttachment("maintenance", mg.existing.id, files0); continue; }
-        }
-        const rec = await skipDup(db.saveNew("maintenance_records", noteFor('maintenance',mr,{
-          date: val(c, "date") || todayStr(), vehicle_id: val(c, "vehicle"), personnel_id: mr.driver_pid || null, severity: "Normal", part: "",
-          maint_type: val(c, "maint_type") || "Arıza", status: val(c, "status") || "Açık", description: val(c, "description"),
-          cost, kdv_rate: null, service_company: val(c, "service_company"), km_hours: [mr.km ? mr.km + " km" : "", mr.machine_hours ? mr.machine_hours + " saat" : ""].filter(Boolean).join(" · "),
-          ...(mr.km ? { km: mr.km } : {}), ...(mr.machine_hours ? { machine_hours: mr.machine_hours } : {}),
-          ...(cepM ? { paid_by_personnel_id: mr.driver_pid, reimbursement_status: "Bekliyor" } : {}),
-          ...(mr.driver_entry_id ? { driver_entry_id: mr.driver_entry_id, source: "şoför" } : {}),
-        },[]), "Asistan arıza/bakım", { op: mg?.op || null }));
-        if (!rec) continue;
-        if (rec._existing) { done.already++; continue; }
-        if (files0) await db.addAttachment("maintenance", rec.id, files0);
-        for (const pi of mr.photos || []) if (files[pi]) await db.addAttachment("maintenance", rec.id, files[pi]);
+        const intent=maintenanceCardIntent(c,d,noteFor('maintenance',mr,{
+          date:val(c,'date'),vehicle_id:val(c,'vehicle'),description:val(c,'description'),maint_type:val(c,'maint_type'),status:val(c,'status'),service_company:val(c,'service_company'),personnel_id:mr.driver_pid||null,
+          ...(mr.driver_entry_id?{driver_entry_id:mr.driver_entry_id}:{}),...(mr.driver_pay==='cep'?{paid_by_personnel_id:mr.driver_pid}:{}),
+        },[]));
+        const {maintenanceReview}=await import('./maintenance-review-core.js');
+        const reviewed=maintenanceReview(await db.dumpAll(),intent),cost=reviewed.fields.cost;
+        if(val(c,'supplier')&&intent.cost_mode!=='new_expense')throw Error('Önceki alış / takip için yeni esnaf borcu oluşturulmaz');
+        const mg=await opGate('maintenance',c.dataset.i,intent,`Bakım ${intent.date}`);if(!mg)continue;
+        if(mg.existing)continue;
+        if(!c.isConnected)throw Error('Bakım ekranı değişti; kayıt yapılmadı');
+        const photoIndexes=[...new Set([mr.photo,...(mr.photos||[])].filter(x=>x!=null))];
+        const rec=await skipDup(saveMaintenanceReview(intent,photoIndexes.map(i=>files[i]).filter(Boolean),mg.op));
+        if(!rec)continue;snap0.track(rec);
+        if(rec._existing){done.already++;continue;}
         const supId = val(c, "supplier");
         if (supId && cost) {
           const { createCreditBill } = await import("./esnaf.js");
           const fresh = await db.dumpAll();
           const s = fresh.suppliers.find((x) => x.id === supId);
-          await trackedCredit(createCreditBill,ctx, fresh, s, { date: rec.date, amount: cost, description: val(c, "description"), category: "Bakım / Onarım", vehicle_id: rec.vehicle_id, kdv_rate: null }, { source: { store: "maintenance_records", id: rec.id } });
+          await trackedCredit(createCreditBill,ctx, fresh, s, { date: rec.date, amount: cost, description: val(c, "description"), category: "Bakım / Onarım", vehicle_id: rec.vehicle_id, kdv_rate: rec.kdv_rate }, { source: { store: "maintenance_records", id: rec.id } });
         }
         done.maintenance++;
       } else if (k === "personnel") {

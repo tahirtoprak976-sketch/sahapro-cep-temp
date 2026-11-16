@@ -1,3 +1,5 @@
+import {maintenanceReviewHTML,bindMaintenanceReview,maintenanceCardIntent} from './maintenance-review-ui.js';
+import {saveMaintenanceReview} from './maintenance-review-db.js';
 import {vehicleTypeInfo} from "./vehicle-type-core.js";
 import { attachmentHTML } from "./attachment-ui.js";
 import {pendingFuelPanel,bindPendingFuelReview} from './historical-fuel-ui.js';
@@ -621,7 +623,7 @@ async function maintForm(ctx, editId) {
     appbar(editId ? "Bakım Düzenle" : "+ Arıza / Bakım", "") +
     entryContextHTML(entry) +
     `
-    <form data-form novalidate>
+    <form data-form novalidate ${!editId?'data-kind="maintenance"':''}>
       ${fDate("Tarih", "date", v.date)}
       <div class="formgrid2">
         ${fSelect(
@@ -645,13 +647,15 @@ async function maintForm(ctx, editId) {
       ${fSelect("Önem", "severity", ["Düşük", "Normal", "Yüksek", "Kritik"], v.severity || "Normal", { empty: false })}${fText("Parça", "part", v.part || "")}
       ${fArea("Arıza / Açıklama", "description", v.description || "")}
       <div class="formgrid2">
-        ${fNum("Maliyet (₺, ops.)", "cost", v.cost ?? "", { step: "any" })}${fNum("KDV % (biliniyorsa; maliyet KDV dahil)", "kdv_rate", v.kdv_rate ?? "", { step: "any" })}
+        ${fNum("Maliyet (₺, KDV dahil; boş = bilinmiyor)", "cost", v.cost ?? "", { step: "any" })}${editId?fNum("KDV % (biliniyorsa; maliyet KDV dahil)", "kdv_rate", v.kdv_rate ?? "", { step: "any" }):''}
         ${fText("Servis/Firma (ops.)", "service_company", v.service_company || "")}
       </div>
-      ${fText("KM / Çalışma Saati (ops.)", "km_hours", v.km_hours || "")}
+      ${editId?fText("KM / Çalışma Saati (ops.)", "km_hours", v.km_hours || ""):maintenanceReviewHTML(v).replace('name="maint_kdv"','name="kdv_rate"')}
       <div class="field"><label>Fotoğraf</label><input type="file" name="photo" accept="image/jpeg,image/png,image/webp"></div>
     </form>
     <div class="actionbar"><button class="btn primary" data-save>Kaydet</button></div>`;
+  const reviewData=!editId?await db.dumpAll():null;
+  if(!editId){bindMaintenanceReview(root,reviewData);qs('[name="tax_basis"]',root).value="included";}
   bindSafeFormSave(root,db,async save => {
     const val = save.values;
     if (!val.vehicle_id) {
@@ -684,7 +688,8 @@ async function maintForm(ctx, editId) {
         "Bakım güncellendi",
       );
     } else {
-      saved = await save.saveNew("maintenance_records", fields, "Bakım kaydı");
+      const intent=maintenanceCardIntent(qs('[data-form]',root),reviewData,fields);
+      saved = await save.external('maintenance_records',intent,async key=>saveMaintenanceReview(intent,[],{id:key,hash:await db.opHash(intent)}));
     }
     await save.attach('maintenance',save.files.photo);
     save.finish(()=>{toast("Kaydedildi", "ok");go(entrySaveHash(entry,'maintenance',fields)||"#/bakim/" + saved.id);});

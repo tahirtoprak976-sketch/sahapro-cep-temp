@@ -46,6 +46,11 @@ export function maintenanceHistory(data){
     if(!vehicle_id)warnings.push('Araç belirtilmemiş; araç geçmişine otomatik bağlanmadı.');
     const cost=conflict?null:compatible.length?sumBills(compatible):number(store==='maintenance_records'?r.cost:r.amount);
     const sources=[ref(store,r),...compatible.map(b=>ref('payables',b))];
+    if(store==='maintenance_records'&&r.cost_mode==='existing'){
+      const origin=['expense_records','payables'].includes(r.cost_source_store)?live(data,r.cost_source_store).find(x=>x.id===r.cost_source_id):null;
+      if(origin){sources.push(ref(r.cost_source_store,origin));if(origin.vehicle_id&&origin.vehicle_id!==r.vehicle_id)warnings.push('Bağlı alışın aracı sonradan değişmiş; maliyet bağlantısını kontrol edin.');warnings.push('Malzeme önceki alıştan kullanıldı. Kaynak tutarı bu bakıma yeniden gider yazılmadı; bu bir stok veya maliyet dağıtımı değildir.');}
+      else warnings.push('Bağlı malzeme alışı bulunamadı / iptal edilmiş; yeni gider eklemeden önce kaynağı kontrol edin.');
+    }
     const external=store!=='maintenance_records';
     rows.push({...r,id:external?key(store,r.id):r.id,cost,vehicle_id,
       maint_type:external?r.category||'Bakım / Onarım':r.maint_type,
