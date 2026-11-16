@@ -1,5 +1,5 @@
 import {businessRuleGuidance,businessRules,bossDispatch} from './assistant-business-rules.js';
-import {prepareSourcePlan,sourceProof,carrySourceProof,registeredMatches,OPERATIONAL_GUIDANCE} from './assistant-source-context.js';
+import {prepareSourcePlan,sourceProof,carrySourceProof,registeredMatches,loadingDescription,OPERATIONAL_GUIDANCE} from './assistant-source-context.js';
 import {fillWorkEvidence,annotateConfidence} from './assistant-confidence.js';
 import {isMachineKind,canonicalVehicleType,vehicleTypeRequested} from "./vehicle-type-core.js";
 import {assertAssistantPlan,rowEvidence,PLAN_LIMITS} from './assistant-safety.js';
@@ -10,7 +10,7 @@ import {recordLocalText} from './record-notes.js';
 import {customerNameKey} from "./driver-customer.js";
 import {readBatchPolicy,readRowPricePolicy} from './assistant-batch.js';
 import {partDocumentProperties} from './part-document-core.js';
-import {customerFuelRows} from './customer-fuel.js';
+import {customerFuelRows,routeCustomerDepotReceipt} from './customer-fuel.js';
 import { tankInMatch } from "./tank-match.js";
 import { dumpInvoiceMatch, DUMP_INVOICE } from "./dump-account.js";
 import { validateInvoiceDetail } from "./receipt-detail.js";
@@ -307,6 +307,7 @@ export function assistantSystem(rules = "") {
     "Yalnız JSON döndür: {\"works\":[{\"date\",\"customer_id\",\"new_customer\",\"new_customer_parent_id\",\"site_id\",\"new_site\",\"vehicle_id\",\"personnel_id\",\"work_type\",\"quantity\",\"unit\",\"guessed\",\"customer_guess\" (müşteri adı mesajda yoksa ve ipucundan tahmin ettiysen true),\"reporter\" (mesajı gönderen kişinin adı, WhatsApp satırındaki gibi),\"date_source\":\"mesaj\"|\"whatsapp\"|\"yok\",\"from_place\" (malzemenin alındığı yerin adı, eksiz: 'Öztaş', 'Danış Maden'),\"quarry_id\" (alındığı yer quarries listesindeki malzeme ocağıysa ID),\"to_place\" (teslim/döküm/dolgu yerinin adı, eksiz),\"to_is_dump\" (teslim yeri döküm/dolgu sahasıysa true, şantiyeyse false),\"slip_no\",\"description\" (işin kısa açıklaması: ne yapıldı, nereden nereye),\"material\",\"dump_site_id\",\"unit_price\" (yalnız mesajda yazıyorsa),\"dump_cost\" (döküm/boşaltma için ödenen TOPLAM ₺, yalnız mesajda yazıyorsa: 'döküm sahasına 4000 tl'; birim fiyatla karıştırma),\"note\"}],",
     "\"expenses\":[{\"date\",\"amount\",\"category\",\"company\",\"vehicle_id\",\"supplier_id\",\"credit\",\"payment_method\":\"Nakit\"|\"Kart\"|\"Havale\"|\"Personel Ödedi\"|null (mesajda ya da fişte yazıyorsa: 'kartla', 'nakit', 'havale/EFT', fişte KREDİ KARTI/NAKİT; personel kendi cebinden ödediyse Personel Ödedi),\"paid_by_personnel_id\" (Personel Ödedi ise kim),\"photo\":fotoğraf sırası(0..) veya null,\"note\",\"invoice\":(fotoğraf fatura/fiş ise) {\"no\":fatura/fiş no,\"ettn\",\"seller_tax_no\":SATICININ VKN/TCKN,\"net\":KDV hariç toplam,\"kdv\":KDV tutarı,\"kdv_rate\",\"items\":[{\"code\":stok kodu,\"desc\":açıklama (yazdığı gibi),\"qty\",\"unit\",\"unit_price\":KDV hariç birim fiyat,\"kdv_rate\",\"amount\":KDV hariç satır tutarı}] (HER satırı ayrı yaz)}; company: satıcının tam ünvanı,\"place\":faturadaki yer/saha adı (fatura notu ya da sevk adresinde, ör. SEVK YERİ)}]. DÖKÜM FATURASI (İSTAÇ vb. döküm sahasının KG/ton toprak-hafriyat faturası) da expenses'e category Döküm ile, invoice ayrıntısı ve place ile yazılır (uygulama döküm hesabına bağlar, gider saymaz).",
     "\"fuel\":[{\"date\",\"vehicle_id\",\"liters\",\"total\",\"km\" (mesajda araç kilometresi yazıyorsa: 'km 245300'),\"machine_hours\" (makine saati yazıyorsa: 'saat 4950'),\"photo\",\"source\":\"Depo Tankı\"|\"Akaryakıt İstasyonu\"|\"Müşteri Verdi\",\"customer_id\" (yalnız Müşteri Verdi ise)}] (araca verilen yakıt; işletme genelde KENDİ DEPO TANKINDAN verir: varsayılan Depo Tankı; istasyon/petrol adı/akaryakıt fişi varsa Akaryakıt İstasyonu),",
+    "Müşteri sefer karşılığı DEPOYA mazot VERDİ ise tank_in kullan; customer_fuel ters yöndür. Makine adı uydurma. İş açıklamasında kaynak satırdaki yükleme alıcısını düşürme.",
     "MÜŞTERİNİN KENDİ FORKLİFTİNE verilen mazot customer_fuel dizisine yazılır: {date,customer_id,liters,unit_price,total,machine:'Forklift',source:'Depo Tankı',quote:mesajdan birebir teslimat cümlesi}. Kendi depomuz azalır ve müşteriye TL borç doğar; fuel/expenses/works/collections/tank_in dizilerine aynı teslimatı tekrar yazma. Bu, müşterinin BİZE verdiği mazotun ters yönüdür. Litre fiyatı veya toplam bedel yoksa null bırak; depo alış fiyatını satış bedeli sayma. Müşteri belirsizse sormadan seçme.",
     "\"tank_in\":[{\"date\",\"liters\",\"unit_price\" (litre fiyatı),\"total\",\"supplier_id\",\"credit\" (petrolcüye veresiye ise true),\"customer_id\" (mazotu müşteri sefer karşılığı verdiyse, ör. Kılıç'tan depoya),\"note\",\"photo\":fatura fotoğrafı sırası,\"company\":satıcı (petrol firması) tam ünvanı,\"irsaliye_no\",\"invoice_no\":fatura no,\"ettn\",\"seller_tax_no\":satıcı VKN,\"net\":KDV hariç,\"kdv\":KDV tutarı}] (DEPOYA yakıt geldiyse: 'depoya 5000 litre mazot geldi', 'tanker boşalttı'; bunu fuel'e yazma). AKARYAKIT FATURASI (Motorin/Mazot) toplu alımsa (yüzlerce/binlerce litre, plaka bizim araçlarımızdan değilse — tankerin plakasıdır) bu bir DEPO GİRİŞİDİR: tank_in'e yaz, expenses'e ve fuel'e YAZMA. Toplam = Ödenecek Tutar (KDV dahil), unit_price = toplam ÷ litre.",
     "\"collections\":[{\"date\",\"customer_id\",\"new_customer\",\"amount\",\"method\":\"Nakit\"|\"Havale\",\"bank_account_id\",\"personnel_id\",\"note\"}] (müşteriden alınan para),",
@@ -423,6 +424,7 @@ export function parenthesizedSubcontractor(d, text) {
 export function validatePlan(plan, { message = "", d, today = todayStr(), photoCount = 0, negatives = [], rules = "" } = {}) {
   assertAssistantPlan(plan ?? {});
   const out = { works: [], expenses: [], fuel: [], fuelOut: [], questions: [], newCustomers: [] };
+  plan=routeCustomerDepotReceipt(plan||{},{message,d,today});
   plan=prepareSourcePlan(plan||{},{message,d,today,rules});assertAssistantPlan(plan);
   const batchPolicy=readBatchPolicy(message,today);
   out.batchPolicy=batchPolicy;
@@ -660,6 +662,11 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     r.issues=issues;
     const evidenceText=w.quote&&quoteFound(w.quote,message)?String(w.quote):message;
     if(!w.quote||quoteFound(w.quote,message))fillWorkEvidence(r,{d,text:evidenceText,hasUnknownName:nameInMessage(d,evidenceText),negative:negatives.some(n=>n.alias&&quoteFound(n.alias,evidenceText))});
+    if(!fromDriver&&w.quote&&quoteFound(w.quote,message)){
+      const detail=loadingDescription(r.description,String(w.quote));r.description=detail.description;
+      if(detail.restored)r._fieldEvidence.description={value:r.description,level:'KESIN',reason:'Kaynak alıntıdaki yükleme alıcısı açıklamaya eklendi',source:'source_quote'};
+      if(detail.conflict){r.descriptionConflict=true;issues.push('Yüklemenin alıcısı veya açıklaması kaynakla doğrulanamadı; açıklamayı kontrol edin');}
+    }
     const operational=sourceProof(w);carrySourceProof(r,operational);
     if(operational&&!fromDriver){
       if(operational.includedWork)r.contractIncluded=true;
@@ -722,7 +729,7 @@ export function validatePlan(plan, { message = "", d, today = todayStr(), photoC
     }
     r.ai = { customer_id: r.customer_id, new_customer: r.new_customer, site_id: r.site_id, vehicle_id: r.vehicle_id, work_type: r.work_type, quantity: r.quantity, unit: r.unit };
     r.issues = issues;
-    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt && !r.priceUncertain && !r.parentMismatch && !r.calendarConflict && !r.sourceNeedsMaterial);
+    r.ok = !!((r.customer_id || r.new_customer) && r.vehicle_id && r.work_type && r.unit && r.quantity && !r.guessed && !r.hinted && !r.badQuote && !r.ambiguous && !r.badNew && !r.vehicleGuess && !r.dateUnsure && !r.customerGuess && !r.typeDoubt && !r.priceUncertain && !r.parentMismatch && !r.calendarConflict && !r.sourceNeedsMaterial && !r.descriptionConflict);
     r.fuelAllowance = r.price_pending?null:fuelAllowance(d, r, w.quote && quoteFound(w.quote, message) ? String(w.quote) : message);
     // Alan kaynakları (kartta görünür): mesajdan / kayıtlı takma addan / geçmiş işlerden tahmin / fiyat listesinden / şoför ekranından
     {

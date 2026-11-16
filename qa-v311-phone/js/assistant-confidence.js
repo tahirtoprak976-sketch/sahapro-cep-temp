@@ -199,6 +199,8 @@ export function annotateConfidence(r,kind,{d,text,fullMessage=text,today,origina
  if('unit'in r)f.unit=unitEvidence(r,d,text);
  if(kind==='work')f.work_type=r.fromDriver?certain(r.work_type,'Şoför ekranında seçilen alan','driver'):typeEvidence(r,d,text);
  for(const k of ['category','event_type','method','source','description'])if(k in r)certainValue(k,'Mevcut doğrulama kuralından');
+ if(kind==='work'&&r._fieldEvidence?.description)f.description=r._fieldEvidence.description;
+ if(r.descriptionConflict)f.description=unknown('Yükleme alıcısı/açıklaması kaynakla doğrulanmalı');
  if(r.priceUncertain)f.unit_price=unknown('Mesajdaki fiyatın bu işe ait olduğu doğrulanmadı');
  const price=r.priceInfo?.summary&&!r.priceInfo.ambiguous&&r.priceInfo.candidates?.length===1?r.priceInfo.candidates[0]:null;
  const job=kind==='work'?jobFor(d,r):null;

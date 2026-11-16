@@ -192,3 +192,21 @@ export function sourceContextHints(message,d,today,rules=''){
  const p=sourceCandidates(message,d,today,rules);
  return ['works','fuel'].flatMap(group=>p[group].map(r=>{const proof=sourceProof(r);return {kind:group==='works'?'work':'fuel',quote:r.quote.slice(0,1600),date:r.date,block:proof.scope.block,datePart:proof.scope.datePart,sender_id:proof.sender.id,fields:proof.fields,date_needs_confirmation:!!(proof.dateIssue||proof.weekdayConflict)};})).slice(0,100);
 }
+
+// Preserve literal loading recipients in a verified single-row quote. This is
+// descriptive work context, never the debtor/customer or a financial direction.
+export function loadingDescription(description,quote){
+ const before=String(description||''),text=String(quote||''),n=norm(text),current=norm(before);
+ const roles=/(?<!\p{L})(?:nakliyeciye|nakliyecilere|kamyoncuya|kamyonculara|şoföre|şoförlere|sofore|soforlere|taşıyıcıya|taşıyıcılara|tasiyiciya|tasiyicilara)(?!\p{L})/giu;
+ const recipients=unique([...text.matchAll(roles)].map(m=>m[0]));
+ if(!recipients.length||!/(?:yuklendi|yukleme|yukledik|yukledim)/.test(n))return {description:before};
+ if(recipients.length!==1||/yuklenmedi|yuklenmeyecek|yukleme yok|yukleme yapilmadi|degil|\?/.test(n))return {description:before,conflict:true};
+ const named=[...before.matchAll(roles)];
+ if(named.some(m=>norm(m[0])!==norm(recipients[0])))return {description:before,conflict:true};
+ if(current.includes(norm(recipients[0])))return {description:before};
+ const action=/([a-z]+)\s+(?:yuklendi|yukleme|yukledik|yukledim)\b/.exec(current);
+ if(!action||!new RegExp('(?:^| )'+action[1]+' (?:yuklendi|yukleme|yukledik|yukledim)(?: |$)').test(n))return {description:before,conflict:true};
+ const suffix=' · '+recipients[0];
+ if(before.length+suffix.length>300)return {description:before,conflict:true};
+ return {description:before+suffix,restored:true};
+}
