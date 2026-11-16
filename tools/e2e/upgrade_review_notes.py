@@ -45,21 +45,21 @@ def assert_preserved(before, after, upgraded=False):
     # The only allowed shape difference is the newly created, empty review store.
     expected = copy.deepcopy(before)
     added = set(after['data']) - set(before['data'])
-    assert added <= {'pending_fuel_records'}, f'Unexpected new stores: {added}'
+    assert added <= {'pending_fuel_records','izin_kayitlari','puantaj_kayitlari'}, f'Unexpected new stores: {added}'
     for store in added:
-        assert after['data'][store] == [], 'Upgrade must not create historical fuel evidence'
+        assert after['data'][store] == [], 'Upgrade must not invent fuel or HR records'
         expected['data'][store] = []
     if upgraded:
         old_marker = [r for r in before['meta'] if r['key'] == 'schema_version_current']
         new_marker = [r for r in after['meta'] if r['key'] == 'schema_version_current']
         assert len(old_marker) == 1 and old_marker[0]['value'] in (6, 7), old_marker
-        assert new_marker == [{'key':'schema_version_current','value':7}]
-        print('PASS exact migration metadata transition: schema_version_current '+str(old_marker[0]['value'])+' -> 7', flush=True)
+        assert new_marker == [{'key':'schema_version_current','value':8}]
+        print('PASS exact migration metadata transition: schema_version_current '+str(old_marker[0]['value'])+' -> 8', flush=True)
         # This marker describes the opened schema, not a user record. No other
         # metadata value, entity field or audit entry is normalized.
         for row in expected['meta']:
             if row['key'] == 'schema_version_current':
-                row['value'] = 7
+                row['value'] = 8
     if after != expected:
         # Synthetic fixture only: name the exact delta before deciding whether a
         # schema migration is intentional. Never hide arbitrary metadata edits.
@@ -302,7 +302,7 @@ def main():
                   const denied=await new Promise(resolve=>{const q=indexedDB.open(connection.name,6);q.onerror=()=>resolve(q.error.name);q.onsuccess=()=>{q.result.close();resolve('opened');};});
                   return {version:connection.version,denied,pending:await db.getAll('pending_fuel_records')};
                 }""")
-                assert schema['version'] == 7 and schema['pending'] == []
+                assert schema['version'] == 8 and schema['pending'] == []
                 assert schema['denied'] == 'VersionError', 'An old schema6 writer must not reopen upgraded data'
                 if old_version == 6:
                     recovery = page.evaluate("""async()=>{

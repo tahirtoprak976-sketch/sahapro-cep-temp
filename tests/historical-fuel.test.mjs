@@ -5,7 +5,7 @@ import {SCHEMA_VERSION,ENTITY_STORES} from '../js/core.js';
 import {prepareHistory,readHistoryPackage} from '../js/history-core.js';
 import {selectedFuelBudget} from '../js/assistant-batch.js';
 import {validateRestoreLinks} from '../js/backup.js';
-assert.equal(SCHEMA_VERSION,7);assert.ok(ENTITY_STORES.includes('pending_fuel_records'));
+assert.equal(SCHEMA_VERSION,8);assert.ok(ENTITY_STORES.includes('pending_fuel_records'));
 const today='2026-10-27',scope={enabled:true,from:'2026-09-01',to:'2026-09-30',approved_at:'2026-10-27T00:00:00Z'};
 const fields={date:'2026-09-10',vehicle_id:'V',personnel_id:'P',liters:854,fuel_source:'Depo Tankı',total:34567.89,unit_price:40.48,description:'TEST source amount and operator'};
 const pending={id:'pending',...pendingFuelFields(fields,scope,scope.approved_at)};

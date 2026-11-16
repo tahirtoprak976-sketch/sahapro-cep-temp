@@ -4,11 +4,14 @@ from io import BytesIO
 from pathlib import Path
 from PIL import Image
 from urllib.parse import urlparse
+from urllib.request import urlopen
 from playwright.sync_api import sync_playwright
 U=(sys.argv[1]if len(sys.argv)>1 else 'http://localhost:8841/').rstrip('/')+'/';assert urlparse(U).hostname in ('localhost','127.0.0.1')
 with sync_playwright()as w:
  b=w.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox']);c=b.new_context(viewport={'width':390,'height':850},service_workers='block');c.add_init_script("localStorage.setItem('sp_role','boss')");p=c.new_page();errors=[];calls=[];p.on('pageerror',lambda e:errors.append(str(e)));p.route('https://generativelanguage.googleapis.com/**',lambda r:(calls.append(r.request.url),r.abort()))
- source=(Path(__file__).resolve().parents[2]/'js/db.js').read_text();needle='  return wrap(tx(db, store, "readonly").get(id));';assert source.count(needle)==1
+ # Inject the served tree, not candidate imports into an unchanged baseline.
+ with urlopen(U+'js/db.js',timeout=10) as response:source=response.read().decode('utf-8')
+ needle='  return wrap(tx(db, store, "readonly").get(id));';assert source.count(needle)==1
  source=source.replace(needle,"  const result=await wrap(tx(db,store,'readonly').get(id));if(store==='customers'&&id==='C'&&globalThis.TEST_customer_gate&&!document.querySelector('[data-ask]')?.disabled){globalThis.TEST_customer_waiting=true;await TEST_customer_gate;}return result;")
  c.route('**/js/db.js',lambda r:r.fulfill(status=200,content_type='text/javascript',body=source))
  p.goto(U+'index.html?db=TEST_hub110_'+uuid.uuid4().hex+'#/akilli-asistan');p.wait_for_selector('#screen[data-view-ready="1"]')

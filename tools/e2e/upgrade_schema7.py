@@ -42,22 +42,17 @@ SNAPSHOT = """async()=>{
 
 
 def assert_preserved(before, after, upgraded=False):
-    # This is an installed schema7 profile, not an additive schema6 migration.
-    # No entity, store, marker, audit, metadata, draft or original byte may change.
-    assert set(after['data']) == set(before['data']), 'Schema7 store set must remain identical'
-    for snapshot in (before, after):
-        assert [r for r in snapshot['meta'] if r['key'] == 'schema_version_current'] == [
-            {'key': 'schema_version_current', 'value': 7}], 'Schema7 marker remains exactly7'
-    if after != before:
-        def differences(left, right, path='snapshot'):
-            if isinstance(left, dict) and isinstance(right, dict):
-                return [d for key in sorted(set(left) | set(right))
-                        for d in differences(left.get(key), right.get(key), path+'.'+key)]
-            if left != right:
-                return [{'path':path, 'before':left, 'after':right}]
-            return []
-        print('Upgrade preservation differences: '+json.dumps(differences(before, after)), flush=True)
-    assert after == before, 'Every schema7 entity, metadata, draft and attachment byte must survive exactly'
+    expected = copy.deepcopy(before)
+    if upgraded:
+        assert set(after['data']) - set(before['data']) == {'izin_kayitlari', 'puantaj_kayitlari'}
+        for store in ('izin_kayitlari', 'puantaj_kayitlari'):
+            assert after['data'][store] == [], 'No automatic HR backfill'
+            expected['data'][store] = []
+        assert [r for r in before['meta'] if r['key']=='schema_version_current'] == [{'key':'schema_version_current','value':7}]
+        assert [r for r in after['meta'] if r['key']=='schema_version_current'] == [{'key':'schema_version_current','value':8}]
+        for row in expected['meta']:
+            if row['key']=='schema_version_current': row['value']=8
+    assert after == expected, 'Every pre-existing entity, metadata, draft and original byte must survive exactly; only two empty HR stores / schema marker may be added'
 
 
 SCHEMA_STATE = """async()=>{
@@ -75,7 +70,7 @@ SCHEMA_STATE = """async()=>{
       const r=c.transaction('snapshots').objectStore('snapshots').getAll();
       r.onerror=()=>reject(r.error);r.onsuccess=()=>{resolve(r.result);c.close();};};});
   for(const snapshot of recovery||[])for(const row of snapshot.stores?.attachments||[])if(row.blob){
-    row.blob_bytes=Array.from(new Uint8Array(await row.blob.arrayBuffer()));delete row.blob;}
+    row.blob_bytes=Array.from(new Uint8Array(await row.blob.arrayBuffer()));row.blob_metadata={type:row.blob.type,size:row.blob.size,name:row.blob.name??null,lastModified:row.blob.lastModified??null};delete row.blob;}
   return {version:connection.version,denied,recovery,pending:await db.getAll('pending_fuel_records')};
 }"""
 
@@ -350,11 +345,15 @@ def main():
                 assert page.input_value('[name=quantity]') == '3'
                 assert_preserved(before, page.evaluate(SNAPSHOT), upgraded=True)
                 schema = page.evaluate(SCHEMA_STATE)
-                assert schema['version'] == 7, 'Installed schema7 stays7; no new migration is allowed'
+                assert schema['version'] == 8, 'Authorized additive HR migration must reach schema8'
                 assert schema['denied'] == 'VersionError', 'A schema6 writer must still be rejected'
                 assert schema['pending'] == schema_before['pending'], 'Pre-existing pending fuel must remain pending and untouched'
-                assert schema['recovery'] == schema_before['recovery'], 'No migration/recovery snapshot may be invented or rewritten for a same-schema release'
-                print('PASS installed schema7 remains7; original pending fuel unchanged; old schema6 writer still rejected; recovery state identical', flush=True)
+                prior = schema_before['recovery'] or []
+                assert schema['recovery'][:len(prior)] == prior, 'Pre-existing recovery snapshots unchanged'
+                new_recovery = schema['recovery'][len(prior):]
+                assert len(new_recovery)==1 and new_recovery[0]['version']==7
+                assert new_recovery[0]['stores']=={**before['data'],'attachments':before['attachments'],'meta':before['meta'],'drafts':before['drafts']}, 'Exact pre-upgrade schema7 recovery bytes'
+                print('PASS schema7→8: exactly two empty HR stores, original pending fuel untouched, old writer rejected, exact v7 recovery snapshot', flush=True)
 
                 assert page.evaluate("localStorage.getItem('TEST-upgrade-preserved')") == 'same-value'
                 caches = page.evaluate('()=>caches.keys()')

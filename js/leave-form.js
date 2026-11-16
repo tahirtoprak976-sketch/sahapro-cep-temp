@@ -88,50 +88,7 @@ export async function formScreen(ctx) {
   const id = ctx.parts[2];
 
   if (id === "new") {
-    const pid0 = ctx.query?.pid || people[0]?.id || "";
-    root.innerHTML = appbar("İzin Talep Formu", "Yeni talep") + `
-      <div style="height:10px"></div>
-      <div class="card">
-        <div class="field"><label>Personel</label><select data-p>${people.map((p) => `<option value="${esc(p.id)}" ${p.id === pid0 ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></div>
-        <div class="field"><label>İzin türü</label><select data-k>${LEAVE_KINDS.map((k) => `<option>${k}</option>`).join("")}</select></div>
-        <div class="formgrid2"><div class="field"><label>Başlangıç</label><input type="date" data-a value="${today}"></div>
-        <div class="field"><label>Bitiş (dahil)</label><input type="date" data-b value="${today}"></div></div>
-        <div data-info class="small" style="margin:4px 0 8px"></div>
-        <div class="formgrid2"><div class="field"><label>İzinde telefon</label><input data-ph inputmode="tel"></div>
-        <div class="field"><label>Yerine bakacak kişi</label><input data-sub placeholder="isteğe bağlı"></div></div>
-        <div class="field"><label>İzinde bulunacağı adres</label><input data-ad placeholder="isteğe bağlı"></div>
-        <div class="field"><label>Açıklama / gerekçe</label><input data-r placeholder="ör. memlekete gidecek"></div>
-      </div>
-      <button class="btn primary block" data-save>Formu oluştur</button>
-      <div class="tiny muted" style="margin:8px 4px 80px">Form oluşunca personele telefonda imzalatabilir ya da yazdırıp ıslak imza alabilirsiniz. İzin günleri, form <b>onaylanınca</b> puantaja ve izin hakkına işlenir.</div>`;
-    const info = () => {
-      const a = qs("[data-a]", root).value, b = qs("[data-b]", root).value, k = qs("[data-k]", root).value;
-      const p = people.find((x) => x.id === qs("[data-p]", root).value);
-      const days = leaveDays(a, b), s = p ? leaveSummary(d, p, { today }) : null;
-      if (p && !qs("[data-ph]", root).value) qs("[data-ph]", root).value = p.phone || "";
-      let t = b < a ? '<span style="color:#d9534f">Bitiş başlangıçtan önce</span>' : `<b>${days.length} iş günü</b> · işe başlama ${trDate(returnDate(b))}`;
-      if (k === "Yıllık izin" && s?.remaining != null) t += `<br>Kalan yıllık izin ${s.remaining} gün → onaylanırsa ${s.remaining - days.length} gün${days.length > s.remaining ? ' <span style="color:#d9534f">(hak aşılıyor)</span>' : ""}`;
-      if (k === "Yıllık izin" && s && !s.ready) t += '<br><span class="muted">İşe giriş tarihi yok; kalan hak hesaplanamıyor.</span>';
-      qs("[data-info]", root).innerHTML = t;
-    };
-    for (const el of qsa("select,input[type=date]", root)) el.addEventListener("change", info);
-    qs("[data-a]", root).addEventListener("change", () => { if (qs("[data-b]", root).value < qs("[data-a]", root).value) qs("[data-b]", root).value = qs("[data-a]", root).value; info(); });
-    info();
-    qs("[data-save]", root).addEventListener("click", async () => {
-      const pid = qs("[data-p]", root).value, a = qs("[data-a]", root).value, b = qs("[data-b]", root).value;
-      const days = leaveDays(a, b);
-      if (!pid) return toast("Personel seçin", "err");
-      if (!days.length) return toast("Bu aralıkta izin günü yok", "err");
-      const fresh = await db.dumpAll();
-      const rec = await db.saveNew("documents", {
-        category: FORM_CAT, owner_type: "personnel", owner_id: pid, personnel_id: pid, date: today, doc_no: nextNo(fresh, today), title: "İzin talep formu",
-        status: "Onay bekliyor",
-        leave: { kind: qs("[data-k]", root).value, from: a, to: b, days: days.length, return_date: returnDate(b), phone: qs("[data-ph]", root).value.trim(), substitute: qs("[data-sub]", root).value.trim(), address: qs("[data-ad]", root).value.trim(), reason: qs("[data-r]", root).value.trim() },
-        note: `${qs("[data-k]", root).value} · ${trDate(a)}–${trDate(b)} · ${days.length} gün`,
-      }, "İzin talep formu");
-      toast("Form oluşturuldu", "ok");
-      ctx.go("#/izinler/form/" + rec.id);
-    });
+    location.hash = "#/izin-puantaj?pid=" + encodeURIComponent(ctx.query?.pid || "");
     return true;
   }
 
@@ -188,26 +145,9 @@ export async function formScreen(ctx) {
       await db.saveExisting("documents", f, fields, "İzin formu imzası");
       toast("İmza kaydedildi", "ok"); ctx.reload();
     });
-  qs("[data-ok]", root)?.addEventListener("click", async () => {
-    const name = qs("[data-apn]", root).value.trim();
-    if (!name) return toast("Onaylayan yetkilinin adını yazın", "err");
-    const days = leaveDays(L.from, L.to);
-    const fresh = await db.dumpAll();
-    const MARK = new Set(["Çalıştı", "Yarım Gün", "İzin", "Rapor", "Devamsızlık"]);
-    const clash = (fresh.personnel_events || []).filter((e) => isActive(e) && e.personnel_id === f.owner_id && MARK.has(e.event_type) && days.includes(e.date) && e.leave_group !== f.id);
-    const leaveClash = clash.filter((e) => e.event_type === "İzin" || e.event_type === "Rapor");
-    if (leaveClash.length && !(await confirmDialog("Bu günlerde başka izin var", `${[...new Set(leaveClash.map((e) => trDate(e.date)))].join(", ")} zaten izinli/raporlu yazılmış. Bu formdakiyle değiştirilsin mi?`, "Değiştir"))) return;
-    if (!sig.employee && !scans && !(await confirmDialog("Personel imzası yok", "Personel formu imzalamadı ve ıslak imzalı nüsha eklenmedi. Yine de onaylansın mı?", "Onayla"))) return;
-    const s0 = p ? leaveSummary(fresh, p, { today }) : null;
-    // Önce form onaylanır (sürüm denetimli): iki sekme / iki kişi aynı formu onaylarsa yalnız biri geçer, günler bir kez yazılır
-    try {
-      await db.saveExisting("documents", f, { status: "Onaylandı", approver_name: name, approved_at: new Date().toISOString(),
-        snap: s0?.ready && L.kind === "Yıllık izin" ? { earned: s0.earned, used: s0.used + s0.planned, after: s0.remaining - days.length } : null }, "İzin onaylandı");
-    } catch (e) { toast(e.code === "STALE" ? "Bu form başka yerde değiştirildi / onaylandı — sayfa yenilendi, kontrol edin" : e.message, "err"); ctx.reload(); return; }
-    for (const e of clash) await db.softDelete("personnel_events", e.id, "İzin formu onaylandı");
-    for (const x of days) await db.saveNew("personnel_events", { date: x, personnel_id: f.owner_id, event_type: eventTypeOf(L.kind), leave_kind: L.kind, leave_group: f.id, leave_form_id: f.id, amount: null, hours_days: 1, description: `${L.kind} · ${f.doc_no}`, source: "izin formu" }, "İzin formu onayı");
-    await db.metaSet("leave_approver", name);
-    toast(`Onaylandı · ${days.length} gün puantaja işlendi`, "ok"); ctx.reload();
+  qs("[data-ok]", root)?.addEventListener("click", () => {
+    toast("Eski form otomatik dönüştürülmez; yeni izin planında hak yılını doğrulayın");
+    location.hash = "#/izin-puantaj?pid=" + encodeURIComponent(f.owner_id);
   });
   qs("[data-rej]", root)?.addEventListener("click", async () => {
     const why = await promptDialog("Red gerekçesi", "Gerekçe", "");

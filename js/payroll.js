@@ -25,7 +25,7 @@ export async function screen(ctx) {
   if (!pid) {
     const rows = core.payrollAll(d, per, { today });
     const sum = rows.reduce((a, { r }) => ({ hak: a.hak + (r.accrual ? Number(r.accrual.amount) : r.gross), avans: a.avans + r.advances, kalan: a.kalan + Math.max(0, r.remaining) }), { hak: 0, avans: 0, kalan: 0 });
-    root.innerHTML = appbar("Puantaj ve Maaş", label(per)) + nav("#/puantaj") +
+    root.innerHTML = appbar("Puantaj ve Maaş", label(per)) + `<a class="btn primary" href="#/izin-puantaj?tab=puantaj">Saatli puantaj ve imzalı dönem</a>` + nav("#/puantaj") +
       (rows.length ? `<div class="statgrid" style="grid-template-columns:repeat(3,1fr)">
         <div class="stat"><div class="v">${fmtTL(sum.hak)}</div><div class="l">Hak edilen ₺</div></div>
         <div class="stat warn"><div class="v">${fmtTL(sum.avans)}</div><div class="l">Avans ₺</div></div>
@@ -49,7 +49,7 @@ export async function screen(ctx) {
   const cell = (g) => `<button class="pcell" data-day="${g.date}" ${g.future ? "disabled" : ""} style="border:1px solid var(--border);border-radius:8px;min-height:46px;padding:2px;background:${g.st && g.st !== "P" ? COLORS[g.st] + "22" : "var(--bg2)"};color:var(--text);position:relative">
       <div class="tiny muted">${Number(g.date.slice(8))}</div><div style="font-weight:800;color:${COLORS[g.st]}">${SHORT[g.st]}</div>${g.auto ? '<span style="position:absolute;top:3px;right:4px;width:6px;height:6px;border-radius:3px;background:#2e9e6b"></span>' : ""}</button>`;
   const row = (l, v, sub = "", bold = false) => `<div class="row between small" style="margin:4px 0"><span>${bold ? "<b>" + l + "</b>" : l}${sub ? `<br><span class="muted tiny">${sub}</span>` : ""}</span><b style="white-space:nowrap;margin-left:8px">${v}</b></div>`;
-  root.innerHTML = appbar(p.name, "Puantaj · " + label(per)) + nav("#/puantaj/" + pid) +
+  root.innerHTML = appbar(p.name, "Puantaj · " + label(per)) + `<a class="btn primary" href="#/izin-puantaj?tab=puantaj&pid=${encodeURIComponent(pid)}">Saatli puantaj ve imzalı dönem</a>` + nav("#/puantaj/" + pid) +
     `${r.warns.map((w) => notice("warn", w)).join("")}
     <div class="card">
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center">

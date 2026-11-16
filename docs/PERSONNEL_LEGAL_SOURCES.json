@@ -1,0 +1,47 @@
+{
+  "sources": [
+    {
+      "name": "4857 güncel",
+      "url": "https://www.mevzuat.gov.tr/MevzuatMetin/1.5.4857.pdf?download=20261116",
+      "retrievedOn": "2026-11-16",
+      "sha256": "cd75c7fe92bd438443549c3e973e7ea6d03137e9a6bb2652aded52a8ca95e84e"
+    },
+    {
+      "name": "Yıllık Ücretli İzin Yönetmeliği",
+      "url": "https://www.csgb.gov.tr/Media/trddpibj/yıllık-ücretli-izin-yönetmeliği.pdf",
+      "retrievedOn": "2026-11-16",
+      "sha256": "91a3ad0f4eef75953e44024636a1241c195a47cd13e4925422ba40f9c33fcf72"
+    },
+    {
+      "name": "Çalışma Süreleri Yönetmeliği",
+      "url": "https://www.csgb.gov.tr/Media/xzsazpw2/iş-kanununa-ilişkin-çalışma-süreleri-yönetmeliği.pdf",
+      "retrievedOn": "2026-11-16",
+      "sha256": "4d0fd9050677252697ed6618319c1b03d79419a6c9ea39aa1b69dba6f6d13f1b"
+    },
+    {
+      "name": "Fazla Çalışma Yönetmeliği",
+      "url": "https://www.csgb.gov.tr/Media/gekgpqcm/iş-kanununa-ilişkin-fazla-çalışma-ve-fazla-sürelerle-çalışma-yönetmeliği.pdf",
+      "retrievedOn": "2026-11-16",
+      "sha256": "acd9eb9c1131c5a36e7568bb818478dec672ff2682aca2f42dd591cc8ffa33f2"
+    },
+    {
+      "name": "Diyanet 2026",
+      "url": "https://vakithesaplama.diyanet.gov.tr/dinigunler.php?yil=2026",
+      "retrievedOn": "2026-11-16",
+      "sha256": "7a1728935f5f53cf6835e7a5e7a3d7b05ffb2f43782fa23c159c38678c45eddf"
+    }
+  ],
+  "primaryAmendment": {
+    "law": "7578",
+    "effectiveFrom": "2026-05-01",
+    "articles": [
+      "4857 Ek m.2",
+      "4857 m.74"
+    ],
+    "appliedChange": "Babalık izni: olay tarihi 01.05.2026 ve sonrası 10, öncesi 5 takvim günü; eski kayıtlar güncellenmez"
+  },
+  "caseLaw": "Bu çalışma için numarası ve metni doğrulanmış Yargıtay kararı eklenmedi; içtihat sertifikasyonu iddia edilmez",
+  "calendarCoverage": [
+    2026
+  ]
+}
