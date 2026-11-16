@@ -59,6 +59,7 @@ export function maintenanceReview(d,f){
 // Existing generic edit forms cannot detach the financial or meter evidence.
 export function guardReviewedMaintenanceEdit(old,patch){
  if(!old?.cost_mode)return;
+ if(old.meter_reading_id&&'km_hours' in patch&&patch.km_hours!==old.km_hours)throw Error('Onaylı sayaç gösterimi genel düzenlemeden değiştirilemez');
  for(const k of ['cost_mode','cost_source_store','cost_source_id','meter_reading_id','service_rule_id','km','machine_hours'])if(k in patch&&patch[k]!==old[k])throw Error('Bağlı bakımın maliyet / sayaç kanıtı genel düzenleme ekranından değiştirilemez');
  if((old.cost_mode==='existing'||old.meter_reading_id||old.service_rule_id)&&(['vehicle_id','date'].some(k=>k in patch&&patch[k]!==old[k])))throw Error('Bağlı bakımın araç / tarihini değiştirmeden önce kaynak bağlantısı incelenmeli');
  if(old.cost_mode!=='new_expense'&&patch.cost!=null&&patch.cost!=='')throw Error('Mevcut alış / takip bakımına ikinci maliyet yazılamaz');

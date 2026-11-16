@@ -1,8 +1,9 @@
 """Reviewed maintenance, real Chromium/IndexedDB; synthetic records only."""
-import argparse,json,uuid
+import argparse,json,uuid,io
 from pathlib import Path
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
+from PIL import Image
 ap=argparse.ArgumentParser();ap.add_argument('url',nargs='?',default='http://localhost:8841/');ap.add_argument('--baseline-proof',action='store_true');ap.add_argument('--artifacts',default='/tmp/solo-maintenance116');a=ap.parse_args()
 BASE=a.url.rstrip('/')+'/';assert urlparse(BASE).hostname in ('localhost','127.0.0.1');OUT=Path(a.artifacts);OUT.mkdir(parents=True,exist_ok=True)
 with sync_playwright() as w:
@@ -40,4 +41,8 @@ with sync_playwright() as w:
  view('#/akilli-asistan');p.fill('[data-msg]',message);p.click('[data-ask]');p.wait_for_selector('[data-kind=maintenance]');card=p.locator('[data-kind=maintenance]');card.locator('[data-record-summary]').click();card.locator('[data-maint-review] summary').click();card.locator('[name=cost_mode]').select_option('existing');card.locator('[name=cost_source]').select_option('expense_records:'+ids['e']);card.locator('[name=meter_value]').fill('4506');card.locator('[name=meter_confirmed]').check()
  p.locator('[data-refine]').locator('xpath=ancestor::details[1]').locator('summary').first.click();p.locator('[data-refine]').check();p.fill('[data-msg]','Bütün kartı tekrar kontrol et');p.click('[data-ask]');p.wait_for_function("()=>!document.querySelector('[data-ask]').disabled");card=p.locator('[data-kind=maintenance]');assert card.locator('[name=cost_mode]').input_value()=='existing';assert card.locator('[name=meter_value]').input_value()=='4506';assert not card.locator('[name=meter_confirmed]').is_checked()
  card.locator('[data-record-summary]').click();card.locator('[data-maint-review] summary').click();card.locator('[name=cost_mode]').select_option('new_expense');card.locator('[name=cost]').fill('2100');card.locator('[name=tax_basis]').select_option('excluded');card.locator('[name=maint_kdv]').fill('20');card.locator('[name=service_rule_id]').select_option('R116');card.locator('[name=meter_confirmed]').check();card.locator('[data-pick]').check();assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1');p.screenshot(path=str(OUT/'assistant-review-360.png'),full_page=True);p.click('[data-save]');p.wait_for_selector('.assistant-receipt');p.wait_for_function("async()=> (await(await import('./js/db.js')).getAll('maintenance_records')).some(r=>r.date==='2026-01-06'&&r.cost===2520)")
+ images=[]
+ for i in range(9):
+  image=io.BytesIO();Image.new('RGB',(3,3),(i*20,30,90)).save(image,format='PNG');images.append(list(image.getvalue()))
+ attachment_count=p.evaluate("""async ({ids,images})=>{const d=await import('./js/db.js'),M=await import('./js/maintenance-review-db.js'),f={date:'2026-01-07',vehicle_id:ids.v,description:'TEST nine unique maintenance photos',cost_mode:'tracking',cost:null};const files=images.map((bytes,i)=>new File([new Uint8Array(bytes)],'TEST-maint116-'+i+'.png',{type:'image/png'}));const r=await M.saveMaintenanceReview(f,files,{id:'TEST116-nine',hash:await d.opHash(f)});return (await d.attachmentsFor('maintenance',r.id)).length;}""",{'ids':ids,'images':images});assert attachment_count==9
  assert not errors,errors;(OUT/'result.json').write_text(json.dumps({'source_cost_count':1,'confirmed_meter':4502,'next_due':4752,'transaction':proof,'errors':errors},indent=2));print('maintenance review116 browser PASS: separate approval, estimate never sealed, existing source no second expense, confirmed baseline, gross VAT, replay/conflict/rollback, source detail and shared manual form',flush=True);b.close()

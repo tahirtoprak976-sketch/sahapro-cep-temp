@@ -14,7 +14,7 @@ Sayaçta geçmiş gösterge ve varsa işlerden tahmin açıklanır; yeni okuma a
 
 Asistanın aynı isteği tekrar okumasında araç/tarih ve kaynak aynıysa maliyet/sayaç alan seçimleri korunur; sayaç onayı tekrar istenir. Sayfa kapatıldıktan sonra ek inceleme seçimlerinin kalıcı geri yüklendiği iddia edilmez. Eksik önizleme kapanmadan kaydedilmelidir.
 
-Bakım + yeni okuma + seçili fotoğraflar + işlem kimliği tek IndexedDB transaction içinde yazılır. Hata tümünü geri alır. Aynı kimlik farklı içerikte OP_CONFLICT; geri alınmış işlem tekrar oynatılmaz. Mevcut esnaf veresiye ve personel geri ödeme yolları korunur; esnaf belgesi onayı ayrı mevcut adımdır. Eski kayıtların düzenleme akışı değiştirilmez; yeni bağlantılı bakımın kanıtı genel düzenlemeden koparılamaz.
+Mevcut 20 belge seçimi korunur; aynı fotoğraf aynı bakımda bir kez saklanır. Bakım + yeni okuma + seçili fotoğraflar + işlem kimliği tek IndexedDB transaction içinde yazılır. Hata tümünü geri alır. Aynı kimlik farklı içerikte OP_CONFLICT; geri alınmış işlem tekrar oynatılmaz. Mevcut esnaf veresiye ve personel geri ödeme yolları korunur; esnaf belgesi onayı ayrı mevcut adımdır. Eski kayıtların düzenleme akışı değiştirilmez; yeni bağlantılı bakımın kanıtı genel düzenlemeden koparılamaz.
 
 Kaynak bağlantıları bakım ayrıntısında açılır. İptal edilmiş/kayıp kaynak uyarı verir. Yeni kayıt biçimi yedek doğrulamasında kontrol edilir. HR/izin/puantaj iş mantığı ve QA önizleme dosyaları değişmez. Yayın hash manifesti yalnız bu pakette açıkça değiştirilen kaynaklar ve yeni modüller için güncellenir; mevcut byte eşitliği testinin hiçbir assertion'ı kaldırılmaz veya gevşetilmez.
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {maintenanceReview,maintenanceStamp} from '../js/maintenance-review-core.js';
+import {maintenanceReview,maintenanceStamp,guardReviewedMaintenanceEdit} from '../js/maintenance-review-core.js';
 import {validateSoloData} from '../js/solo-core.js';
 import {lastDone,ruleStatus} from '../js/maint-core.js';
 const v={id:'V',name:'TEST DX',service_rules:[{id:'R',title:'Motor yağı',every_hours:250}]};
@@ -15,7 +15,7 @@ assert.throws(()=>maintenanceReview(d,{...f,tax_basis:'excluded',kdv_rate:null})
 assert.throws(()=>maintenanceReview(d,{...f,meter_value:4503,meter_kind:'hours'}),/ayrıca/);
 assert.throws(()=>maintenanceReview(d,{...f,meter_reading_id:'M'}),/ayrıca/);
 assert.throws(()=>maintenanceReview(d,{...f,service_rule_id:'R'}),/onaylı/);
-const reviewed=maintenanceReview(d,{...f,meter_reading_id:'M',meter_confirmed:true,service_rule_id:'R'});assert.equal(reviewed.fields.machine_hours,4502);assert.equal(reviewed.fields.meter_reading_id,'M');
+const reviewed=maintenanceReview(d,{...f,meter_reading_id:'M',meter_confirmed:true,service_rule_id:'R'});assert.throws(()=>guardReviewedMaintenanceEdit(reviewed.fields,{km_hours:'9999 saat'}),/sayaç/);assert.equal(reviewed.fields.machine_hours,4502);assert.equal(reviewed.fields.meter_reading_id,'M');
 assert.equal(lastDone({...d,maintenance_records:[{...reviewed.fields,id:'B'}]},v,v.service_rules[0],{today:'2026-01-03'}).hours+250,4752);
 assert.equal(lastDone({...d,maintenance_records:[{...reviewed.fields,id:'B',service_rule_id:null}]},v,v.service_rules[0],{today:'2026-01-03'}),null);
 assert.throws(()=>maintenanceReview(d,{...f,date:'2026-02-31'}));
