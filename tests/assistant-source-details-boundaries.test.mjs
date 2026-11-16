@@ -31,3 +31,11 @@ const ambiguous={...d,customers:[...d.customers,{id:'C2',name:'Örnek Yapı'}]};
 console.log('source detail negatives: conflict, negation, length, reverse/promise, multiple operations/customers, money and input purity PASS');
 
 const dangling={...d,customers:[],aliases:[{alias:'Örnek Yapı',target_type:'customer',target_id:'C'}]};assert.strictEqual(routeCustomerDepotReceipt(plan,{...options,d:dangling}),plan);
+
+// A valid but shortened model quote must not hide a recipient later in that row.
+const scoped={...d,personnel:[{id:'P',name:'TEST Operatör',vehicle_id:'V'}]};
+const text='[02/11/2026 18:00] TEST Operatör: Örnek Yapı TEST Kepçe 2 saat kum yüklendi nakliyeciye';
+const shortened='Örnek Yapı TEST Kepçe 2 saat kum yüklendi';
+const partial=validatePlan({works:[{customer_id:'C',vehicle_id:'V',personnel_id:'P',date:'2026-11-02',quantity:2,unit:'Saat',material:'kum',work_type:'JCB Çalışması',description:'kum yüklendi',quote:shortened}]},{d:scoped,message:text,today:'2026-11-02'}).works[0];
+assert.ok(partial.description.includes('nakliyeciye'),'phone-verified full row preserves recipient even when model quote is truncated');
+assert.equal(loadingDescription('kum yüklendi','kum yüklendi, sonra moloz indirildi kamyoncuya').conflict,true,'recipient of another action must not migrate');
