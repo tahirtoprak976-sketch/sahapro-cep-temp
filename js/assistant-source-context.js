@@ -132,7 +132,7 @@ export function sourceCandidates(message,d,today,rulesText=''){
     if(customer)fields.customer_id=cs.length?CERTAIN(customer.id,'Satırdaki tek müşteri eşleşmesi'):INFERRED(customer.id,inheritedSite?'Şantiyenin kayıtlı müşterisi':'Aynı iş bloğunun müşteri bağlamı');
     if(inheritedSite)fields.site_id=ss.length&&!siteEvidence.inferred?CERTAIN(inheritedSite.id,'Satırdaki kayıtlı şantiye'):INFERRED(inheritedSite.id,siteEvidence.inferred?'Uzun şantiye adında tek harf farkıyla tek kayıt adayı':'Aynı sefer bloğunun şantiyesi');
     const job=jobFor(d,row),included=job&&!job.ambiguous&&!checkDeal(job.site.deal)&&job.site.deal.basis==='Sefer'&&row.unit!=='Sefer';
-    row[PROOF]={scope:{...line.scope,customer:customer?.id||null,site:site?.id||context.site_id||null},sender:line.sender,dateIssue:line.dateIssue,unknownVehicle:unknownVehicle?unknownVehicleLabel:null,bossCustomerIds:blocked,bossNames:names,unknownCustomer:unresolvedSite?.name||(!customer&&dispatch?'İşi isteyen müşteri':null),place:unresolvedSite?.name||null,weekdayConflict:line.weekdayConflict,includedWork:!!included,fields};works.push(row);
+    row[PROOF]={scope:{...line.scope,customer:customer?.id||null,site:site?.id||context.site_id||null},sender:line.sender,dateIssue:line.dateIssue,unknownVehicle:unknownVehicle?unknownVehicleLabel:null,bossCustomerIds:blocked,bossNames:names,unknownCustomer:unresolvedSite?.name||(!customer&&dispatch?'İşi isteyen müşteri':null),place:unresolvedSite?.name||null,weekdayConflict:line.weekdayConflict,includedWork:!!included,quantityUnspecified:q.quantity==null,material:row.material,fields};works.push(row);
    }
   }
  }

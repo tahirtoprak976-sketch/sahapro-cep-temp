@@ -1,3 +1,4 @@
+import {pendingNewCustomer} from './assistant-confidence.js';
 // Counts are derived from actual draft controls; this layer never authorizes a write.
 export function reviewTotals(rows){
  const active=rows.filter(r=>!r.saved);
@@ -16,6 +17,6 @@ export function sensitiveAssistantRow(row){
 }
 export function reviewState(row){
  if(row.saved)return 'saved';
- return row.disabled||row.missing?.length||row.issues||row.duplicate||sensitiveAssistantRow(row)&&!row.selected?'review':'ready';
+ return row.kind==='work'&&pendingNewCustomer(row.r||{})||row.disabled||row.missing?.length||row.issues||row.duplicate||sensitiveAssistantRow(row)&&!row.selected?'review':'ready';
 }
 export function reviewStates(rows){const counts={all:rows.length,ready:0,review:0,saved:0};for(const row of rows)counts[reviewState(row)]++;return counts;}
