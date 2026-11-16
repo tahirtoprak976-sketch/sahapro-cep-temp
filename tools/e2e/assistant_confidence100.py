@@ -11,7 +11,7 @@ work={'date':'2026-11-02','vehicle_id':'TEST_V','work_type':'Makine Çalışmas�
 previous={'id':'TEST_PREVIOUS','date':'2026-11-02','customer_id':'TEST_C','vehicle_id':'TEST_V','work_type':'Makine Çalışması','quantity':1,'unit':'Saat'}
 with sync_playwright() as pw:
  browser=pw.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
- for scenario in ['same-day','site-owner','alias-certain','ambiguous','unknown-quantity','wrong-unit','registered-price','credit-unknown','local-edits','missing-quantity','date-conflict','relative-conflict','header-conflict','photo-date-fuel','photo-date-expense','tank-credit-unknown']:
+ for scenario in ['new-customer-confirmation','same-day','site-owner','alias-certain','ambiguous','unknown-quantity','wrong-unit','registered-price','credit-unknown','local-edits','missing-quantity','date-conflict','relative-conflict','header-conflict','photo-date-fuel','photo-date-expense','tank-credit-unknown']:
   patch={};plan={'works':[dict(work)]};message='02.11.2026 JCB 3CX 2 saat çalıştı';photo=False;kind='work'
   if scenario in ['same-day','local-edits']:patch={'work_records':[previous]}
   if scenario=='site-owner':message='02.11.2026 Kuzey Şantiyesi JCB 3CX 2 saat çalıştı'
@@ -31,6 +31,9 @@ with sync_playwright() as pw:
    case=next(c for c in json.loads((root/'tests/assistant-gold/confidence-cases.json').read_text()) if c['id']=='confidence100-photo-multi-date-'+scenario.rsplit('-',1)[1]);message=case['message'];plan=case['recordedResponse'];photo=True;kind=scenario.rsplit('-',1)[1]
   if scenario=='tank-credit-unknown':
    message='02.11.2026 depoya 100 litre mazot 5000 TL veresiye aldık';plan={'tank_in':[{'date':'2026-11-02','liters':100,'total':5000,'supplier_id':'TEST_SUP','credit':True}]};kind='tank'
+  if scenario=='new-customer-confirmation':
+   message='02.11.2026 Yeni Ufuk İnşaat JCB 3CX 2 saat çalıştı\n02.11.2026 Alfa İnşaat JCB 3CX 3 saat çalıştı'
+   plan={'works':[{**work,'new_customer':'Yeni Ufuk İnşaat','quote':message.split('\n')[0]},{**work,'customer_id':'TEST_C','quantity':3,'quote':message.split('\n')[1]}]}
   if scenario=='local-edits':
    message+='\n02.11.2026 Alfa İnşaat JCB 3CX 3 saat çalıştı';plan['works'][0]['quote']='02.11.2026 JCB 3CX 2 saat çalıştı';plan['works'].append({**work,'customer_id':'TEST_C','quantity':3,'quote':'02.11.2026 Alfa İnşaat JCB 3CX 3 saat çalıştı'})
   ctx=browser.new_context(viewport={'width':390,'height':850});ctx.add_init_script("localStorage.setItem('sp_role','boss')");page=ctx.new_page();errors=[];requests=[];page.on('pageerror',lambda e:errors.append(str(e)))
@@ -64,6 +67,14 @@ with sync_playwright() as pw:
    card.locator('[data-confidence-paid]').click();page.click('[data-save]');page.wait_for_selector('.assistant-receipt');after=snap();assert len(after['expense_records'])==1 and after['expense_records'][0]['amount']==500 and after['payables']==before['payables'];assert 'fieldConfidence' not in after['expense_records'][0]
   if scenario=='local-edits':
    second=page.locator('[data-kind=work][data-i="1"]');second.locator('[data-record-summary]').click();card.locator('[data-record-summary]').click();second.locator('[name=quantity]').fill('9');card.locator('[name=customer]').select_option('TEST_B');assert second.locator('[name=quantity]').input_value()=='9' and second.locator('[name=customer]').input_value()=='TEST_C' and card.locator('[name=customer]').input_value()=='TEST_B';assert snap()==before
+  if scenario=='new-customer-confirmation':
+   assert not pick.is_checked() and card.locator('[name=customer]').input_value()=='new:Yeni Ufuk İnşaat'
+   second=page.locator('[data-kind=work][data-i="1"]');second.locator('[data-record-summary]').click();second.locator('[name=quantity]').fill('9');second.locator('[name=quantity]').dispatch_event('change')
+   page.locator('[data-question="work:0:customer"] [data-answer]').filter(has_text='Yeni Ufuk İnşaat').click()
+   assert page.locator('[data-question="work:0:customer"]').count()==0
+   assert card.locator('[name=customer]').input_value()=='new:Yeni Ufuk İnşaat' and not pick.is_checked()
+   assert second.locator('[name=quantity]').input_value()=='9' and second.locator('[name=customer]').input_value()=='TEST_C'
+   assert snap()==before
   if scenario=='missing-quantity':assert not pick.is_checked() and card.locator('[name=quantity]').input_value()=='' and card.locator('[data-field-confidence=quantity]').get_attribute('data-level')=='BILINMIYOR'
   if scenario in ['date-conflict','relative-conflict','header-conflict']:
    assert not pick.is_checked() and card.locator('[name=date]').input_value()==date.today().isoformat();assert card.locator('[data-field-confidence=date]').get_attribute('data-level')=='BILINMIYOR'

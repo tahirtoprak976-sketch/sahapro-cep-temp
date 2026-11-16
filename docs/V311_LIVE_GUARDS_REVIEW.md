@@ -13,14 +13,13 @@ Bu çalışma yayın adayı değildir. Yeni canlı API çağrısı yapılmadı; 
 
 Son sütun yeni Gemini başarısı değildir. Hazır kart artışının biri, kaynağın da doğruladığı yükleme/yüklendi eşdeğerliğinin ölçümde tanınmasıdır. Yanlış malzeme, alıcı, işlem ve olumsuzluk için negatif testler eklendi. Modelin kanıtsız miktar önerisi silinmez; doğrulama ister.
 
-## Yayın engeli
+## Yeni müşteri kararı ve doğrulama
 
-209 mevcut Node dosyası çalıştırıldı: 207 geçti, 2 dosya düştü. Sonradan eklenen açıklama eşleştirme testi ayrıca geçti; tüm dosyalar henüz yeniden koşulmadı.
+2026-11-16 tarihinde işletme sahibi yeni müşteri için ayrıca onay alınmasını açıkça seçti (“Alınsın”). Bu karar doğrultusunda aşağıdaki iki testin yalnız otomatik hazır beklentisi true → false olarak güncellendi; isim, taşeron ilişkisi ve şantiye kontrolleri korundu:
 
-- tests/assistant.test.mjs:17: açık yeni müşteri adı için ok=true bekliyor.
-- tests/customer-ambiguity.test.mjs:60: açık yeni taşeron adı için ok=true bekliyor.
-- Gerçek mesaj oracle'ı ise yeni müşteri için seçim sorusu ve işaretsiz kart bekliyor.
+- tests/assistant.test.mjs: açık yeni müşteri.
+- tests/customer-ambiguity.test.mjs: açık yeni taşeron.
 
-Bu iki eski beklenti değiştirilmedi. Yeni müşteri için her durumda insan seçimi zorunluluğu eski hazır-kart sözleşmesiyle çeliştiği için birleştirme/yayın durduruldu. Tarayıcı ve yükseltme kapıları henüz çalıştırılmadı. Sürüm ve SW yayını yapılmadı. Kalıcı şema veya eski işletme kayıtları değiştirilmedi.
+Yeni Chromium senaryosu, müşteri onayından önce kartın işaretsiz olduğunu; soru cevabının yalnız ilgili müşteriyi doğruladığını; diğer karttaki elle değiştirilen miktarı koruduğunu ve Kaydet olmadan iş/müşteri kaydı yazılmadığını doğrular. Bu senaryoyla birlikte confidence100 tarayıcı dosyasındaki 17 senaryo geçti. Tam Node, CI tarayıcı ve yükseltme kapıları devam ediyor.
 
-Gerçek Android kabulü ve üç tekrarlı yeni Gemini ölçümü tamamlanmış değildir.
+Aday sürüm v3.11.06, SW önbelleği güncel. Telefon sınav paketine yeni ölçüm yardımcısı eklendi. Kalıcı şema veya eski işletme kayıtları değiştirilmedi. Ana uygulamaya yayın yapılmadı. Gerçek Android kabulü ve üç tekrarlı yeni Gemini ölçümü tamamlanmış değildir.
