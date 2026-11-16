@@ -92,6 +92,10 @@ with sync_playwright() as pw:
    assert not pick.is_checked() and card.locator('[name=tank_customer]').input_value()=='TEST_C'
    assert card.locator('[name=liters]').input_value()=='100' and card.locator('[name=total]').input_value()=='' and card.locator('[name=unit_price]').input_value()==''
    assert page.locator('[data-kind=fuelout]').count()==0 and snap()==before
+   pick.check();page.click('[data-save]');page.locator('[data-out]').get_by_text('Kaydedildi: 1 depo girişi.',exact=False).wait_for();after=snap()
+   added=[r for r in after['fuel_tank_movements'] if r['id'] not in {b['id'] for b in before['fuel_tank_movements']}]
+   assert len(added)==1 and added[0]['move_type']=='GİRİŞ' and added[0]['customer_id']=='TEST_C' and added[0]['liters']==100 and added[0]['total'] is None and added[0]['unit_price'] is None
+   for store in ['cash_records','cari_movements','payables','expense_records','fuel_records']:assert after[store]==before[store],store
   if scenario=='missing-quantity':assert not pick.is_checked() and card.locator('[name=quantity]').input_value()=='' and card.locator('[data-field-confidence=quantity]').get_attribute('data-level')=='BILINMIYOR'
   if scenario in ['date-conflict','relative-conflict','header-conflict']:
    assert not pick.is_checked() and card.locator('[name=date]').input_value()==date.today().isoformat();assert card.locator('[data-field-confidence=date]').get_attribute('data-level')=='BILINMIYOR'
