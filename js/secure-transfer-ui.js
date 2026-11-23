@@ -1,3 +1,4 @@
+import {mountRemoteApproved} from './remote-approved-ui.js';
 import { qs, esc, toast, confirmDialog, downloadBlob } from "./ui.js";
 import { recipientCode, deliveryReference, fetchTransfer, openTransfer } from "./secure-transfer.js";
 import { getRecipient, ensureRecipient, forgetRecipient } from "./secure-transfer-db.js";
@@ -90,6 +91,7 @@ export async function mountSecureTransfer(ctx, { openPackage, hasPreview, isBusy
       await receive(async () => new Uint8Array(await file.arrayBuffer()));
     });
   };
+  await mountRemoteApproved(ctx,host);
   if (ctx.query.aktarim || ctx.query.ozet) {
     qs("[data-transfer-link]", host).value = base + "#/gecmis?" + new URLSearchParams({ aktarim: ctx.query.aktarim || "", ozet: ctx.query.ozet || "" });
     await openLink();

@@ -12,6 +12,8 @@ const K_LOCK = "sec_lock", K_FAIL = "sec_fail", K_LOG = "security_log", K_LINKS 
 export const SECRET_KEYS = [K_LOCK, K_FAIL]; // yedeğe girmez (kilit cihaza özeldir)
 let unlocked = false, lastAct = Date.now(), hiddenAt = 0, watching = false, lockShown = null;
 
+export const isSessionUnlocked=()=>unlocked;
+
 // ---- Günlük ----
 export async function secLog(kind, text) {
   try {

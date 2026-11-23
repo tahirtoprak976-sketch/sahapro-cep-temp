@@ -1,0 +1,26 @@
+import {esc,qs,confirmDialog,toast,downloadBlob} from './ui.js';
+import {reauth} from './security.js';
+import {enableRemoteAuthority,disableRemoteAuthority,remoteAuthority,remoteResults} from './remote-approved-db.js';
+import {checkRemoteApproved} from './remote-approved-runner.js';
+export async function mountRemoteApproved(ctx,host){
+ const panel=document.createElement('section');panel.className='slip-panel';panel.dataset.remoteApproved='';host.append(panel);let busy=false;
+ async function render(){
+  if(!panel.isConnected||busy)return;const [authority,receipts,status]=await Promise.all([remoteAuthority(),remoteResults(),ctx.db.metaGet('remote_approved_status')]);
+  if(!panel.isConnected)return;
+  panel.innerHTML=`<h2>Sohbette Onayla · Telefona Kaydet</h2><p>Burada birlikte kontrol edip onayladığınız iş ve depo yakıtı paketleri, uygulama açık ve kilit açılmışken alınır. Telefonda her satıra tekrar onay gerekmez. Tahsilat, ödeme, müşteri mazotu ve eski kayıt değişikliği bu bağlantıdan yapılamaz.</p><p><strong>${authority?'Bağlantı açık':'Bağlantı kapalı'}</strong></p>${authority?'<button class="btn" data-remote-check>Onaylananları Şimdi Al</button><button class="btn danger" data-remote-disable>Bağlantıyı Kapat</button>':'<button class="btn primary block" data-remote-enable>Bu Sohbetten Onaylı Kayıt Almayı Etkinleştir</button>'}<div data-remote-code-box></div><div role="status" data-remote-status>${status?`<p>Son kontrol: ${esc(new Date(status.at).toLocaleString('tr-TR'))} · ${status.saved} paket kaydedildi · ${status.replayed} paket zaten kayıtlı${status.empty?' · bekleyen paket yok':''}</p>${status.held.map(h=>`<p class="notice warn">${esc(h.id.slice(0,8))} ${esc(h.message)}</p>`).join('')}`:''}</div><details><summary>Son kayıt sonuçları (${receipts.length})</summary>${receipts.map(r=>`<p>${esc(r.id.slice(0,8))} · ${r.works} iş · ${r.fuels} yakıt · ${r.cards} kart · ${esc(new Date(r.at).toLocaleString('tr-TR'))}</p>`).join('')||'<p>Henüz bu bağlantıdan kayıt yok.</p>'}</details><button class="btn" data-remote-copy-result>Sonucu Sohbete Kopyala</button><p class="slip-hint">Telefon kapalı veya çevrimdışıysa anında kayıt yapılamaz. Paketler en fazla 7 gün geçerlidir. Sonuç burada görünür; bu sürüm sonucu sohbete kendiliğinden göndermez.</p>`;
+  const run=task=>async()=>{if(busy)return;busy=true;try{await task();}catch(e){qs('[data-remote-status]',panel).textContent=e.message;}finally{busy=false;}};
+  qs('[data-remote-enable]',panel)?.addEventListener('click',run(async()=>{
+   if(!await reauth('Sohbette onaylı iş/yakıt kaydı bağlantısı'))return;
+   if(!await confirmDialog('Onaylı paketler doğrudan kaydedilsin mi?','Bağlantı kodunu paylaştığınız yetkili gönderici iş ve depo yakıtı paketlerini gönderebilir. Yalnız sohbette kontrol edip onayladığınız paketleri göndermesini isteyin. Kod gizlidir; gruba veya herkese açık depoya koymayın. Her paketin kart/stok/mükerrer kontrolleri telefonda yeniden yapılır.','Etkinleştir'))return;
+   const created=await enableRemoteAuthority();busy=false;await render();busy=true;
+   const box=qs('[data-remote-code-box]',panel);box.innerHTML='<label class="field">Yalnız bu sohbete gönderilecek gizli bağlantı kodu<textarea data-remote-code readonly rows="4" style="overflow-wrap:anywhere;word-break:break-all"></textarea></label><button class="btn" data-remote-copy>Kodu Kopyala</button><button class="btn" data-remote-download>Kodu Dosya Olarak İndir</button><p>Kod yalnız bu ekranda gösterilir; kaybolursa bağlantıyı kapatıp yeniden oluşturun. Bu kod eski SPAK1 kodundan farklıdır; kayıt gönderme yetkisi verir.</p>';
+   qs('[data-remote-code]',box).value=created.code;
+   qs('[data-remote-copy]',box).onclick=async()=>{try{await navigator.clipboard.writeText(created.code);toast('Gizli bağlantı kodu kopyalandı','ok');}catch{qs('[data-remote-code]',box).select();}};
+   qs('[data-remote-download]',box).onclick=()=>downloadBlob(new Blob([created.code],{type:'text/plain'}),'SAHAPRO_gizli_baglanti.txt');
+  }));
+  qs('[data-remote-disable]',panel)?.addEventListener('click',run(async()=>{if(!await reauth('Uzaktan kayıt bağlantısını kapat'))return;if(!await confirmDialog('Bağlantı kapatılsın mı?','Yeni paketler kaydedilmez. Daha önce kaydedilmiş işler korunur. Yeniden açılışta farklı kod oluşturulur.','Kapat'))return;await disableRemoteAuthority();busy=false;await render();busy=true;}));
+  qs('[data-remote-check]',panel)?.addEventListener('click',run(async()=>{const result=await checkRemoteApproved();busy=false;await render();busy=true;if(result?.waiting)qs('[data-remote-status]',panel).textContent='Açık önizleme/form veya kilit var; önce onu tamamlayın.';}));
+  qs('[data-remote-copy-result]',panel).onclick=async()=>{const text=JSON.stringify({results:receipts,status},null,2);try{await navigator.clipboard.writeText(text);toast('Kayıt sonuçları kopyalandı','ok');}catch{downloadBlob(new Blob([text],{type:'application/json'}),'SAHAPRO_aktarim_sonucu.json');}};
+ }
+ const onStatus=()=>{if(!qs('[data-remote-code]',panel))render().catch(()=>{});};window.addEventListener('sp-remote-status',onStatus);const observer=new MutationObserver(()=>{if(!panel.isConnected){window.removeEventListener('sp-remote-status',onStatus);observer.disconnect();}});observer.observe(document.body,{childList:true,subtree:true});await render();
+}
