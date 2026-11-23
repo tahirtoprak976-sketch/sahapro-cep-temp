@@ -197,7 +197,7 @@ jobs:
       - name: Verify installed v3.10.17 depot report upgrade preservation
         run: |
           set -euo pipefail
-          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_maintenance116.py --source-root . --baseline-ref 887d73e --artifacts /tmp/solo-tank-upgrade118
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_maintenance116.py --source-root . --baseline-ref 887d73e --baseline-version "SAHAPRO SOLO v3.10.17" --artifacts /tmp/solo-tank-upgrade118
 
       - name: Reproduce estimated meter recorded on unchanged v3.10.16
         run: |
