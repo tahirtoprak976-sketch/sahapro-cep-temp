@@ -1,3 +1,4 @@
+import {tankTimeline} from './tank-timeline.js';
 import {canonicalVehicleType} from "./vehicle-type-core.js";
 // Structured historical import only. No guessing of WhatsApp prose, prices or VAT.
 import { FIELD_METADATA } from "./business.js";
@@ -153,7 +154,7 @@ export function prepareHistory(
   p,
   choices,
   data,
-  { today = todayStr(), allowNew = false } = {},
+  { today = todayStr(), allowNew = false, allowNegativeTank = false } = {},
 ) {
   const writes = Object.fromEntries(HISTORY_STORES.map((s) => [s, []]));
   const groupIds = new Map();
@@ -415,37 +416,45 @@ export function prepareHistory(
     }
   }
   if (writes.fuel_tank_movements.length) {
-    const timeline = [
-      ...(data.fuel_tank_movements || []).filter(isActive),
-      ...writes.fuel_tank_movements,
-    ].sort(
-      (a, b) =>
-        a.date.localeCompare(b.date) || (a.move_type === "GİRİŞ" ? -1 : 1),
-    );
-    let stock = 0,
-      bad = false;
-    for (const m of timeline) {
-      if (
-        !validHistoryDate(m.date, "9999-12-31") ||
-        !Number.isFinite(Number(m.liters)) ||
-        Number(m.liters) < 0
-      ) {
-        bad = true;
-        break;
+    if (allowNegativeTank === true) {
+      const timeline=tankTimeline([...(data.fuel_tank_movements||[]),...writes.fuel_tank_movements]);
+      for(const f of findings.filter(f=>f.selected&&p.rows[f.index].kind==='fuel')){
+        if(timeline.invalid.length)f.errors.push('Depo geçmişinde geçersiz tarih, litre veya hareket var; eksi bakiye onayı bozuk kaydı kabul etmez.');
+        else if(timeline.firstDeficit)f.warnings.push('Eksi depo bakiyesi kullanıcı tarafından bu paket için onaylandı; gerçek eksik girişler ayrıca tamamlanmalı.');
       }
-      stock += (m.move_type === "GİRİŞ" ? 1 : -1) * Number(m.liters);
-      if (stock < -0.000001) {
-        bad = true;
-        break;
+    } else {
+      const timeline = [
+        ...(data.fuel_tank_movements || []).filter(isActive),
+        ...writes.fuel_tank_movements,
+      ].sort(
+        (a, b) =>
+          a.date.localeCompare(b.date) || (a.move_type === "GİRİŞ" ? -1 : 1),
+      );
+      let stock = 0,
+        bad = false;
+      for (const m of timeline) {
+        if (
+          !validHistoryDate(m.date, "9999-12-31") ||
+          !Number.isFinite(Number(m.liters)) ||
+          Number(m.liters) < 0
+        ) {
+          bad = true;
+          break;
+        }
+        stock += (m.move_type === "GİRİŞ" ? 1 : -1) * Number(m.liters);
+        if (stock < -0.000001) {
+          bad = true;
+          break;
+        }
       }
+      if (bad)
+        for (const f of findings.filter(
+          (f) => f.selected && p.rows[f.index].kind === "fuel",
+        ))
+          f.errors.push(
+            "Tarih sıralı tank dengesi yetersiz. Eski yakıtı düşmeden önce gerçek geçmiş başlangıç/giriş kayıtlarını doğrulayın.",
+          );
     }
-    if (bad)
-      for (const f of findings.filter(
-        (f) => f.selected && p.rows[f.index].kind === "fuel",
-      ))
-        f.errors.push(
-          "Tarih sıralı tank dengesi yetersiz. Eski yakıtı düşmeden önce gerçek geçmiş başlangıç/giriş kayıtlarını doğrulayın.",
-        );
   }
   for (const group of new Set(
     p.rows.map((r) => r.transport_group_key).filter(Boolean),

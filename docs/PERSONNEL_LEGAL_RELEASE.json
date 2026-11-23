@@ -1,11 +1,11 @@
 {
-  "version": "3.10.19",
+  "version": "3.10.20",
   "schema": 8,
-  "purpose": "Read-only depot fuel detail report; preserves remote approved delivery release, existing HR/maintenance rules and schema8",
+  "purpose": "Explicit chat-approved negative stock exception for fuel-only delivery; no fake intake or legacy rewrites; default stock guard, HR, schema8 and QA preserved",
   "files": {
     "js/app.js": "1bfcc3161de387e3e4735f508e811883bcf4e0728919d3626a4120a794beaaf4",
     "js/backup.js": "3184b751a11b7ebc7cc75bbe977a14d01ea34ec7b7a4deb9d973c7e4508d9f61",
-    "js/core.js": "2dc851ff7980c7ba3a15f59ff0fbf48a119b9823c8651fc794c1ba05bf2ffb9a",
+    "js/core.js": "346e6619de3785ffe0707b86971dc469d2ab08d9ff1b3b358098e2c48383f9d0",
     "js/db.js": "c09a824f434582c3119a942f6cc30b1fa8ad667d36469b58d504f3ae0479d1e0",
     "js/enterprise-db.js": "8d04a7a1188d6d00da5931e63b9f2c189f4f6262218c92c64a3dd92294669001",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -24,7 +24,7 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "081eb2eb7e0dc8b0de232527d3e5acbd25f4143a726d4a30d83cefa5fc688510",
+    "sw.js": "4d5811298337d7d7f38a8217856d1dfc5780cb0e3bfff00c4217d2930b350e4c",
     "js/assistant.js": "83d713a4f650740d36bfba8dabde68917d90c609b2631a0eae471646fb083cda",
     "js/m-ops.js": "2d8cd59f6d1a07807732b83c3f86988151e49cb2382ff290c246b29c1102916e",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
@@ -37,13 +37,14 @@
     "js/report-core.js": "8047f551caf2904561619d18ed712936eeff9a4048acbfdbdb967650e9d74207",
     "js/report-ui.js": "0dbe1a5edd3d101e244594b03818d21009fd36ad9988a11adef1c5f9fb9d65b1",
     "js/tank-report.js": "250dce16925e1ba593810aa68f32c78c5f3655fd4233aed6838bd0a1632214ab",
-    "js/remote-approved-core.js": "6810a9127db3104a956718ebe1ae56962a5013c6598284dcc81fb08532ef34e1",
+    "js/remote-approved-core.js": "96f1a813b352c829820272154e83ba7a7431794b8d15324037c20a9833a5b4fe",
     "js/remote-approved-crypto.js": "b21a1b58b544ccb6126d834e580faf2451ec7166fd16e02f4d1a7898e5b4eb41",
-    "js/remote-approved-db.js": "022a3ab2529f2be843085730f18943cced3216ea2818a14c1d4ed7a1e28f8b8c",
+    "js/remote-approved-db.js": "1a33f3331ba7bd6383e89c7ae79974b01bba4f428db61486e3d50916d0cea4a9",
     "js/remote-approved-runner.js": "5e226bc68f8422eae10323bf5f9d5b5a01e7050be155db906ad147a1fad4c293",
-    "js/remote-approved-ui.js": "b00b5cc31b33342a61a001dfefc45f075d288566bd29c36d44126848638297bb",
+    "js/remote-approved-ui.js": "0dbb0f5d71fd49d77bb69bd87101723f54365c7d9ddc31d3922e2d70dd7063d9",
     "js/secure-transfer-db.js": "1e774b7c3f7c9a474d5b44bac19eea3ad0f2663b9669eadbb6bc4943849a6a05",
     "js/secure-transfer-ui.js": "484fa65b47162a5a3d0e4d2a4cee6111e7e2bebba2862290bbad2817a1e740c3",
-    "js/security.js": "09acb568e8db53f08a0b29aaf64d9ec595ba16a3dded4843ea1f034c2148110a"
+    "js/security.js": "09acb568e8db53f08a0b29aaf64d9ec595ba16a3dded4843ea1f034c2148110a",
+    "js/history-core.js": "c41b5cfb36fc77619db203050b0d9df23a6db6064e4c3a746d50a45e48ae6fbc"
   }
 }

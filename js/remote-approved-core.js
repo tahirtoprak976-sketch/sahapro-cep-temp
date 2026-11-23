@@ -13,11 +13,13 @@ export function readApprovedPacket(value,{now=Date.now()}={}){
  const p=typeof value==='string'?JSON.parse(value):value;
  if(!exact(p,['format','id','approved','pkg'])||p.format!==REMOTE_FORMAT||!REMOTE_ID.test(p.id))throw Error('Onaylı paket biçimi geçersiz');
  const a=p.approved;
- if(!exact(a,['confirmed','at','summary','unpriced_rows','tank_rows','new_cards'])||a.confirmed!==true||!date(a.at)||Date.parse(a.at)>now+300000||now-Date.parse(a.at)>REMOTE_AGE||typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>2000)throw Error('Sohbet onayı eksik veya süresi dolmuş');
+ const approvalKeys=['confirmed','at','summary','unpriced_rows','tank_rows','new_cards'];if(a&&Object.hasOwn(a,'negative_tank_rows'))approvalKeys.push('negative_tank_rows');
+ if(!exact(a,approvalKeys)||a.confirmed!==true||!date(a.at)||Date.parse(a.at)>now+300000||now-Date.parse(a.at)>REMOTE_AGE||typeof a.summary!=='string'||!a.summary.trim()||a.summary.length>2000)throw Error('Sohbet onayı eksik veya süresi dolmuş');
  const pkg=readHistoryPackage(p.pkg);
  if(pkg.rows.length>100||stableStringify(pkg)!==stableStringify(p.pkg))throw Error('Paket yalnız izinli iş/yakıt alanlarını içerebilir (en fazla100 satır)');
  const allowed=(list,kind)=>Array.isArray(list)&&list.length<=100&&new Set(list).size===list.length&&list.every(id=>typeof id==='string'&&pkg.rows.some(r=>r.row_id===id&&r.kind===kind));
  if(!allowed(a.unpriced_rows,'work')||!allowed(a.tank_rows,'fuel'))throw Error('Satır onayları pakete uymuyor');
+ if(Object.hasOwn(a,'negative_tank_rows')&&(!allowed(a.negative_tank_rows,'fuel')||a.negative_tank_rows.length!==pkg.rows.length||pkg.rows.some(r=>r.kind!=='fuel')))throw Error('Eksi bakiye onayı yalnız ayrı yakıt paketinin bütün satırlarına açıkça verilmelidir');
  if(!Array.isArray(a.new_cards)||a.new_cards.length>100||a.new_cards.some(c=>!exact(c,['store','name','customer'])||!['customers','sites','vehicles'].includes(c.store)||typeof c.name!=='string'||!c.name.trim()||c.name.length>200||typeof c.customer!=='string'||c.customer.length>200||(c.store==='sites'?!c.customer.trim():c.customer!=='')))throw Error('Yeni kart onay listesi geçersiz');
  if(new Set(a.new_cards.map(c=>stableStringify(c))).size!==a.new_cards.length)throw Error('Yeni kart onayı tekrarlı');
  for(const r of pkg.rows){
@@ -33,7 +35,7 @@ export function readApprovedPacket(value,{now=Date.now()}={}){
 export function approvedPlan(value,data,options={}){
  const p=readApprovedPacket(value,options),a=p.approved;
  const choices=initialHistoryChoices(p.pkg).map(c=>({...c,include:true,unpriced_confirmed:a.unpriced_rows.includes(c.row.row_id),tank_confirmed:a.tank_rows.includes(c.row.row_id)}));
- const plan=prepareHistory(p.pkg,choices,data,{allowNew:a.new_cards.length>0});
+ const plan=prepareHistory(p.pkg,choices,data,{allowNew:a.new_cards.length>0,allowNegativeTank:Array.isArray(a.negative_tank_rows)&&a.negative_tank_rows.length===p.pkg.rows.length});
  for(const [i,r]of p.pkg.rows.entries()){const w=(r.kind==='work'?plan.writes.work_records:plan.writes.fuel_records).find(w=>w.history_source?.row_id===r.row_id);if(!w)continue;const vehicle=[...(data.vehicles||[]),...plan.writes.vehicles].find(v=>v.id===w.vehicle_id);if(vehicle?.active===false||vehicleTypeInfo(vehicle).conflict)plan.errors.push('Araç kartı pasif veya türü çelişkili: '+r.vehicle);if(r.vehicle_type&&!vehicleTypeMatches(r.vehicle_type,{vehicle_type:vehicle?.type,vehicle_name:vehicle?.name,vehicle_type_review:vehicle?.type_review}))plan.errors.push('Onaylanan araç türü kartla eşleşmiyor: '+r.vehicle);if(r.kind==='work'){const customer=(data.customers||[]).find(c=>c.id===w.customer_id);if(customer?.active===false)plan.errors.push('Müşteri kartı pasif: '+r.customer);if(fuelRulesOf(customer).length)plan.errors.push('Mazot karşılığı anlaşmalı müşterinin işi bu sürümde yerel kontrol gerektiriyor: '+r.customer);}}
  const actual=plan.newCards.map(c=>{const r=plan.writes[c.store].find(r=>r.id===c.id);const customer=c.store==='sites'?[...(data.customers||[]),...plan.writes.customers].find(x=>x.id===r.customer_id)?.name||'':'';return {store:c.store,name:c.name,customer};});
  for(const c of actual)if(!a.new_cards.some(x=>x.store===c.store&&name(x.name)===name(c.name)&&name(x.customer)===name(c.customer)))plan.errors.push('Bu yeni kart sohbette onaylanmamış: '+c.name);
