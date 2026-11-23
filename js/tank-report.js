@@ -1,0 +1,28 @@
+// Read-only depot ledger: movements are authoritative; linked fuel only supplies missing detail.
+import {isActive,trDate,todayStr} from './core.js';
+import {tankTimeline} from './tank-timeline.js';
+const num=n=>Number(n).toLocaleString('tr-TR',{maximumFractionDigits:3});
+const calendar=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s+'T12:00:00Z'))&&new Date(s+'T12:00:00Z').toISOString().slice(0,10)===s;
+export function buildTankReport(d,{id='',personnel='',movement='',from='',to=todayStr()}={}){
+ if(from&&!calendar(from)||to&&!calendar(to)||from&&to&&from>to)throw Error('Geçerli başlangıç ve bitiş tarihlerini seçin; başlangıç bitişten sonra olamaz.');
+ const lookup=(store,key)=>{if(!key)return 'Belirtilmedi';const r=(d[store]||[]).find(x=>x.id===key);return r?[r.name,r.plate&&r.plate!==r.name?r.plate:''].filter(Boolean).join(' · '):'Kayıt bulunamadı';};
+ const fuels=(d.fuel_records||[]).filter(isActive),moves=(d.fuel_tank_movements||[]).filter(isActive);
+ const valid=moves.filter(m=>calendar(m.date)&&['GİRİŞ','ÇIKIŞ'].includes(m.move_type)&&Number.isFinite(Number(m.liters))&&Number(m.liters)>0);
+ const enrich=m=>{const candidates=fuels.filter(f=>f.id===m.fuel_record_id||f.tank_movement_id===m.id);const f=candidates.length===1?candidates[0]:null;return {...m,vehicle_id:m.vehicle_id||f?.vehicle_id||'',personnel_id:m.personnel_id||f?.personnel_id||'',km:f?.km,machine_hours:f?.machine_hours,note:m.description||m.note||f?.description||''};};
+ const within=x=>(!from||x.date>=from)&&(!to||x.date<=to);
+ const scope=x=>(!id||x.vehicle_id===id)&&(!personnel||x.personnel_id===personnel)&&(!movement||x.move_type===movement);
+ const rows=valid.map(enrich).filter(x=>within(x)&&scope(x)).sort((a,b)=>a.date.localeCompare(b.date)||String(a.id).localeCompare(String(b.id)));
+ const sum=xs=>Math.round(xs.reduce((n,x)=>n+Number(x.liters),0)*1000)/1000;
+ const before=valid.filter(x=>from&&x.date<from),through=valid.filter(x=>!to||x.date<=to);
+ const balance=xs=>sum(xs.filter(x=>x.move_type==='GİRİŞ'))-sum(xs.filter(x=>x.move_type==='ÇIKIŞ'));
+ const incoming=rows.filter(x=>x.move_type==='GİRİŞ'),out=rows.filter(x=>x.move_type==='ÇIKIŞ');
+ const pending=(d.pending_fuel_records||[]).filter(x=>isActive(x)&&x.reconciliation_status==='pending'&&within(x)&&(!id||x.vehicle_id===id)&&(!personnel||x.personnel_id===personnel));
+ const R={k:'depo',kind:'Depo yakıt',id,name:'Depo Yakıt Takip',from,to,period:from?`${trDate(from)} – ${trDate(to)}`:`Başlangıç – ${trDate(to)}`,info:[['Araç',id?lookup('vehicles',id):'Tüm araçlar'],['Personel',personnel?lookup('personnel',personnel):'Tüm personel'],['Hareket',movement||'Giriş ve çıkış']],kpis:[['Filtrelenen giriş',num(sum(incoming))+' L'],['Filtrelenen çıkış',num(sum(out))+' L'],['Hareket sayısı',String(rows.length)],['Dönem başı depo (tüm hareketler)',num(balance(before))+' L'],['Dönem sonu depo (tüm hareketler)',num(balance(through))+' L']],tables:[],notes:['Kişi ve araç toplamları yalnız depo çıkışlarıdır. Aynı çıkışın bağlı yakıt kaydı ikinci kez sayılmaz. Depo bakiyeleri kişi/araç filtresinden bağımsız tüm kayıtlı hareketleri kapsar.','Personel, kayıtlı yakıt alıcısını gösterir; kaydı uygulamaya giren kullanıcı veya aracın bugünkü şoförü olduğu varsayılmaz. Teslim alan adı, ıslak imza kanıtı değildir.']};
+ const groups=(key,store,title)=>{const map=new Map();for(const x of out){const k=x[key]||'';const g=map.get(k)||[];g.push(x);map.set(k,g);}return {title,headers:[store==='vehicles'?'Araç / plaka':'Yakıt alan personel','Çıkış sayısı','Toplam litre'],widths:[65,15,20],rows:[...map].map(([k,x])=>[lookup(store,k),String(x.length),num(sum(x))]).sort((a,b)=>a[0].localeCompare(b[0],'tr'))};};
+ R.tables.push(groups('personnel_id','personnel','Personel bazında depo çıkışları'),groups('vehicle_id','vehicles','Araç bazında depo çıkışları'));
+ R.tables.push({title:'Ayrıntılı depo hareketleri',headers:['Tarih','Hareket','Yakıt alan personel','Araç / plaka veya müşteri makinesi','Litre','Teslim alan adı','Pompa / fiş','Km / saat','Kaynak / muhatap','Açıklama'],widths:[9,7,12,15,6,10,8,8,12,13],rows:rows.map(x=>[trDate(x.date),x.move_type,lookup('personnel',x.personnel_id),x.delivery_kind==='customer_fuel'?lookup('customers',x.recipient_customer_id)+' · '+(x.recipient_machine||'Makine belirtilmedi'):lookup('vehicles',x.vehicle_id),num(x.liters),x.signature_name||'Belirtilmedi',[x.pump_no,x.invoice_no].filter(Boolean).join(' / ')||'—',[x.km!=null?num(x.km)+' km':'',x.machine_hours!=null?num(x.machine_hours)+' saat':''].filter(Boolean).join(' / ')||'—',x.move_type==='GİRİŞ'?(x.supplier_id?lookup('suppliers',x.supplier_id):x.customer_id?lookup('customers',x.customer_id):x.company||'Belirtilmedi'):x.delivery_kind==='customer_fuel'?'Müşteriye teslim':'İşletme araç / makinesi',x.note])});
+ if(pending.length&&movement!=='GİRİŞ'){R.notes.push(`${pending.length} kayıt (${num(sum(pending))} L) depo mutabakatı bekliyor; yukarıdaki stok ve çıkış toplamlarına dahil değildir.`);R.tables.push({title:'Ayrı bekleyen geçmiş yakıtlar — stok dışı',headers:['Tarih','Personel','Araç','Litre','Durum'],widths:[15,25,25,15,20],rows:pending.map(x=>[trDate(x.date),lookup('personnel',x.personnel_id),lookup('vehicles',x.vehicle_id),num(x.liters),'Mutabakat bekliyor'])});}
+ if(valid.length!==moves.length)R.notes.push(`${moves.length-valid.length} geçersiz hareket litre toplamına alınmadı; Veri Sağlığı bölümünden kontrol edin.`);
+ const timeline=tankTimeline(through);if(timeline.firstDeficit)R.notes.push('Kayıtlı depo geçmişinde eksi bakiye var; gerçek giriş / açılış kayıtlarını kontrol edin.');
+ return R;
+}

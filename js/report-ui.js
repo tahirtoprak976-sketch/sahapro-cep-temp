@@ -17,17 +17,18 @@ export async function screen(ctx) {
   const opts = reportOptions(d, k);
   const id = opts.some((o) => o.id === query.id) ? query.id : "";
   const p = query.p || "month";
+  const personnel=k==="depo"?query.personnel||"":"", movement=k==="depo"&&["GİRİŞ","ÇIKIŞ"].includes(query.movement)?query.movement:"";
   const range = p === "custom" ? { from: query.from || "", to: query.to || today } : periodRange(p, today);
-  const audience = query.a === "customer" ? "customer" : "internal";
+  const audience = k!=="depo" && query.a === "customer" ? "customer" : "internal";
   const href = (o) => {
-    const q = { k, id, p, from: range.from, to: range.to, a: audience, ...o };
+    const q = { k, id, p, from: range.from, to: range.to, a: audience, personnel, movement, ...o };
     return "#/detayli-rapor?" + Object.entries(q).filter(([, v]) => v !== "" && v != null).map(([a, b]) => a + "=" + encodeURIComponent(b)).join("&");
   };
   let R, err = "";
-  try { R = forAudience(buildReport(d, { k, id, from: range.from, to: range.to, today }), audience); } catch (e) { err = e.message || String(e); }
+  try { R = forAudience(buildReport(d, { k, id, from: range.from, to: range.to, today, personnel, movement }), audience); } catch (e) { err = e.message || String(e); }
   const company = (await db.metaGet("company_profile"))?.title || COMPANY_NAME;
 
-  const table = (t, ti, all = false) => `<div class="card" style="padding:10px 8px">
+  const table = (t, ti, all = false) => k==='depo' && t.title==='Ayrıntılı depo hareketleri' ? `<section class="card" data-tank-detail-list><div class="row between"><b>${esc(t.title)}</b><span class="badge">${t.rows.length}</span></div>${t.rows.slice(0,all?t.rows.length:15).map(r=>`<article style="padding:12px 0;border-bottom:1px solid var(--border)"><div class="row between"><b>${esc(r[0])} · ${esc(r[1])}</b><b>${esc(r[4])} L</b></div><div class="small" style="margin-top:4px">${esc(r[2])}<br>${esc(r[3])}</div><details style="margin-top:6px"><summary class="small">Teslim ve pompa ayrıntıları</summary>${t.headers.slice(5).map((h,i)=>`<div class="small" style="margin-top:4px"><span class="muted">${esc(h)}:</span> ${esc(r[i+5])}</div>`).join('')}</details></article>`).join('')}${!all&&t.rows.length>15?`<button class="btn block" data-more="${ti}">Tümünü göster (${t.rows.length})</button>`:''}</section>` : `<div class="card" style="padding:10px 8px">
       <div class="row between" style="margin:0 4px 6px"><b>${esc(t.title)}</b><span class="badge">${t.count ?? t.rows.length}</span></div>
       <div style="overflow-x:auto"><table class="rtable" style="width:100%;border-collapse:collapse;font-size:12px">
         <tr>${t.headers.map((h) => `<th style="text-align:left;padding:6px;border-bottom:2px solid var(--border2);color:var(--muted);white-space:nowrap">${esc(h)}</th>`).join("")}</tr>
@@ -36,18 +37,20 @@ export async function screen(ctx) {
       ${!all && t.rows.length > SHOW ? `<button class="btn sm block" style="margin-top:6px" data-more="${ti}">Tümünü göster (${t.rows.length})</button>` : ""}
     </div>`;
 
-  root.innerHTML = appbar("Detaylı Raporlar", "Her kalemin tüm kayıtları · kurumsal PDF") + `
+  root.innerHTML = appbar(k==="depo"?"Depo Yakıt Raporu":"Detaylı Raporlar", k==="depo"?"Kişi ve araç bazında litre takibi · PDF":"Her kalemin tüm kayıtları · kurumsal PDF") + `
     <div style="height:10px"></div>
     <div class="card">
-      <div class="small muted" style="margin-bottom:6px">Ne için rapor?</div>
+      ${k==="depo"?'<details><summary class="small muted">Diğer rapor türleri</summary>':'<div class="small muted" style="margin-bottom:6px">Ne için rapor?</div>'}
       <div class="row" style="gap:6px;flex-wrap:wrap">${REPORT_KINDS.map((x) => `<button class="btn sm${x.k === k ? " primary" : ""}" data-go="${esc(href({ k: x.k, id: "" }))}">${x.ic} ${esc(x.t)}</button>`).join("")}</div>
-      <div class="field" style="margin-top:10px"><label>${esc(K.t)}</label><select data-id><option value="">— ${esc(K.all)} —</option>${opts.map((o) => `<option value="${esc(o.id)}" ${o.id === id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>
+      ${k==="depo"?"</details>":""}
+      <div class="field" style="margin-top:10px"><label>${esc(k==="depo"?"Araç / makine":K.t)}</label><select data-id><option value="">— ${esc(K.all)} —</option>${opts.map((o) => `<option value="${esc(o.id)}" ${o.id === id ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></div>
+      ${k==='depo'?`<div class="formgrid2"><div class="field"><label>Yakıt alan personel</label><select data-tank-personnel><option value="">Tüm personel</option>${(d.personnel||[]).map(x=>`<option value="${esc(x.id)}" ${x.id===personnel?'selected':''}>${esc(x.name)}${x.deleted_at?' (arşiv)':''}</option>`).join('')}</select></div><div class="field"><label>Hareket türü</label><select data-tank-movement><option value="">Giriş ve çıkış</option>${['GİRİŞ','ÇIKIŞ'].map(x=>`<option ${x===movement?'selected':''}>${x}</option>`).join('')}</select></div></div>`:''}
       <div class="row" style="gap:6px;flex-wrap:wrap">${Object.entries(PERIODS).map(([key, [t]]) => `<button class="btn sm${key === p ? " primary" : ""}" data-go="${esc(href({ p: key, from: "", to: "" }))}">${esc(t)}</button>`).join("")}<button class="btn sm${p === "custom" ? " primary" : ""}" data-custom>Tarih seç</button></div>
       <div class="formgrid2" data-range ${p === "custom" ? "" : "hidden"} style="margin-top:8px">
         <div class="field"><label>Başlangıç</label><input type="date" data-from value="${esc(range.from)}"></div>
         <div class="field"><label>Bitiş</label><input type="date" data-to value="${esc(range.to)}"></div>
       </div>
-      <div class="row" style="gap:6px;margin-top:8px">
+      <div class="row" style="gap:6px;margin-top:8px" ${k==="depo"?"hidden":""}>
         <button class="btn sm${audience === "internal" ? " primary" : ""}" data-go="${esc(href({ a: "internal" }))}">🔒 İç kullanım (maliyetler dahil)</button>
         <button class="btn sm${audience === "customer" ? " primary" : ""}" data-go="${esc(href({ a: "customer" }))}">📤 Karşı tarafa (maliyetsiz)</button>
       </div>
@@ -67,6 +70,8 @@ export async function screen(ctx) {
       <button class="btn" data-csv>CSV</button>
     </div>`}`;
 
+  qs('[data-tank-personnel]',root)?.addEventListener('change',e=>ctx.go(href({personnel:e.target.value})));
+  qs('[data-tank-movement]',root)?.addEventListener('change',e=>ctx.go(href({movement:e.target.value})));
   qs("[data-id]", root)?.addEventListener("change", (e) => ctx.go(href({ id: e.target.value })));
   qs("[data-custom]", root)?.addEventListener("click", () => { qs("[data-range]", root).hidden = false; });
   for (const el of qsa("[data-from], [data-to]", root))
@@ -76,7 +81,7 @@ export async function screen(ctx) {
   const exportPdf = async (mode, btn) => {
     btn.disabled = true;
     try {
-      const raw = buildReport(d, { k, id, from: range.from, to: range.to, today });
+      const raw = buildReport(d, { k, id, from: range.from, to: range.to, today, personnel, movement });
       const { exportDocument } = await import("./document-engine.js");
       await exportDocument(reportSpec(raw, { audience, company }), mode);
       toast(mode === "share" ? "PDF hazır" : "PDF indirildi", "ok");
@@ -86,7 +91,7 @@ export async function screen(ctx) {
   qs("[data-pdf]", root)?.addEventListener("click", (e) => exportPdf("download", e.currentTarget));
   qs("[data-share]", root)?.addEventListener("click", (e) => exportPdf("share", e.currentTarget));
   qs("[data-csv]", root)?.addEventListener("click", () => {
-    const raw = buildReport(d, { k, id, from: range.from, to: range.to, today });
+    const raw = buildReport(d, { k, id, from: range.from, to: range.to, today, personnel, movement });
     downloadBlob(new Blob([reportCsv(raw, audience)], { type: "text/csv;charset=utf-8" }), `Rapor_${K.t}_${R.name}_${range.to}.csv`.replace(/[^\wÇĞİÖŞÜçğıöşü.]+/g, "_"));
     toast("CSV indirildi", "ok");
   });

@@ -1,3 +1,4 @@
+import {buildTankReport} from './tank-report.js';
 import {resolveWorkTonnage} from './work-tonnage.js';
 import {maintenanceHistory} from './maintenance-history-core.js';
 import {costCompleteness, dumpCostIncomplete} from './cost-completeness.js';
@@ -45,6 +46,7 @@ export const REPORT_KINDS = [
   { k: "istur", t: "İş türü", ic: "🧱", values: "work_type", all: "Tüm iş türleri" },
   { k: "malzeme", t: "Malzeme", ic: "🪨", values: "material", all: "Tüm malzemeler" },
   { k: "yakit", t: "Yakıt", ic: "⛽", store: "vehicles", all: "Tüm araçlar" },
+  { k: "depo", t: "Depo yakıt", ic: "🛢", store: "vehicles", all: "Tüm araçlar" },
   { k: "gider", t: "Gider", ic: "💸", values: "category", all: "Tüm kategoriler" },
   { k: "bakim", t: "Bakım / arıza", ic: "🛠", store: "vehicles", all: "Tüm araçlar" },
 ];
@@ -53,7 +55,7 @@ export const kindOf = (k) => REPORT_KINDS.find((x) => x.k === k) || REPORT_KINDS
 // Seçilebilir kalemler (kart listesi ya da kayıtlardaki değerler)
 export function reportOptions(d, k) {
   const K = kindOf(k);
-  if (K.store) return live(d, K.store).map((r) => ({ id: r.id, name: r.name || r.plate || "—" })).sort((a, b) => a.name.localeCompare(b.name, "tr"));
+  if (K.store) return (k==="depo" ? (d[K.store]||[]) : live(d, K.store)).map((r) => ({ id: r.id, name: r.name || r.plate || "—" })).sort((a, b) => a.name.localeCompare(b.name, "tr"));
   const src = K.values === "category" ? live(d, "expense_records") : live(d, "work_records");
   const seen = new Map();
   for (const r of src) { const v = String(r[K.values] || "").trim(); if (v && !seen.has(fold(v))) seen.set(fold(v), v); }
@@ -155,7 +157,8 @@ function workKpis(infos, { dump = true } = {}) {
 const infoPairs = (r, keys) => keys.map(([k, l, f]) => [l, f ? f(r) : r?.[k]]).filter(([, v]) => v !== undefined && v !== null && v !== "");
 
 // ---- Ana fonksiyon ----
-export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(), today = todayStr() } = {}) {
+export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(), today = todayStr(), personnel = "", movement = "" } = {}) {
+  if(k === "depo") return buildTankReport(d,{id,personnel,movement,from,to});
   const K = kindOf(k);
   const { nm, inR } = ctx(d, from, to);
   const works = live(d, "work_records").filter((w) => inR(w.date)).sort(byDate);

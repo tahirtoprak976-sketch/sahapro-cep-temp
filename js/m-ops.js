@@ -262,6 +262,7 @@ async function tank(ctx) {
       ${stat(st.daily ? fmtNum(st.daily) : "—", "Günlük L (14g)")}
       ${stat(st.daysLeft != null ? fmtNum(st.daysLeft) : "—", "Kaç gün yeter")}
     </div>
+    <section class="card" data-tank-report-entry><b>Depo yakıt dökümü</b><p class="small muted">Kim aldı, hangi araca kaç litre verildi? Tarih, personel ve araç seçerek ayrıntıları inceleyin; PDF indirin veya paylaşın.</p><button class="btn primary block" data-go="#/detayli-rapor?k=depo" data-tank-report>📄 Ayrıntılı Yakıt Raporu</button></section>
     ${pendingFuelPanel(pendingData,names)}
     ${dupPairs.map((p, i) => `<div class="card" style="border-left:4px solid #e0a030"><div class="small"><b>⚠ Aynı yakıt iki kez girilmiş olabilir</b><br>${trDate(p.keep.date)} elle girilen ${fmtNum(p.keep.liters)} L ve ${trDate(p.drop.date)} faturadan gelen ${fmtNum(p.drop.liters)} L (fatura ${esc(p.drop.invoice_no)}). Aynı teslimatsa birleştirin: fatura bilgisi ve fotoğrafı elle girdiğiniz kayda geçer, fazla giriş silinir, borç bir kez kalır.</div><button class="btn block" style="margin-top:8px" data-merge="${i}">🔗 Birleştir</button></div>`).join("")}
     ${chronology.invalid.length?notice('warn','Depo geçmişinde geçersiz hareket var; Veri Sağlığı bölümünden kontrol edin.'):firstGap?`<section class="card" data-tank-chronology><b>Tarih sırası kontrolü</b>${notice('warn',trDate(firstGap.date)+' tarihinde depo '+fmtNum(Math.abs(firstGap.balance))+' L eksiye düşüyor. O tarihten önceki gerçek giriş / açılışı kontrol edin. Bugünkü pozitif bakiye geçmiş açığı kapatmaz.')}<button type="button" class="btn block" data-go="#/veri-sagligi">Veri Sağlığında İncele</button></section>`:''}
@@ -290,7 +291,7 @@ async function tank(ctx) {
         <div data-in>${fSelect("Müşteriden (sefer karşılığı mazot, ops.)", "customer_id", custs.filter(hasFuelRulesT).map((x) => ({ v: x.id, t: x.name })), "")}</div>
         <div class="formgrid2">
           ${fSelect(
-            "Personel",
+            "Yakıt alan personel",
             "personnel_id",
             personnel.map((p) => ({ v: p.id, t: p.name })),
             "",
