@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import {readApprovedPacket,approvedPlan,REMOTE_FORMAT,REMOTE_AGE} from '../js/remote-approved-core.js';
+import {createRemoteAuthority,readRemoteCode,sealRemoteBox,openRemoteBox,fetchRemoteBox,MAX_REMOTE_BOX} from '../js/remote-approved-crypto.js';
+import {HISTORY_STORES} from '../js/history-core.js';
+const now=Date.parse('2026-11-23T12:00:00Z');
+const p={format:REMOTE_FORMAT,id:crypto.randomUUID(),approved:{confirmed:true,at:new Date(now).toISOString(),summary:'TEST exact chat approval',unpriced_rows:['TEST-r1'],tank_rows:[],new_cards:[]},pkg:{format:'SAHAPRO_HISTORY_V1',title:'TEST packet',rows:[{row_id:'TEST-r1',kind:'work',date:'2026-11-01',customer:'TEST customer',vehicle:'TEST truck',work_type:'Moloz Nakliye',quantity:2,unit:'Sefer',unit_price:null,settlement_status:'unbilled_unpaid',description:'TEST work'}]}};
+const clone=x=>structuredClone(x),d=Object.fromEntries(HISTORY_STORES.map(s=>[s,[]]));d.customers=[{id:'TEST-c',name:'TEST customer'}];d.vehicles=[{id:'TEST-v',name:'TEST truck',type:'Kamyon'}];
+assert.deepEqual(readApprovedPacket(p,{now}),p);
+let plan=approvedPlan(p,d,{now}).plan;assert.equal(plan.ready,true);assert.equal(plan.writes.work_records.length,1);assert.equal(plan.writes.work_records[0].price_snapshot,null);assert.equal(d.work_records.length,0);
+for(const edit of [x=>x.approved.confirmed=false,x=>x.approved.unpriced_rows=[],x=>x.pkg.rows[0].kind='collection',x=>x.pkg.rows[0].amount=20000,x=>x.pkg.rows[0].quantity=true,x=>x.approved.at='2026-02-31',x=>x.approved.new_cards=[{store:'personnel',name:'TEST',customer:''}]]){const x=clone(p);edit(x);assert.throws(()=>readApprovedPacket(x,{now}));}
+assert.throws(()=>readApprovedPacket(p,{now:now+REMOTE_AGE+1}));
+const ambiguous=clone(d);ambiguous.customers.push({id:'TEST-c2',name:'TEST customer'});assert.equal(approvedPlan(p,ambiguous,{now}).plan.ready,false);
+const unknown=clone(d);unknown.customers=[];assert.equal(approvedPlan(p,unknown,{now}).plan.ready,false);
+const typed=clone(p);typed.pkg.rows[0].vehicle_type='Kamyonet';assert.equal(approvedPlan(typed,d,{now}).plan.ready,false);const inactive=clone(d);inactive.vehicles[0].active=false;assert.equal(approvedPlan(p,inactive,{now}).plan.ready,false);const huge=clone(p);huge.pkg.rows[0].quantity=1e100;assert.throws(()=>readApprovedPacket(huge,{now}));
+const allow=clone(p);allow.approved.new_cards=[{store:'customers',name:'TEST customer',customer:''}];assert.equal(approvedPlan(allow,unknown,{now}).plan.ready,true);
+const wrong=clone(allow);wrong.approved.new_cards[0].name='TEST other';assert.equal(approvedPlan(wrong,unknown,{now}).plan.ready,false);
+const fuel=clone(p);fuel.pkg.rows=[{row_id:'TEST-fuel',kind:'fuel',date:'2026-11-01',vehicle:'TEST truck',liters:20,fuel_source:'Depo Tankı',settlement_status:'unbilled_unpaid'}];fuel.approved.unpriced_rows=[];fuel.approved.tank_rows=['TEST-fuel'];assert.equal(approvedPlan(fuel,d,{now}).plan.ready,false);const stocked=clone(d);stocked.fuel_tank_movements=[{id:'TEST-tank',date:'2026-10-01',move_type:'GİRİŞ',liters:100}];assert.equal(approvedPlan(fuel,stocked,{now}).plan.ready,true);
+const {authority,code}=await createRemoteAuthority();assert.equal(authority.key.extractable,false);const peer=await readRemoteCode(code);assert.equal(peer.channel,authority.channel);await assert.rejects(()=>readRemoteCode('SPAK1.TEST'));await assert.rejects(()=>readRemoteCode(code+'x'));
+const sealed=await sealRemoteBox([p],peer,{now});assert(!new TextDecoder().decode(sealed).includes('TEST customer'));assert.deepEqual((await openRemoteBox(sealed,authority,{now}))[0].packet,p);
+await assert.rejects(()=>openRemoteBox(sealed,{channel:crypto.randomUUID(),key:authority.key},{now}));
+const other=await createRemoteAuthority();await assert.rejects(()=>openRemoteBox(sealed,{channel:authority.channel,key:other.authority.key},{now}));
+const bad=JSON.parse(new TextDecoder().decode(sealed));bad.ciphertext=(bad.ciphertext[0]==='A'?'B':'A')+bad.ciphertext.slice(1);await assert.rejects(()=>openRemoteBox(new TextEncoder().encode(JSON.stringify(bad)),authority,{now}));
+await assert.rejects(()=>openRemoteBox(sealed,authority,{now:now+REMOTE_AGE+1}));
+let request;assert.equal(await fetchRemoteBox('https://example.test/solo/',authority.channel,{fetcher:async(u,o)=>{request={u,o};return new Response('',{status:404});}}),null);assert.equal(request.o.credentials,'omit');assert.equal(request.o.redirect,'error');assert.equal(request.o.cache,'no-store');assert.equal(request.u,'https://example.test/solo/data/remote-inbox/'+authority.channel+'.json');
+await assert.rejects(()=>fetchRemoteBox('https://example.test/solo/','../../evil'));
+await assert.rejects(()=>fetchRemoteBox('https://example.test/solo/',authority.channel,{fetcher:async()=>new Response('x',{headers:{'content-length':String(MAX_REMOTE_BOX+1)}})}));
+console.log('remote approved118 PASS: explicit exact authority, money allowlist, ambiguity/no new card without approval, tank stock, nonextractable device key, authenticated encryption, expiry and bounded fixed-origin fetch');
