@@ -20,7 +20,7 @@ import {
   isValidBackup,
   stableStringify,
 } from "./core.js";
-const SECRET_META = ["gemini_key", "backup_pw", "sec_lock", "sec_fail", "pin_hash"];
+const SECRET_META = ["gemini_key", "backup_pw", "sec_lock", "sec_fail", "pin_hash", "remote_approved_authority"];
 // Şoför bağlantılarının imza anahtarları ve çıkış kodları: yalnız ŞİFRELİ yedeğe yazılır. Şifresiz yedeği ele geçiren
 // imzalı şoför mesajı üretemesin. (Telefon içi kurtarma kopyaları şifreli sayılır; telefondan çıkmaz.)
 const LINK_META = ["driver_links"];
@@ -292,7 +292,7 @@ export async function restoreBackup(db, obj, replace = false) {
             value: Math.max(Number(q.result?.value) || 0, Number(m.value) || 0),
           });
       } else if (
-        !["device_install_id", "pin_hash", "last_backup_at", "last_backup_result", "sec_lock", "sec_fail"].includes(m.key)
+        !["device_install_id", "pin_hash", "last_backup_at", "last_backup_result", "sec_lock", "sec_fail", "remote_approved_authority"].includes(m.key)
       ) {
         const q = t.objectStore("meta").get(m.key);
         q.onsuccess = () => {

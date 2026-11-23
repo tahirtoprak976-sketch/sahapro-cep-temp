@@ -45,3 +45,7 @@ export async function ensureRecipient() {
   } finally { db.close(); }
 }
 export const forgetRecipient = () => access(true, (s) => s.delete("recipient"));
+// Independent opt-in authority. No secret is included in business backups.
+export const getRemoteAuthority=()=>access(false,s=>s.get('remote-approved'));
+export const putRemoteAuthority=authority=>access(true,s=>s.put(authority,'remote-approved'));
+export const deleteRemoteAuthority=()=>access(true,s=>s.delete('remote-approved'));
