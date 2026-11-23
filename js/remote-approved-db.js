@@ -35,7 +35,7 @@ export async function commitApprovedPacket(value,channel,{canWrite=()=>true}={})
   const {plan}=approvedPlan(p,data);if(!plan.ready)throw Error(plan.errors.join('\n')||'Paket hazır değil');
   const batch=newRecord().id;
   for(const [store,rows]of Object.entries(plan.writes))for(const r of rows){if(r.history_source)r.history_source.batch_id=batch;t.add(store,r);}
-  const result={id:p.id,channel,digest,at:nowISO(),status:'saved',batch_id:batch,works:plan.writes.work_records.length,fuels:plan.writes.fuel_records.length,cards:plan.newCards.length,record_ids:[...plan.writes.work_records,...plan.writes.fuel_records].map(r=>r.id)};
+  const result={id:p.id,channel,digest,at:nowISO(),status:'saved',batch_id:batch,works:plan.writes.work_records.length,fuels:plan.writes.fuel_records.length,cards:plan.newCards.length,record_ids:[...plan.writes.work_records,...plan.writes.fuel_records].map(r=>r.id),...(p.approved.negative_tank_rows?{negative_tank_acknowledged:true,negative_tank_rows:[...p.approved.negative_tank_rows],stock_warning:plan.findings.some(f=>f.warnings.length>0)}:{})};
   t.put('meta',{key:receiptKey,value:result});return result;
  });
 }

@@ -6,6 +6,8 @@ Site: https://tahirtoprak976-sketch.github.io/sahapro-cep-temp/
 
 Sürüm: **SAHAPRO SOLO v3.10.18** — 23.11.2026
 
+Açık eksi bakiye onayı: yalnız ayrı yakıt paketinde tek tek onaylanan satırlar, eksik geçmiş girişler nedeniyle eksiye düşse de gerçek tüketim olarak kaydedilebilir. Giriş/açılış uydurulmaz; uyarı ve makbuzda onay korunur. Varsayılan stok kontrolü değişmez. [Kapsam](docs/REMOTE_NEGATIVE_120.md).
+
 Sohbette onaylı iş/yakıt teslimi: Geçmiş İş Aktarımı içinden bir kez etkinleştirilen ayrı gizli bağlantı, kontrol edilmiş paketleri telefon açık ve kilit açılmışken ikinci Kaydet istemeden alır. Yeni kart, fiyat bekletme ve depo tüketimi onayı satır bazındadır; tahsilat/ödeme bu kanala dahil değildir. [Kapsam ve yayıncı kuralları](docs/REMOTE_APPROVED_118.md).
 
 Bakım ve sayaç kontrolü: Akıllı Asistan, Bakım Takvimi ve yeni bakım formunda mevcut alışa bağlantı / yeni harcama / yalnız takip ayrılır. Sayaç ayrıca onaylanır; işlerden hesaplanan tahmin kesin okumaya dönüşmez. [Kapsam, kayıt biçimi ve testler](docs/MAINTENANCE_REVIEW_116.md).
