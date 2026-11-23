@@ -7,7 +7,7 @@ const p={format:REMOTE_FORMAT,id:crypto.randomUUID(),approved:{confirmed:true,at
 const clone=x=>structuredClone(x),d=Object.fromEntries(HISTORY_STORES.map(s=>[s,[]]));d.customers=[{id:'TEST-c',name:'TEST customer'}];d.vehicles=[{id:'TEST-v',name:'TEST truck',type:'Kamyon'}];
 assert.deepEqual(readApprovedPacket(p,{now}),p);
 let plan=approvedPlan(p,d,{now}).plan;assert.equal(plan.ready,true);assert.equal(plan.writes.work_records.length,1);assert.equal(plan.writes.work_records[0].price_snapshot,null);assert.equal(d.work_records.length,0);
-for(const edit of [x=>x.approved.confirmed=false,x=>x.approved.unpriced_rows=[],x=>x.pkg.rows[0].kind='collection',x=>x.pkg.rows[0].amount=20000,x=>x.pkg.rows[0].quantity=true,x=>x.approved.at='2026-02-31',x=>x.approved.new_cards=[{store:'personnel',name:'TEST',customer:''}]]){const x=clone(p);edit(x);assert.throws(()=>readApprovedPacket(x,{now}));}
+for(const edit of [x=>x.approved.confirmed=false,x=>x.approved.unpriced_rows=[],x=>x.pkg.rows[0].kind='collection',x=>x.pkg.rows[0].amount=20000,x=>x.pkg.rows[0].quantity=true,x=>x.pkg.rows[0].vehicle_type={kind:'Kamyon'},x=>x.pkg.rows[0].material=['TEST'],x=>x.pkg.rows[0].kdv_included={},x=>x.approved.at='2026-02-31',x=>x.approved.new_cards=[{store:'personnel',name:'TEST',customer:''}]]){const x=clone(p);edit(x);assert.throws(()=>readApprovedPacket(x,{now}));}
 assert.throws(()=>readApprovedPacket(p,{now:now+REMOTE_AGE+1}));
 const ambiguous=clone(d);ambiguous.customers.push({id:'TEST-c2',name:'TEST customer'});assert.equal(approvedPlan(p,ambiguous,{now}).plan.ready,false);
 const unknown=clone(d);unknown.customers=[];assert.equal(approvedPlan(p,unknown,{now}).plan.ready,false);

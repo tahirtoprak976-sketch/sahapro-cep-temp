@@ -21,6 +21,8 @@ export function readApprovedPacket(value,{now=Date.now()}={}){
  if(!Array.isArray(a.new_cards)||a.new_cards.length>100||a.new_cards.some(c=>!exact(c,['store','name','customer'])||!['customers','sites','vehicles'].includes(c.store)||typeof c.name!=='string'||!c.name.trim()||c.name.length>200||typeof c.customer!=='string'||c.customer.length>200||(c.store==='sites'?!c.customer.trim():c.customer!=='')))throw Error('Yeni kart onay listesi geçersiz');
  if(new Set(a.new_cards.map(c=>stableStringify(c))).size!==a.new_cards.length)throw Error('Yeni kart onayı tekrarlı');
  for(const r of pkg.rows){
+  for(const k of ['date','vehicle_type','work_type','unit','material','fuel_source','transport_group_key'])if(r[k]!=null&&(typeof r[k]!=='string'||r[k].length>200))throw Error('Satır metin alanı geçersiz: '+k);
+  if(r.kdv_included!=null&&typeof r.kdv_included!=='boolean')throw Error('KDV dahil/hariç alanı boolean olmalı');
   for(const k of r.kind==='work'?['quantity','unit_price','kdv_rate']:['liters'])if(r[k]!=null&&r[k]!==''&&(typeof r[k]!=='number'||!Number.isFinite(r[k])))throw Error('Miktar/fiyat alanı sonlu sayı olmalı');
   if((r.kind==='work'&&(!Number.isSafeInteger(Math.round(Number(r.quantity)*1000000))||(r.unit_price!=null&&r.unit_price!==''&&!Number.isSafeInteger(Math.round(r.quantity*r.unit_price*100)))))||(r.kind==='fuel'&&Math.abs(r.liters)>1e9))throw Error('Miktar veya toplam güvenli sınırı aşıyor');
   if(r.kind==='work'&&(r.unit_price==null||r.unit_price==='')&&!a.unpriced_rows.includes(r.row_id))throw Error('Fiyat bekletme onayı eksik');

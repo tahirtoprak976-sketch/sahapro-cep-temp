@@ -34,7 +34,7 @@
     "js/maintenance-review-core.js": "3aef1bd266e1b0c4e5c61d9962c7cd24ff05cc7ebaa656ff00d22aa6d6a76c4c",
     "js/maintenance-review-db.js": "abce31b91fc3c10dba1aebc74324245b67ac75a0c44a68404e366965323506cf",
     "js/maintenance-review-ui.js": "142749ee01bfefeb9a0a11101cda8a1f555310acfeb35337e38751b48badc7a2",
-    "js/remote-approved-core.js": "73169b76b4d332c39220f4236a07c91a24736073f8eae6b64ef3cda464e8e28b",
+    "js/remote-approved-core.js": "6810a9127db3104a956718ebe1ae56962a5013c6598284dcc81fb08532ef34e1",
     "js/remote-approved-crypto.js": "b21a1b58b544ccb6126d834e580faf2451ec7166fd16e02f4d1a7898e5b4eb41",
     "js/remote-approved-db.js": "022a3ab2529f2be843085730f18943cced3216ea2818a14c1d4ed7a1e28f8b8c",
     "js/remote-approved-runner.js": "5e226bc68f8422eae10323bf5f9d5b5a01e7050be155db906ad147a1fad4c293",
