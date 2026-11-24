@@ -101,6 +101,10 @@ async function call(path, key, body, fetchFn) {
     if (res.status === 500 || res.status === 503 || res.status === 504) {
       const e = new Error("Gemini şu an yoğun, tekrar deneyin (" + res.status + ")");
       e.code = "BUSY";
+      e.status = res.status;
+      const retryAfter = res.headers?.get?.('retry-after');
+      const retryMs = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter)*1000 : Date.parse(retryAfter || '')-Date.now();
+      if (Number.isFinite(retryMs) && retryMs > 0) e.retryAfterMs = Math.ceil(retryMs);
       throw e;
     }
     if (res.status === 400 || res.status === 403) throw new Error("Gemini anahtarı veya izin sorunu: " + msg);
@@ -128,34 +132,71 @@ function rank(id) {
 // Seçili model "kota 0 / kapatıldı / yoğun / kota doldu" hatası verirse listedeki sıradaki ücretsiz
 // modele kendiliğinden geçer; çalışanı kaydeder. Faturalandırma hiçbir zaman açılmaz.
 const SWITCHABLE = new Set(["NO_FREE", "MODEL_GONE", "BUSY", "RATE"]);
-export async function withModelFallback(db, run, { fetchFn, onSwitch } = {}) {
+function retryWait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    const cancelled = () => { clearTimeout(timer); signal?.removeEventListener('abort', cancelled); reject(new DOMException('Okuma iptal edildi', 'AbortError')); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', cancelled); resolve(); }, ms);
+    signal?.addEventListener('abort', cancelled, {once:true});
+    if (signal?.aborted) cancelled();
+  });
+}
+const recoverySafetyError = e => ['LOCAL_LIMIT','NO_CONSENT','ASSISTANT_ABORT'].includes(e?.code) || e?.name === 'AbortError';
+export async function withModelFallback(db, run, { fetchFn, onSwitch, onRetry, signal, check, wait = retryWait } = {}) {
+  const guard = () => { check?.(); if(signal?.aborted) throw new DOMException('Okuma iptal edildi','AbortError'); };
+  guard();
   const g = await geminiSettings(db);
   if (!g.ready) throw new Error("Gemini ayarları eksik (Ayarlar → Yapay Zeka)");
   const tried = new Set();
   fetchFn = fetchFn?.__gated ? fetchFn : gatedFetch(db, fetchFn || fetch);
-  let model = g.model, lastErr = null;
-  let pool = null;
+  let model = g.model, lastErr = null, pool = null, refreshed = false, sameModelRetry = false, waits = 0, attempts = 0;
+  const pause = async error => {
+    const delayMs = Math.max(Math.min(8000,1000 * 2 ** waits++) + Math.floor(Math.random()*250), error.retryAfterMs || 0);
+    // A long provider wait is left to the user; never evade its minimum or create a long retry loop.
+    if (delayMs > 30000) return false;
+    guard();onRetry?.({model,delayMs,attempt:attempts});guard();
+    try { await wait(delayMs, signal); } catch (e) { guard();throw e; }
+    guard();return true;
+  };
   for (let attempt = 0; attempt < 5; attempt++) {
-    tried.add(model);
+    guard();tried.add(model);attempts++;
     try {
-      const out = await run({ key: g.key, model, fetchFn });
+      const out = await run({ key: g.key, model, fetchFn });guard();
       if (model !== g.model) {
         await db.metaSet("gemini_model", model);
         onSwitch?.(g.model, model);
       }
       return out;
     } catch (e) {
-      lastErr = e;
+      guard();lastErr = e;
       if (!SWITCHABLE.has(e.code)) throw e;
-      if (!pool) {
-        const cached = (await db.metaGet("gemini_model_list")) || [];
-        pool = cached.length ? cached : (await listModels(g.key, fetchFn).catch(() => [])).map((m) => m.id);
-        if (!cached.length && pool.length) await db.metaSet("gemini_model_list", pool);
+      if (attempt === 4) break;
+      if (e.code === 'BUSY' && !sameModelRetry) {
+        sameModelRetry = true;
+        if(await pause(e)) continue;
+        break;
       }
-      const next = pool.find((id) => !tried.has(id));
+      if (!pool) {
+        const cached = await db.metaGet("gemini_model_list");
+        pool = Array.isArray(cached) ? cached.filter(id=>typeof id==='string') : [];
+      }
+      let next = pool.find(id=>!tried.has(id));
+      // A nonempty but exhausted/stale cache is not evidence that no other model is available.
+      if (!next && !refreshed) {
+        refreshed = true;guard();
+        try {
+          const fresh = (await listModels(g.key, fetchFn)).map(m=>m.id);guard();
+          if(fresh.length){pool=fresh;await db.metaSet("gemini_model_list",fresh);}
+        } catch(error) { guard();if(recoverySafetyError(error)) throw error; }
+        next = pool.find(id=>!tried.has(id));
+      }
       if (!next) break;
+      if (e.code === 'BUSY' && !(await pause(e))) break;
       model = next;
     }
+  }
+  if(lastErr?.code === 'BUSY') {
+    lastErr.recovery = {attempts,models:[...tried],modelListRefreshed:refreshed};
+    lastErr.message += '. '+attempts+' okuma denemesi tamamlanamadı. Belge ve mesaj korunuyor; hiçbir kayıt yazılmadı.';
   }
   throw lastErr || new Error("Çalışan ücretsiz model bulunamadı");
 }
@@ -181,7 +222,7 @@ export async function geminiDocument(parts,{db,signal,system,schema,fetchImpl=fe
   }catch(e){if(e.code==='RESPONSE_LIMIT')throw e;if(controller.signal.aborted)throw Object.assign(Error(signal?.aborted?'Belge okuma iptal edildi. Dosyalar korunuyor.':'Belge okuma 45 saniyede tamamlanamadı. Dosya korunuyor; yeniden deneyebilir veya elle doldurabilirsiniz.'),{name:'AbortError'});throw e;}
   finally{clearTimeout(timeout);signal?.removeEventListener('abort',cancel);}
  };
- return withModelFallback(db,async o=>{if(signal?.aborted)throw new DOMException('Okuma iptal edildi','AbortError');return geminiJson(parts,{...o,maxTokens:8192,system,schema});},{fetchFn:bounded});
+ return withModelFallback(db,async o=>{if(signal?.aborted)throw new DOMException('Okuma iptal edildi','AbortError');return geminiJson(parts,{...o,maxTokens:8192,system,schema});},{fetchFn:bounded,signal});
 }
 // Anahtarla gerçekten çalışan ilk modeli bulur (her deneme tek, çok kısa istek)
 export async function findWorkingModel(key, models, fetchFn) {
@@ -327,11 +368,11 @@ export function assistantRequestScope({timeoutMs=90000,maxBytes=2*1024*1024,fetc
    return new Response(new Blob(chunks),{status:response.status,statusText:response.statusText,headers:response.headers});
   }catch(e){check();throw e;}
  };
- return {fetchFn,check,abort:()=>controller.abort(),dispose:()=>clearTimeout(timer)};
+ return {fetchFn,check,signal:controller.signal,abort:()=>controller.abort(),dispose:()=>clearTimeout(timer)};
 }
 export async function withAssistantModelFallback(db,run,{scope,...options}={}){
  scope?.check();
- const result=await withModelFallback(db,run,{...options,fetchFn:scope?.fetchFn});
+ const result=await withModelFallback(db,run,{...options,fetchFn:scope?.fetchFn,signal:scope?.signal,check:scope?.check});
  scope?.check();return result;
 }
 

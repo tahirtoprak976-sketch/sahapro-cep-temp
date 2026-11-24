@@ -1,11 +1,11 @@
 {
-  "version": "3.10.21",
+  "version": "3.10.22",
   "schema": 8,
-  "purpose": "Inspection PDF reader fix; original document bytes and explicit Save retained; existing HR, stock, remote transfer and schema8 unchanged",
+  "purpose": "Bounded 503 recovery and fresh available-model discovery; original PDF, safety gates and schema8 unchanged",
   "files": {
     "js/app.js": "1bfcc3161de387e3e4735f508e811883bcf4e0728919d3626a4120a794beaaf4",
     "js/backup.js": "3184b751a11b7ebc7cc75bbe977a14d01ea34ec7b7a4deb9d973c7e4508d9f61",
-    "js/core.js": "5afd48a6b485942eb35f33a0240e0f58f139fefbae4aea658734f8bdf25c730d",
+    "js/core.js": "de0b39941980dd34f77c897878347b186fefdeee119a1bff9db77ed4148f2018",
     "js/db.js": "c09a824f434582c3119a942f6cc30b1fa8ad667d36469b58d504f3ae0479d1e0",
     "js/enterprise-db.js": "8d04a7a1188d6d00da5931e63b9f2c189f4f6262218c92c64a3dd92294669001",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -24,8 +24,8 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "63a17d0729d63233946dd00a18a4700410a8ecb726f1f9c9c55ae960501db6a3",
-    "js/assistant.js": "bb69c37d355684912726e43f3257236c83488087f64153d76103af2d7a9af2fd",
+    "sw.js": "3681ca7720d4ee8a1cbe0501b3a1752033a144e3bf5573ecd4160597270e3008",
+    "js/assistant.js": "7f76b252f6572e59ebf8ee4e1e00a2fe45c395d9098522d47890e70b28cb7742",
     "js/m-ops.js": "2d8cd59f6d1a07807732b83c3f86988151e49cb2382ff290c246b29c1102916e",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
     "js/maint.js": "490f70399320c748edfaf5e17a3fdc272c7d44fa231ce33a9aec184b54c8b845",
@@ -46,6 +46,7 @@
     "js/secure-transfer-ui.js": "484fa65b47162a5a3d0e4d2a4cee6111e7e2bebba2862290bbad2817a1e740c3",
     "js/security.js": "09acb568e8db53f08a0b29aaf64d9ec595ba16a3dded4843ea1f034c2148110a",
     "js/history-core.js": "c41b5cfb36fc77619db203050b0d9df23a6db6064e4c3a746d50a45e48ae6fbc",
-    "js/assistant-docs.js": "1aa491bbc4f989afdea0b6f4d04b4ec7720802163b8b21d1548486c2b3a2b410"
+    "js/assistant-docs.js": "1aa491bbc4f989afdea0b6f4d04b4ec7720802163b8b21d1548486c2b3a2b410",
+    "js/ai-gemini.js": "63ea23628d0cef61a777a44cf1652e0345da3fe139e21e9599db732d38f3b3ab"
   }
 }
