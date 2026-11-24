@@ -51,6 +51,7 @@
     "js/assistant-page-ui.js": "0300e17e6d48cef9f2ec576859644124f986fa8ec0a675d40a2056a9509c81e5",
     "js/assistant-conversation.js": "a1b5774c882e78f0c60884db6f294eeed1f7bb09509f1d5309196e9f3efb9778",
     "js/assistant-connection-ui.js": "b7a7da97ee50e397cfcd5dafdea836620c04a9715c7f1c46ffbabad616ee7386",
-    "js/assistant-agent-core.js": "fa1a0139fc5d14ec6062039fe996ef776842345459c13fd373ce133f5001dcbb"
+    "js/assistant-agent-core.js": "fa1a0139fc5d14ec6062039fe996ef776842345459c13fd373ce133f5001dcbb",
+    "styles.css": "18cb0e3192701b167183fda4528c16c2325835098f6473433a7af05a53b1a0a3"
   }
 }

@@ -42,3 +42,7 @@ Fiziksel Android, gerçek WhatsApp, gerçek Gemini/Neon ve kullanıcının gerç
 
 - https://aistudio.google.com/docs/troubleshooting — model parametreleri, varsayılan örnekleme ve sınırlı tekrar.
 - https://aistudio.google.com/docs/api-errors — 400/401/403/429/503 ayrımı. Interactions API adları ile generateContent ayrıntıları aynı varsayılmadı; uygulama HTTP statüsünü ve kendi hata sınıfını gösterir.
+
+## Mobil engelin giderilmesi
+
+Kullanıcı 24.11.2026 tarihinde düzeltme ve yeniden yayın çalışmasına devam yetkisi verdi. assistant_mobile112 aynı kaynakta yeniden düştü. 320px genişlikte dört üst düğme üç kolon nedeniyle iki satırdı: ilk işlem başlığı altı 615px, sabit mesaj kutusu üstü 578px oldu. Üst araç çubuğu dört kolona alındı; düğmelerin dokunma yüksekliği 40px korundu. Değiştirilmemiş assistant_mobile112, 320/360/390px görünürlük ve kalan tüm kontrollerle geçti. Şema ve iş akışı değişmedi. Tam kapılar yeniden çalıştırılır.
