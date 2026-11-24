@@ -72,6 +72,14 @@ export function conversationCommand(text) {
   if (/^(?:merhaba|selam|neler yapabilirsin|ne yapabilirsin|yardim|yardim et)[.!?]?$/u.test(f)) return 'help';
   return null;
 }
+// Exact conversational phrases only; no business instruction is consumed by this local path.
+export function smallTalkReply(value) {
+ const text=String(value||'').trim().toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i').replace(/[.!?]+$/,'').trim();
+ if(/^(?:merhaba|selam|selamun aleykum|gunaydin|iyi gunler|iyi aksamlar|iyi geceler|kolay gelsin)$/.test(text))return 'Merhaba. İş, tahsilat, yakıt veya belge işleminizi anlatabilirsiniz. Yerel işlemler bağlantı olmadan da çalışır.';
+ if(/^(?:nasilsin|nasilsiniz|ne haber|naber)$/.test(text))return 'Buradayım, yardımcı olmaya hazırım. Hangi işinizi birlikte tamamlayalım?';
+ if(/^(?:tesekkurler|tesekkur ederim|tesekkur ederiz|sag ol|sag olun|eyvallah)$/.test(text))return 'Rica ederim. Yeni bir işlem anlatabilir veya açık kartınızı kontrol edip tamamlayabilirsiniz.';
+ return null;
+}
 export const CAPABILITIES_REPLY = 'İşlerinizi, tahsilatları, yakıtı, gider ve bakım bildirimlerini kontrol kartlarına hazırlayabilirim. Yeni müşteri, şantiye, araç ve personel kartları, fiyat kuralları, belge okuma ve kayıtlarınıza dayanan hesaplarda yardımcı olurum. Birden çok işi birlikte yazabilirsiniz. Eksik bilgiyi sorarım; kayıt değişikliklerini onayınızdan sonra uygularız. Örneğin: “Kaya’ya yaptığımız işi gir, aldığımız parayı da ayrı tahsilat göster.”';
 
 const fold=s=>String(s||'').trim().toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/ı/g,'i');
