@@ -25,7 +25,7 @@
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
     "sw.js": "a6ead1d77eb6bedb848d424db8e6090c1dc0d7be4062fe0ea47223a40e216852",
-    "js/assistant.js": "10fe7c83177555d6dd67456fbdf5bddbe185d16fcc52e3b36bc2b135941ecd2e",
+    "js/assistant.js": "bca15a3a1fa68536db5897886766f05a89fb36b8a98a9677554d960796f72f76",
     "js/m-ops.js": "2d8cd59f6d1a07807732b83c3f86988151e49cb2382ff290c246b29c1102916e",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
     "js/maint.js": "490f70399320c748edfaf5e17a3fdc272c7d44fa231ce33a9aec184b54c8b845",
@@ -50,6 +50,7 @@
     "js/ai-gemini.js": "b5959c7493d8cad0aa66dbd53f1e05afafd019429dcd53e4051a857803bb865a",
     "js/assistant-page-ui.js": "0300e17e6d48cef9f2ec576859644124f986fa8ec0a675d40a2056a9509c81e5",
     "js/assistant-conversation.js": "a1b5774c882e78f0c60884db6f294eeed1f7bb09509f1d5309196e9f3efb9778",
-    "js/assistant-connection-ui.js": "b7a7da97ee50e397cfcd5dafdea836620c04a9715c7f1c46ffbabad616ee7386"
+    "js/assistant-connection-ui.js": "b7a7da97ee50e397cfcd5dafdea836620c04a9715c7f1c46ffbabad616ee7386",
+    "js/assistant-agent-core.js": "fa1a0139fc5d14ec6062039fe996ef776842345459c13fd373ce133f5001dcbb"
   }
 }

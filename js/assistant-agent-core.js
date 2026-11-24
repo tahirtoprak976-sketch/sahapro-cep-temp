@@ -7,6 +7,9 @@ import {actionsSchemaProps} from './assistant-actions.js';
 import {foldTr} from './parser.js';
 import {validDate} from './driver-delivery.js';
 
+export function assistantOutputBudget(source='',task=null){
+ return String(source).length>4000||JSON.stringify(task?.plan||{}).length>12000?32768:8192;
+}
 export const AGENT_LIMITS={rounds:6,calls:16,perRound:6,planBytes:PLAN_JSON_LIMIT,resultBytes:14000};
 export const RECORD_FIELDS={
  customers:['id','name','parent_customer_id','active'],vehicles:['id','name','plate','type','assignee_id'],personnel:['id','name','vehicle_id','role'],

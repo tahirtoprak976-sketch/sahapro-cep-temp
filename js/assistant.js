@@ -611,10 +611,10 @@ export async function screen(ctx) {
       const askP = !useAgent && !localPlan && !transferFiles.length && !images.length && !audios.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData,scope:requestScope}).catch(() => null) : Promise.resolve(null);
       let agentResult=null;
       if(useAgent){
-        const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
+        const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner,assistantOutputBudget}=await import('./assistant-agent-core.js');
         const {geminiAgent}=await import('./ai-gemini.js');
         const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
-        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,maxTokens:typed.length>4000?32768:8192,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope,onRetry:onBusyRetry});
+        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,maxTokens:assistantOutputBudget(message,taskForModel),system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope,onRetry:onBusyRetry});
         d=await db.dumpAll();
       }
       let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
