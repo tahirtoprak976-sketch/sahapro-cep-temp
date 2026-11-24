@@ -223,6 +223,10 @@ export async function screen(ctx) {
   };
   photosIn.addEventListener("change",()=>selectFiles(photosIn,false));
   const addPhotos=qs("[data-addphotos]",root);addPhotos.addEventListener("change",()=>selectFiles(addPhotos,true));
+  // A file picker can change while asynchronous startup is still mounting handlers.
+  // Consume that selection once; never discard it when the saved-file draft is restored.
+  if(photosIn.files.length)await selectFiles(photosIn,false);
+  if(addPhotos.files.length)await selectFiles(addPhotos,true);
   qs('[data-part-document]',root).onclick=async()=>{
     if(asking||connection?.isBusy())return;if(filesPending)return toast('Dosyalar doğrulanıyor; tamamlanmasını bekleyin','err');asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
     try{if(files.some(isTransfer))throw Error('Şoför aktarımı kendi akışından okunmalı. Parça belgesini ayrı seçin.');await stagePartDocuments(ctx,files,{message:msgEl.value});}

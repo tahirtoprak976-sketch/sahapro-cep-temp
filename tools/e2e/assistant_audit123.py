@@ -16,7 +16,19 @@ with sync_playwright() as w:
   else:r.abort()
  c.route('**/*',route);app=base+'index.html?db=TEST_audit123_'+uuid.uuid4().hex[:10];p.goto(app+'#/daha');p.wait_for_selector('#screen[data-view-ready="1"]');p.evaluate("""async()=>{const d=await import('./js/db.js');await d.saveNew('customers',{name:'TEST Gizli Müşteri'},'TEST');for(const[k,v]of Object.entries({gemini_key:'TEST_SECRET_KEY',gemini_model:'gemini-9-test',gemini_consent:true,gemini_daily_limit:30}))await d.metaSet(k,v)}""")
  raw=bytes(p.evaluate("""async()=>Array.from(new Uint8Array(await(await(await import('./js/document-engine.js')).buildDocument({title:'TEST bekleyen belge',sections:[{text:'TEST henüz okunmadı'}]})).arrayBuffer()))"""));snap=lambda:p.evaluate("async()=>JSON.stringify(await(await import('./js/db.js')).dumpAll())");before=snap()
- p.goto(app+'#/akilli-asistan');p.wait_for_function("()=>!!document.querySelector('[data-ask]')&&!document.querySelector('[data-ask]').disabled&&!document.querySelector('[data-msg]').readOnly")
+ startup=[]
+ def hold_startup(r):startup.append(r)
+ p.route('**/js/assistant-task-center-ui.js',hold_startup)
+ p.goto(app+'#/akilli-asistan',wait_until='domcontentloaded');p.wait_for_selector('[data-photos]',state='attached');p.wait_for_timeout(200)
+ assert startup,'Startup suspension must be active'
+ p.set_input_files('[data-photos]',{'name':'TEST-early.pdf','mimeType':'application/pdf','buffer':raw})
+ for pending in startup:pending.continue_()
+ p.unroute('**/js/assistant-task-center-ui.js',hold_startup)
+ p.wait_for_function("()=>!!document.querySelector('[data-ask]')&&!document.querySelector('[data-ask]').disabled&&!document.querySelector('[data-msg]').readOnly")
+ p.wait_for_function("()=>document.querySelector('[data-thumbs]').textContent.includes('TEST-early.pdf')",timeout=5000)
+ assert not calls and snap()==before,'Early upload must be retained without sending or saving'
+ p.click('[data-clearfiles]')
+ p.wait_for_function("()=>!document.querySelector('[data-thumbs]').textContent.trim()")
  assert p.locator('[data-connection-open]').count()==1,'Missing assistant connection check'
  p.set_input_files('[data-photos]',{'name':'TEST-bekleyen.pdf','mimeType':'application/pdf','buffer':raw});p.wait_for_function("()=>!document.querySelector('[data-attach]').disabled&&document.querySelector('[data-thumbs]').textContent.includes('Kaldır')")
  for text in ['Merhaba','Günaydın','Nasılsın?','Teşekkür ederim']:

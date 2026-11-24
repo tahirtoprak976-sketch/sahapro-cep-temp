@@ -9,12 +9,14 @@ Kullanıcı, PDF dışındaki normal mesajların da sürekli “yoğun” hatas�
 | Bulgu | Önce | Sonra / doğrulama |
 |---|---|---|
 | Bekleyen PDF, selamlaşmayı da model isteğine dönüştürüyordu | Yerel sohbet dalı yalnız ek yokken çalışıyordu | Tam selamlaşma/teşekkür ifadeleri ek varken de yerelde cevaplanır; dosya korunur ve okunmadığı söylenir. 4 mesajda 0 HTTP. İş talimatı içeren cümle bu kısa yola girmez. |
-| Kısa yazı için aşırı geniş çıktı sınırı | Araçlı istekte 32.768 token sınırı | Asistan kısa yazıda 8.192, uzun dökümde 32.768 ister. Bu sınırdır; harcanan token veya gerçekleşmiş hız kazancı değildir. Genel sağlayıcı fonksiyonunun eski varsayılanı ve eski model sınırına geri dönüş testi korunur. |
+| Kısa yazı için aşırı geniş çıktı sınırı | Araçlı istekte 32.768 token sınırı | Asistan kısa yazıda 8.192, uzun dökümde veya büyük etkin görevde 32.768 ister. Bu sınırdır; harcanan token veya gerçekleşmiş hız kazancı değildir. Genel sağlayıcı fonksiyonunun eski varsayılanı ve eski model sınırına geri dönüş testi korunur. |
 | Normal yazı başlangıcında toplu işletme bağlamı | 150 müşteriye kadar tüm müşteri listesi; ilgili olmayan bakiyeler/facts | Yalnız yazı araçlı yolunda başlangıçtan kaldırıldı. Model ilgili kayıtları salt okunur find_records/get_records ve yerel hesap araçlarıyla ister. Global gerçekler, telefondaki cevap doğrulamasında kullanılmaya devam eder. Belge okuma yolundaki mevcut bağlam bu pakette ayrıca değiştirilmez. |
 | Belgeye soru sorunca paralel ikinci model | Medya okuması yanında bağımsız askWithTools çağrısı açılabiliyordu | Ekli belge/ses tek okuma yolunda kalır. “Bu PDF hangi araç için?” 1 model çağrısıyla denetlendi. |
 | Modern model parametre uyumu | Her aileye temperature:0 | Gemini 3+ için varsayılan örnekleme; eski ailelerde mevcut ayar. Model adı sabitlenmedi. Google, yeni ailelerde özel örnekleme alanlarını kaldırmayı/varsayılanda bırakmayı öneriyor. |
 | Küçük bağlantı ile büyük asistan isteği ayırt edilemiyordu | Ayrı kullanıcı aracı yok | Asistan → Bağlantı: seçili modele tek kısa istek. Sistem yönergesi, araçlar, mesaj, dosya ve işletme kayıtları gönderilmez. 200 yalnız bağlantı sonucu; belge okunmuş sayılmaz. |
 | Hata bilgisi yetersizdi | Genel mesaj, eksik HTTP/model sınıflaması | 401/403, 400, 429, 503, yerel bütçe ve iptal ayrılır. Panelde model/kod/HTTP gösterilir; anahtar ve ham sağlayıcı metni teşhis paneline yazılmaz. |
+
+İlk tam CI koşusu muayene PDF ekleme adımında durdu. Açılıştaki async görev modülü yüklemesini bilerek bekleten aynı Chromium testi, dosya seçiminin dinleyiciler bağlanmadan kaybolduğunu yeniden üretti. Başlangıçta zaten seçilmiş dosyalar dinleyiciler bağlanınca bir kez işlenir; mevcut muayene testi değiştirilmedi. Yeni deterministik yarış testi düzeltmesiz kodda kırmızı, adayda yeşildir.
 
 ## Korunan sınırlar
 
