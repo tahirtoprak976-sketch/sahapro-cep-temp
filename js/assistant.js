@@ -370,7 +370,6 @@ export async function screen(ctx) {
     try { files = await Promise.all(files.map(prepareInput)); }
     catch (error) { attachmentError = error.message; return toast(attachmentError, "err"); }
     if(files.length&&!files.some(isTransfer)&&partDocumentIntent(qs('[data-msg]',root).value)){await stagePartDocuments(ctx,files,{message:qs('[data-msg]',root).value});return;}
-    if(files.some(f=>!isTransfer(f)&&(/\.pdf$/i.test(f.name||'')||f.type==='application/pdf')))return toast("Bu normal PDF. Geçmiş işleri PDF’den aktar ekranını kullanın; şoför aktarımı için .sahapro.pdf iş özeti seçin", "err");
     if(files.some(f=>!isTransfer(f)&&(/\.(txt|zip)$/i.test(f.name||'')||f.type==='text/plain'||/zip/.test(f.type||''))))return toast("Bu dosya SAHAPRO aktarım dosyası değil. Sohbet dökümleri için WhatsApp toplu işleme ekranını kullanın", "err");
     const transferFiles=files.filter(isTransfer);
     if(transferFiles.length>1)return toast("Aynı anda yalnız bir şoför aktarım dosyası ekleyin; her paketi kendi fotoğraflarıyla ayrı işleyin", "err");
@@ -585,10 +584,10 @@ export async function screen(ctx) {
       ];
       const imgParts = [];
       for (const f of images) {
-        const img = await shrink(f);
+        const img = f.type === "application/pdf" ? f : await shrink(f);
         const part = { inlineData: { mimeType: img.type || "image/jpeg", data: await blobToBase64(img) } };
         imgParts.push(part);
-        if (!drvPayloads.length) parts.push({ text: `Fotoğraf kimliği: photo:${imgParts.length - 1}` }, part);
+        if (!drvPayloads.length) parts.push({ text: `Belge / fotoğraf kimliği: photo:${imgParts.length - 1}` }, part);
       }
       for (const f of audios) {
         const a = await audioToWav(f);
@@ -997,7 +996,7 @@ function render(ctx, out, v, d, { message, files, ms }) {
         const HEAD = r.owner_type === "personnel" ? "👤 Personel kartı" : r.owner_type === "company" ? "🏢 Şirket bilgileri" : "🚚 Araç kartı";
         return `<div class="card" data-kind="doc" data-i="${i}">
         <label class="history-check"><input type="checkbox" data-pick ${r.ok ? "checked" : ""}> <b>📄 Belge</b> · bitiş tarihi takibe alınır</label>
-        ${files[r.photo] ? `<img src="${URL.createObjectURL(files[r.photo])}" alt="Belge" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
+        ${files[r.photo] ? files[r.photo].type === "application/pdf" ? `<a class="btn block" data-document-pdf href="${URL.createObjectURL(files[r.photo])}" target="_blank" rel="noopener noreferrer">📄 PDF belgesini aç · ${esc(files[r.photo].name || "Belge")}</a>` : `<img src="${URL.createObjectURL(files[r.photo])}" alt="Belge" style="width:100%;max-height:200px;object-fit:contain;border-radius:8px;margin:6px 0">` : ""}
         <div class="formgrid2">
           <div class="field"><label>Belge türü</label><select name="category">${opt(ASSIST_DOC_TYPES.map((x) => [x, x]), r.category)}</select></div>
           <div class="field"><label>Sahibi</label><select name="owner">${opt(owners, r.owner_id ? r.owner_type + ":" + r.owner_id : nv ? "newveh" : np ? "newper" : "")}</select></div>
