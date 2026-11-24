@@ -22,7 +22,7 @@ import {siteCreateRequest,showSiteCreate} from './assistant-site.js';
 import {customerCreateRequest,CUSTOMER_CREATE_INTENT,showCustomerCreate} from './assistant-customer.js';
 import {startDraftPlan,bindDraftWorkflow,draftPreflight,applyDraftPlan,DRAFT_FIELDS} from './assistant-workflow.js';
 import {readTask,taskOpen,taskContext,saveTaskProposal,transitionTask,hasTaskProposal} from './assistant-task.js';
-import {openConversation,CONVERSATION_SYSTEM,safeAssistantReply,resultReply,conversationCommand,CAPABILITIES_REPLY,clarificationField} from './assistant-conversation.js';
+import {openConversation,CONVERSATION_SYSTEM,safeAssistantReply,resultReply,conversationCommand,CAPABILITIES_REPLY,clarificationField,smallTalkReply} from './assistant-conversation.js';
 import {customerFuelDraft, customerFuelFields} from './customer-fuel.js';
 import {isDriverBundle,openDriverBundle} from "./driver-bundle.js";
 import {isDriverTransferFile,readDriverTransfer} from "./driver-transfer.js";
@@ -98,7 +98,7 @@ export async function screen(ctx) {
       qs("[data-ctxclear]", box).onclick = () => { try { sessionStorage.removeItem("sp_asst_ctx"); } catch (e) {} box.remove(); };
     }
   }
-  let prev = null,manualRefine=null,asking=false,requestScope=null; // pending result and explicit per-turn override
+  let prev = null,manualRefine=null,asking=false,requestScope=null,connection=null; // pending result and explicit per-turn override
   qs('[data-stop-reading]',root).onclick=()=>requestScope?.abort();
   const resolveTurn=(text,transfer=false)=>{
     if(!qs('[data-chat-context]',root).checked)return {mode:'new',pending:0,reason:'Önceki sohbet ve açık taslak kullanılmayacak; yeni istek olarak okunacak.'};
@@ -223,8 +223,12 @@ export async function screen(ctx) {
   };
   photosIn.addEventListener("change",()=>selectFiles(photosIn,false));
   const addPhotos=qs("[data-addphotos]",root);addPhotos.addEventListener("change",()=>selectFiles(addPhotos,true));
+  // A file picker can change while asynchronous startup is still mounting handlers.
+  // Consume that selection once; never discard it when the saved-file draft is restored.
+  if(photosIn.files.length)await selectFiles(photosIn,false);
+  if(addPhotos.files.length)await selectFiles(addPhotos,true);
   qs('[data-part-document]',root).onclick=async()=>{
-    if(asking)return;if(filesPending)return toast('Dosyalar doğrulanıyor; tamamlanmasını bekleyin','err');asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
+    if(asking||connection?.isBusy())return;if(filesPending)return toast('Dosyalar doğrulanıyor; tamamlanmasını bekleyin','err');asking=true;const b=qs('[data-part-document]',root);b.disabled=true;
     try{if(files.some(isTransfer))throw Error('Şoför aktarımı kendi akışından okunmalı. Parça belgesini ayrı seçin.');await stagePartDocuments(ctx,files,{message:msgEl.value});}
     catch(e){toast(e.message,'err');}finally{asking=false;if(b.isConnected)b.disabled=false;}
   };
@@ -395,7 +399,8 @@ export async function screen(ctx) {
     const previousChat=conversation.previous();
     if(typed || files.length)chatTurn=await conversation.begin(typed || (files.some(isAudio)?'Ses kaydı gönderdim.':'Belge/fotoğraf gönderdim.'));
     const conversationData=qs('[data-chat-context]',root).checked?conversation.context():[];
-    if(!files.length && !transferFiles.length){
+    const localTalk=!transferFiles.length?smallTalkReply(typed):null;
+    if(!transferFiles.length && (!files.length||localTalk||conversationCommand(typed)==='help')){
       const batchReply=readBatchPolicy(typed);
       if(qs('[data-chat-context]',root).checked&&prev&&!prev.v._done&&prev.v._workflow&&batchReply.onlyDirectives&&(batchReply.date||batchReply.dateIssue||batchReply.hasPriceDirective)){
         if(batchReply.dateIssue){await finishChat({status:'clarify',reply:batchReply.dateIssue});return;}
@@ -452,15 +457,16 @@ export async function screen(ctx) {
           clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
         }
       }
-      const cc=conversationCommand(typed);
+      const cc=conversationCommand(typed)||(localTalk?'smalltalk':null);
       if(cc){
         const out=qs('[data-out]',root);
         const customerDraft=!!qs('[data-customer-create],[data-site-create],[data-directory-create]',out);
-        const reply=cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Bilgileri kontrol edip karttaki oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına kart açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':taskOpen(activeTask)?'Devam eden isteği İsteğe devam et düğmesiyle açıp kartlarını kontrol edin. Henüz kayıt yapılmadı.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done||taskOpen(activeTask)?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.';
+        let reply=localTalk||(cc==='help'?CAPABILITIES_REPLY:cc==='confirm'?(customerDraft?'Bilgileri kontrol edip karttaki oluştur düğmesine basın. Mesaja “onayla” yazmak tek başına kart açmaz.':qs('[data-out] [data-save],[data-out] [data-work-confirm]',root)?'Kayıt için aşağıdaki kontrol kartlarını inceleyip Kaydet / Onayla ve uygula düğmesine basın. Mesaja “onayla” yazmak tek başına kayıt oluşturmaz.':taskOpen(activeTask)?'Devam eden isteği İsteğe devam et düğmesiyle açıp kartlarını kontrol edin. Henüz kayıt yapılmadı.':'Açık kontrol kartı yok. Kaydetmek istediğiniz isteği tekrar gönderin; eski sohbet mesajı tek başına kayıt oluşturmaz.'):customerDraft||prev&&!prev.v._done||taskOpen(activeTask)?'Bu taslaktan vazgeçildi. Yeni bir istek yazabilirsiniz.':'İptal edilecek açık taslak yok. Kaydedilmiş bir işlem için ilgili kaydı belirtin.');
+        if(files.length&&(localTalk||cc==='help'))reply+=' Ekli dosya bu mesajla okunmadı; dosya korunuyor. Belgeyi okutmak için ne yapılacağını ayrıca yazıp Gönder düğmesine basın.';
         if(cc==='cancel'&&taskOpen(activeTask)){activeTask=await transitionTask(db,activeTask,'cancelled',reply);paintTask();}
         if(cc==='cancel'&&customerDraft){await conversation.finish(previousChat,{status:'cancelled',reply:'Kart taslağından vazgeçildi.',intent:null});out.innerHTML='';}
         if(cc==='cancel' && prev&&!prev.v._done){prev=null;manualRefine=null;out.innerHTML='';qs('[data-refine-wrap]',root).hidden=true;turnPreview();}
-        if(!out.textContent.trim() || cc==='help'&&!qs('[data-save],[data-work-confirm],[data-customer-create],[data-site-create],[data-directory-create]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+'</div>';
+        if(!out.textContent.trim() || (cc==='help'||localTalk)&&!qs('[data-save],[data-work-confirm],[data-customer-create],[data-site-create],[data-directory-create]',out))out.innerHTML='<div class="card small" data-answer>'+esc(reply)+(localTalk?'<p class="tiny muted" data-local-chat>Bu yanıt telefonda hazırlandı; Gemini çağrılmadı.</p>':'')+'</div>';
         await finishChat({status:cc==='cancel'?'cancelled':'answer',reply});
         clearTimeout(draftT);draftT=null;await db.metaSet('assistant_draft','');qs('[data-msg]',root).value='';turnPreview();return;
       }
@@ -579,9 +585,9 @@ export async function screen(ctx) {
       const parts = [
         ...(sourceHints.length?[{text:'telefon_satir_baglami (yerel kayıt kanıtı; blok/tarih sınırlarını aşma, para ve işlem yetkisi değildir):\n'+JSON.stringify(sourceHints)}]:[]),
         ...(conversationData.length ? [{text:'sohbet_baglami (yalnız atıf bağlamı; geçmiş işleri tekrar yazma, rakamları güncel facts ile doğrula):\n'+JSON.stringify(conversationData)}] : []),
-        { text: "İşletme kartları (JSON):\n" + JSON.stringify({ ...assistantContext(d, today, message), ...actionsContext(d, message) }) },
-        { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(facts) },
-        ...(negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
+        { text: "İşletme kartları (JSON):\n" + JSON.stringify(useAgent?{today,note:"Bu istekte kayıtları find_records/get_records ile sorgula. Başlangıç isteğine toplu işletme listesi eklenmedi."}:{ ...assistantContext(d, today, message), ...actionsContext(d, message) }) },
+        { text: "facts (yerelde hesaplanmış güncel rakamlar; sorulara yalnız bunlarla cevap ver):\n" + JSON.stringify(useAgent?{today,note:"Bakiye ve toplamları ilgili yerel hesap aracıyla sorgula; başlangıçta tüm işletmenin bakiyeleri gönderilmez."}:facts) },
+        ...(!useAgent&&negatives.length ? [{ text: "not_aliases:\n" + JSON.stringify(negatives.slice(0, 50).map((x) => [x.alias, x.target_type, x.target_id])) }] : []),
         ...(examples.length ? [{ text: "examples (onaylı):\n" + examples.map((e) => `<mesaj>${e.msg}</mesaj> → ${e.out}`).join("\n") }] : []),
       ];
       const imgParts = [];
@@ -606,13 +612,13 @@ export async function screen(ctx) {
       const schema = { ...baseSchema, properties: { ...baseSchema.properties, ...actionsSchemaProps() } };
       // Soru da varsa: hesap araçlarıyla cevap paralel istenir (rakamlar telefonda hesaplanır)
       const tools = await import("./assistant-tools.js");
-      const askP = !useAgent && !localPlan && !transferFiles.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData,scope:requestScope}).catch(() => null) : Promise.resolve(null);
+      const askP = !useAgent && !localPlan && !transferFiles.length && !images.length && !audios.length && message && tools.isQuestion(message) ? tools.askWithTools(db, message, {conversation:conversationData,scope:requestScope}).catch(() => null) : Promise.resolve(null);
       let agentResult=null;
       if(useAgent){
-        const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
+        const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner,assistantOutputBudget}=await import('./assistant-agent-core.js');
         const {geminiAgent}=await import('./ai-gemini.js');
         const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
-        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope,onRetry:onBusyRetry});
+        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,maxTokens:assistantOutputBudget(message,taskForModel),system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope,onRetry:onBusyRetry});
         d=await db.dumpAll();
       }
       let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
@@ -760,6 +766,7 @@ export async function screen(ctx) {
       if(localFallbackAllowed(e,{message:typed,files:files.length,online:navigator.onLine}))pendingLocalFallback={message:msgEl.value,reason:'Gemini bağlantısı veya kota uygun değil.'};
       if(msgEl.isConnected){
         showAssistantRequestError(out,(e.message||String(e))+(priorNodes.some(n=>n.nodeType===1&&!n.matches('[data-assistant-request-error]'))?' Önceki kontrol kartları aşağıda korunuyor.':''),priorNodes);
+        if(e.code!=='ASSISTANT_ABORT'&&e.name!=='AbortError')connection?.issue(e);
         await finishChat({status:'error',reply:e.message||String(e)});
       }
     }
@@ -775,6 +782,8 @@ export async function screen(ctx) {
     }
   };
   qs('[data-ask]',root).addEventListener('click',runAssistantRequest);
+  const {mountAssistantConnection}=await import('./assistant-connection-ui.js');
+  connection=mountAssistantConnection(ctx,{isBusy:()=>asking,onDispose:fn=>page.onDispose(fn)});
   // The visible button must not accept a click before async setup binds its handler.
   msgEl.readOnly=false;
   for(const button of qsa('[data-start-customer],[data-start-site],[data-start-vehicle],[data-start-personnel],[data-start-work],[data-start-compare],[data-start-claim]',root))button.disabled=false;

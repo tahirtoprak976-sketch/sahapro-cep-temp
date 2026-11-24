@@ -69,46 +69,59 @@ async function defaultGated() {
 }
 async function call(path, key, body, fetchFn) {
   if (!fetchFn) fetchFn = await defaultGated();
-  const res = await fetchFn(BASE + path, {
-    method: body ? "POST" : "GET",
+  const model = modelOf(BASE + path);
+  // Modern Gemini families use their default sampling; deprecated custom values add no benefit.
+  const generation = body?.generationConfig ? {...body.generationConfig} : null;
+  const major = Number(model.match(/^gemini-(\d+)(?:[.-]|$)/i)?.[1] || 0);
+  if(generation && major >= 3)for(const field of ['temperature','topP','topK'])delete generation[field];
+  const request = generation ? {...body,generationConfig:generation} : body;
+  let res;
+  try { res = await fetchFn(BASE + path, {
+    method: request ? "POST" : "GET",
     headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-    body: body ? JSON.stringify(body) : undefined,
-  });
+    body: request ? JSON.stringify(request) : undefined,
+  }); } catch(error) {
+    if(!error.code && error instanceof TypeError)error.code='NETWORK';
+    error.model=model;throw error;
+  }
+  const failure = (message,code) => Object.assign(new Error(message),{code,status:res.status,model});
   let data = null;
   try {
     data = await res.json();
   } catch {}
   if (!res.ok) {
-    const msg = data?.error?.message || "HTTP " + res.status;
+    const rawMessage = String(data?.error?.message || "HTTP " + res.status);
+    const msg = key?.length >= 8 ? rawMessage.split(key).join("[anahtar gizlendi]") : rawMessage;
     if (res.status === 429) {
       // "limit: 0" = bu model ücretsiz katmanda hiç açık değil (kota dolmadı, hiç yok)
       if (/limit:\s*0\b/.test(msg)) {
         const e = new Error("Bu model ücretsiz kullanımda kapalı (kota 0). Yapay Zeka ekranında \"Çalışan Modeli Bul\" ile başka model seçin.");
-        e.code = "NO_FREE";
+        e.code = "NO_FREE";e.status=res.status;e.model=model;
         throw e;
       }
       const wait = msg.match(/retry in\s*([\dhms.]+)/i)?.[1]?.replace(/\.\d+s$/, "s");
       const e = new Error("Gemini kotası doldu" + (wait ? `, yaklaşık ${wait} sonra` : ", biraz sonra") + " tekrar deneyin.");
-      e.code = "RATE";
+      e.code = "RATE";e.status=res.status;e.model=model;
       throw e;
     }
     // Model kapatılmış / yeni anahtarlara verilmiyor / bu istekte desteklenmiyor → başka modele geçilebilir
     if (res.status === 404 || ((res.status === 400 || res.status === 403) && /not found|no longer (?:available|supported)|not supported|is not available|deprecated|unsupported model/i.test(msg))) {
       const e = new Error("Bu model artık kullanılamıyor: " + msg);
-      e.code = "MODEL_GONE";
+      e.code = "MODEL_GONE";e.status=res.status;e.model=model;
       throw e;
     }
     if (res.status === 500 || res.status === 503 || res.status === 504) {
       const e = new Error("Gemini şu an yoğun, tekrar deneyin (" + res.status + ")");
-      e.code = "BUSY";
+      e.code = "BUSY";e.model=model;
       e.status = res.status;
       const retryAfter = res.headers?.get?.('retry-after');
       const retryMs = retryAfter && /^\d+(?:\.\d+)?$/.test(retryAfter) ? Number(retryAfter)*1000 : Date.parse(retryAfter || '')-Date.now();
       if (Number.isFinite(retryMs) && retryMs > 0) e.retryAfterMs = Math.ceil(retryMs);
       throw e;
     }
-    if (res.status === 400 || res.status === 403) throw new Error("Gemini anahtarı veya izin sorunu: " + msg);
-    throw new Error("Gemini hatası: " + msg);
+    if(res.status===401)throw failure("Gemini kimlik doğrulaması başarısız: "+msg,'AUTH');
+    if (res.status === 400 || res.status === 403) throw failure("Gemini anahtarı veya izin sorunu: " + msg,res.status===403?'PERMISSION':/api.?key|authentication|credential/i.test(msg)?'AUTH':'REQUEST');
+    throw failure("Gemini hatası: " + msg,'PROVIDER');
   }
   return data;
 }
@@ -436,10 +449,10 @@ export async function geminiText(prompt, { key, model, system, fetchFn, maxToken
 }
 
 // Unified read / ask / propose loop. The registry supplied by the application contains no business writes.
-export async function geminiAgent(parts,{key,model,system,tools,runTool,fetchFn,maxRounds=6,maxCalls=16,onTool}={}){
+export async function geminiAgent(parts,{key,model,system,tools,runTool,fetchFn,maxRounds=6,maxCalls=16,onTool,maxTokens=32768}={}){
   const contents=[{role:'user',parts}],trace=[],allowed=new Set(tools.map(t=>t.name));
   const terminals=new Set(['prepare_plan','revise_draft','ask_user']);let count=0;
-  let outputTokens=32768;
+  let outputTokens=[8192,16384,32768].includes(maxTokens)?maxTokens:32768;
   for(let round=0;round<Math.min(6,maxRounds);round++){
     const send=()=>call(`/models/${encodeURIComponent(model)}:generateContent`,key,{
       systemInstruction:{parts:[{text:system}]},contents,
@@ -522,3 +535,24 @@ export async function geminiAsk(question, { key, model, system, tools, runTool, 
 }
 
 export { parseAiJson, shrink };
+
+// A small transport check, explicitly requested by the user. No business data, tools or file leaves the device.
+export async function probeGeminiConnection(db,{scope}={}) {
+ const ownScope=!scope;scope ||= assistantRequestScope({timeoutMs:15000,maxBytes:65536});let model='';
+ try {
+  scope.check();const g=await geminiSettings(db);model=g.model;
+  if(!g.key||!g.model)throw Object.assign(Error('Gemini ayarları eksik'),{code:'SETTINGS'});
+  if(!g.consent)throw Object.assign(Error('Gemini izni kapalı'),{code:'NO_CONSENT'});
+  const data=await call(`/models/${encodeURIComponent(g.model)}:generateContent`,g.key,{contents:[{role:'user',parts:[{text:'Reply only OK.'}]}],generationConfig:{maxOutputTokens:64}},gatedFetch(db,scope.fetchFn));
+  scope.check();if(!Array.isArray(data?.candidates)||!data.candidates.length)throw Object.assign(Error('Geçerli bağlantı yanıtı alınamadı'),{code:'INVALID_RESPONSE',status:200});
+  return {ok:true,status:200,model,checkedAt:new Date().toISOString(),kind:'connection-only'};
+ } catch(error) {scope.check();error.model ||= model;throw error;}
+ finally {if(ownScope)scope.dispose();}
+}
+export function geminiFailureSummary(error={}) {
+ const allowed=new Set(['BUSY','RATE','NO_FREE','MODEL_GONE','AUTH','PERMISSION','REQUEST','NETWORK','NO_CONSENT','LOCAL_LIMIT','SETTINGS','ASSISTANT_ABORT','INVALID_RESPONSE']);
+ const code=allowed.has(error.code)?error.code:'UNKNOWN';
+ const messages={BUSY:['Google hizmeti yanıt veremedi','Google geçici olarak bu isteği tamamlayamadı. Belgeniz veya mesajınız kaydedilmiş sayılmaz.'],RATE:['Google kotası doldu','Bu hata yoğunluktan farklıdır. Kota yenilenene kadar yerel işlemleri kullanın.'],NO_FREE:['Modelin ücretsiz kotası açık değil','Kullanılabilir model listesini ayarlardan güncelleyin. Ücretli kullanım açılmadı.'],MODEL_GONE:['Model bu isteği desteklemiyor','Model listesini güncelleyin ve kullanılabilir bir model seçin.'],AUTH:['Anahtar doğrulanamadı','Ayarlar → Yapay Zeka bölümündeki kayıtlı anahtarı kontrol edin; anahtarı sohbetle paylaşmayın.'],PERMISSION:['Google erişim izni vermedi','Anahtarın proje ve site izinlerini kontrol edin. Bu bir yoğunluk hatası değildir.'],REQUEST:['İstek biçimi kabul edilmedi','Bu hata yoğunluktan farklıdır. Aşağıdaki küçük bağlantı testiyle model erişimini ayırabilirsiniz.'],NETWORK:['Google bağlantısı kurulamadı','İnternet bağlantısını kontrol edin. Mesaj ve ekler korunuyor.'],NO_CONSENT:['Gemini izni kapalı','İzin verilmeden istek gönderilmez.'],LOCAL_LIMIT:['Bu telefonun günlük sınırı doldu','İstek gönderilmedi. Yerel işlemler çalışmaya devam eder.'],SETTINGS:['Gemini bağlantısı ayarlı değil','Ayarlar → Yapay Zeka bölümünde model ve anahtarı kaydedin.'],ASSISTANT_ABORT:['Bağlantı testi durdu','İptal edildi veya süre sınırına ulaşıldı.'],INVALID_RESPONSE:['Google yanıt verdi; yanıt biçimi doğrulanamadı','Bu bağlantı testi belge okunduğu anlamına gelmez.'],UNKNOWN:['İstek tamamlanamadı','Bağlantı nedenini bu hatadan kesin belirleyemedim. Küçük bağlantı testiyle kontrol edin.']};
+ const model=/^gemini[-a-z0-9._]{1,100}$/i.test(error.model||'')?error.model:'Kayıtlı model';
+ return {code,status:Number.isInteger(error.status)&&error.status>=100&&error.status<=599?error.status:null,model,title:messages[code][0],message:messages[code][1],attempts:Math.min(99,Math.max(0,Number(error.recovery?.attempts)||0))};
+}
