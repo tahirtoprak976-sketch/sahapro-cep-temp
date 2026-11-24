@@ -1,3 +1,4 @@
+import {standaloneDocumentRead,documentReadRequest,documentReadPlan} from './assistant-document-read.js';
 import {maintenanceReviewHTML,bindMaintenanceReview,maintenanceCardIntent} from './maintenance-review-ui.js';
 import {saveMaintenanceReview} from './maintenance-review-db.js';
 import {strongReviewOnce,preserveFirstReviewHolds,localFallbackAllowed} from './assistant-resilience.js';
@@ -621,12 +622,15 @@ export async function screen(ctx) {
         agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,maxTokens:assistantOutputBudget(message,taskForModel),system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope,onRetry:onBusyRetry});
         d=await db.dumpAll();
       }
-      let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
+      const documentOnly=useGemini&&standaloneDocumentRead({message:drvRest,files:images,refine:!!refine,audioCount:audios.length,driverCount:drvAll.length});
+      const docRequest=documentOnly?documentReadRequest({message:drvRest,mediaParts:imgParts,today}):null;
+      let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(docRequest?.parts||parts, { ...o, system:docRequest?.system||system, schema:docRequest?.schema||schema,...(docRequest?{maxTokens:docRequest.maxTokens}:{}) }), {
         scope:requestScope, onRetry:onBusyRetry,
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : localPlan || {};
       requestScope.check();
       if(!msgEl.isConnected)return;
+      if(documentOnly)plan=documentReadPlan(plan);
       assertAssistantPlan(plan);
       if(useGemini)plan=untrustedWorkPlan(plan);
       let secondReview={holds:[],note:''};

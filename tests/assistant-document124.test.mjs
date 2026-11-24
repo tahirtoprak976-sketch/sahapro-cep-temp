@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {standaloneDocumentRead as read,documentReadRequest as request,documentReadPlan} from '../js/assistant-document-read.js';
+import {assistantSystem,assistantSchema} from '../js/assistant-core.js';
+import {ACTIONS_PROMPT,actionsSchemaProps} from '../js/assistant-actions.js';
+for(const message of ['Muayene belgesini araç kartına ekle','Ruhsatı oku','Sigorta belgesini oku'])assert.ok(read({message,files:[{name:'TEST.jpg'}]}),message);
+assert.ok(read({files:[{name:'TEST muayene 2027.jpg'}]}));
+for(const opts of [{message:'Muayeneye 2500 ödedim'},{message:'Muayene ve yeni müşteri aç'},{message:'Muayene ücreti 2500 TL gider yaz'},{message:'Muayene belgesi ve 3 sefer iş kaydı'},{refine:true},{audioCount:1},{driverCount:1},{files:[]}])assert.equal(read({message:'Muayene',files:[{name:'TEST.jpg'}],...opts}),false);
+assert.equal(read({files:[{name:'TEST muayene.jpg'},{name:'TEST fiş.jpg'}]}),false);
+const media={inlineData:{mimeType:'application/pdf',data:'TEST_BYTES'}};
+const r=request({message:'Muayene belgesini oku',mediaParts:[media],today:'2026-11-24'});
+assert.deepEqual(Object.keys(r.schema.properties).sort(),['answer','documents','photo_texts','questions']);assert.equal(r.maxTokens,8192);assert.equal(r.parts[2],media);
+const oldSchema={...assistantSchema(),properties:{...assistantSchema().properties,...actionsSchemaProps()}};
+const before=JSON.stringify(oldSchema).length+assistantSystem().length+ACTIONS_PROMPT.length,after=JSON.stringify(r.schema).length+r.system.length;
+assert.ok(after<before/3,{before,after});assert.ok(r.system.includes('Dosya adındaki yıl belge kanıtı değildir'));
+assert.throws(()=>documentReadPlan({documents:[],actions:[{type:'delete'}]}),/ilgisiz işlem/);assert.throws(()=>documentReadPlan({fuel:[{}]}),/ilgisiz işlem/);
+assert.deepEqual(documentReadPlan({documents:[],photo_texts:[],works:[]}),{documents:[],photo_texts:[]});
+console.log(JSON.stringify({document124:'PASS',beforeInstructionSchemaChars:before,afterInstructionSchemaChars:after,realGemini:false}));
