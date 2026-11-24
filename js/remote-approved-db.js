@@ -1,3 +1,4 @@
+import {ACTION_FORMAT,decodeActionFiles,actionsPlan} from './remote-actions-core.js';
 import * as db from './db.js';
 import {transaction} from './enterprise-db.js';
 import {backupBeforeHistoryImport} from './backup.js';
@@ -19,7 +20,8 @@ export async function remoteAuthority(){const [a,consent]=await Promise.all([get
 export const remoteReceiptKey=(channel,id)=>'remote-approved:'+channel+':'+id;
 export async function commitApprovedPacket(value,channel,{canWrite=()=>true}={}){
  if(!REMOTE_ID.test(channel)||!canWrite())throw Error('Bağlantı veya oturum uygun değil');
- const p=readApprovedPacket(value),digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(stableStringify(p))))].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const p=readApprovedPacket(value);if(p.format===ACTION_FORMAT)return commitRemoteActions(p,channel,{canWrite});
+ const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(stableStringify(p))))].map(x=>x.toString(16).padStart(2,'0')).join('');
  const receiptKey=remoteReceiptKey(channel,p.id),previous=await db.metaGet(receiptKey);
  if(previous){if(previous.digest!==digest)throw Object.assign(Error('Paket numarası farklı içerikle tekrar kullanılmış'),{code:'OP_CONFLICT'});return {...previous,replayed:true};}
  // No full backup for invalid/missing-card packets; no business writes before validation.
@@ -40,3 +42,28 @@ export async function commitApprovedPacket(value,channel,{canWrite=()=>true}={})
  });
 }
 export async function remoteResults(){return (await db.getAll('meta')).filter(r=>r.key.startsWith('remote-approved:')&&r.value?.status==='saved').map(r=>r.value).sort((a,b)=>b.at.localeCompare(a.at)).slice(0,20);}
+
+// Additional scope is explicit and revocable without changing the pairing secret.
+export async function setRemoteActionsEnabled(enabled){
+ if(typeof enabled!=='boolean')throw Error('İzin geçersiz');
+ const authority=await remoteAuthority();if(!authority)throw Error('Önce bağlantıyı etkinleştirin');
+ await transaction(['meta'],(data,t)=>{const consent=data.meta.find(m=>m.key===REMOTE_AUTHORITY)?.value;if(!consent?.enabled||consent.channel!==authority.channel)throw Error('Bağlantı kapatılmış');t.put('meta',{key:REMOTE_AUTHORITY,value:{...consent,actions_enabled:enabled,actions_at:nowISO()}});});
+}
+async function commitRemoteActions(p,channel,{canWrite}){
+ const consent=await db.metaGet(REMOTE_AUTHORITY);
+ if(!consent?.enabled||consent.channel!==channel||consent.actions_enabled!==true)throw Error('Belge ve mahsup aktarımı izni kapalı; aktarım ekranından açın');
+ const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(stableStringify(p))))].map(x=>x.toString(16).padStart(2,'0')).join('');
+ const receiptKey=remoteReceiptKey(channel,p.id),previous=await db.metaGet(receiptKey);
+ if(previous){if(previous.digest!==digest)throw Object.assign(Error('Paket numarası farklı içerikle tekrar kullanılmış'),{code:'OP_CONFLICT'});return {...previous,replayed:true};}
+ const files=await decodeActionFiles(p),stores=['customers','vehicles','personnel','work_records','cari_movements','documents','attachments','meta'];
+ const snapshot=Object.fromEntries(await Promise.all(stores.map(async s=>[s,await db.getAll(s)])));actionsPlan(p,snapshot,files);
+ await backupBeforeHistoryImport(db);
+ return transaction(stores,(data,t)=>{
+  if(!canWrite())throw Error('Oturum kapandı veya işlem bekletiliyor');
+  const consent=data.meta.find(m=>m.key===REMOTE_AUTHORITY)?.value;if(!consent?.enabled||consent.channel!==channel||consent.actions_enabled!==true)throw Error('Belge ve mahsup izni kapatılmış');
+  const old=data.meta.find(m=>m.key===receiptKey)?.value;if(old){if(old.digest!==digest)throw Object.assign(Error('Paket numarası farklı içerikle tekrar kullanılmış'),{code:'OP_CONFLICT'});return {...old,replayed:true};}
+  const {writes,repeated}=actionsPlan(p,data,files);for(const [store,rows]of Object.entries(writes))for(const row of rows)t.add(store,row);
+  const result={id:p.id,channel,digest,at:nowISO(),status:'saved',batch_id:newRecord().id,works:0,fuels:0,cards:0,offsets:writes.cari_movements.length,documents:writes.documents.length,attachments:writes.attachments.length,repeated_actions:repeated,record_ids:[...writes.cari_movements,...writes.documents].map(x=>x.id)};
+  t.put('meta',{key:receiptKey,value:result});return result;
+ });
+}
