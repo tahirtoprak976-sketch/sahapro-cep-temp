@@ -545,7 +545,9 @@ export async function screen(ctx) {
       const abortReading=()=>requestScope?.abort();
       requestScope.cleanup=()=>{window.removeEventListener('hashchange',abortReading);window.removeEventListener('pagehide',abortReading);};
       window.addEventListener('hashchange',abortReading);window.addEventListener('pagehide',abortReading);
-      qs('[data-read-status]',root).hidden=false;qs('[data-stop-reading]',root).disabled=false;
+      const readStatus=qs('[data-read-status]',root);
+      readStatus.hidden=false;readStatus.firstChild.textContent='İstek okunuyor; henüz kayıt yazılmıyor.';qs('[data-stop-reading]',root).disabled=false;
+      const onBusyRetry=({delayMs})=>{if(readStatus.isConnected)readStatus.firstChild.textContent='Gemini yanıt vermedi; '+Math.ceil(delayMs/1000)+' sn beklenip yeniden denenecek. Belge ve mesaj korunuyor.';};
       // Sorgulama ve plan hazırlama işletme kartı/iş kaydı oluşturmaz.
       let d = await db.dumpAll();
       const today = todayStr();
@@ -610,11 +612,11 @@ export async function screen(ctx) {
         const {AGENT_SYSTEM,AGENT_TOOLS,createAgentRunner}=await import('./assistant-agent-core.js');
         const {geminiAgent}=await import('./ai-gemini.js');
         const labels={find_records:'İlgili kayıtlar aranıyor',get_records:'Seçilen kayıtlar inceleniyor',tank_status:'Depo yakıtı hesaplanıyor',customer_balance:'Müşteri hesabı hesaplanıyor',work_totals:'İş kayıtları hesaplanıyor',ask_user:'Eksik bilgi belirleniyor',prepare_plan:'Kontrol kartları hazırlanıyor',revise_draft:'Devam eden istek tamamlanıyor'};
-        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope});
+        agentResult=await withAssistantModelFallback(db,o=>geminiAgent(parts,{...o,system:system+'\n'+AGENT_SYSTEM,tools:AGENT_TOOLS,runTool:createAgentRunner({snapshot:()=>db.dumpAll(),meta:k=>db.metaGet(k),today,task:taskForModel}),onTool:name=>{requestScope.check();if(out.isConnected&&msgEl.isConnected)out.innerHTML='<div class="muted small" style="padding:10px">'+esc(labels[name]||'Kayıtlardan hesaplanıyor')+'…</div>';}}),{scope:requestScope,onRetry:onBusyRetry});
         d=await db.dumpAll();
       }
       let plan = useAgent?agentResult.plan:useGemini ? await withAssistantModelFallback(db, (o) => geminiJson(parts, { ...o, system, schema }), {
-        scope:requestScope,
+        scope:requestScope, onRetry:onBusyRetry,
         onSwitch: (a, b) => toast(`Gemini modeli değişti: ${a} → ${b} (ücretsiz kota için)`, "ok"),
       }) : localPlan || {};
       requestScope.check();
