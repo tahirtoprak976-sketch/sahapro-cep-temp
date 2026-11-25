@@ -1,6 +1,6 @@
 # Hakediş ve Tahsilat Masası — v3.10.30
 
-**Finans → Hakediş ve Tahsilat Masası** veya **Hakediş → Hakediş ve Tahsilat Masası**.
+**Finans → Genel müşteri alacağı tutarına dokun → Hakediş ve Tahsilat Masası** veya **Hakediş → Hakediş ve Tahsilat Masası**.
 
 1. İş başlangıç ve bitiş tarihlerini seçip **Dönemi uygula** düğmesine dokunun. Bu seçim iş hazırlığı sayılarını etkiler. Tarihi eksik / geçersiz işler ayrıca kontrol listesine girer.
 2. Üstte eksik/kontrolü olan, hazır işi olan, taslağı bekleyen, açık TL alacağı ve ödeme sözü olan müşteri sayıları görünür. Aynı müşteri birden fazla sayıya dahil olabilir; üst sayılar arama filtresinden etkilenmez.

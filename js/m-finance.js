@@ -134,11 +134,10 @@ async function hub(ctx) {
   const toolGroups=[['Tahsilat ve cari',['#/cari','#/kasa']],['Hakediş ve ticari belgeler',['#/hakedis','#/teklif','#/sozlesmeler']],['Planlama ve fiyat',['#/teklif-hesap','#/fiyat']],['Gider ve esnaf',['#/gider','#/esnaf']],['Ödeme takibi',['#/odeme-takibi']]];
   root.innerHTML=appbar('Finans','Finans yönetimi')+`<div class="finance-workspace" data-finance-workspace>
     <header class="finance-heading"><div class="finance-heading-top"><span class="finance-eyebrow">İŞLETME YÖNETİMİ</span><button class="finance-find" type="button" data-finance-open-tools>${financeIcon('search')} Araç bul</button></div><h2>Finans masası</h2><p>Tahsilat, ödeme ve hakedişlerinizi tek yerden yönetin.</p></header>
-    <a class="card" style="display:block;color:inherit;text-decoration:none" data-commercial-entry href="#/ticari-masa"><b>Hakediş ve Tahsilat Masası ›</b><p class="small">Müşterilerin eksik işleri, hazır işleri, taslak hakedişleri ve ödeme sözleri</p></a>
     <nav class="finance-actions" aria-label="Günlük finans işlemleri">
       ${[['#/finans/kasa/new','Tahsilat ekle','receipt'],['#/gider/new','Gider ekle','expense'],['#/hakedis/hazirlik','Hakediş hazırla','document'],['#/cari','Cari hesaplar','account']].map(([href,title,icon])=>`<a href="${href}" class="finance-action">${financeIcon(icon)}<span>${title}</span></a>`).join('')}
     </nav>
-    <section class="finance-overview" data-finance-general><div class="finance-section-head"><h3>Genel müşteri alacağı</h3><span>Tüm tarihler</span></div><a class="finance-receivable" href="#/cari">${fmtTL(general.balance)} <small>₺</small><span aria-hidden="true">↗</span></a><p class="finance-caption">Kayıtlı alacak toplamıdır; kasa veya banka mevcudu değildir.</p>
+    <section class="finance-overview" data-finance-general><div class="finance-section-head"><h3>Genel müşteri alacağı</h3><span>Tüm tarihler</span></div><a class="finance-receivable" data-commercial-entry href="#/ticari-masa" title="Hakediş ve Tahsilat Masası">${fmtTL(general.balance)} <small>₺</small><span aria-hidden="true">↗</span></a><p class="finance-caption">Kayıtlı alacak toplamıdır; kasa veya banka mevcudu değildir. Hakediş ve Tahsilat Masası için tutara dokunun.</p>
       ${general.issues.length?notice('warn',general.issues.length+' kayıtta ana para / KDV ayrımı kontrol edilmeli. Bilinen tutarlar korundu.'):''}
       <details class="finance-inline-details"><summary>Ana para ve KDV ayrımını gör</summary>${cariMoneyHTML(general,true)}</details>
     </section>
