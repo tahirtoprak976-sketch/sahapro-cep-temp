@@ -1,3 +1,4 @@
+import {isCustomerPaidFuel} from './customer-paid-fuel.js';
 // Müşteri kartı birleştirme — SAF katman. Aynı firmanın farklı yazılmış kartlarını tek karta toplar;
 // istenirse eski kartın adı hedef müşterinin ŞANTİYESİ olur (şantiyesi müşteri gibi açılmış kayıtlar için).
 // Kayıt silinmez: kaynak kart "birleştirildi" notuyla çöp kutusuna gider, eski ad hafızaya (takma ad) yazılır.
@@ -145,6 +146,7 @@ export function planMergeCards(d, store, srcIds, targetId) {
     if (withDeal.length) throw Error(`İş sözleşmesi olan şantiye (${withDeal.map((x) => x.name).join(", ")}) birleşen kart olamaz; onu kalacak kart seçin`);
   }
   const from = new Set(sources.map((s) => s.id));
+  if(['vehicles','personnel'].includes(store)&&(d.fuel_records||[]).some(r=>isActive(r)&&isCustomerPaidFuel(r)&&from.has(r[K.key])))throw Error('Müşterinin ödediği yakıta bağlı araç/personel kartı tek başına birleştirilemez; yakıt ve mahsup bağlantısını inceleyin.');
   if(['vehicles','personnel'].includes(store)&&(d.pending_fuel_records||[]).some(r=>r.reconciliation_status!=='cancelled'&&from.has(r[K.key])))throw Error('Geçmiş yakıt mutabakatına bağlı araç / personel birleştirilemez; özgün kaynak kartını koruyun.');
   const updates = [], counts = {}, aliases = [];
   // ID'ler benzersiz (uuid): bu kartlara işaret eden her alan hedefe çevrilir

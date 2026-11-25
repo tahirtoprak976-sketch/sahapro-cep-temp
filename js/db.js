@@ -1,3 +1,4 @@
+import {assertPaidFuelEdit,linkedPaidFuel} from './customer-paid-fuel.js';
 import {guardReviewedMaintenanceEdit} from './maintenance-review-core.js';
 import {upgradePersonnelLegal} from './personnel-legal/migration.js';
 import {installPersonnelGuard,personnelTransactionError} from './personnel-legal/guard.js';
@@ -153,6 +154,7 @@ function linkedWorkSlip(data, work) {
     (s.id === work.slip_id || s.id === work.digital_slip_source_id || s.work_record_id === work.id || (s.work_record_ids || []).includes(work.id)));
 }
 function financeGuardStores(store, delta) {
+  if(['fuel_records','cari_movements'].includes(store))return ['meta'];
   if (store === 'sites' && 'customer_id' in delta) return HISTORY_STORES;
   if (store === 'work_records') return ['hakedis', 'slips'];
   if (store === 'fuel_tank_movements') return ['pending_fuel_records'];
@@ -162,6 +164,7 @@ function financeGuardStores(store, delta) {
 }
 function assertFinancialEdit(store, current, next, delta, data) {
   if (!current || current.deleted_at) throw financeError('Kayıt değişmiş veya silinmiş; yeniden açın.', 'STALE');
+  if(['fuel_records','cari_movements'].includes(store)&&data.meta?.some(m=>m.key?.startsWith('customer-paid-fuel:')))assertPaidFuelEdit(store,current,next,data.meta);
   const changes = keys => keys.some(key => key in delta && changedField(current, next, key));
   if (store === 'contracts' && (current.status === 'İmzalandı' || current.signed_at || current.signed_snapshot))
     throw financeError('Sözleşme imzalanmış; eski ekran imzalı kaydı değiştiremez. Güncel sözleşmeyi açın.', 'SIGNED_LOCKED');
@@ -203,8 +206,10 @@ export async function put(store, rec) {
   if(store==='pending_fuel_records')throw Error('Geçmiş yakıt yalnız mutabakat incelemesinden değiştirilebilir.');
   const db = await openDB();
   return new Promise((resolve,reject)=>{
-    const t=db.transaction(['fuel_tank_movements','fuel_records'].includes(store)?[store,'pending_fuel_records']:store,"readwrite");let error,result;
-    const q=t.objectStore(store).get(rec.id);q.onsuccess=()=>{if(store==='fuel_records'&&(q.result?.historical_pending_id||rec.historical_pending_id)){error=Error('Geçmiş yakıt mutabakatı doğrudan değiştirilemez.');t.abort();return;}const write=()=>{const w=t.objectStore(store).put(rec);w.onsuccess=()=>{result=w.result;};};
+    const guarded=['fuel_records','cari_movements'].includes(store);
+    const stores=[...new Set([store,...(['fuel_tank_movements','fuel_records'].includes(store)?['pending_fuel_records']:[]),...(guarded?['meta']:[])])];
+    const t=db.transaction(stores,"readwrite");let error,result;const paid=guarded?t.objectStore('meta').getAll():null;
+    const q=t.objectStore(store).get(rec.id);q.onsuccess=()=>{try{if(paid)assertPaidFuelEdit(store,q.result||{id:rec.id},rec,paid.result);}catch(e){error=e;t.abort();return;}if(store==='fuel_records'&&(q.result?.historical_pending_id||rec.historical_pending_id)){error=Error('Geçmiş yakıt mutabakatı doğrudan değiştirilemez.');t.abort();return;}const write=()=>{const w=t.objectStore(store).put(rec);w.onsuccess=()=>{result=w.result;};};
     if(store==='fuel_tank_movements'){const ids=[...new Set([q.result?.fuel_record_id,rec.fuel_record_id].filter(Boolean))];let left=ids.length;if(!left){write();return;}for(const id of ids){const p=t.objectStore('pending_fuel_records').get(id);p.onsuccess=()=>{if(p.result&&['date','liters','move_type','vehicle_id','personnel_id','fuel_record_id','event_id','deleted_at'].some(k=>changedField(q.result,rec,k))){error=Error('Mutabakat depo eş kaydı doğrudan değiştirilemez.');t.abort();return;}if(!--left)write();};}}
     else if(store==='fuel_records'){const p=t.objectStore('pending_fuel_records').get(rec.id);p.onsuccess=()=>{if(p.result){error=Error('Geçmiş yakıt için ayrılmış kimlik doğrudan kullanılamaz.');t.abort();return;}write();};}else write();};
     t.oncomplete=()=>{recordsCommitted(db.name,[store]);resolve(result);};
@@ -1787,15 +1792,16 @@ export async function saveFuelEvent(fields, reason = "Yakıt", { op = null } = {
 export async function fuelFix(id, mode, reason = "") {
   const d = await openDB();
   return new Promise((resolve, reject) => {
-    const t = d.transaction(["fuel_records", "fuel_tank_movements", "payables", "cost_allocations", "audit_log"], "readwrite");
+    const t = d.transaction(["fuel_records", "fuel_tank_movements", "payables", "cost_allocations", "meta", "audit_log"], "readwrite");
     let error, result;
     const fr = t.objectStore("fuel_records").get(id);
     const mv = t.objectStore("fuel_tank_movements").getAll();
-    let f, moves,links=2,bills,allocations;
-    for(const store of ['payables','cost_allocations']){const q=t.objectStore(store).getAll();q.onsuccess=()=>{if(store==='payables')bills=q.result;else allocations=q.result;links--;run();};}
+    let f, moves,links=3,bills,allocations,paidMeta;
+    for(const store of ['payables','cost_allocations','meta']){const q=t.objectStore(store).getAll();q.onsuccess=()=>{if(store==='payables')bills=q.result;else if(store==='cost_allocations')allocations=q.result;else paidMeta=q.result;links--;run();};}
     const run = () => {
       if (f === undefined || !moves||links) return;
       if (!f || f.deleted_at) { error = Error("Yakıt kaydı bulunamadı"); return t.abort(); }
+      if(linkedPaidFuel(paidMeta,'fuel_records',id)){error=Error('Müşterinin ödediği yakıt, cari mahsuptan ayrı silinemez veya depoya çevrilemez.');return t.abort();}
       if(bills.some(b=>isActive(b)&&b.status!=='İptal'&&b.source_store==='fuel_records'&&b.source_id===id)){error=Error('Tedarikçi borcuna bağlı yakıt değiştirilemez');return t.abort();}
       if(allocations.some(a=>isActive(a)&&a.status==='Aktif'&&a.source_store==='fuel_records'&&a.source_id===id)){error=Error('Dağıtılmış yakıt maliyeti değiştirilemez; önce maliyet dağıtımını inceleyin');return t.abort();}
       const now = nowISO();
@@ -1832,7 +1838,8 @@ export async function fuelFix(id, mode, reason = "") {
 // Trash recovery restores the fuel and its tank exit as one stock-checked operation.
 export async function restoreFuelEvent(id){
  const connection=await openDB();return new Promise((resolve,reject)=>{
-  const t=connection.transaction(['fuel_records','fuel_tank_movements','vehicles','personnel','audit_log'],'readwrite');let error,result,f,moves,changed=false,owners=2,vehicles,people;
+  const t=connection.transaction(['fuel_records','fuel_tank_movements','vehicles','personnel','meta','audit_log'],'readwrite');let error,result,f,moves,changed=false,owners=2,vehicles,people;
+  const paid=t.objectStore('meta').getAll();
   const fuel=t.objectStore('fuel_records').get(id),all=t.objectStore('fuel_tank_movements').getAll();
   for(const store of ['vehicles','personnel']){const q=t.objectStore(store).getAll();q.onsuccess=()=>{if(store==='vehicles')vehicles=q.result;else people=q.result;owners--;run();};}
   const run=()=>{if(f===undefined||!moves||owners)return;try{
@@ -1849,6 +1856,7 @@ export async function restoreFuelEvent(id){
     movement={...old,deleted_at:null,updated_at:next.updated_at};assertTankChange(moves,moves.map(m=>m.id===old.id?movement:m));
     if(old.deleted_at){changed=true;t.objectStore('fuel_tank_movements').put(movement);t.objectStore('audit_log').put({id:uuid(),entity:'fuel_tank_movements',entity_id:movement.id,action:'restore',old,new:movement,reason:'Yakıt ile birlikte geri yüklendi',at:nowISO()});}
    }
+   if(f.deleted_at&&linkedPaidFuel(paid.result,'fuel_records',id))throw Error('Bağlı yakıt ve mahsup birlikte incelenmeli; tek taraflı geri yüklenemez.');
    if(f.deleted_at){changed=true;t.objectStore('fuel_records').put(next);t.objectStore('audit_log').put({id:uuid(),entity:'fuel_records',entity_id:id,action:'restore',old:f,new:next,reason:'Yakıt ve depo birlikte geri yüklendi',at:nowISO()});}
    result=f.deleted_at?next:f;
   }catch(e){error=e;t.abort();}};

@@ -334,7 +334,7 @@ export function resultReport(d, f = {}) {
       ),
   );
   const unknownCostCount = costs.filter((r) => r.unverified || r.remaining_estimated_amount === null).length;
-  const completeness = costCompleteness({pendingFuel:original.pendingFuel?.count || 0,dumpUnknown:unknownCostCount});
+  const completeness = costCompleteness({pendingFuel:original.pendingFuel?.count || 0,dumpUnknown:unknownCostCount,fuelUnknown:original.customerPaidFuelUnknown||0});
   return {
     ...original,
     ...completeness,
@@ -342,7 +342,7 @@ export function resultReport(d, f = {}) {
     known_cost: fromKurus(known),
     unknown_cost: fromKurus(unknown),
     provisional_result: completeness.costIncomplete ? null : fromKurus(toKurus(original.revenue) - known - unknown),
-    unknown_cost_count: unknownCostCount,
+    unknown_cost_count: unknownCostCount+(original.customerPaidFuelUnknown||0),
     unbilled_value: fromKurus(
       priced.reduce((n, w) => n + toKurus(workFinancials(w).net_total || 0), 0),
     ),

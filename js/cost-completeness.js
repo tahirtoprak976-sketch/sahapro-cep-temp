@@ -5,9 +5,10 @@ export function dumpCostIncomplete(fee) {
     fee.amount == null || fee.remaining_estimated_amount === null);
 }
 
-export function costCompleteness({ pendingFuel = 0, dumpUnknown = 0 } = {}) {
+export function costCompleteness({ pendingFuel = 0, dumpUnknown = 0, fuelUnknown = 0 } = {}) {
   const reasons = [];
   if (pendingFuel > 0) reasons.push({ code: 'fuel_pending', count: pendingFuel, label: 'yakıt mutabakat bekliyor' });
+  if (fuelUnknown > 0) reasons.push({ code: 'customer_paid_fuel_unknown', count: fuelUnknown, label: 'müşterinin ödediği yakıtın fiş maliyeti eksik' });
   if (dumpUnknown > 0) reasons.push({ code: 'dump_unknown', count: dumpUnknown, label: 'döküm maliyeti eksik' });
   return {
     costIncomplete: reasons.length > 0,

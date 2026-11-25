@@ -1,3 +1,4 @@
+import {customerPaidFuelUnknown} from './customer-paid-fuel.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 import {costCompleteness} from './cost-completeness.js';
 import {linkedDumpExpenseIds} from "./dump-ledger-core.js";
@@ -439,7 +440,8 @@ export function operatingResult(data, f = {}) {
       .filter((r) => !r.known_tax)
       .reduce((s, r) => s + toKurus(r.gross), 0);
   const unknownCostCount = costs.filter((r) => r.unverified || r.remaining_estimated_amount === null).length;
-  const completeness = costCompleteness({pendingFuel:pendingFuel.count,dumpUnknown:unknownCostCount});
+  const fuelUnknown=customerPaidFuelUnknown(data,f).length;
+  const completeness = costCompleteness({pendingFuel:pendingFuel.count,dumpUnknown:unknownCostCount,fuelUnknown});
   return {
     ...completeness,
     revenue: fromKurus(revenueKurus),
@@ -447,7 +449,8 @@ export function operatingResult(data, f = {}) {
     unknown_cost: fromKurus(unknown),
     provisional_result: completeness.costIncomplete ? null : fromKurus(revenueKurus - knownCost - unknown),
     pendingFuel,
-    unknown_cost_count: unknownCostCount,
+    unknown_cost_count: unknownCostCount+fuelUnknown,
+    customerPaidFuelUnknown:fuelUnknown,
     complete: !completeness.costIncomplete && unknown === 0,
     costs,
     revenue_rows: source,

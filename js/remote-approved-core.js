@@ -1,4 +1,4 @@
-import {ACTION_FORMAT,readActionsPacket} from './remote-actions-core.js';
+import {isActionsFormat,readActionsPacket} from './remote-actions-core.js';
 import {vehicleTypeInfo,vehicleTypeMatches} from './vehicle-type-core.js';
 import {fuelRulesOf} from './assistant-rules.js';
 // Chat-approved work/fuel packets. Model output alone is never delivery authority.
@@ -12,7 +12,7 @@ const date=s=>typeof s==='string'&&Number.isFinite(Date.parse(s))&&new Date(s).t
 const name=s=>normKey(String(s||'')).replace(/[^a-z0-9çğıöşü]/g,'');
 export function readApprovedPacket(value,{now=Date.now()}={}){
  const p=typeof value==='string'?JSON.parse(value):value;
- if(p?.format===ACTION_FORMAT)return readActionsPacket(p,{now});
+ if(isActionsFormat(p?.format))return readActionsPacket(p,{now});
  if(!exact(p,['format','id','approved','pkg'])||p.format!==REMOTE_FORMAT||!REMOTE_ID.test(p.id))throw Error('Onaylı paket biçimi geçersiz');
  const a=p.approved;
  const approvalKeys=['confirmed','at','summary','unpriced_rows','tank_rows','new_cards'];if(a&&Object.hasOwn(a,'negative_tank_rows'))approvalKeys.push('negative_tank_rows');

@@ -1,3 +1,4 @@
+import {isCustomerPaidFuel} from './customer-paid-fuel.js';
 import { downloadAttachment,attachmentHTML } from "./attachment-ui.js";
 import {maintenanceCategory} from './maintenance-history-core.js';
 import {financialResultText,financialResultWarning} from './cost-completeness.js';
@@ -1578,7 +1579,7 @@ export async function augment(ctx) {
           id,
       );
     }
-    if (["gider", "yakit", "bakim"].includes(route))
+    if (["gider", "yakit", "bakim"].includes(route)&&!(route==="yakit"&&isCustomerPaidFuel(await ctx.db.get("fuel_records",id))))
       links += button(
         "Tedarikçi Borcuna Bağla",
         "#/alislar/new?source_store=" +

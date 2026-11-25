@@ -1,3 +1,4 @@
+import {customerPaidFuelUnknown} from './customer-paid-fuel.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 import {workAmount,missingCustomerWorkPrice,workReviewContext} from './collect-core.js';
 import { claimWorkResolution } from './hakedis-finance.js';
@@ -79,6 +80,7 @@ function financialBuckets(data,keys,opts={},keyOf=monthKey){
     const r=rows.get(keyOf(f.date)); if(!r)continue;
     r.fuelPending=(r.fuelPending||0)+1; r.fuelPendingLiters=(r.fuelPendingLiters||0)+(Number(f.liters)||0);
   }
+  for(const f of customerPaidFuelUnknown(data,{from,to:today})){const r=rows.get(keyOf(f.date));if(r)r.fuelCostUnknown=(r.fuelCostUnknown||0)+1;}
   return [...rows.values()].map((r) => ({
     ...r,
     work: fromKurus(r.work),
@@ -96,8 +98,8 @@ function financialBuckets(data,keys,opts={},keyOf=monthKey){
     fuelPayL: Math.round(r.fuelPayL * 10) / 10,
     fuelGotL: Math.round(r.fuelGotL * 10) / 10,
     // tahmini kâr = fiyatlı (parayla) iş değeri − masraflar; mazotla ödenen işler litre olarak ayrı (fuelPayL / fuelGotL)
-    costIncomplete: !!(r.fuelPending || r.dumpUnknown || r.dumpUnverified),
-    profit: (r.fuelPending || r.dumpUnknown || r.dumpUnverified || r.financialReview) ? null : fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump - r.pay),
+    costIncomplete: !!(r.fuelPending || r.dumpUnknown || r.dumpUnverified || r.fuelCostUnknown),
+    profit: (r.fuelPending || r.dumpUnknown || r.dumpUnverified || r.financialReview || r.fuelCostUnknown) ? null : fromKurus(r.work - r.expense - r.fuel - r.maint - r.esnaf - r.dump - r.pay),
   }));
 }
 
@@ -126,6 +128,7 @@ export function vehicleSeries(data, opts = {}) {
     }
   for (const e of data.expense_records || []) if (inRange(e)) { const r = get(e.vehicle_id); if (r) r.cost += toKurus(e.amount); }
   for(const f of pendingFuelSummary(data,{from:fromS,to:today}).rows){const r=get(f.vehicle_id);if(r){r.fuelPending=(r.fuelPending||0)+1;r.fuelPendingLiters=(r.fuelPendingLiters||0)+(Number(f.liters)||0);r.costIncomplete=true;}}
+  for(const f of customerPaidFuelUnknown(data,{from:fromS,to:today})){const r=get(f.vehicle_id);if(r){r.fuelCostUnknown=(r.fuelCostUnknown||0)+1;r.costIncomplete=true;}}
   const name = (id) => {
     const v = (data.vehicles || []).find((x) => x.id === id);
     return v ? v.plate || v.name : "—";

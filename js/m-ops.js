@@ -1,3 +1,4 @@
+import {linkedPaidFuel} from './customer-paid-fuel.js';
 import {maintenanceReviewHTML,bindMaintenanceReview,maintenanceCardIntent} from './maintenance-review-ui.js';
 import {saveMaintenanceReview} from './maintenance-review-db.js';
 import {vehicleTypeInfo} from "./vehicle-type-core.js";
@@ -78,6 +79,8 @@ async function fuel(ctx) {
 // Yakıt kaydı ekranına eklenen kart: "depodan verildi" düzeltmesi + silme (depo hareketi de geri alınır)
 export async function fuelActions(root, db, f) {
   if (!f || !isActive(f)) return;
+  const paidLink=linkedPaidFuel(await db.getAll('meta'),'fuel_records',f.id);
+  if(paidLink){for(const a of root.querySelectorAll('a'))if(a.getAttribute('href')==='#/yakit/'+f.id+'/edit')a.hidden=true;const c=await db.get('customers',f.customer_id);const box=document.createElement('section');box.className='card';box.innerHTML=`<strong>Müşterinin ödediği yakıt</strong><p>Ödeyen: ${esc(c?.name||'Müşteri')} · ${fmtNum(f.liters)} L · Akaryakıt istasyonu</p><p>Bağlı cari mahsup: ${fmtTL(paidLink.value.amount)} ₺</p><p class="small muted">${f.total==null?'Tutar pompa referansıyla mahsuplaşıldı; gerçek fiş maliyeti bekleniyor.':'Kayıtlı fiş tutarı mevcut mahsupla bağlantılıdır.'}</p><a class="btn" href="#/cari/${esc(f.customer_id)}">Müşteri cari hareketlerini aç</a>`;root.appendChild(box);return;}
   const stock = calcTankBalance((await db.getAll("fuel_tank_movements")).filter(isActive)).remaining;
   const depo = f.fuel_source === "Depo Tankı";
   const box = document.createElement("section");
