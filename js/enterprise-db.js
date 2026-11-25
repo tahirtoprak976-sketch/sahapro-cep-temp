@@ -1,3 +1,4 @@
+import {isCustomerPaidFuel} from './customer-paid-fuel.js';
 import {personnelTransactionError} from './personnel-legal/guard.js';
 import {matchingRequest} from './enterprise-retry.js';
 import {journalTransaction,rememberWrites} from './write-receipt.js';
@@ -217,6 +218,7 @@ export async function savePayable(f, key = uuid()) {
         if(active(d.cost_allocations).some(r=>r.status==='Aktif'&&r.source_store===f.source_store&&r.source_id===f.source_id))throw Error("Borçlandırmadan önce kaynak maliyet dağıtımını iptal edin");
         if(f.source_store==="expense_records"&&(d.dump_entries||[]).some(e=>isActive(e)&&e.expense_id===f.source_id))throw Error("Ortak döküm işlemi alış belgesiyle yeniden borçlandırılamaz");
         const s = owner(d, f.source_store, f.source_id);
+        if(f.source_store==='fuel_records'&&isCustomerPaidFuel(s))throw Error('Müşteri tarafından ödenen yakıt tekrar tedarikçi borcuna yazılamaz; mevcut mahsup ve fişi inceleyin.');
         if (
           active(d.payables).some(
             (b) =>

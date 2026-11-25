@@ -26,8 +26,8 @@ Tam yedek mevcut yakıt/cari ve meta ilişkiyi taşır. Yeni telefona dönüşte
 
 ## Görünüm ve doğrulama
 
-Yakıt listesinde ödeyen müşteri; yakıt detayında mevcut mahsup tutarı ve müşteri carisine bağlantı gösterilir. Bu yakıtta depoya çevirme/silme önerilmez. Maliyet bilinmiyorsa açıkça gösterilir.
+Yakıt listesinde ödeyen müşteri; yakıt detayında mevcut mahsup tutarı ve müşteri carisine bağlantı gösterilir. Bu yakıtta depoya çevirme/silme ve tekrar tedarikçi borcuna yazma seçenekleri sunulmaz; doğrudan kayıt çağrısı da reddedilir. Maliyet bilinmiyorsa açıkça gösterilir.
 
-Sentetik testler: v3.10.25 aynı V2 sözleşmesini PAID_FUEL_LINK_NOT_SUPPORTED ile reddeder, aday kabul eder. Eski V1 offset, belge ve depo yolları korunur. Yeni Node/tarayıcı: eski cari byte-identical, fiziksel istasyon litreleri, sıfır yeni kredi/kasa/depo, müşterinin mazot hakkına karışmama, referansı sıfır maliyet saymama, aynı/yeni paket tekrarı, yanlış kaynak/tarih/para, 5 düzenleme yolu, atomik rollback, tam yedek/restore ve eksik bağlantı reddi, 360px. Kurulu v3.10.25→26 yükseltmesi eski kayıt/dosya/meta/taslakları korumalı; bütün CI kapıları geçmeden yayın yoktur.
+Sentetik testler: v3.10.25 aynı V2 sözleşmesini PAID_FUEL_LINK_NOT_SUPPORTED ile reddeder, aday kabul eder. Eski V1 offset, belge ve depo yolları korunur. Yeni Node/tarayıcı: eski cari byte-identical, fiziksel istasyon litreleri, sıfır yeni kredi/kasa/depo, müşterinin mazot hakkına karışmama, referansı sıfır maliyet saymama, aynı/yeni paket tekrarı, yanlış kaynak/tarih/para, 6 düzenleme/borçlandırma yolu, atomik rollback, tam yedek/restore ve eksik bağlantı reddi, 360px. Kurulu v3.10.25→26 yükseltmesi eski kayıt/dosya/meta/taslakları korumalı; bütün CI kapıları geçmeden yayın yoktur.
 
 Gerçek telefon, gerçek Gemini/WhatsApp ve gerçek fiş testte kullanılmaz. Gerçek işletme yakıtı yalnız kullanıcı tarafından onaylı kaynakla, yayın sonrası ayrı şifreli teslimdir; makbuz gelmeden kaydedildi denmez.
