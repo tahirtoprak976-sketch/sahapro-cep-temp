@@ -316,6 +316,7 @@ jobs:
             cat /tmp/solo-inspection121-baseline.log
             exit 1
           fi
+          cat /tmp/solo-inspection121-baseline.log
           grep -F 'Inspection PDF never reached document reader' /tmp/solo-inspection121-baseline.log
 
       - name: Verify installed v3.10.20 inspection PDF upgrade preservation
@@ -1421,6 +1422,7 @@ jobs:
             /tmp/solo-hub110-*.log
             /tmp/assistant-workspace109.png
             /tmp/solo-workspace109-*.log
+            /tmp/solo-inspection121-baseline.log
             /tmp/solo-draft-race-baseline.log
             /tmp/solo-source-date-baseline.log
             /tmp/solo-real101*.json
