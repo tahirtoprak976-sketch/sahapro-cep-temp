@@ -4,6 +4,7 @@ name: SOLO data preservation validation
 on:
   push:
     branches:
+      - feat/daily-desk126
       - feat/remote-docs-offset-125
       - fix/assistant-audit123
       - fix/assistant-document124
@@ -137,6 +138,40 @@ jobs:
           echo "RESULT files=$files passed=$((files - failed)) failed=$failed"
           test "$files" -gt 0
           test "$failed" -eq 0
+
+      - name: Prove daily review missing on unchanged v3.10.25
+        run: |
+          set -euo pipefail
+          baseline=$(mktemp -d /tmp/solo-daily126-baseline-XXXXXX)
+          git archive ceabe18 | tar -x -C "$baseline"
+          python3 -m http.server 8895 --bind 127.0.0.1 --directory "$baseline" > /tmp/solo-daily126-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true; rm -rf "$baseline"' EXIT
+          python3 - <<'PYREADY'
+          import time
+          from urllib.request import urlopen
+          for attempt in range(60):
+              try:
+                  with urlopen('http://localhost:8895/index.html',timeout=1) as response: assert response.status==200
+                  break
+              except OSError:
+                  if attempt==59: raise
+                  time.sleep(.2)
+          PYREADY
+          if /tmp/solo-e2e-venv/bin/python tools/e2e/daily_review126.py http://localhost:8895/ > /tmp/solo-daily126-baseline.log 2>&1; then
+            cat /tmp/solo-daily126-baseline.log
+            exit 1
+          fi
+          grep -F 'DAILY_REVIEW_MISSING' /tmp/solo-daily126-baseline.log
+          if /tmp/solo-e2e-venv/bin/python tools/e2e/record_refresh126.py http://localhost:8895/ > /tmp/solo-refresh126-baseline.log 2>&1; then
+            cat /tmp/solo-refresh126-baseline.log
+            exit 1
+          fi
+          grep -F 'OLD_VIEW_REFRESHED_NEW_SCREEN' /tmp/solo-refresh126-baseline.log
+
+      - name: Verify installed v3.10.25 daily-review upgrade preservation
+        run: |
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_maintenance116.py --source-root . --baseline-ref ceabe18 --baseline-version 'SAHAPRO SOLO v3.10.25' --artifacts /tmp/solo-daily126-upgrade
 
       - name: Prove document request scope on unchanged v3.10.23
         run: |
@@ -286,6 +321,7 @@ jobs:
             cat /tmp/solo-inspection121-baseline.log
             exit 1
           fi
+          cat /tmp/solo-inspection121-baseline.log
           grep -F 'Inspection PDF never reached document reader' /tmp/solo-inspection121-baseline.log
 
       - name: Verify installed v3.10.20 inspection PDF upgrade preservation
@@ -774,7 +810,7 @@ jobs:
           done
           echo 'ASSISTANT_TURN_STANDALONE RESULT passed=10 failed=0'
           failed=0
-          suites=(remote_actions125 assistant_document124 assistant_audit123 assistant_busy122 assistant_inspection121 remote_negative120 tank_report118 remote_approved118 maintenance_review116 personnel_onboarding116 personnel_legal_ui personnel_legal_workflow personnel_legal_migration phone_preview_pacing phone_preview_compat phone_preview_diagnostics phone_preview_corpus phone_preview_host assistant_resilience113 assistant_mobile112 assistant_context111 assistant_hub110 assistant_workspace109 assistant_ready109 dialog_focus108 system_review108 enterprise_retry108 operation_retry108 system_surface108 executive_decisions107 finance_workspace106 optional_vat105 offline_whatsapp104 public_bootstrap103 assistant_draft_race assistant_questions101 assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
+          suites=(record_refresh126 daily_review126 remote_actions125 assistant_document124 assistant_audit123 assistant_busy122 assistant_inspection121 remote_negative120 tank_report118 remote_approved118 maintenance_review116 personnel_onboarding116 personnel_legal_ui personnel_legal_workflow personnel_legal_migration phone_preview_pacing phone_preview_compat phone_preview_diagnostics phone_preview_corpus phone_preview_host assistant_resilience113 assistant_mobile112 assistant_context111 assistant_hub110 assistant_workspace109 assistant_ready109 dialog_focus108 system_review108 enterprise_retry108 operation_retry108 system_surface108 executive_decisions107 finance_workspace106 optional_vat105 offline_whatsapp104 public_bootstrap103 assistant_draft_race assistant_questions101 assistant_confidence100 assistant_gold assistant_finance99 secure_transfer record_notes customer_snapshot operation_history work_entry_safety work_productivity field_entry report_clarity integrity_audit ledger_links customer_fuel payment_agenda transaction_errors contract_extra_rates finance_integrity dump_cost_reliability historical_fuel bulk_entry_race driver_cash driver_group_share driver_share_recovery menu_routes part_cost part_document_guards redteam shared_dump attachment_safety redteam_finance financial_result_completeness operation_desk work_file assistant_task_center document_link deal_chain responsive_smoke workflow_release_guards assistant_agent assistant_workflow assistant_conversation cari_vat finance_audit79 assistant_audit80 assistant_turn assistant_customer assistant_customer_actions assistant_batch assistant_operations bulk_entry shared_dump_assistant command_dates command_selection assistant_files81 ticket_duplicate_key hakedis_preparation assistant_startup integrity_release84 ticket_atomic84 tank_atomic84 digital_slip_work dump_card_merge work_day_review integrity_review88 fleet_document_countdown maintenance_expense_history parts_purchase_history assistant_workspace price_scope assistant_capacity price_application_finance price_vehicle_type vehicle_type_audit assistant_large_batch)
           for suite in "${suites[@]}"; do
             echo "::group::$suite browser suite"
             if ASSISTANT_TURN_DIAGNOSTICS="/tmp/solo-assistant-turn-diagnostics/full-$suite" /tmp/solo-e2e-venv/bin/python "tools/e2e/$suite.py" http://localhost:8841/; then
@@ -1391,6 +1427,9 @@ jobs:
             /tmp/solo-hub110-*.log
             /tmp/assistant-workspace109.png
             /tmp/solo-workspace109-*.log
+            /tmp/daily126-close-diff.json
+            /tmp/solo-refresh126-baseline.log
+            /tmp/solo-inspection121-baseline.log
             /tmp/solo-draft-race-baseline.log
             /tmp/solo-source-date-baseline.log
             /tmp/solo-real101*.json
