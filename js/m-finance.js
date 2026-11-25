@@ -137,7 +137,7 @@ async function hub(ctx) {
     <nav class="finance-actions" aria-label="Günlük finans işlemleri">
       ${[['#/finans/kasa/new','Tahsilat ekle','receipt'],['#/gider/new','Gider ekle','expense'],['#/hakedis/hazirlik','Hakediş hazırla','document'],['#/cari','Cari hesaplar','account']].map(([href,title,icon])=>`<a href="${href}" class="finance-action">${financeIcon(icon)}<span>${title}</span></a>`).join('')}
     </nav>
-    <section class="finance-overview" data-finance-general><div class="finance-section-head"><h3>Genel müşteri alacağı</h3><span>Tüm tarihler</span></div><a class="finance-receivable" href="#/cari">${fmtTL(general.balance)} <small>₺</small><span aria-hidden="true">↗</span></a><p class="finance-caption">Kayıtlı alacak toplamıdır; kasa veya banka mevcudu değildir.</p>
+    <section class="finance-overview" data-finance-general><div class="finance-section-head"><h3>Genel müşteri alacağı</h3><span>Tüm tarihler</span></div><a class="finance-receivable" data-commercial-entry href="#/ticari-masa" title="Hakediş ve Tahsilat Masası">${fmtTL(general.balance)} <small>₺</small><span aria-hidden="true">↗</span></a><p class="finance-caption">Kayıtlı alacak toplamıdır; kasa veya banka mevcudu değildir. Hakediş ve Tahsilat Masası için tutara dokunun.</p>
       ${general.issues.length?notice('warn',general.issues.length+' kayıtta ana para / KDV ayrımı kontrol edilmeli. Bilinen tutarlar korundu.'):''}
       <details class="finance-inline-details"><summary>Ana para ve KDV ayrımını gör</summary>${cariMoneyHTML(general,true)}</details>
     </section>
@@ -771,7 +771,7 @@ async function hakedis(ctx) {
   root.innerHTML =
     appbar("Hakediş", `${rows.length} kayıt`) +
     `
-    <div style="height:10px"></div><a class="card" style="display:block" href="#/hakedis/hazirlik" data-prep-entry><div class="strong">Hakediş hazırlığı ›</div><p class="small">Müşteri ve dönem seç · hazır işleri, eksikleri ve kontrol gerektiren kayıtları gör</p></a><div data-list></div>
+    <a class="card" style="display:block;color:inherit;text-decoration:none" data-commercial-entry href="#/ticari-masa"><b>Hakediş ve Tahsilat Masası ›</b><p class="small">Tüm müşterilerde hazırlık ve tahsilat öncelikleri</p></a><div style="height:10px"></div><a class="card" style="display:block" href="#/hakedis/hazirlik" data-prep-entry><div class="strong">Hakediş hazırlığı ›</div><p class="small">Müşteri ve dönem seç · hazır işleri, eksikleri ve kontrol gerektiren kayıtları gör</p></a><div data-list></div>
     <div class="actionbar"><button class="btn primary" data-go="#/hakedis/new">+ Hakediş Oluştur</button></div>`;
   const listEl = qs("[data-list]", root);
   if (!rows.length)
