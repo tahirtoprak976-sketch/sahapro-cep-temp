@@ -1,13 +1,13 @@
 {
-  "version": "3.10.30",
+  "version": "3.10.31",
   "schema": 8,
-  "purpose": "Read-only cross-customer claim and collection desk; schema8 and existing financial/approval policy preserved",
+  "purpose": "Unchecked local paid-work review; existing commercial desk and schema8 preserved",
   "files": {
     "js/app.js": "1bfcc3161de387e3e4735f508e811883bcf4e0728919d3626a4120a794beaaf4",
     "js/backup.js": "d4251a7524dde2c30ac8fbef485693d6c4beeef95019815b394e6fbd2157feb8",
-    "js/core.js": "01215b473d691f45a19a8bfadc567567af949551aa8598b243283761864ed54d",
+    "js/core.js": "0d72d3a500e037828fd9f461ed40b1304ef1d6eb5af4a70a35581b3844ec1a58",
     "js/db.js": "6821b73e5e9f4a839643bf14c1cf5127da8c9f1ae2e9ee1717209aaca737f613",
-    "js/enterprise-db.js": "498e1ed3a05ddbcba7b8da865a004c95476e67282c76927c49fb6ed8bb14402c",
+    "js/enterprise-db.js": "3cdc8c050012aeba9ad4cfd006c56b8545cb4a26590ddbdcb2932371a7a01361",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
     "js/leave-form.js": "9cb664fdc8e07a09f69ae999323b23e3dc60978c6c18783a56351b195436fb41",
     "js/leave-ui.js": "a9d0dcd7047b9747e301df655f45b1cb0f83389147863b1fcf6662e9b9a21c25",
@@ -24,7 +24,7 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "1d9dcfe41067b069b0ef1af2728a49ec61d64faa99ac0bcc21f1fff4ae63f037",
+    "sw.js": "a54349d9248d75ad12cfed953969329aa3756b5eec3da2e772eebd3929b6c04c",
     "js/assistant.js": "8327a500f12a7b0ad01b318e402895a7a754d8870791d572e163150fba8cd496",
     "js/m-ops.js": "986c7e83260e37525cedbb001dcc10df485389908b05cd14d6890c4df7aa2248",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
@@ -37,11 +37,11 @@
     "js/report-core.js": "114fe83a7b18652d58e8b8b0fd4cbc0926a6ca27d95f8a3962a605d55296f221",
     "js/report-ui.js": "0dbe1a5edd3d101e244594b03818d21009fd36ad9988a11adef1c5f9fb9d65b1",
     "js/tank-report.js": "250dce16925e1ba593810aa68f32c78c5f3655fd4233aed6838bd0a1632214ab",
-    "js/remote-approved-core.js": "138df732eee06807c38d5ed5a2e5fec2567dc0cef61c6f0fa72a78229c349452",
+    "js/remote-approved-core.js": "8f239a63808204e7cdda36165bcf1e6c4cd78ac0a452d2314ec80ac1d74ef034",
     "js/remote-approved-crypto.js": "b21a1b58b544ccb6126d834e580faf2451ec7166fd16e02f4d1a7898e5b4eb41",
-    "js/remote-approved-db.js": "0813ac0b5ff7af3acb222a4a81cd825d95dac2fbc1dae6f8f51ef0e1c07f55dc",
-    "js/remote-approved-runner.js": "5e226bc68f8422eae10323bf5f9d5b5a01e7050be155db906ad147a1fad4c293",
-    "js/remote-approved-ui.js": "35b00b7f3d8eb351399f1e6b29e6157e4b6eeaefe53b67a97e3111335f8e2dcb",
+    "js/remote-approved-db.js": "9aa96f53bc167cc47b988674fcdb1b013f49798c2de5f4968c8eabfd8b97a583",
+    "js/remote-approved-runner.js": "fe7ab05a194ab2b170e61a440c1b3f0eda6d52ab574f6ef9e8124312d9796e3e",
+    "js/remote-approved-ui.js": "f8b7655ab8d7c65803b3c62f4ede8281f6d4366d3717a600c92d71b57ffe8b82",
     "js/secure-transfer-db.js": "1e774b7c3f7c9a474d5b44bac19eea3ad0f2663b9669eadbb6bc4943849a6a05",
     "js/secure-transfer-ui.js": "484fa65b47162a5a3d0e4d2a4cee6111e7e2bebba2862290bbad2817a1e740c3",
     "js/security.js": "09acb568e8db53f08a0b29aaf64d9ec595ba16a3dded4843ea1f034c2148110a",
@@ -75,6 +75,9 @@
     "js/fleet-desk-ui.js": "ce43611a49158e42eff09e2fda0760ab1ef9e78e1b2f6dc926bd8f3a8eda9d62",
     "js/m-finance.js": "3f45d2f0d7f457e374af74f1f7d57c98d11494b3fe6ab741e9a9249a7c015724",
     "js/commercial-desk-core.js": "b0f832f8164b6a44878cc0a545e4f10db254c7701881629c29d4ab3516c548c7",
-    "js/commercial-desk-ui.js": "e7f18c9b25680cabe2a1bee246f064fb5b394b40e58d4bfeced35f39fec1f7ab"
+    "js/commercial-desk-ui.js": "e7f18c9b25680cabe2a1bee246f064fb5b394b40e58d4bfeced35f39fec1f7ab",
+    "js/paid-work-core.js": "1d7ad9260f80d491e9f2ec422343d4ec828e2ba2c9137726a299d44cbd92e846",
+    "js/paid-work-db.js": "11f06259c6657bee691ae397b82749b5c9e0dafbec98f6b8ccdd34bf6cbc8342",
+    "js/paid-work-ui.js": "9ec62025c27986327d2dd5c50a7b2bde9de16d13f5a5a45d19dfe48663e2371e"
   }
 }
