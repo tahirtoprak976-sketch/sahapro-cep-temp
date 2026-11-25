@@ -188,7 +188,7 @@ async function dashboard(ctx) {
     ${executiveHomeHTML(decisions)}
     <section class="card assist-hero" aria-label="Akıllı asistan" data-assist-hero>
       <h2 style="margin:0 0 2px;font-size:20px">Ne yapmak istiyorsunuz?</h2>
-      <a class="ultimate-home-link" href="#/saha-akisi"><b>Saha Akışı →</b><small>Günün işleri · yakıt · gider · bakım</small></a>
+      <a class="ultimate-home-link" href="#/saha-akisi"><b>Saha Akışı · Günlük kontrol →</b><small>Eksikleri tamamla · mesajlarla karşılaştır · kapanışı incele</small></a>
       <button class="ultimate-home-link" data-overview-home data-go="#/isletme-panosu"><b>İşletme Panosu →</b><small>Dönem seç · grafiğe dokun · kaynak kaydı aç</small></button>
       <div class="small muted" style="margin-bottom:8px">Yazın veya söyleyin — asistan kontrol kartı hazırlar, siz onaylamadan kayıt yazılmaz.</div>
       <textarea data-hero-msg rows="2" placeholder="Örn: 34 KM 101 Kaya İnşaat 4 sefer moloz · Kaya'dan 20 bin tahsil ettim" style="width:100%;font-size:16px"></textarea>
