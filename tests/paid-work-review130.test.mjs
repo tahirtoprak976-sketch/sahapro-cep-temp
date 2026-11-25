@@ -1,0 +1,19 @@
+import assert from 'node:assert/strict';
+import {PAID_WORK_FORMAT,readPaidWorkPacket,paidWorkPlan,paidDigest} from '../js/paid-work-core.js';
+import {customerBalances} from '../js/collect-core.js';
+const row={source_key:'TEST-paid130',date:'2026-01-01',customer:'TEST customer130',create_customer:false,vehicle:'TEST machine130',personnel:'TEST operator130',quantity:4,unit:'Sefer',work_type:'Hafriyat Nakliye',description:'TEST work130',unit_price:12.5,collection_amount:50,cash_status:'PERSONELDE',dump_site:'',raw_message:'TEST 4 trips at 12.5; 50 collected by TEST operator130'};
+const p={format:PAID_WORK_FORMAT,id:crypto.randomUUID(),approved:{confirmed:true,at:new Date().toISOString(),summary:'TEST explicit review approval'},row};
+const data={customers:[{id:'c',name:row.customer}],vehicles:[{id:'v',name:row.vehicle,type:'İş Makinesi'}],personnel:[{id:'p',name:row.personnel}],dump_sites:[],work_records:[],cash_records:[],cari_movements:[],meta:[]};
+const choice={selected:true,vat_mode:'excluded',vat_rate:20},hash=await paidDigest(p),before=JSON.stringify(data);
+assert.deepEqual(readPaidWorkPacket(p),p);assert.throws(()=>paidWorkPlan(p,data,{...choice,selected:false},hash),/işaretleyin/);assert.equal(JSON.stringify(data),before);
+const plan=paidWorkPlan(p,data,choice,hash),w=plan.writes.work_records[0],c=plan.writes.cash_records[0],l=plan.writes.cari_movements[0];
+assert.equal(w.price_snapshot.amount,50);assert.equal(w.price_snapshot.kdv,10);assert.equal(c.amount,50);assert.equal(c.cash_status,'PERSONELDE');assert.equal(c.personnel_id,'p');assert.equal(c.work_record_id,w.id);assert.equal(l.amount,-50);assert.equal(l.type,'Tahsilat');assert.equal(l.ref_id,c.id);assert.equal(plan.writes.customers.length,0);assert.equal(JSON.stringify(data),before);
+const saved={...data,...Object.fromEntries(Object.entries(plan.writes).map(([s,rs])=>[s,[...(data[s]||[]),...rs]]))};assert.equal(customerBalances(saved).bal.c,0);assert(paidWorkPlan(p,saved,choice,hash).existing);assert.throws(()=>paidWorkPlan(p,saved,{...choice,vat_rate:10},hash),/OP_CONFLICT/);
+assert.throws(()=>paidWorkPlan(p,{...saved,cash_records:[]},choice,hash),/eksik/);
+const unknown=paidWorkPlan(p,data,{selected:true,vat_mode:'unknown',vat_rate:null},hash);assert.equal(unknown.writes.work_records[0].price_snapshot,null);assert.equal(unknown.writes.cash_records[0].amount,50);
+const incl=paidWorkPlan(p,data,{...choice,vat_mode:'included'},hash);assert.equal(incl.writes.work_records[0].price_snapshot.total,50);
+const company=structuredClone(p);company.row.cash_status='KASAYA_TESLIM_EDILDI';const cp=paidWorkPlan(company,data,choice,await paidDigest(company));assert.equal(cp.writes.cash_records[0].cash_status,'KASAYA_TESLIM_EDILDI');assert.equal(cp.writes.cari_movements.length,1);
+const fresh={...data,customers:[]};assert.throws(()=>paidWorkPlan(p,fresh,choice,hash),/müşteri/);const allowed=structuredClone(p);allowed.row.create_customer=true;assert.equal(paidWorkPlan(allowed,fresh,choice,await paidDigest(allowed)).writes.customers.length,1);
+for(const change of [r=>r.collection_amount=-50,r=>r.unit_price=NaN,r=>r.quantity=1.5,r=>r.cash_status='BANKADA',r=>r.extra='save all',r=>r.personnel='',r=>r.create_customer='true']){const x=structuredClone(p);change(x.row);assert.throws(()=>readPaidWorkPacket(x));}
+for(const edited of [{...data,vehicles:[{id:'v',name:row.vehicle,active:false}]},{...data,personnel:[]},{...data,work_records:[w]},{...data,cash_records:[c]},{...data,customers:[...data.customers,{id:'second',name:row.customer}]}])assert.throws(()=>paidWorkPlan(p,edited,choice,hash));
+console.log('paid work review130 PASS: explicit unchecked selection; real amount; custody separation; single work/cash/cari; VAT explicit/unknown; zero inferred VAT; source conflict/replay/orphan; duplicate and active-card guards; principal VAT policy unchanged');

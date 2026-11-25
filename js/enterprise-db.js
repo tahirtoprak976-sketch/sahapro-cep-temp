@@ -77,7 +77,7 @@ function audit(t, store, r, action) {
   t.objectStore("audit_log").add(
     newRecord({
       entity_type: store,
-      entity_id: r.id,
+      entity_id: store === 'meta' ? r.key : r.id,
       action,
       after: store === "attachments" ? { ...r, blob: undefined } : r,
       reason: "İşletme defteri",
