@@ -1,3 +1,4 @@
+import {customerPaidFuelUnknown} from './customer-paid-fuel.js';
 import {buildTankReport} from './tank-report.js';
 import {resolveWorkTonnage} from './work-tonnage.js';
 import {maintenanceHistory} from './maintenance-history-core.js';
@@ -265,7 +266,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
     const custL = r2(fuel.filter((f) => f.fuel_source === "Müşteri Verdi").reduce((n, f) => n + (Number(f.liters) || 0), 0));
     const maintTL = r2(maint.reduce((n, m) => n + (Number(m.cost) || 0), 0)), expTL = r2(exps.reduce((n, e) => n + (Number(e.amount) || 0), 0));
     const dumpTL = r2(ws.reduce((n, x) => n + x.dump, 0));
-    const completeness = costCompleteness({ pendingFuel: pendingFuel.count, dumpUnknown: ws.filter(x => x.dumpUnverified).length });
+    const completeness = costCompleteness({ pendingFuel: pendingFuel.count, dumpUnknown: ws.filter(x => x.dumpUnverified).length, fuelUnknown:customerPaidFuelUnknown({fuel_records:fuel}).length });
     Object.assign(R, completeness, { knownCostSubtotal: r2(fuelTL + maintTL + expTL + dumpTL) });
     const trips = r2(ws.filter((x) => x.unit === "Sefer").reduce((n, x) => n + x.qty, 0)), hours = r2(ws.filter((x) => x.unit === "Saat").reduce((n, x) => n + x.qty, 0));
     R.kpis = [...workKpis(ws, { dump: false }),
@@ -293,7 +294,7 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
           const inc = r2(w2.reduce((n, x) => n + x.amount, 0)), fT = r2(f2.filter((f) => f.fuel_source !== "Müşteri Verdi").reduce((n, f) => n + (Number(f.total) || 0), 0));
           const mT = r2(m2.reduce((n, m) => n + (Number(m.cost) || 0), 0)), eT = r2(e2.reduce((n, e) => n + (Number(e.amount) || 0), 0)), dT = r2(w2.reduce((n, x) => n + x.dump, 0));
           if (!w2.length && !f2.length && !m2.length && !e2.length) return null;
-          const c = costCompleteness({ pendingFuel: pendingFuel.rows.filter(f=>f.vehicle_id===v.id).length, dumpUnknown: w2.filter(x=>x.dumpUnverified).length });
+          const c = costCompleteness({ pendingFuel: pendingFuel.rows.filter(f=>f.vehicle_id===v.id).length, dumpUnknown: w2.filter(x=>x.dumpUnverified).length, fuelUnknown:customerPaidFuelUnknown({fuel_records:f2}).length });
           return [v.name, String(w2.length), tl(inc), num(f2.reduce((n, f) => n + (Number(f.liters) || 0), 0)), tl(fT), tl(mT), tl(eT), tl(dT), c.costIncomplete ? `Hesaplanamadı — ${c.costIncompleteReason}` : tl(r2(inc - fT - mT - eT - dT))];
         }).filter(Boolean) });
     }

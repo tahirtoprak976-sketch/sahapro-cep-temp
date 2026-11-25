@@ -1,3 +1,4 @@
+import {validatePaidFuelRestore} from './customer-paid-fuel.js';
 import {validatePersonnelRestore} from './personnel-legal/restore.js';
 import {permitPersonnelWrite,personnelTransactionError} from './personnel-legal/guard.js';
 import {validatePendingFuelData} from './historical-fuel.js';
@@ -232,6 +233,7 @@ export async function restoreBackup(db, obj, replace = false) {
     a.base64 = null; // çözülen metin hemen bırakılır (tepe bellek düşer)
   }
   const legalData=Object.fromEntries(ENTITY_STORES.map(s=>{const rows=new Map((basis[s]||[]).map(r=>[r.id,r]));for(const r of obj.data[s]||[])if(!rows.has(r.id)||replace)rows.set(r.id,r);return [s,[...rows.values()]]}));
+  validatePaidFuelRestore(basis,obj,replace,await db.getAll('meta'));
   await validatePersonnelRestore(legalData,[...(await db.getAll("attachments")),...decoded],{pendingParts:!!obj.part});
   // Yeni telefon (henüz işletme kaydı yok): ilk açılışta oluşturulan başlangıç kartları, yedekteki aynı adlı kartların
   // yerine geçer. Yoksa araç / personel / döküm sahası / eşleştirme / fiyat ikişer olur.
@@ -243,9 +245,10 @@ export async function restoreBackup(db, obj, replace = false) {
     permitPersonnelWrite(t,{restore:true});
     let error;
     // Recheck isolated historical evidence against a coherent, serialized snapshot.
-    const fresh={};let reads=ENTITY_STORES.length;
+    const fresh={};let reads=ENTITY_STORES.length;const paidMeta=t.objectStore('meta').getAll();
     for(const s of ENTITY_STORES){const q=t.objectStore(s).getAll();q.onsuccess=()=>{fresh[s]=q.result;if(!--reads)try{
-      assertRestoreBasis(basis,fresh,obj,preview,replace,drop);
+      validatePaidFuelRestore(fresh,obj,replace,paidMeta.result);
+      assertRestoreBasis(basis,{...fresh,meta:paidMeta.result},obj,preview,replace,drop);
       validateRestoreLinks(fresh,obj,preview,replace);
     }catch(e){error=e;t.abort();}};}
     for (const [s, ids] of Object.entries(drop)) for (const id of ids) t.objectStore(s).delete(id);

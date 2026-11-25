@@ -1,3 +1,4 @@
+import {customerPaidFuelUnknown} from './customer-paid-fuel.js';
 import {costCompleteness, dumpCostIncomplete} from './cost-completeness.js';
 import {pendingFuelSummary} from './historical-fuel.js';
 // İş sözleşmesi panosu için maliyet ve kârlılık — SAF hesap, kayıt yazmaz. Tüm giderler TAHMİNDİR ve yöntemiyle döner:
@@ -73,7 +74,7 @@ export function jobCosts(d, site, rep, { today = todayStr(), fuelRef = null } = 
       if (Number.isFinite(f?.amount)) { dumpTL += f.amount; if (f.estimated || f.provisional) dumpEst = true; }
     } catch { dumpUnknown++; } // A failed projection is unknown, never a zero-cost success.
   }
-  const completeness = costCompleteness({ pendingFuel: pendingFuel.count, dumpUnknown });
+  const completeness = costCompleteness({ pendingFuel: pendingFuel.count, dumpUnknown, fuelUnknown:customerPaidFuelUnknown(d,{to:today}).filter(f=>works.some(w=>w.vehicle_id===f.vehicle_id)&&f.date>=[works.map(w=>w.date).filter(Boolean).sort()[0]||today,addDays(today,-90)].sort()[0]).length });
   const dumpLinked = linkedDumpExpenseIds(d);
   const exp = live(d, "expense_records").filter((e) => e.site_id === site.id && !e.dump_deposit && !dumpLinked.has(e.id));
   const otherTL = exp.reduce((n, e) => n + (Number(e.amount ?? e.total) || 0), 0);

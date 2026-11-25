@@ -1,3 +1,4 @@
+import {isCustomerPaidFuel} from './customer-paid-fuel.js';
 import {pendingFuelBanner} from './historical-fuel-ui.js';
 import {recordNoteHTML,recordSourceHTML} from './record-notes-ui.js';
 import {appbar,esc,notice,segBar,searchBar,fmtNum,fmtTL,badge,statusBadge,shareOrDownload,toast} from './ui.js';
@@ -49,6 +50,7 @@ export async function operationHistory({root,db,query={}},kind){
   const name=(store,id)=>operationName(names,store,id),cost=r.cost!==''&&r.cost!=null&&Number.isFinite(Number(r.cost))&&Number(r.cost)>=0;
   return `<a class="li work-explorer-row" data-operation-record="${esc(r.id)}" href="${esc(r.history_href||'#/'+route+'/'+encodeURIComponent(r.id))}"><div class="work-explorer-row-head"><strong>${esc(name('vehicles',r.vehicle_id))}</strong><strong class="work-explorer-quantity">${fuel?(r.liters!==''&&r.liters!=null&&Number.isFinite(Number(r.liters))&&Number(r.liters)>=0?fmtNum(r.liters)+' L':'Litre eksik'):esc(r.maint_type||'Bakım / Arıza')}</strong></div>
   <div class="small">${esc(name('personnel',r.personnel_id))}${fuel?' · '+esc(r.fuel_source||'Kaynak belirtilmedi'):r.service_company?' · '+esc(r.service_company):''}</div>
+  ${fuel&&isCustomerPaidFuel(r)?`<div class="small">Ödeyen: ${esc(name('customers',r.customer_id))} · Cari mahsupla bağlantılı</div>`:''}
   ${fuel&&r.fuel_source==='Müşteri Verdi'?`<div class="small">Mazotu veren: ${esc(name('customers',r.customer_id))}</div>`:''}
   ${recordNoteHTML(r,'description',names,kind,{source:false})}
   ${fuel&&r.fuel_source!=='Müşteri Verdi'?`<div class="small muted">${r.total!==''&&r.total!=null&&Number.isFinite(Number(r.total))&&Number(r.total)>=0?'Kayıtlı tutar: '+fmtTL(r.total)+' ₺':'Tutar belirtilmedi'}</div>`:''}
