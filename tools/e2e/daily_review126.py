@@ -1,5 +1,6 @@
 """Daily triage uses existing records and explicit forms; synthetic TEST profile, no model."""
 import sys,json,uuid
+from pathlib import Path
 from playwright.sync_api import sync_playwright
 base=(sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8903/').rstrip('/')+'/'
 with sync_playwright() as w:
@@ -17,7 +18,18 @@ with sync_playwright() as w:
  p.goto(url);p.wait_for_selector('[data-daily-review]');p.locator('[data-daily-compare]').click();p.wait_for_selector('#screen[data-view-ready="1"]');assert 'date='+ids['date'] in p.url;assert snap()==before
  p.goto(url);p.wait_for_selector('[data-daily-review]');p.locator('details:has([data-stream-kind]) > summary').click();p.fill('[name=q]','TEST henüz aranmayan metin');p.evaluate("async id=>{const D=await import('./js/db.js'),r=await D.get('cash_records',id);await D.saveExisting('cash_records',r,{cash_status:'KASADA'},'TEST')}",ids['cash']);changed=snap()
  p.click('[data-daily-refresh]');p.wait_for_function("id=>!document.querySelector('[data-daily-review] a[href=\"#/kasa/'+id+'\"]')",arg=ids['cash']);assert p.input_value('[name=q]')=='TEST henüz aranmayan metin';assert p.locator('details:has([data-stream-kind])').evaluate('(e)=>e.open');assert snap()==changed
- p.locator('[data-daily-close]').click();p.wait_for_selector('[data-op-pane=close]');assert p.locator('[data-company-close]').count()==1 and snap()==changed
+ p.locator('[data-daily-close]').click();p.wait_for_selector('[data-op-pane=close]');after_close=snap()
+ if after_close!=changed:
+  previous,current=json.loads(changed),json.loads(after_close);diff={}
+  for key in set(previous['data'])|set(current['data']):
+   if previous['data'].get(key)!=current['data'].get(key):diff[key]={'before':previous['data'].get(key),'after':current['data'].get(key)}
+  if previous['audit']!=current['audit']:diff['audit']={'before':previous['audit'],'after':current['audit']}
+  Path('/tmp/daily126-close-diff.json').write_text(json.dumps({'changed':diff,'equalParsedObjects':previous==current,'before':previous,'after':current},ensure_ascii=False,indent=2))
+  print('DAILY_CLOSE_DIFF',json.dumps({'changed':diff,'equalParsedObjects':previous==current},ensure_ascii=False),flush=True)
+ close_count=p.locator('[data-company-close]').count()
+ if close_count!=1 or after_close!=changed:
+  print('DAILY_CLOSE_STATE',p.evaluate("()=>({count:document.querySelectorAll('[data-company-close]').length,panes:document.querySelectorAll('[data-op-pane=close]').length,ready:document.querySelector('#screen')?.dataset.viewReady,url:location.hash,text:document.querySelector('#screen')?.innerText.slice(0,500)})"),'observed_count',close_count,flush=True)
+ assert close_count==1 and after_close==changed
  for width in [320,360,390,768]:
   p.set_viewport_size({'width':width,'height':800});p.goto(url);p.wait_for_selector('[data-daily-review]');assert p.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
  assert not calls and not errors,(calls,errors);assert snap()==changed

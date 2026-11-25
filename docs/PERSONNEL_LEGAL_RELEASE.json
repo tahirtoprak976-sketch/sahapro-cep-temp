@@ -58,6 +58,7 @@
     "js/field-stream-ui.js": "f5ebaa6f8bda5457548ccfef455c44ea978f0d5b9e88b59615cccc5331135201",
     "js/daily-review-core.js": "da3cfdb4bcb7f4ea7e3bfa24109f1743d2612f4e58a5dc1cf1689ee9734c5c25",
     "js/daily-review-ui.js": "b209d3c946dc410f3d0ff90fbf5c65ba01d74004038d6ea7134debae6e1e8713",
-    "js/m-dash.js": "f1acf1c761e933d13538890d5ffc865f385a1ec18fe6360d43442ca6c55073a3"
+    "js/m-dash.js": "f1acf1c761e933d13538890d5ffc865f385a1ec18fe6360d43442ca6c55073a3",
+    "js/record-refresh.js": "ffa179c6f456fd0ff804324c821a732dbe4b7a09c027c424175624a99c0facdc"
   }
 }
