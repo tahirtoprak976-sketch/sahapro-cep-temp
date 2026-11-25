@@ -1800,6 +1800,7 @@ async function customerWorks(ctx, id, d) {
 async function customerDashboard(ctx, id, d) {
   const { root, db } = ctx;
   const CR = await import("./customer-report.js");
+  const {customerDeskHtml} = await import("./customer-desk.js");
   const me = (d.customers || []).find((c) => c.id === id);
   if (!me) return;
   const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);
@@ -1819,6 +1820,7 @@ async function customerDashboard(ctx, id, d) {
     const fmt1 = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
     sec.innerHTML = `<h2 style="margin:0 0 6px">📊 Müşteri panosu</h2>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${Object.entries(CR.PERIODS).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-dper="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-dsubs>Taşeronlar dahil</button>` : ""}</div>
+      ${customerDeskHtml(d,id,{from:rg.from,to:rg.to})}
       ${R.scopeNote ? ui.notice("info", R.scopeNote) : ""}
       ${R.financialIssues.length ? ui.notice("warn", `${R.financialIssues.length} işte hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; fatura öncesi Veri Sağlığı ve kaynak işi kontrol edin.`) : ""}
       ${PM.fuel ? `<div class="card" data-fuelpanel style="margin:0 0 10px;border-left:4px solid #c98a00;padding:12px">
