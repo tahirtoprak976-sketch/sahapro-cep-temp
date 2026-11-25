@@ -1,3 +1,5 @@
+import {dailyReview} from './daily-review-core.js';
+import {dailyReviewHTML} from './daily-review-ui.js';
 import {appbar,esc} from './ui.js';
 import {todayStr,addDays,trDate,fmtNum,isActive} from './core.js';
 import {fieldStream,streamURL,SOURCES} from './field-stream.js';
@@ -5,13 +7,15 @@ import {entryLink} from './entry-context.js';
 export async function screen({root,db,query={}}){
  const mount=document.createElement('div');root.replaceChildren(mount);mount.innerHTML=appbar('Saha Akışı','Günün işleri ve saha kayıtları')+'<p role="status">Kayıtlar yükleniyor…</p>';
  let data;try{data=await db.dumpAll();}catch{if(mount.isConnected)mount.innerHTML=appbar('Saha Akışı')+'<div class="card" role="alert">Kayıtlar okunamadı. Sayfayı yeniden açın.</div>';return;}if(!mount.isConnected)return;
- const today=todayStr(),m=fieldStream(data,query,today);let limit=30;
+ const today=todayStr();let m=fieldStream(data,query,today),limit=30,refreshing=false;
+ const reviewHTML=()=>{if(m.error)return '';try{return dailyReviewHTML(dailyReview(data,{date:m.date,vehicle_id:query.vehicle_id||'',personnel_id:query.personnel_id||''}));}catch{return '<section class="card" data-daily-review role="alert">Günlük kontroller okunamadı; boş kabul edilmedi. <button class="btn" data-daily-refresh>Yeniden dene</button></section>';}};
  const url=patch=>streamURL(query,patch);
  function draw(){
  mount.innerHTML=appbar('Saha Akışı','Bu cihazdaki kayıtlar · '+trDate(m.date))+`
  <section class="card field"><label>Gün <input type="date" data-stream-date value="${esc(m.date)}" style="width:100%;margin:8px 0"></label>
  <div class="field-actions"><a class="btn" href="${esc(url({date:addDays(m.error?today:m.date,-1)}))}">← Önceki gün</a><a class="btn" href="${esc(url({date:today}))}">Bugün</a><a class="btn" href="${esc(url({date:addDays(m.error?today:m.date,1)}))}">Sonraki gün →</a></div>
  <p class="small muted">Son 7 gün · tüm kayıt türleri ve araçlar</p><div class="field-week">${Array.from({length:7},(_,i)=>addDays(today,i-6)).map(d=>`<a class="btn sm ${m.date===d?'primary':''}" href="${esc(url({date:d}))}" aria-label="${esc(trDate(d))}: ${m.days[d]||0} kayıt">${esc(trDate(d).slice(0,5))}<b>${m.days[d]||0}</b></a>`).join('')}</div></section>
+ ${reviewHTML()}
  <section class="card field"><details ${query.kind||query.vehicle_id||query.q?'open':''}><summary>Filtreler${query.kind||query.vehicle_id||query.q?' · etkin':' · tür, araç, arama'}</summary><label>Kayıt türü<select data-stream-kind><option value="">Tümü</option>${Object.entries(SOURCES).map(([k,v])=>`<option value="${k}" ${m.kind===k?'selected':''}>${v[1]}</option>`).join('')}</select></label>
  <label>Araç<select data-stream-vehicle><option value="">Tüm araçlar</option>${(data.vehicles||[]).filter(v=>isActive(v)||v.id===query.vehicle_id).map(v=>`<option value="${esc(v.id)}" ${query.vehicle_id===v.id?'selected':''}>${esc(v.plate||v.name||v.id)}</option>`).join('')}</select></label>
  <form data-stream-search><label>Kayıtlarda ara<input name="q" value="${esc(query.q||'')}" placeholder="Müşteri, plaka, personel, açıklama…"></label><button class="btn block" type="submit">Ara</button></form><a class="btn sm" href="${esc(streamURL({date:m.error?today:m.date}))}">Filtreleri temizle</a></details></section>
@@ -24,6 +28,14 @@ export async function screen({root,db,query={}}){
  mount.querySelector('[data-stream-kind]').onchange=e=>location.hash=url({kind:e.target.value});
  mount.querySelector('[data-stream-vehicle]').onchange=e=>location.hash=url({vehicle_id:e.target.value});
  mount.querySelector('form').onsubmit=e=>{e.preventDefault();location.hash=url({q:new FormData(e.target).get('q').trim()});};
+ const refresh=mount.querySelector('[data-daily-refresh]');if(refresh)refresh.onclick=async()=>{
+  if(refreshing)return;refreshing=true;refresh.disabled=true;
+  const search=mount.querySelector('[name=q]'),draft=search.value,focus=document.activeElement===search,selection=[search.selectionStart,search.selectionEnd];
+  const selectors=['[data-daily-more]','[data-daily-notes]','[data-daily-no-work]','details:has([data-stream-kind])'],open=new Map(selectors.map(key=>[key,mount.querySelector(key)?.open||false]));
+  try{const next=await db.dumpAll();if(!mount.isConnected)return;data=next;m=fieldStream(data,query,today);draw();const current=mount.querySelector('[name=q]');current.value=draft;for(const [key,wasOpen]of open){const detail=mount.querySelector(key);if(detail)detail.open=wasOpen;}if(focus){current.focus({preventScroll:true});current.setSelectionRange(...selection);}}
+  catch{if(mount.isConnected){let error=mount.querySelector('[data-daily-error]');if(!error){error=document.createElement('p');error.dataset.dailyError='';error.setAttribute('role','alert');refresh.after(error);}error.textContent='Yenilenemedi; önceki görünüm korunuyor. Yeniden deneyin.';}}
+  finally{refreshing=false;if(refresh.isConnected)refresh.disabled=false;}
+ };
  const more=mount.querySelector('[data-stream-more]');if(more)more.onclick=()=>{limit+=30;draw();};
  }
  draw();

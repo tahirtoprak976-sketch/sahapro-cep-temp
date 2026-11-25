@@ -1,4 +1,4 @@
-# Müşterinin ödediği istasyon yakıtı — v3.10.26
+# Müşterinin ödediği istasyon yakıtı — v3.10.27
 
 İş sahibi, bu sohbette onayladığı mevcut yakıt mahsubunu koruyarak fiziksel yakıt kaydının tamamlanmasını istedi. Yeni kayıt ve bağlantı eklenir; önceki cari hareketin hiçbir alanı değiştirilmez. Şema8 ve mevcut işletme kayıt biçimleri korunur. Yeni menü/sunucu/sağlayıcı yoktur.
 
@@ -31,3 +31,7 @@ Yakıt listesinde ödeyen müşteri; yakıt detayında mevcut mahsup tutarı ve 
 Sentetik testler: v3.10.25 aynı V2 sözleşmesini PAID_FUEL_LINK_NOT_SUPPORTED ile reddeder, aday kabul eder. Eski V1 offset, belge ve depo yolları korunur. Yeni Node/tarayıcı: eski cari byte-identical, fiziksel istasyon litreleri, sıfır yeni kredi/kasa/depo, müşterinin mazot hakkına karışmama, referansı sıfır maliyet saymama, aynı/yeni paket tekrarı, yanlış kaynak/tarih/para, 6 düzenleme/borçlandırma yolu, atomik rollback, tam yedek/restore ve eksik bağlantı reddi, 360px. Kurulu v3.10.25→26 yükseltmesi eski kayıt/dosya/meta/taslakları korumalı; bütün CI kapıları geçmeden yayın yoktur.
 
 Gerçek telefon, gerçek Gemini/WhatsApp ve gerçek fiş testte kullanılmaz. Gerçek işletme yakıtı yalnız kullanıcı tarafından onaylı kaynakla, yayın sonrası ayrı şifreli teslimdir; makbuz gelmeden kaydedildi denmez.
+
+## Güncel tabanla birleşim
+
+Çalışma sürerken canlıya gelen v3.10.26 günlük Saha Akışı ve kayıt yenileme koruması aynen korundu. Yakıt özelliği bu tabanın üzerine v3.10.27 olarak birleştirildi. İki akışın modülleri, testleri ve CI adımları tutuldu; güncel kurulu26→27 yükseltmesi ve bütün birleşik testler yayın kapısıdır.

@@ -72,6 +72,7 @@ export function fuelReadView(parts) {
 export async function installRecordRefresh({ db, context, reload }) {
   const database = (await db.openDB()).name;
   let pending = false,
+    pendingRoot = null,
     timer,
     refreshing = false;
   const schedule = () => {
@@ -81,8 +82,12 @@ export async function installRecordRefresh({ db, context, reload }) {
   const run = async () => {
     if (!pending || refreshing || document.visibilityState === "hidden") return;
     const { root, parts } = context();
+    // A freshly mounted route reads committed data itself. A timer belonging to the
+    // previous view must not replace the new screen while the user is using it.
+    if (root !== pendingRoot) { pending = false; pendingRoot = null; return; }
     if (!fuelReadView(parts)) {
       pending = false;
+      pendingRoot = null;
       return;
     }
     if (!root?.isConnected || root.dataset.viewReady !== "1") {
@@ -101,6 +106,7 @@ export async function installRecordRefresh({ db, context, reload }) {
     )
       return;
     pending = false;
+    pendingRoot = null;
     refreshing = true;
     const hash = location.hash,
       scroll = window.scrollY;
@@ -139,6 +145,7 @@ export async function installRecordRefresh({ db, context, reload }) {
     )
       return;
     pending = true;
+    pendingRoot = context().root;
     schedule();
   });
   const visible = () => {

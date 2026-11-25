@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {dailyReview,groupDailyFindings} from '../js/daily-review-core.js';
+import {ENTITY_STORES} from '../js/core.js';
+const date='2026-11-25';
+const d={...Object.fromEntries(ENTITY_STORES.map(k=>[k,[]])),meta:[],customers:[{id:'C',name:'TEST Müşteri'}],vehicles:[{id:'V',name:'TEST Kamyon'},{id:'IDLE',name:'TEST Makine'},{id:'OFF',name:'TEST Pasif',active:false}],personnel:[{id:'P',name:'TEST Personel'}],work_records:[{id:'W',date,customer_id:'C',vehicle_id:'V',work_type:'Makine Çalışması',quantity:3,unit:'Saat'}],cash_records:[{id:'CASH',date,customer_id:'C',personnel_id:'P',cash_type:'Müşteriden Para Alındı',cash_status:'PERSONELDE',amount:1000},{id:'FUTURE',date:'2026-11-26',customer_id:'C',cash_status:'PERSONELDE',cash_type:'Müşteriden Para Alındı',amount:2000}]};
+const before=JSON.stringify(d),m=dailyReview(d,{date});
+assert.equal(m.actions.filter(x=>x.href==='#/kasa/CASH').length,1,'Same cash source must have a single action card');
+assert.ok(m.actions.find(x=>x.href==='#/kasa/CASH').findings.length>=2,'Every distinct cause is preserved');
+assert.ok(!m.actions.some(x=>x.href==='#/kasa/FUTURE'),'Future cash must not appear on the selected day');
+assert.ok(!m.actions.some(x=>x.href==='#/isler?f=fiyatsiz'),'Fully represented aggregate price queue must not duplicate the daily work');
+const older=structuredClone(d);older.work_records.push({...older.work_records[0],id:'OLD',date:'2026-11-24'});assert.ok(dailyReview(older,{date}).actions.some(x=>x.href==='#/isler?f=fiyatsiz'),'Additional older unpriced work must keep the queue visible');
+assert.deepEqual(m.noWork.map(v=>v.id),['IDLE']);assert.ok(m.compare.endsWith(date));assert.ok(m.close.includes('op_date='+date)&&m.close.includes('op_tab=close'));
+assert.equal(JSON.stringify(d),before);assert.throws(()=>dailyReview(d,{date:'2026-02-31'}),/Geçerli/);
+const filtered=dailyReview(d,{date,vehicle_id:'V'});assert.equal(filtered.noWork.length,0);assert.ok(filtered.actions.every(x=>!x.href.startsWith('#/kasa/')));
+const grouped=groupDailyFindings([{href:'#/isler?a=1&b=2',kind:'info',title:'A',why:'a'},{href:'#/isler?b=2&a=1',kind:'alert',title:'B',why:'b'},{href:'#/isler?a=1&b=2',kind:'info',title:'A',why:'a'},{href:'javascript:alert(1)',title:'bad'}]);
+assert.equal(grouped.length,1);assert.equal(grouped[0].kind,'alert');assert.equal(grouped[0].findings.length,2);
+console.log('daily review126 PASS: source grouping without lost reasons; no-work is not absence; future cash excluded; date/filter preserved; no mutations');
