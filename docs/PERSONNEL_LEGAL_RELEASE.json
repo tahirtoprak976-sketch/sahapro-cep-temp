@@ -1,11 +1,11 @@
 {
-  "version": "3.10.31",
+  "version": "3.10.32",
   "schema": 8,
-  "purpose": "Unchecked local paid-work review; existing commercial desk and schema8 preserved",
+  "purpose": "Session-only list navigation and shared mobile list presentation; records and schema8 unchanged",
   "files": {
-    "js/app.js": "1bfcc3161de387e3e4735f508e811883bcf4e0728919d3626a4120a794beaaf4",
+    "js/app.js": "ad9d7016169cedce952d2d6fc3b8ed33bf437de8e79ca676edac360fb9812b4d",
     "js/backup.js": "d4251a7524dde2c30ac8fbef485693d6c4beeef95019815b394e6fbd2157feb8",
-    "js/core.js": "0d72d3a500e037828fd9f461ed40b1304ef1d6eb5af4a70a35581b3844ec1a58",
+    "js/core.js": "6eabf994fe5576965c35aaca079602df81e263e08821ec1523be28de1a89920a",
     "js/db.js": "6821b73e5e9f4a839643bf14c1cf5127da8c9f1ae2e9ee1717209aaca737f613",
     "js/enterprise-db.js": "3cdc8c050012aeba9ad4cfd006c56b8545cb4a26590ddbdcb2932371a7a01361",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -24,7 +24,7 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "a54349d9248d75ad12cfed953969329aa3756b5eec3da2e772eebd3929b6c04c",
+    "sw.js": "9db2fc8a7515f7e105423b7e80fa7240d1b7903b5b30cce643477f49a1d6f8b5",
     "js/assistant.js": "8327a500f12a7b0ad01b318e402895a7a754d8870791d572e163150fba8cd496",
     "js/m-ops.js": "986c7e83260e37525cedbb001dcc10df485389908b05cd14d6890c4df7aa2248",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
@@ -52,7 +52,7 @@
     "js/assistant-conversation.js": "a1b5774c882e78f0c60884db6f294eeed1f7bb09509f1d5309196e9f3efb9778",
     "js/assistant-connection-ui.js": "b7a7da97ee50e397cfcd5dafdea836620c04a9715c7f1c46ffbabad616ee7386",
     "js/assistant-agent-core.js": "fa1a0139fc5d14ec6062039fe996ef776842345459c13fd373ce133f5001dcbb",
-    "styles.css": "31792ecb9e702df8cb66d9aa565de8b13cc48fa8913eef3307ee34b341cadd72",
+    "styles.css": "5e40c12cf12551e793940d12c41e7aed52c05350984d5256a6bb609b06feeed1",
     "js/assistant-document-read.js": "705df4f51388e9c74af94bd25f8dfdc89ab222e953c2a230aa677e399759d4aa",
     "js/remote-actions-core.js": "1e4b0cd7c9f7b33d9a07768fdb61c45ee1674f8d84b3c2fdc3eb2a937ce092e3",
     "js/field-stream-ui.js": "f5ebaa6f8bda5457548ccfef455c44ea978f0d5b9e88b59615cccc5331135201",
@@ -78,6 +78,7 @@
     "js/commercial-desk-ui.js": "e7f18c9b25680cabe2a1bee246f064fb5b394b40e58d4bfeced35f39fec1f7ab",
     "js/paid-work-core.js": "1d7ad9260f80d491e9f2ec422343d4ec828e2ba2c9137726a299d44cbd92e846",
     "js/paid-work-db.js": "11f06259c6657bee691ae397b82749b5c9e0dafbec98f6b8ccdd34bf6cbc8342",
-    "js/paid-work-ui.js": "9ec62025c27986327d2dd5c50a7b2bde9de16d13f5a5a45d19dfe48663e2371e"
+    "js/paid-work-ui.js": "9ec62025c27986327d2dd5c50a7b2bde9de16d13f5a5a45d19dfe48663e2371e",
+    "js/list-workspace.js": "3e67419258297b916906f0dbe1815c1f9ee9a2d99efa4ddd1f9e84af247d15aa"
   }
 }
