@@ -1,3 +1,4 @@
+import {mountFinanceActionQueue} from './finance-action-queue.js';
 import {commercialDesk,commercialRows} from './commercial-desk-core.js';
 import {appbar,esc,fmtTL,trDate,notice,todayStr} from './ui.js';
 import {watchRecords} from './record-refresh.js';
@@ -22,13 +23,14 @@ export async function commercialDeskScreen(ctx){
  <p class="small">İşler seçili dönem; taslaklar, TL bakiye ve ödeme sözleri tüm tarihler içindir.</p>
  <form data-commercial-period><div class="formgrid2"><label class="field">İş başlangıcı<input type="date" name="from" value="${esc(query.from||today.slice(0,8)+'01')}" required></label><label class="field">İş bitişi<input type="date" name="to" value="${esc(query.to||today)}" max="${today}" required></label></div><div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn primary">Dönemi uygula</button><button type="button" class="btn" data-commercial-refresh>Güncelle</button></div></form>
  <div data-commercial-error role="status"></div><p class="tiny muted">Ödeme sözü alınan para değildir. KDV yalnız seçilip kesinleşen hakedişte eklenir.</p><details><summary class="small">Kapsam ve hesap kuralları</summary><p class="tiny muted">Taslak kesinleşmiş hakediş değildir. Ana firma ve taşeron hesapları ayrıdır. Tarihi eksik / geçersiz işler ayrıca kontrol listesine girer. İş fiyatı yoksa tutar üretilmez; mazot (L) ayrı izlenir. KDV yalnız hakedişte ayrıca seçilip kesinleştirilince cariye eklenir.</p></details>
- </section><div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr))" data-commercial-counts></div>
+ </section><section class="finance-panel" data-finance-action-queue></section><div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr))" data-commercial-counts></div>
  <section class="card"><label class="field">Müşteri ara<input type="search" data-commercial-search value="${esc(query.q||'')}" placeholder="Müşteri, ana firma veya telefon"></label><label class="field">Takip türü<select data-commercial-status>${Object.entries(filters).map(([k,t])=>`<option value="${k}" ${k===status?'selected':''}>${esc(t)}</option>`).join('')}</select></label><p class="tiny muted">Üst sayılar arama ve takip türü filtresinden etkilenmez; aynı müşteri birden fazla sayıya dahildir.</p><p class="small" data-commercial-result aria-live="polite"></p></section>
  <div data-commercial-orphans></div><div data-commercial-list></div>`;
  const q=s=>root.querySelector(s),from=q('[name=from]'),to=q('[name=to]'),search=q('[data-commercial-search]'),select=q('[data-commercial-status]');
  let scope={from:from.value,to:to.value};
  const draw=()=>{
   if(!model)return;
+  mountFinanceActionQueue(ctx,model,data,'commercial');
   const rows=commercialRows(model,{q:search.value,status});
   q('[data-commercial-result]').textContent=`İş dönemi: ${trDate(model.from)} – ${trDate(model.to)} · ${rows.length} / ${model.rows.length} müşteri gösteriliyor.`;
   q('[data-commercial-counts]').innerHTML=[['review','Eksik / kontrol'],['ready','Hazır işi olan'],['drafts','Taslağı bekleyen'],['receivable','Açık TL alacağı'],['promises','Ödeme sözü olan']].map(([k,t])=>`<button class="stat" type="button" data-commercial-filter="${k}"><b style="font-size:22px;font-variant-numeric:tabular-nums">${model.counts[k]}</b><div class="small">${t}</div></button>`).join('');
