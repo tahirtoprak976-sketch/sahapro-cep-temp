@@ -1,3 +1,4 @@
+import {fleetEntryContext,fleetEntryContextHTML,fleetEntryReturn} from './fleet-entry.js';
 // Only the selected business date/vehicle travel into a new form, never amounts/evidence.
 import {isActive,todayStr,trDate} from './core.js';
 import {realDate} from './work-explorer.js';
@@ -11,6 +12,7 @@ export function entryLink(kind,state={}){
  return '#/'+SOURCES[kind][2]+'/new?'+q;
 }
 export function entryContext(query={},vehicles=[],today=todayStr()){
+ if(query.source==='fleet')return fleetEntryContext(query,vehicles,today);
  if(query.source!=='saha')return null;
  if(!realDate(query.date))return {error:'Saha Akışı günü geçersiz. Yeni kayıt açmadan önce günü yeniden seçin.',returnHash:'#/saha-akisi'};
  let back={date:query.date,vehicle_id:query.vehicle_id||''};
@@ -25,16 +27,18 @@ export function entryContext(query={},vehicles=[],today=todayStr()){
 }
 export function entryContextHTML(context,preserved=false){
  if(!context)return '';
+ if(context.source==='fleet')return fleetEntryContextHTML(context,preserved);
  if(context.error)return `<div class="notice warn" data-entry-context role="alert">${esc(context.error)}</div><a class="btn block" href="${esc(context.returnHash)}">Saha Akışı’na dön</a>`;
  return `<section class="notice info" data-entry-context><div><b>Saha Akışı · ${trDate(context.values.date)}${context.vehicleName?' · '+esc(context.vehicleName):''}</b><p class="small">${preserved?'Mevcut iş taslağınız veya benzer iş seçimleriniz korundu; formdaki tarih ve aracı kontrol edin.':'Saha seçimleri forma taşındı. Tarihi ve seçimleri kontrol edin.'}${context.historical?' Geçmiş tarihli kayıt giriyorsunuz.':''}${context.vehicleMissing?' Seçili araç artık aktif değil; formda yeniden araç seçin.':''}</p><p class="tiny">Kaydedilince kaydın bulunduğu gün Saha Akışı’nda açılır; arama filtresi temizlenir.</p><a href="${esc(context.returnHash)}">Saha Akışı’na dön</a></div></section>`;
 }
 export function entrySaveHash(context,kind,fields={}){
+ if(context?.source==='fleet')return fleetEntryReturn(context,kind,fields);
  if(!context||context.error||!Object.hasOwn(SOURCES,kind))return null;
  const date=realDate(fields.date)?fields.date:context.values.date;
  return streamURL(context.returnState,{date,kind:context.returnState.kind?kind:'',vehicle_id:context.returnState.vehicle_id?fields.vehicle_id||'':'',q:''});
 }
 export function entryRepeatHash(context,fields={},repeatId=null){
- if(!context||context.error)return null;
+ if(!context||context.error||context.source==='fleet')return null;
  const q=new URLSearchParams({source:'saha',date:realDate(fields.date)?fields.date:context.values.date,return_to:context.returnHash});
  if(fields.vehicle_id)q.set('vehicle_id',fields.vehicle_id);
  if(repeatId)q.set('repeat',repeatId);else q.set('copylast','1');

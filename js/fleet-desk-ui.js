@@ -1,15 +1,19 @@
+import {fleetEntryLinks} from './fleet-entry.js';
 import {fleetDesk} from './fleet-desk-core.js';
 import {esc,fmtTL,trDate,notice} from './ui.js';
 import {watchRecords} from './record-refresh.js';
 const number=n=>Number(n).toLocaleString('tr-TR',{maximumFractionDigits:1});
 export function fleetDeskHtml(m){
+ const actions=fleetEntryLinks(m.vehicle,m.today),fuel=m.fuelLast;
  const late=m.rules.filter(r=>r.state==='late').length,unknown=m.history.filter(r=>r.history_unknown_status).length;
  return `<h2 style="margin:0 0 6px">Araç takip dosyası</h2><p class="small muted">${esc(trDate(m.today))} itibarıyla · yalnız bu araç / makine</p>
- <div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">${[['Belge kontrolü',m.urgent.length,m.links.documents],['Açık bakım / arıza',m.open.length,m.links.history],['Geciken bakım kuralı',late,m.links.calendar],['Bakım geçmişi',m.history.length,m.links.history]].map(([t,n,h])=>`<a class="stat" href="${esc(h)}"><b>${n}</b><div class="small">${esc(t)}</div></a>`).join('')}</div>
+ <div class="fleet-entry-actions" data-fleet-entry-actions>${Object.entries(actions).map(([kind,href])=>`<a class="btn ${kind==='fuel'?'primary':''}" data-fleet-entry="${kind}" href="${esc(href)}">${{fuel:'Yakıt ekle',maintenance:'Bakım / arıza aç',document:'Belge ekle',meter:'Sayaç oku'}[kind]}</a>`).join('')||'<p class="small muted">Araç pasif; üstteki yeni işlem bağlantıları kapalı.</p>'}</div>
+ <div class="statgrid fleet-entry-stats" style="grid-template-columns:repeat(2,minmax(0,1fr))">${[['Belge kontrolü',m.urgent.length,m.links.documents],['Açık bakım / arıza',m.open.length,m.links.history],['Geciken bakım kuralı',late,m.links.calendar],['Bakım geçmişi',m.history.length,m.links.history]].map(([t,n,h])=>`<a class="stat" href="${esc(h)}"><b>${n}</b><div class="small">${esc(t)}</div></a>`).join('')}</div>
  <a class="btn primary" data-fleet-next href="${esc(m.next.href)}">${esc(m.next.label)}</a>
  ${!m.documents.length?notice('warn','Araç belgesi kaydı yok; süre kontrolü yapılamıyor.'):''}
  ${!m.rules.length?'<p class="small muted">Bakım kuralı tanımlanmamış. Takvimden araç için uygun periyodu belirleyin; kendiliğinden kural eklenmez.</p>':''}
  <div style="margin-top:10px" data-fleet-meters>${[['km','Kilometre','km'],['hours','Çalışma saati','saat']].map(([k,label,u])=>{const r=m.meters[k];return `<p class="small"><b>${label}:</b> ${r.last?esc(number(r.last.value)+' '+u+' · '+trDate(r.last.date)+' · '+r.last.src):'Okuma yok'}${r.conflict?' · Sayaç azalmış; kaydı kontrol edin.':''}${r.excluded?' · Gelecek / geçersiz tarihli okumalar kullanılmadı.':''}</p>`;}).join('')}<p class="tiny muted">Son kayıtlı okumalar gösterilir; iş saatleri kesin sayaç okuması yerine eklenmez.</p></div>
+ <div class="fleet-last-fuel" data-fleet-last-fuel><b>Son yakıt kaydı</b>${fuel?`<a href="#/yakit/${encodeURIComponent(fuel.id)}">${esc(trDate(fuel.date))} · ${fuel.liters!==''&&fuel.liters!=null&&Number.isFinite(Number(fuel.liters))&&Number(fuel.liters)>=0?esc(number(fuel.liters))+' L':'Litre bilgisi eksik'} · ${esc(fuel.fuel_source||'Kaynak belirtilmedi')}</a>`:'<span class="small muted">Kayıt yok</span>'}<span class="tiny muted">Verilen yakıt kaydıdır; ölçülmüş tüketim değildir.</span></div>
  <p class="small" data-fleet-known-cost><b>Bilinen maliyet satırları (brüt): ${esc(fmtTL(m.cost))} TL</b></p>${m.costIncomplete?notice('warn','Maliyet eksik: '+m.costReason+'. Gösterilen ara toplam tüm masraf değildir.'):''}
  <p class="tiny muted">Bu tutar ödeme veya kâr değildir. Bağlı maliyet kaynakları bir kez hesaplanır; yalnız takip kaydı yeni gider oluşturmaz.${unknown?' '+unknown+' gider / alış kaydında bakımın tamamlanma durumu belirtilmemiş; ödeme, işin tamamlanması sayılmaz.':''}</p>
  <div class="row" style="gap:6px;flex-wrap:wrap"><a class="btn" href="${esc(m.links.meter)}">Sayaç oku</a><a class="btn" href="${esc(m.links.cost)}">Maliyet kaynakları</a><a class="btn" data-fleet-maintenance-pdf href="${esc(m.links.report)}">Bakım raporu / PDF</a><button class="btn" data-fleet-desk-refresh>Yenile</button></div>

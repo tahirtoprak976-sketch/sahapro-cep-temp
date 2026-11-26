@@ -1,11 +1,11 @@
 {
-  "version": "3.10.34",
+  "version": "3.10.35",
   "schema": 8,
-  "purpose": "Exact-customer action workspace and in-place entity creation shortcuts; schema8 and financial rules unchanged",
+  "purpose": "Upper vehicle dossier and exact vehicle form context; schema8, financial rules and records unchanged",
   "files": {
     "js/app.js": "93578ce04b591d2aea596519149098c78ad7da5d629e28502475d653b003cc04",
     "js/backup.js": "d4251a7524dde2c30ac8fbef485693d6c4beeef95019815b394e6fbd2157feb8",
-    "js/core.js": "886c4815919df7623378b280d15b03a90c15167e4923c7d5a277af6c53cdb15c",
+    "js/core.js": "2e71268a1aa66755889c6f885671b5a280eb105f3d1a0ce8e5fe037c84fb13a5",
     "js/db.js": "6821b73e5e9f4a839643bf14c1cf5127da8c9f1ae2e9ee1717209aaca737f613",
     "js/enterprise-db.js": "3cdc8c050012aeba9ad4cfd006c56b8545cb4a26590ddbdcb2932371a7a01361",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -24,9 +24,9 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "1bbea21e8ced76b5be109952c08777324f52d86a9148fd4023d4902980ce7d0a",
+    "sw.js": "e2ff34a64ce8d9ce0ec03f1fd67c8876597b88142fe461cb6a15d2bce1d13c55",
     "js/assistant.js": "8327a500f12a7b0ad01b318e402895a7a754d8870791d572e163150fba8cd496",
-    "js/m-ops.js": "986c7e83260e37525cedbb001dcc10df485389908b05cd14d6890c4df7aa2248",
+    "js/m-ops.js": "d5d5af43b193bef8254e8867c4f76986d9fcc1f1b83d89eebbc4cdd5c8c6f609",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
     "js/maint.js": "490f70399320c748edfaf5e17a3fdc272c7d44fa231ce33a9aec184b54c8b845",
     "js/maintenance-history-core.js": "c1f8b561c2d0c86093e0746467d793ae57b0d4908a5b02613abd391c8b7434ba",
@@ -52,7 +52,7 @@
     "js/assistant-conversation.js": "a1b5774c882e78f0c60884db6f294eeed1f7bb09509f1d5309196e9f3efb9778",
     "js/assistant-connection-ui.js": "b7a7da97ee50e397cfcd5dafdea836620c04a9715c7f1c46ffbabad616ee7386",
     "js/assistant-agent-core.js": "fa1a0139fc5d14ec6062039fe996ef776842345459c13fd373ce133f5001dcbb",
-    "styles.css": "7d6d17cd39b4798a7f96d40e3b37f55f15f6495ce249b6477d1649e09d067d94",
+    "styles.css": "9326bfae25cae83d625ab0d5b96c9cb55d068d89cfa9caa8e65a467b4f5daeb4",
     "js/assistant-document-read.js": "705df4f51388e9c74af94bd25f8dfdc89ab222e953c2a230aa677e399759d4aa",
     "js/remote-actions-core.js": "1e4b0cd7c9f7b33d9a07768fdb61c45ee1674f8d84b3c2fdc3eb2a937ce092e3",
     "js/field-stream-ui.js": "f5ebaa6f8bda5457548ccfef455c44ea978f0d5b9e88b59615cccc5331135201",
@@ -70,9 +70,9 @@
     "js/enterprise.js": "3562acf6ae85c190e6b016ae7b15daa6bdfcc2965777d4e8073af3ecf9fea947",
     "js/customer-desk.js": "25b2b553244c5bc9f967e51d46257328b2458bf39b178334234a6ca5bb2141f5",
     "js/solo-ui.js": "22c53bb1360c8a75e60eb13a6274389bd3070f2fa3959f094d69ec13a5e599f1",
-    "js/pro.js": "4d77f5554dd31e9e9c652d8fa94911323ca362af05e9575e5a8b68483462389f",
-    "js/fleet-desk-core.js": "fa53db580c5433a8a8679c16485a97f572010de240aa95e1e0143a37c2f6fd13",
-    "js/fleet-desk-ui.js": "ce43611a49158e42eff09e2fda0760ab1ef9e78e1b2f6dc926bd8f3a8eda9d62",
+    "js/pro.js": "d6ba98048cd8bb0133d62d9481150259814763a49d0634c4d151af411275f70c",
+    "js/fleet-desk-core.js": "fba241c853ee60c9ff400bd1daa5f590b33062daf1d1d159be50d71421715eac",
+    "js/fleet-desk-ui.js": "866bb798dca78b22c8071366712e0d3d2ab6f2f410a6d40bb2ae76b6551c7c15",
     "js/m-finance.js": "cde65eff4e92cc9ea2c31b0f881af581232a0c3ee0302339d43d3cd45929c231",
     "js/commercial-desk-core.js": "b0f832f8164b6a44878cc0a545e4f10db254c7701881629c29d4ab3516c548c7",
     "js/commercial-desk-ui.js": "e7f18c9b25680cabe2a1bee246f064fb5b394b40e58d4bfeced35f39fec1f7ab",
@@ -82,6 +82,8 @@
     "js/list-workspace.js": "adf8f4ba84ee281e8e81d176453065b1ef411a466066c52f71857f7ccf8eeda3",
     "js/list-presentation.js": "78af0a2ce4f66dcf5bb4dce6a0abbc1a49434e0831aef5b298518375b2ac8867",
     "js/m-work.js": "52fe55b2e8c71d7e234f09fba4d1f3226741ff8c64cc3b4cd9e84b512d433097",
-    "js/customer-workspace.js": "b4d1b44de4c56c4d7618d67c09d0f5ffef815d83463999e01ad80274de50feb8"
+    "js/customer-workspace.js": "b4d1b44de4c56c4d7618d67c09d0f5ffef815d83463999e01ad80274de50feb8",
+    "js/fleet-entry.js": "8120dd97a7cfe1c4fce3af0b5ae7f5704bd9f7f5fc8553d470e2bb1c4fe80bd9",
+    "js/entry-context.js": "82e232066b241db2716b4fc120276fbe3fc91981bbff101537d1c64200a6f942"
   }
 }
