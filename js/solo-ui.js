@@ -1802,6 +1802,7 @@ async function customerDashboard(ctx, id, d) {
   const { root, db } = ctx;
   const CR = await import("./customer-report.js");
   const {customerDeskHtml} = await import("./customer-desk.js");
+  const {customerWorkspaceHTML} = await import("./customer-workspace.js");
   const me = (d.customers || []).find((c) => c.id === id);
   if (!me) return;
   const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);
@@ -1810,12 +1811,16 @@ async function customerDashboard(ctx, id, d) {
   sec.dataset.custdash = "1";
   const tabs = root.querySelector("[data-tabs]");
   if (tabs) tabs.before(sec); else root.append(sec);
+  const workspace=document.createElement('section');workspace.className='card customer-workspace';workspace.dataset.customerWorkspace='';
+  root.querySelector('.appbar')?.after(workspace);
   let per = "year", subs = false;
   const fmt = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   const tile = (v, l, cls = "") => ui.stat(v, l, cls);
   const draw = () => {
     const rg = CR.periodRange(per);
     const R = CR.customerReportData(d, id, { from: rg.from, to: rg.to, subs });
+    const ownReport=subs?CR.customerReportData(d,id,{from:rg.from,to:rg.to,subs:false}):R;
+    workspace.innerHTML=customerWorkspaceHTML(d,id,ownReport,{from:rg.from,to:rg.to});
     const a = R.aging, aSum = a.b0 + a.b30 + a.b60 + a.b90 || 1;
     const PM = CR.panelModel(R, rg.label);
     const fmt1 = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
