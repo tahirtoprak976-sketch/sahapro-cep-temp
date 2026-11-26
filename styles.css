@@ -1359,3 +1359,6 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 
 /* Personel dosyası: yalnız bu çalışma alanı. */
 .personnel-workspace-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.personnel-workspace-actions .btn{white-space:normal;min-height:52px;text-decoration:none;text-align:center}.personnel-workspace-work{display:flex;flex-direction:column;padding:10px 0;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}[data-personnel-workspace] h2{margin:0 0 6px}
+
+/* Action queue: explicit work-level reasons and bounded mobile pages. */
+.finance-queue-filters{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.finance-queue-item{padding:14px 0;border-top:1px solid var(--line)}.finance-queue-top{display:flex;justify-content:space-between;gap:8px;align-items:start}.finance-queue-top b{overflow-wrap:anywhere}.finance-queue-item p{margin:6px 0}.finance-queue-item ul{padding-left:20px}.finance-queue-item .row{flex-wrap:wrap;gap:6px}.finance-queue-item a{white-space:normal;text-decoration:none;min-height:44px}
