@@ -20,7 +20,7 @@ with sync_playwright()as p:
  ids=r['ids']
  screens={}
  for target in ['#/sozlesmeler','#/is-sozlesmeleri','#/bakimplani/'+ids['plan'],'#/personel/'+ids['person'],'#/gun-kapanis']:
-  pg.goto(U+'index.html'+target);pg.wait_for_function("()=>document.querySelector('#screen')?.children.length>0&&!document.querySelector('#screen .skel')");screens[target]=pg.locator('#screen').inner_text();assert 'Ekran yüklenirken hata' not in screens[target]
+  pg.goto(U+'index.html'+target);pg.wait_for_selector('#screen[data-view-ready="1"]');screens[target]=pg.locator('#screen').inner_text();assert 'Ekran yüklenirken hata' not in screens[target]
  assert pg.locator('#screen').get_by_text('Kaynaklar değişti',exact=True).count()
  assert 'tahmin' in screens['#/bakimplani/'+ids['plan']]
  assert 'tüm dönemler' in screens['#/personel/'+ids['person']] and 'Puantaj / Maaş' in screens['#/personel/'+ids['person']]
