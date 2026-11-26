@@ -1,3 +1,4 @@
+import {applyJob,isIncluded,checkDeal} from './job-core.js';
 import {tankTimeline} from './tank-timeline.js';
 import {canonicalVehicleType} from "./vehicle-type-core.js";
 // Structured historical import only. No guessing of WhatsApp prose, prices or VAT.
@@ -83,6 +84,13 @@ export function readHistoryPackage(value) {
       throw Error(
         `Satır ${i + 1}: yalnız hakedişe alınmamış ve ödenmemiş kayıtlar desteklenir.`,
       );
+    if (Object.hasOwn(r,'contract_included') || Object.hasOwn(r,'contract_revision')) {
+      if (r.kind!=='work' || r.contract_included!==true || !text(r.site) ||
+          typeof r.contract_revision!=='string' || !Number.isFinite(Date.parse(r.contract_revision)) ||
+          new Date(r.contract_revision).toISOString()!==r.contract_revision ||
+          (r.unit_price!=null && r.unit_price!==''))
+        throw Error('Sözleşmeye dahil iş için şantiye, sözleşme sürümü ve fiyatsız kapsam onayı gerekli.');
+    }
     // Allowlist, excluding executable content, IDs, financial locks and arbitrary backup fields.
     const fields = [
       "row_id",
@@ -101,6 +109,8 @@ export function readHistoryPackage(value) {
       "quarry",
       "description",
       "review_notes",
+      "contract_included",
+      "contract_revision",
       "unit_price",
       "kdv_rate",
       "kdv_included",
@@ -322,7 +332,16 @@ export function prepareHistory(
             groupIds.set(r.transport_group_key, newRecord().id);
           w.transport_group_id = groupIds.get(r.transport_group_key);
         }
-        if (r.unit_price != null && r.unit_price !== "") {
+        if (r.contract_included===true) {
+          const site=(data.sites||[]).find(s=>s.id===site_id&&isActive(s));
+          if (!site || site.active===false || site.updated_at!==r.contract_revision ||
+              site.customer_id!==customer_id || site.deal?.basis!=='Götürü' || checkDeal(site.deal))
+            throw Error('Sözleşme veya şantiye değişmiş; güncel kapsamı yeniden kontrol edin.');
+          const applied=applyJob(data,w);
+          if (!isIncluded(applied) || applied.job_extra!==false)
+            throw Error('Bu tarihte açık ve kapsamına dahil götürü sözleşme bulunamadı.');
+          Object.assign(w,applied);
+        } else if (r.unit_price != null && r.unit_price !== "") {
           if (
             !Number.isFinite(Number(r.unit_price)) ||
             Number(r.unit_price) < 0

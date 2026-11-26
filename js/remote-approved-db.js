@@ -1,3 +1,5 @@
+import {PERSONAL_EXPENSE_FORMAT} from './personal-expense-core.js';
+import {stagePersonalExpense} from './personal-expense-db.js';
 import {isActionsFormat,decodeActionFiles,actionsPlan} from './remote-actions-core.js';
 import {PAID_WORK_FORMAT} from './paid-work-core.js';
 import {stagePaidWork} from './paid-work-db.js';
@@ -22,7 +24,7 @@ export async function remoteAuthority(){const [a,consent]=await Promise.all([get
 export const remoteReceiptKey=(channel,id)=>'remote-approved:'+channel+':'+id;
 export async function commitApprovedPacket(value,channel,{canWrite=()=>true}={}){
  if(!REMOTE_ID.test(channel)||!canWrite())throw Error('Bağlantı veya oturum uygun değil');
- const p=readApprovedPacket(value);if(p.format===PAID_WORK_FORMAT)return stagePaidWork(p,channel,{canWrite});if(isActionsFormat(p.format))return commitRemoteActions(p,channel,{canWrite});
+ const p=readApprovedPacket(value);if(p.format===PERSONAL_EXPENSE_FORMAT)return stagePersonalExpense(p,channel,{canWrite});if(p.format===PAID_WORK_FORMAT)return stagePaidWork(p,channel,{canWrite});if(isActionsFormat(p.format))return commitRemoteActions(p,channel,{canWrite});
  const digest=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(stableStringify(p))))].map(x=>x.toString(16).padStart(2,'0')).join('');
  const receiptKey=remoteReceiptKey(channel,p.id),previous=await db.metaGet(receiptKey);
  if(previous){if(previous.digest!==digest)throw Object.assign(Error('Paket numarası farklı içerikle tekrar kullanılmış'),{code:'OP_CONFLICT'});return {...previous,replayed:true};}

@@ -6,7 +6,7 @@ import {pendingFuelSummary} from './historical-fuel.js';
 
 export const APP_ID = "SAHAPRO_SOLO";
 export const LEGACY_APP_IDS = ["SAHAPRO_CEP"];
-export const APP_VERSION = "SAHAPRO SOLO v3.10.38";
+export const APP_VERSION = "SAHAPRO SOLO v3.10.39";
 export const SCHEMA_VERSION = 8;
 export const SOURCE = "SAHAPRO_SOLO";
 export const LEGACY_SOURCES = ["temporary_mobile_logger"];
