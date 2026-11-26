@@ -1,5 +1,6 @@
 import {prepareListNavigation,mountListWorkspace,listRoute} from './list-workspace.js';
 import {startRemoteApproved} from './remote-approved-runner.js';
+import {startLiveAccess} from './live-access-runner.js';
 import {mountWorkspaceMenu} from './workspace-menu.js';
 import {installFormAccessibility} from './form-accessibility.js';
 import {installRecordRefresh} from "./record-refresh.js";
@@ -491,7 +492,7 @@ document.addEventListener("click", (ev) => {
     await installRecordRefresh({db,context:()=>({root:qs("#screen"),parts:parseHash().parts}),reload:renderCurrent});
     window.addEventListener("hashchange", renderCurrent);
     await renderCurrent();
-    if(!isDriverPhone())startRemoteApproved();
+    if(!isDriverPhone()){startRemoteApproved();startLiveAccess();}
   } catch (e) {
     console.error(e);
     qs("#screen").innerHTML =

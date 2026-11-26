@@ -49,3 +49,15 @@ export const forgetRecipient = () => access(true, (s) => s.delete("recipient"));
 export const getRemoteAuthority=()=>access(false,s=>s.get('remote-approved'));
 export const putRemoteAuthority=authority=>access(true,s=>s.put(authority,'remote-approved'));
 export const deleteRemoteAuthority=()=>access(true,s=>s.delete('remote-approved'));
+// Live transport credentials and encrypted response retries never enter business backups.
+export const getLiveAccess=()=>access(false,s=>s.get('live-access'));
+export const putLiveAccess=value=>access(true,s=>s.put(value,'live-access'));
+export const deleteLiveAccess=()=>access(true,s=>s.delete('live-access'));
+export async function cacheLiveResponse(config,entry){
+ const db=await storage();
+ try{return await new Promise((resolve,reject)=>{
+  const t=db.transaction('keys','readwrite'),s=t.objectStore('keys');let changed=false;
+  s.get('live-access').onsuccess=e=>{const current=e.target.result;if(!current?.enabled||current.channel!==config.channel||current.token!==config.token)return;const retries=[...(current.retries||[]).filter(x=>x.id!==entry.id&&Date.parse(x.box.expires_at)>Date.now()),entry].slice(-10);s.put({...current,retries},'live-access');changed=true;};
+  t.oncomplete=()=>resolve(changed);t.onabort=t.onerror=()=>reject(t.error||Error('Yanıt saklanamadı'));
+ });}finally{db.close();}
+}

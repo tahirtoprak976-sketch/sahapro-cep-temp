@@ -3,6 +3,7 @@ import {reauth} from './security.js';
 import {enableRemoteAuthority,disableRemoteAuthority,remoteAuthority,remoteResults,setRemoteActionsEnabled} from './remote-approved-db.js';
 import {checkRemoteApproved} from './remote-approved-runner.js';
 import {mountPaidWorkReview} from './paid-work-ui.js';
+import {mountLiveAccess} from './live-access-ui.js';
 export async function mountRemoteApproved(ctx,host){
  const panel=document.createElement('section');panel.className='slip-panel';panel.dataset.remoteApproved='';host.append(panel);let busy=false;
  async function render(){
@@ -29,5 +30,5 @@ export async function mountRemoteApproved(ctx,host){
   qs('[data-remote-check]',panel)?.addEventListener('click',run(async()=>{const result=await checkRemoteApproved();busy=false;await render();busy=true;if(result?.waiting)qs('[data-remote-status]',panel).textContent='Açık önizleme/form veya kilit var; önce onu tamamlayın.';}));
   qs('[data-remote-copy-result]',panel).onclick=async()=>{const text=JSON.stringify({results:receipts,status},null,2);try{await navigator.clipboard.writeText(text);toast('Kayıt sonuçları kopyalandı','ok');}catch{downloadBlob(new Blob([text],{type:'application/json'}),'SAHAPRO_aktarim_sonucu.json');}};
  }
- const onStatus=()=>{if(!qs('[data-remote-code]',panel))render().catch(()=>{});};window.addEventListener('sp-remote-status',onStatus);const observer=new MutationObserver(()=>{if(!panel.isConnected){window.removeEventListener('sp-remote-status',onStatus);observer.disconnect();}});observer.observe(document.body,{childList:true,subtree:true});await render();await mountPaidWorkReview(ctx,host);
+ const onStatus=()=>{if(!qs('[data-remote-code]',panel))render().catch(()=>{});};window.addEventListener('sp-remote-status',onStatus);const observer=new MutationObserver(()=>{if(!panel.isConnected){window.removeEventListener('sp-remote-status',onStatus);observer.disconnect();}});observer.observe(document.body,{childList:true,subtree:true});await render();await mountPaidWorkReview(ctx,host);await mountLiveAccess(host);
 }
