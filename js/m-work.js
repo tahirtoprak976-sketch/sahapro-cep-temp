@@ -634,6 +634,13 @@ async function workForm(ctx, editId) {
   bindNew("personnel_id", "personnel", "Personel");
   bindNew("dump_site_id", "dump_sites", "Döküm Sahası");
   bindNew("quarry_id", "quarries", "Malzeme Ocağı");
+  const shortcuts=document.createElement('div');shortcuts.className='work-inline-cards';shortcuts.dataset.workInlineCards='';
+  shortcuts.innerHTML='<button type="button" class="btn sm" data-work-create-customer>+ Müşteri ekle</button><button type="button" class="btn sm" data-work-create-site>+ Şantiye ekle</button><span class="tiny muted">Yeni kartı ekleyince bu formdaki bilgiler korunur.</span>';
+  (customerSelect.closest('.formgrid2')||customerSelect.closest('.field')).before(shortcuts);
+  const createSite=shortcuts.querySelector('[data-work-create-site]');
+  const updateShortcut=()=>{createSite.disabled=!customerSelect.value||customerSelect.value==='__new__';};
+  updateShortcut();customerSelect.addEventListener('change',updateShortcut);
+  for(const [selector,select] of [['[data-work-create-customer]',customerSelect],['[data-work-create-site]',siteSelect]])shortcuts.querySelector(selector).onclick=()=>{if(pendingCards||!current())return;select.value='__new__';select.dispatchEvent(new Event('change',{bubbles:true}));};
   customerSelect.addEventListener('change', () => {
     syncSites();
     siteSelect.dispatchEvent(new Event('change', { bubbles: true }));

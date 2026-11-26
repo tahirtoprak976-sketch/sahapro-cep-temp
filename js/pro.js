@@ -887,6 +887,11 @@ async function master(ctx) {
     id = parts[1];
   if (id === "new" || parts[2] === "edit") {
     const r = id === "new" ? {} : await db.get(store, id);
+    if(id==='new'&&store==='sites'&&ctx.query?.customer_id){
+      const customer=await db.get('customers',ctx.query.customer_id);
+      if(!customer||!core.isActive(customer)||customer.active===false){root.innerHTML=appbar('Şantiye / Kart')+ui.notice('warn','Müşteri bulunamadı veya aktif değil. Müşteri dosyasını yeniden açın.');return true;}
+      r.customer_id=customer.id;
+    }
     const keys =
       store === "vehicles"
         ? [
