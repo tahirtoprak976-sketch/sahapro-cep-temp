@@ -45,7 +45,7 @@ export async function operationHistory({root,db,query={}},kind){
  ${fuel?`<div class="field"><label>Yakıtın kaynağı<select data-ofilter="source"><option value="">Tüm kaynaklar</option>${sources.map(x=>`<option value="${esc(x)}" ${s.source===x?'selected':''}>${esc(x)}</option>`).join('')}</select></label></div>`:''}</div>
  <div class="field-actions"><button class="btn primary" data-operation-apply>Filtreleri uygula</button><a class="btn" data-history-clear href="#/${route}${fuel?'':'?f=all'}">Tümünü temizle</a></div>
  <div class="field-actions">${!s.error&&m.rows.length?`<button class="btn sm" data-operation-csv>Filtreli CSV · ${m.rows.length} kayıt</button>`:''}${fuel?'':'<a class="btn sm" href="#/bakim-takvimi">Bakım Takvimi</a>'}</div></details>
- <div data-list data-operation-list></div><div class="actionbar"><a class="btn primary" href="#/${route}/new">${fuel?'+ Yakıt Kaydı':'+ Arıza / Bakım'}</a></div>`;
+ <div data-list data-operation-list data-record-count="${m.rows.length}"></div><div class="actionbar"><a class="btn primary" href="#/${route}/new">${fuel?'+ Yakıt Kaydı':'+ Arıza / Bakım'}</a></div>`;
  const row=r=>{
   const name=(store,id)=>operationName(names,store,id),cost=r.cost!==''&&r.cost!=null&&Number.isFinite(Number(r.cost))&&Number(r.cost)>=0;
   return `<a class="li work-explorer-row" data-operation-record="${esc(r.id)}" href="${esc(r.history_href||'#/'+route+'/'+encodeURIComponent(r.id))}"><div class="work-explorer-row-head"><strong>${esc(name('vehicles',r.vehicle_id))}</strong><strong class="work-explorer-quantity">${fuel?(r.liters!==''&&r.liters!=null&&Number.isFinite(Number(r.liters))&&Number(r.liters)>=0?fmtNum(r.liters)+' L':'Litre eksik'):esc(r.maint_type||'Bakım / Arıza')}</strong></div>

@@ -1319,3 +1319,34 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 .record-workspace .work-explorer-row{gap:5px}
 .record-workspace [data-list] .li:focus-visible,.record-search-clear:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 @media(max-width:380px){.record-list-heading{align-items:flex-start}.record-list-heading span{max-width:48%}}
+
+/* Record workspace133: compact mobile ledger, full data and warnings retained. */
+@media(max-width:700px){body.record-list-page #brand-shell{display:none}}
+.record-toolbar{display:flex;align-items:center;gap:8px;margin:12px 0 8px;flex-wrap:wrap}.record-toolbar>strong{font-size:17px;flex:1;color:var(--text)}
+.record-density{display:flex;padding:3px;background:var(--bg2);border:1px solid var(--border);border-radius:12px}.record-density button{min-height:44px;padding:8px 12px;border:0;border-radius:9px;background:transparent;color:var(--muted);font:inherit;font-size:13px;cursor:pointer}.record-density button[aria-pressed=true]{background:var(--text);color:var(--bg);font-weight:700;box-shadow:0 2px 5px #0002}
+.record-filter-button{min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:13px;cursor:pointer}
+.record-toolbar button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.record-workspace .record-list-heading{margin:12px 2px 8px}.record-workspace .record-list-heading strong{font-size:13px;color:var(--muted)}
+.record-workspace [data-work-summary],.record-workspace [data-operation-summary]{padding:12px 14px;border-radius:16px;box-shadow:none;background:linear-gradient(135deg,var(--surface),var(--bg2))}
+.record-workspace .work-explorer-metrics{gap:0;margin:8px 0}.record-workspace .work-explorer-metrics>div{flex:1 0 65px;padding:4px 8px;border-radius:0;background:transparent;border-inline-end:1px solid var(--border)}.record-workspace .work-explorer-metrics>div:last-child{border:0}.record-workspace .work-explorer-metrics strong{font-size:22px;line-height:1.3}.record-workspace .work-explorer-metrics span{font-size:12px}
+.record-workspace .operation-source-summary{margin:4px 0}.record-workspace .operation-explanation{margin-top:4px}.record-workspace [data-work-summary] p{margin:6px 0 0}
+.record-workspace[data-list-density=compact] [data-list]{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.record-workspace[data-list-density=compact] [data-list] .li{margin:0;padding:10px 12px;border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none;background:transparent;min-height:60px;gap:4px}
+.record-workspace[data-list-density=compact] [data-list] .li:hover{background:var(--bg2)}
+.record-workspace[data-list-density=compact] .work-explorer-row-head>strong{font-size:14px;line-height:1.35}.record-workspace[data-list-density=compact] [data-list] .small{font-size:12px;line-height:1.4}
+.record-workspace[data-list-density=compact] [data-list] .section-title{margin:0!important;padding:9px 12px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:11px;letter-spacing:.02em}
+.record-workspace [data-list] .t1:has(.record-expense-label){display:flex;justify-content:space-between;gap:10px;white-space:normal;overflow:visible;font-size:14px}.record-expense-label{min-width:0;flex:1;overflow-wrap:anywhere}.record-expense-amount{max-width:48%;text-align:right;flex:none;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.record-workspace [data-list] .t2{white-space:normal;overflow-wrap:anywhere}
+.record-workspace[data-list-density=compact] [data-list] .ic{width:28px;min-width:28px;height:28px;font-size:16px;border-radius:8px}
+.record-workspace [data-list] .work-explorer-row-tags:empty{display:none}
+@media(prefers-reduced-motion:reduce){.record-workspace{scroll-behavior:auto}}
+
+.record-toolbar .record-inline-filters{margin:0;padding:0;border:0;box-shadow:none;background:transparent;min-width:0}
+.record-toolbar .record-inline-filters>summary{display:flex;align-items:center;gap:0;list-style:none;font-size:13px;background:var(--surface);min-height:44px;padding:8px 12px;border:1px solid var(--border);border-radius:12px;cursor:pointer}
+.record-toolbar .record-inline-filters>summary::-webkit-details-marker{display:none}
+.record-toolbar .record-inline-filters[open]{flex-basis:100%;order:4;padding:12px;background:var(--surface);border:1px solid var(--border);border-radius:14px;margin:4px 0}
+.record-filter-long{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+.record-secondary{padding:14px;margin:16px 0;border:1px solid var(--border);border-radius:16px;background:var(--surface)}.record-secondary h3{font-size:14px;margin:0 0 10px}.record-secondary .exportbar,.record-secondary .history-tools{margin:0;display:flex;flex-wrap:wrap;gap:8px}
+.record-workspace .work-day-nav{margin:6px 0 10px}.record-workspace .work-day-nav .btn{min-height:44px;padding:8px 12px}
+
+.record-workspace [data-work-summary],.record-workspace [data-operation-summary]{padding-block:10px}.record-workspace .work-explorer-metrics{margin-block:4px}.record-workspace .work-explorer-metrics>div{padding-block:2px}.record-workspace .operation-explanation summary{min-height:24px;padding-block:2px}.record-workspace .record-list-heading span{font-size:11px}
