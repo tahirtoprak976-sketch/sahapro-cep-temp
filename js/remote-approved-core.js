@@ -1,3 +1,4 @@
+import {PERSONAL_EXPENSE_FORMAT,readPersonalExpensePacket} from './personal-expense-core.js';
 import {isActionsFormat,readActionsPacket} from './remote-actions-core.js';
 import {PAID_WORK_FORMAT,readPaidWorkPacket} from './paid-work-core.js';
 import {vehicleTypeInfo,vehicleTypeMatches} from './vehicle-type-core.js';
@@ -13,6 +14,7 @@ const date=s=>typeof s==='string'&&Number.isFinite(Date.parse(s))&&new Date(s).t
 const name=s=>normKey(String(s||'')).replace(/[^a-z0-9çğıöşü]/g,'');
 export function readApprovedPacket(value,{now=Date.now()}={}){
  const p=typeof value==='string'?JSON.parse(value):value;
+ if(p?.format===PERSONAL_EXPENSE_FORMAT)return readPersonalExpensePacket(p,{now});
  if(p?.format===PAID_WORK_FORMAT)return readPaidWorkPacket(p,{now});
  if(isActionsFormat(p?.format))return readActionsPacket(p,{now});
  if(!exact(p,['format','id','approved','pkg'])||p.format!==REMOTE_FORMAT||!REMOTE_ID.test(p.id))throw Error('Onaylı paket biçimi geçersiz');
@@ -31,7 +33,7 @@ export function readApprovedPacket(value,{now=Date.now()}={}){
   if(r.kdv_included!=null&&typeof r.kdv_included!=='boolean')throw Error('KDV dahil/hariç alanı boolean olmalı');
   for(const k of r.kind==='work'?['quantity','unit_price','kdv_rate']:['liters'])if(r[k]!=null&&r[k]!==''&&(typeof r[k]!=='number'||!Number.isFinite(r[k])))throw Error('Miktar/fiyat alanı sonlu sayı olmalı');
   if((r.kind==='work'&&(!Number.isSafeInteger(Math.round(Number(r.quantity)*1000000))||(r.unit_price!=null&&r.unit_price!==''&&!Number.isSafeInteger(Math.round(r.quantity*r.unit_price*100)))))||(r.kind==='fuel'&&Math.abs(r.liters)>1e9))throw Error('Miktar veya toplam güvenli sınırı aşıyor');
-  if(r.kind==='work'&&(r.unit_price==null||r.unit_price==='')&&!a.unpriced_rows.includes(r.row_id))throw Error('Fiyat bekletme onayı eksik');
+  if(r.kind==='work'&&r.contract_included!==true&&(r.unit_price==null||r.unit_price==='')&&!a.unpriced_rows.includes(r.row_id))throw Error('Fiyat bekletme onayı eksik');
   if(r.kind==='fuel'&&!a.tank_rows.includes(r.row_id))throw Error('Depo çıkışı onayı eksik');
  }
  return {format:p.format,id:p.id,approved:{...a,new_cards:a.new_cards.map(c=>({...c}))},pkg};
