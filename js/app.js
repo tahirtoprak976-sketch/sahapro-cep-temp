@@ -1,3 +1,4 @@
+import {prepareListNavigation,mountListWorkspace} from './list-workspace.js';
 import {startRemoteApproved} from './remote-approved-runner.js';
 import {mountWorkspaceMenu} from './workspace-menu.js';
 import {installFormAccessibility} from './form-accessibility.js';
@@ -232,6 +233,7 @@ async function firstRunChoice() {
 }
 
 export async function renderCurrent() {
+  const listRestore=prepareListNavigation();
   const { parts, query, invalid } = parseHash();
   // Şoför telefonu: yalnız şoför ekranı (menü, asistan ve patron ekranları gizli)
   const driverMode = (() => { try { return localStorage.getItem("sp_driver") === "1"; } catch (e) { return false; } })();
@@ -242,6 +244,8 @@ export async function renderCurrent() {
   const previousRoot = qs("#screen");
   const root = previousRoot.cloneNode(false);
   delete root.dataset.viewReady;
+  delete root.dataset.recordWorkspace;
+  root.classList.remove("record-workspace");
   previousRoot.replaceWith(root);
   if(invalid){root.innerHTML='<section class="card" data-invalid-route><h1>Bağlantı açılamadı</h1><p>Adres eksik veya bozuk. Ana sayfaya dönüp kaydı uygulamanın içinden açın.</p><button class="btn primary" data-go="#/">Ana sayfaya dön</button></section>';root.dataset.viewReady='1';renderNav('');return;}
   const mod = MODULES[parts[0] || ""] || dashScreen;
@@ -286,7 +290,7 @@ export async function renderCurrent() {
   document.body.classList.toggle("driver-mode", drv);
   if (drv) { qs("#bottomnav").hidden = true; if (qs("#ai-fab")) qs("#ai-fab").hidden = true; const sh = document.getElementById("brand-shell"); if (sh) sh.hidden = true; }
   root.dataset.viewReady="1";
-  window.scrollTo(0, 0);
+  if(!mountListWorkspace(root,listRestore))window.scrollTo(0, 0);
 }
 
 const OFFICE_NAV = [
