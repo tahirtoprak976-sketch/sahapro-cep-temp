@@ -36,6 +36,7 @@ export function fleetDesk(d,id,{today=todayStr()}={}){
  const costReason=[result.costIncompleteReason,unknownHistory?unknownHistory+' bakım / alış kaydında tutar bilinmiyor':''].filter(Boolean).join('; ');
  const enc=encodeURIComponent;
  const links={documents:'#/filo-belgeleri?vehicle_id='+enc(id),calendar:'#/bakim-takvimi/'+enc(id),history:'#/bakim?f=all&vehicle_id='+enc(id),meter:'#/sayac/new?vehicle_id='+enc(id),cost:'#/maliyet?vehicle_id='+enc(id),report:'#/detayli-rapor?k=bakim&id='+enc(id)+'&p=all'};
+ const fuelLast=(d.fuel_records||[]).filter(r=>isActive(r)&&r.status!=='İptal'&&r.vehicle_id===id&&validDate(r.date)&&r.date<=today).sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.created_at||'').localeCompare(String(a.created_at||''))||String(b.id).localeCompare(String(a.id)))[0]||null;
  const next=urgent.length?{label:'Belge sürelerini kontrol et',href:links.documents}:open.length?{label:'Açık bakım / arızayı incele',href:open[0].history_href}:rules.some(r=>['late','soon','?'].includes(r.state))||!rules.length?{label:'Bakım takvimini kontrol et',href:links.calendar}:{label:'Bakım geçmişini aç',href:links.history};
- return {vehicle,today,documents,urgent,history,open,rules,meters,cost,costIncomplete:result.costIncomplete||unknownHistory>0,costReason,links,next};
+ return {vehicle,today,fuelLast,documents,urgent,history,open,rules,meters,cost,costIncomplete:result.costIncomplete||unknownHistory>0,costReason,links,next};
 }

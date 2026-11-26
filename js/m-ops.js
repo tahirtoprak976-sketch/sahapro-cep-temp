@@ -124,7 +124,7 @@ async function fuelForm(ctx) {
   if(entry?.error){root.innerHTML=appbar('+ Yakıt')+entryContextHTML(entry);return;}
   const { hasFuelRules } = await import("./assistant-rules.js");
   // Asistanın yerel okumasından gelindiyse: litre ve tarih dolu gelir; KAYNAK ve ARAÇ kullanıcıya seçtirilir (tahmin edilmez)
-  const fromAsst = Number(ctx.query?.litre) > 0;
+  const fromAsst = entry?.source !== 'fleet' && Number(ctx.query?.litre) > 0;
   const askedCust = fromAsst && ctx.query?.musteri ? allCust.find((c) => c.id === ctx.query.musteri) : null;
   const fuelCustomers = [...allCust.filter(hasFuelRules), ...(askedCust && !hasFuelRules(askedCust) ? [askedCust] : [])];
   root.innerHTML =
@@ -150,7 +150,7 @@ async function fuelForm(ctx) {
         )}
       </div>
       <div class="formgrid2">
-        ${fNum("Litre", "liters", Number(ctx.query?.litre) > 0 ? String(Number(ctx.query.litre)) : "", { req: true, step: "any" })}
+        ${fNum("Litre", "liters", fromAsst ? String(Number(ctx.query.litre)) : "", { req: true, step: "any" })}
         ${fNum("Birim Fiyat (₺, ops.)", "unit_price", "", { step: "any" })}
       </div>
       <div class="formgrid2">
