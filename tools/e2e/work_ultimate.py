@@ -1,7 +1,7 @@
 """Real mobile work explorer, synthetic local records; no real AI or sharing."""
 from playwright.sync_api import sync_playwright
-import csv,io
-U='http://localhost:8841/'
+import csv,io,sys
+U=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8841/'
 with sync_playwright() as p:
  b=p.chromium.launch(executable_path='/usr/bin/chromium',args=['--no-sandbox'])
  c=b.new_context(viewport={'width':360,'height':800},service_workers='allow',timezone_id='Europe/Istanbul',locale='tr-TR')
@@ -10,7 +10,7 @@ with sync_playwright() as p:
  pg.route('https://generativelanguage.googleapis.com/**',lambda r:(calls.append(r.request.url),r.abort()))
  pg.goto(U);pg.evaluate('async()=>await navigator.serviceWorker.ready');pg.wait_for_timeout(1800)
  if not pg.evaluate('!!navigator.serviceWorker.controller'):pg.reload();pg.wait_for_timeout(1000)
- ids=pg.evaluate("""async()=>{const db=await import('./js/db.js'),C=await import('./js/core.js');const t=C.todayStr();const customer=await db.saveNew('customers',{name:'=Kaya <img src=x onerror="window.__xss=1"> İnşaat'},'TEST');const other=await db.saveNew('customers',{name:'Diğer TEST'},'TEST');const site=await db.saveNew('sites',{name:'Merkez TEST',customer_id:customer.id},'TEST');const s2=await db.saveNew('sites',{name:'Diğer Şantiye',customer_id:other.id},'TEST');const v=(await db.listActive('vehicles'))[0],person=(await db.listActive('personnel'))[0];let one;const base={customer_id:customer.id,site_id:site.id,vehicle_id:v.id,personnel_id:person.id,work_type:'Hafriyat Nakliye',quantity:2,unit:'Sefer'};
+ ids=pg.evaluate("""async()=>{const db=await import('./js/db.js'),C=await import('./js/core.js');const t=C.todayStr();const customer=await db.saveNew('customers',{name:'=Kaya <img src=x onerror="window.__xss=1"> İnşaat'},'TEST');const other=await db.saveNew('customers',{name:'Diğer TEST'},'TEST');const site=await db.saveNew('sites',{name:'Merkez TEST',customer_id:customer.id},'TEST');const s2=await db.saveNew('sites',{name:'Diğer Şantiye',customer_id:other.id},'TEST');const v=await db.saveNew('vehicles',{name:'TEST Liste Kamyonu',type:'Kamyon'},'TEST'),person=await db.saveNew('personnel',{name:'TEST Liste Operatörü'},'TEST');let one;const base={customer_id:customer.id,site_id:site.id,vehicle_id:v.id,personnel_id:person.id,work_type:'Hafriyat Nakliye',quantity:2,unit:'Sefer'};
  for(let i=0;i<40;i++){const w=await db.saveNew('work_records',{...base,date:t,slip_no:'WORK-'+i,description:'TEST açıklama '+i,price_snapshot:{unit_price:0,amount:0}},'TEST');one=w.id;}
  await db.saveNew('work_records',{...base,date:C.addDays(t,-6),quantity:3,unit:'Saat'},'TEST');await db.saveNew('work_records',{...base,date:C.addDays(t,-7),quantity:9,unit:'Ton'},'TEST');await db.saveNew('work_records',{...base,date:C.addDays(t,1),quantity:99},'TEST');await db.saveNew('work_records',{...base,customer_id:other.id,site_id:s2.id,date:t,quantity:1},'TEST');
  return {t,from:C.addDays(t,-6),before:C.addDays(t,-7),customer:customer.id,other:other.id,site:site.id,s2:s2.id,v:v.id,p:person.id,one}}""")

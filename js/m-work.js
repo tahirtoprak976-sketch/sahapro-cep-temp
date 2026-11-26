@@ -133,7 +133,7 @@ async function workList(ctx) {
       </div><div class="row" style="gap:8px;flex-wrap:wrap"><button class="btn primary" data-work-apply>Filtreleri uygula</button><button class="btn" data-go="#/isler">Tümünü temizle</button></div>
     </details>
     ${!state.error && rows.length ? `<div class="work-explorer-checks" aria-label="Seçili işler kontrolü">${[["noslip","fişsiz"],["fiyatsiz","fiyatsız"],["musterisiz","müşterisiz"],["driver","şoförden"]].filter(([k])=>counts[k]).map(([k,label])=>`<button class="btn sm" data-go="${esc(workURL(query,{f:k,period:state.period}))}">${counts[k]} ${label}</button>`).join("")}<button class="btn sm" data-work-csv>Filtreli CSV · ${rows.length} kayıt</button></div>` : ""}
-    <div data-list></div>
+    <div data-list data-record-count="${rows.length}"></div>
     <div class="actionbar"><button class="btn primary" data-go="#/isler/new">+ Yeni İş Kaydı</button></div>`;
 
   const listEl = qs("[data-list]", root);

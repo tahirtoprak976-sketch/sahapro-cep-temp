@@ -1,3 +1,4 @@
+import {mountListPresentation} from './list-presentation.js';
 // View-only session memory. Never persists records, form values or attachments.
 const routes=new Set(['isler','yakit','gider']);
 const memories=new Map(),lastLists=new Map();
@@ -30,6 +31,7 @@ export function mountListWorkspace(root,restore){
  const list=root.querySelector('[data-list]');
  if(!list)return false;
  const rowCount=()=>list.querySelectorAll('.li').length;
+ mountListPresentation(root,route,list);
  if(restore){
   // Reopen only already-viewed pages, using existing read-only pagination.
   let attempts=0;
@@ -48,9 +50,6 @@ export function mountListWorkspace(root,restore){
   search.addEventListener('input',()=>{clear.hidden=!search.value;});
   clear.onclick=()=>{search.value='';search.dispatchEvent(new Event('input',{bubbles:true}));search.focus();};
  }
- const heading=document.createElement('div');heading.className='record-list-heading';
- heading.innerHTML='<strong>Kayıt listesi</strong><span>Ayrıntılar için kayda dokunun</span>';
- list.before(heading);
  let position=restore?.scroll||0;
  const scroll=()=>{position=window.scrollY;};
  const save=()=>{

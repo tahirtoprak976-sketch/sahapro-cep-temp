@@ -1556,7 +1556,7 @@ async function expenses(ctx) {
     ${tot.dokum && all.some((r) => r.kind === "gider" && /döküm/i.test(r.label)) ? notice("warn", "Ayrıca yazılmış döküm giderleri var. Aynı kesintiyse Ortak Döküm Hesabı'nda fişe bağlayın; kayıtları silmeden tek maliyet olarak izleyin. Yüklemeyi yalnız gerçekten sahaya yatırılan paraysa yükleme olarak işaretleyin.") : ""}
     ${tot.personel && all.some((r) => r.kind === "gider" && /personel|maaş|maas|avans/i.test(r.label)) ? notice("warn", "Maaş puantajdan masrafa yazılıyor; giderlerde de \"Personel\" kaydı var. Aynı maaşı ya da avansı gider olarak da girdiyseniz iki kez sayılır — gider kaydını silin.") : ""}
     ${searchBar("Kategori, araç, esnaf, açıklama…", q)}
-    <div data-list></div>
+    <div data-list data-record-count="${rows.length}"></div>
     <div class="actionbar"><button class="btn primary" data-go="#/gider/new">+ Gider</button></div>`;
   const listEl = qs("[data-list]", root);
   const IC = { gider: "💸", yakit: "⛽", bakim: "🔧", esnaf: "🧾", dokum: "🚛", personel: "👷" };
@@ -1568,7 +1568,7 @@ async function expenses(ctx) {
         id: r.kind === "gider" ? r.id : "",
         href: r.kind === "gider" ? "" : r.href,
         ic: IC[r.kind],
-        t1: `${esc(r.label)} · ${r.kind==="dokum"&&r.remaining_estimated_amount==null?"bilinen ":""}${fmtTL(r.amount)} ₺`,
+        t1: `<span class="record-expense-label">${esc(r.label)}</span><strong class="record-expense-amount">${r.kind==="dokum"&&r.remaining_estimated_amount==null?"bilinen ":""}${fmtTL(r.amount)} ₺</strong>`,
         t2: `${trDate(r.date)} · ${esc(COST_KINDS[r.kind])}${r.sub ? " · " + esc(r.sub) : ""}${e && attMap[e.id] ? " · 📷" + attMap[e.id] : ""}`,
         badgeHtml: e
           ? e.payment_method === "Personel Ödedi"
