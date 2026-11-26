@@ -1,3 +1,5 @@
+import {commercialDesk} from './commercial-desk-core.js';
+import {mountFinanceActionQueue} from './finance-action-queue.js';
 import {financeIcon,financeToolHTML,financeToolGroup,financeWorkspaceTasks,bindFinanceTools} from './finance-workspace.js';
 let bankReturnCash=null; // In-memory form values only; never a saved money record.
 import {claimVatItem} from './hakedis-vat.js';
@@ -137,6 +139,7 @@ async function hub(ctx) {
     <nav class="finance-actions" aria-label="Günlük finans işlemleri">
       ${[['#/finans/kasa/new','Tahsilat ekle','receipt'],['#/gider/new','Gider ekle','expense'],['#/hakedis/hazirlik','Hakediş hazırla','document'],['#/cari','Cari hesaplar','account']].map(([href,title,icon])=>`<a href="${href}" class="finance-action">${financeIcon(icon)}<span>${title}</span></a>`).join('')}
     </nav>
+    <details class="finance-panel finance-action-launch" data-finance-more-tasks><summary>Tamamlanacak işler ve diğer kontroller</summary><section data-finance-action-queue></section>${tasks.slice(3).map(taskHTML).join('')}</details>
     <section class="finance-overview" data-finance-general><div class="finance-section-head"><h3>Genel müşteri alacağı</h3><span>Tüm tarihler</span></div><a class="finance-receivable" data-commercial-entry href="#/ticari-masa" title="Hakediş ve Tahsilat Masası">${fmtTL(general.balance)} <small>₺</small><span aria-hidden="true">↗</span></a><p class="finance-caption">Kayıtlı alacak toplamıdır; kasa veya banka mevcudu değildir. Hakediş ve Tahsilat Masası için tutara dokunun.</p>
       ${general.issues.length?notice('warn',general.issues.length+' kayıtta ana para / KDV ayrımı kontrol edilmeli. Bilinen tutarlar korundu.'):''}
       <details class="finance-inline-details"><summary>Ana para ve KDV ayrımını gör</summary>${cariMoneyHTML(general,true)}</details>
@@ -151,7 +154,7 @@ async function hub(ctx) {
     <section class="finance-panel" data-finance-tasks><div class="finance-section-head"><h3>Öncelikli işler</h3><a class="finance-text-link" href="#/odeme-takibi" data-go="#/odeme-takibi">Ödeme takibi →</a></div>
       <p class="finance-caption">${tasks.length} kayıtlı kontrol · Kayıtları inceleyin; bu bölüm ödeme veya kesinleştirme yapmaz.</p>
       ${tasks.slice(0,3).map(taskHTML).join('')||'<p class="finance-empty">Bu kontrollerde bekleyen iş görünmüyor. Kaydı olmayan borçlar bu değerlendirmeye dahil değildir.</p>'}
-      ${tasks.length>3?`<details class="finance-inline-details" data-finance-more-tasks><summary>Diğer ${tasks.length-3} kontrolü göster</summary>${tasks.slice(3).map(taskHTML).join('')}</details>`:''}
+
     </section>
     <section class="finance-panel" data-finance-custody><div class="finance-section-head"><h3>Tahsilatın bulunduğu yer</h3><span>${esc(selected.label)}</span></div>
       <div class="finance-custody-grid">${[['Personelde',atPersonnel],['Teslim bildirildi · onay bekliyor',waitingHandover],['Kasaya teslim edilmiş',atCash],['Banka kaydı',atBank]].map(([label,value])=>`<div><span>${esc(label)}</span><b>${fmtTL(value)} ₺</b></div>`).join('')}</div>
@@ -168,6 +171,7 @@ async function hub(ctx) {
       <div data-finance-enterprise-tools></div></details>
     </section></div>`;
   qs('[data-finance-month]',root).onchange=e=>{if(e.target.value)ctx.go('#/finans?month='+encodeURIComponent(e.target.value));};
+  await mountFinanceActionQueue(ctx,commercialDesk(d,{from:from||'0001-01-01',to,today,notes:await db.metaGet('collect_notes')||{}}),d);
   bindFinanceTools(root);
 }
 
