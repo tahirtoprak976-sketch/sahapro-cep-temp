@@ -1,3 +1,4 @@
+import {mountPersonnelWorkspace} from './personnel-workspace.js';
 import {VEHICLE_TYPES} from "./vehicle-type-core.js";
 import {priceVehicleContext} from "./core.js";
 import { attachmentHTML } from "./attachment-ui.js";
@@ -1101,6 +1102,10 @@ async function card(ctx) {
     (store === "sites" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmesi/${encodeURIComponent(id)}">📐 ${r.deal ? "İş sözleşmesi — " + esc(r.deal.basis === "m³" ? "metreküp" : "sefer") + " · " + esc(r.deal.status || "") : "İş sözleşmesi aç (sefer / m³)"}</button>` : "") +
     (store === "customers" ? `<button class="btn block" style="margin:0 0 8px" data-go="#/is-sozlesmeleri?customer_id=${encodeURIComponent(id)}">📐 İş sözleşmeleri (sefer / m³)</button>` : "") +
     `<div class="row"><button class="btn" data-go="#/${parts[0]}/${id}/edit">Kartı Düzenle</button>${store === "vehicles" ? `<a class="btn" href="#/arac-turleri?vehicle_id=${encodeURIComponent(id)}">Araç türünü kontrol et</a>` : ""}${["vehicles", "personnel", "customers"].includes(store) ? `<button class="btn" data-go="#/belgeler/new?owner_type=${store === "vehicles" ? "vehicle" : store === "personnel" ? "personnel" : "customer"}&owner_id=${id}&category=${encodeURIComponent(store === "vehicles" ? "Muayene Belgesi" : store === "personnel" ? "SRC" : "Sözleşme")}">Belge Ekle</button>` : ""}</div><div class="tabs" data-tabs><button class="chip on" data-tab="general">GENEL</button>${relations.map((s) => `<button class="chip" data-tab="${s}">${LABELS[s]}</button>`).join("")}${store === "vehicles" ? '<button class="chip" data-tab="cost">MALİYET</button>' : ""}<button class="chip" data-tab="report">RAPOR</button></div><div data-card-content></div>`;
+  if(store === 'personnel'){
+    root.querySelector('.appbar')?.insertAdjacentHTML('afterend','<section class="card" data-personnel-workspace></section>');
+    await mountPersonnelWorkspace(ctx,id);
+  }
   if(store === 'vehicles'){
     qs('[data-tabs]',root).insertAdjacentHTML('beforebegin','<section class="card" data-fleet-desk style="margin-top:10px;border-left:4px solid var(--accent)"></section>');
     root.querySelector('.appbar')?.after(qs('[data-fleet-desk]',root));
