@@ -1,11 +1,11 @@
 {
-  "version": "3.10.37",
+  "version": "3.10.38",
   "schema": 8,
-  "purpose": "Work-level finance action queue using existing preparation; schema and financial authorities unchanged",
+  "purpose": "Preserve deployed finance action queue; add optional encrypted live catalog/contract queries and existing approved packet delivery. Phone schema8 and financial guards unchanged.",
   "files": {
-    "js/app.js": "93578ce04b591d2aea596519149098c78ad7da5d629e28502475d653b003cc04",
+    "js/app.js": "542f5f7b6be9f3f594f1f593eb25a69a52a49441b64a532347d1b4564cef4d25",
     "js/backup.js": "d4251a7524dde2c30ac8fbef485693d6c4beeef95019815b394e6fbd2157feb8",
-    "js/core.js": "9890eabab1906bdc92bfcf389fe9c59ec141c08ac212d915564f1497fc7df9f1",
+    "js/core.js": "ae778043c358071adeca4a1ead289bcd21ebdd49f17e3fcc7b87a2ee9d5e12cb",
     "js/db.js": "6821b73e5e9f4a839643bf14c1cf5127da8c9f1ae2e9ee1717209aaca737f613",
     "js/enterprise-db.js": "3cdc8c050012aeba9ad4cfd006c56b8545cb4a26590ddbdcb2932371a7a01361",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -24,7 +24,7 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "52902dad2637ab1d3243c2f2bacf60c1cf2e0f8fb43d1183a05c676c760a5e5e",
+    "sw.js": "4447710b8a65f1097233f06748e55939e6de05189863bb9cf6a4245960688f99",
     "js/assistant.js": "8327a500f12a7b0ad01b318e402895a7a754d8870791d572e163150fba8cd496",
     "js/m-ops.js": "d5d5af43b193bef8254e8867c4f76986d9fcc1f1b83d89eebbc4cdd5c8c6f609",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
@@ -41,8 +41,8 @@
     "js/remote-approved-crypto.js": "b21a1b58b544ccb6126d834e580faf2451ec7166fd16e02f4d1a7898e5b4eb41",
     "js/remote-approved-db.js": "9aa96f53bc167cc47b988674fcdb1b013f49798c2de5f4968c8eabfd8b97a583",
     "js/remote-approved-runner.js": "fe7ab05a194ab2b170e61a440c1b3f0eda6d52ab574f6ef9e8124312d9796e3e",
-    "js/remote-approved-ui.js": "f8b7655ab8d7c65803b3c62f4ede8281f6d4366d3717a600c92d71b57ffe8b82",
-    "js/secure-transfer-db.js": "1e774b7c3f7c9a474d5b44bac19eea3ad0f2663b9669eadbb6bc4943849a6a05",
+    "js/remote-approved-ui.js": "8d59453b6880e755ce48e04acec1dbabec843d677044121a34908f5186b4fbfd",
+    "js/secure-transfer-db.js": "ac48a8bc5ab658f1bf3e745ea4ef8e91c65211fa4910e40a8dfb28ab30da2d63",
     "js/secure-transfer-ui.js": "484fa65b47162a5a3d0e4d2a4cee6111e7e2bebba2862290bbad2817a1e740c3",
     "js/security.js": "09acb568e8db53f08a0b29aaf64d9ec595ba16a3dded4843ea1f034c2148110a",
     "js/history-core.js": "c41b5cfb36fc77619db203050b0d9df23a6db6064e4c3a746d50a45e48ae6fbc",
@@ -86,6 +86,10 @@
     "js/fleet-entry.js": "8120dd97a7cfe1c4fce3af0b5ae7f5704bd9f7f5fc8553d470e2bb1c4fe80bd9",
     "js/entry-context.js": "82e232066b241db2716b4fc120276fbe3fc91981bbff101537d1c64200a6f942",
     "js/personnel-workspace.js": "28c28eb8b37c1a89738e98fc6fb8e6cfe97823aa26ba0a281b4d55349abf0b12",
+    "index.html": "2091fac853ba1c89796a29819986319041ee46723cf76b72fd492540fc9a579d",
+    "js/live-access-core.js": "fca5efed044538a2caacbec8c02f247f24f18d97a843eb5dace5a3ca525970f6",
+    "js/live-access-runner.js": "d420cec75f3442c9b7d01a7fdb3fafa1240137913a02e1e08e740b0360437679",
+    "js/live-access-ui.js": "1e2bd8532617282f11da81aabe88bb35118f339e327eb8ee3c18298c76938c00",
     "js/finance-action-queue.js": "199b8b519af0be50991a89f01f13e524938345e3a71fab84c3f8b5ccb83d6fcd"
   }
 }
