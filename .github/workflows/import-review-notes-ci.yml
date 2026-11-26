@@ -1040,7 +1040,7 @@ jobs:
       - name: Verify installed current SOLO v3.10.36 survives live access update
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.browser_validation.outcome == 'success' }}
         run: |
-          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_schema7.py --source-root . --baseline-ref ab3a75b
+          /tmp/solo-e2e-venv/bin/python tools/e2e/upgrade_maintenance116.py --source-root . --baseline-ref ab3a75bef3c6d9a37f734dfee4dfaf2cb37ac654 --baseline-version 'SAHAPRO SOLO v3.10.36' --artifacts /tmp/solo-live138-current-upgrade
 
       - name: Retain assistant-turn standalone logs and timeout diagnostics
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' }}
