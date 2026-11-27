@@ -14,6 +14,7 @@ with sync_playwright() as w:
  def nav(h):
   old=p.locator('#screen').element_handle();p.goto(app+h);p.wait_for_function('(e)=>!e.isConnected',arg=old);p.wait_for_selector('#screen[data-view-ready="1"]')
  nav('#/finans');p.locator('[data-finance-more-tasks] > summary').click();assert p.locator('[data-weekly-entry]').count()==1,'WEEKLY_FINANCE_MISSING';p.click('[data-weekly-entry]');p.wait_for_selector('#screen[data-view-ready="1"] [data-weekly-row]')
+ assert p.locator('[data-weekly] .statgrid').evaluate('(e)=>e.children.length===2'),'Only two amount cards belong in the two-column grid'
  assert p.locator('[data-weekly-row]').count()==4
  assert '1.300,00' in p.locator('[data-weekly-in]').inner_text() and '600,00' in p.locator('[data-weekly-out]').inner_text()
  assert p.locator('[data-weekly-row="plan:TEST_PL140:TEST_I140"]').count()==1
