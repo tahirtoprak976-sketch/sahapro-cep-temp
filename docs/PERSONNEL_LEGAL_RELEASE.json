@@ -92,7 +92,7 @@
     "js/live-access-ui.js": "1e2bd8532617282f11da81aabe88bb35118f339e327eb8ee3c18298c76938c00",
     "js/finance-action-queue.js": "199b8b519af0be50991a89f01f13e524938345e3a71fab84c3f8b5ccb83d6fcd",
     "js/personal-expense-core.js": "e900627c3019735fd5120e62c3dfbb3fbef1b9a5d18bb6c20e8a8c6b226d116f",
-    "js/personal-expense-db.js": "89c72fafa842772501dab6a3829fcdddd1d37d5105826837536d9b025a2feab8",
+    "js/personal-expense-db.js": "69971e54353bbb8ff993f7eaccfdd652183be9b8bd2ba52a3a58fe078320b0aa",
     "js/personal-expense-ui.js": "9c767cf47a2791ecb0a7c0677d544a31f61b24bb501c6f5160434713d60de4f6"
   }
 }

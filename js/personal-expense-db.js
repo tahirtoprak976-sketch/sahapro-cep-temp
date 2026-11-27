@@ -12,7 +12,7 @@ export async function stagePersonalExpense(value,channel,{canWrite=()=>false}={}
  return transaction(['meta','work_records'],(data,t)=>{
   if(!canWrite())throw Error('Oturum uygun değil');authority(data,channel);
   const prior=data.meta.find(m=>m.key===key)?.value;
-  if(prior){if(prior.digest!==digest)throw Object.assign(Error('OP_CONFLICT: kontrol paketi değişmiş'),{code:'OP_CONFLICT'});return prior.result?{...prior.result,replayed:true}:{status:'review',id:p.id,replayed:true};}
+  if(prior){if(prior.digest!==digest)throw Object.assign(Error('OP_CONFLICT: kontrol paketi değişmiş'),{code:'OP_CONFLICT'});return prior.result?{...prior.result,replayed:true,...(prior.payment_correction?{payment_correction:prior.payment_correction.result}:{})}:{status:'review',id:p.id,replayed:true};}
   const work=data.work_records.find(w=>w.id===p.row.work_id&&!w.deleted_at&&w.history_source?.row_id===p.row.work_source_key);
   if(!work||!work.updated_at)throw Error('Kayıtlı iş kaynağı bulunamadı');
   t.add('meta',{key,value:{packet:p,digest,channel,work_revision:work.updated_at,reviewed:false}});
