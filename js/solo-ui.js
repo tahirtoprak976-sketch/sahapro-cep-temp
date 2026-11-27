@@ -1802,7 +1802,7 @@ async function customerDashboard(ctx, id, d) {
   const { root, db } = ctx;
   const CR = await import("./customer-report.js");
   const {customerDeskHtml} = await import("./customer-desk.js");
-  const {customerWorkspaceHTML} = await import("./customer-workspace.js");
+  const {customerWorkspaceHTML,customerSites,customerSitesHTML} = await import("./customer-workspace.js");
   const me = (d.customers || []).find((c) => c.id === id);
   if (!me) return;
   const hasSubs = (d.customers || []).some((c) => !c.deleted_at && c.parent_customer_id === id);
@@ -1813,6 +1813,15 @@ async function customerDashboard(ctx, id, d) {
   if (tabs) tabs.before(sec); else root.append(sec);
   const workspace=document.createElement('section');workspace.className='card customer-workspace';workspace.dataset.customerWorkspace='';
   root.querySelector('.appbar')?.after(workspace);
+  const siteSection=document.createElement('section');
+  siteSection.className='card customer-sites';siteSection.dataset.customerSites='';
+  const siteCounts=customerSites(d,id);
+  siteSection.innerHTML=`<div class="row between" style="flex-wrap:wrap"><h2>Şantiyeler (${siteCounts.total})</h2>${me.active!==false?`<a class="btn primary" data-customer-site-add href="#/santiyeler/new?customer_id=${encodeURIComponent(id)}">+ Şantiye ekle</a>`:''}</div><p class="small muted">Yalnız bu müşteriye bağlı şantiyeler · tüm tarihler. Taşeronların şantiyeleri kendi müşteri kartındadır.</p><div class="customer-site-filters"><div class="field"><label for="customer-site-search">Şantiye ara</label><input id="customer-site-search" type="search" data-customer-site-search placeholder="Ad, adres veya yetkili"></div><div class="field"><label for="customer-site-status">Durum</label><select id="customer-site-status" data-customer-site-status><option value="active">Aktif şantiyeler</option><option value="all">Tüm şantiyeler</option><option value="inactive">Pasif şantiyeler</option></select></div></div><div data-customer-site-list></div>`;
+  workspace.after(siteSection);
+  const drawSites=()=>{siteSection.querySelector('[data-customer-site-list]').innerHTML=customerSitesHTML(d,id,{q:siteSection.querySelector('[data-customer-site-search]').value,status:siteSection.querySelector('[data-customer-site-status]').value});};
+  siteSection.querySelector('[data-customer-site-search]').addEventListener('input',drawSites);
+  siteSection.querySelector('[data-customer-site-status]').addEventListener('change',drawSites);
+  drawSites();
   let per = "year", subs = false;
   const fmt = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   const tile = (v, l, cls = "") => ui.stat(v, l, cls);
