@@ -1,11 +1,11 @@
 {
-  "version": "3.10.41",
+  "version": "3.10.42",
   "schema": 8,
-  "purpose": "Preserve deployed weekly finance workspace; optional VAT payment and audited local employee expense correction. Existing schema8 and financial guards retained.",
+  "purpose": "Receipt/correction statement labels and report period validation; unchanged balances and records",
   "files": {
     "js/app.js": "a273bcbb837fdf844bc9f54d420bd4f67619663f6b7f433012470ccb10ae29c5",
     "js/backup.js": "d4251a7524dde2c30ac8fbef485693d6c4beeef95019815b394e6fbd2157feb8",
-    "js/core.js": "8f2148194c99281dfab8e0bee955ef7f5cb45f3c022f68a7f2635ca5b7c0ee78",
+    "js/core.js": "a3cce447224f4ee38032a133598754c4c570d268d047578257868eb75f5130a8",
     "js/db.js": "6821b73e5e9f4a839643bf14c1cf5127da8c9f1ae2e9ee1717209aaca737f613",
     "js/enterprise-db.js": "3cdc8c050012aeba9ad4cfd006c56b8545cb4a26590ddbdcb2932371a7a01361",
     "js/leave-core.js": "58cb46d63c75bdf5ac74370542d03bf1d3cd91738f8baef54777a41f426bf52b",
@@ -24,7 +24,7 @@
     "js/personnel-legal/workflow.js": "a164e16bae686f93cfa1dc7d442670792a1f1c8fb1bd3d7151eb0689cdb6e905",
     "kilavuz/izin-puantaj.html": "5699e62652a1c42baef2994cc540c366e9b0ee272b9d7e61f8dcb2ef1040c885",
     "kilavuz/izin-puantaj.pdf": "f6071f60c1996362089faceb3ad7897ea1042626b8bb0627312313a1c8692890",
-    "sw.js": "476b8aa82629bc08e7824db6165a81acfc2bd5190d968de097bf7666e7061272",
+    "sw.js": "c4555a97954f8cf138ca3033dc74c55ecace12c586898e9a3433ed521ef0d9db",
     "js/assistant.js": "8327a500f12a7b0ad01b318e402895a7a754d8870791d572e163150fba8cd496",
     "js/m-ops.js": "d5d5af43b193bef8254e8867c4f76986d9fcc1f1b83d89eebbc4cdd5c8c6f609",
     "js/maint-core.js": "976597a125d20233ec3c21ab4e9b5012d5ad68618f14e83f94b5363ee82b2325",
@@ -34,7 +34,7 @@
     "js/maintenance-review-core.js": "3aef1bd266e1b0c4e5c61d9962c7cd24ff05cc7ebaa656ff00d22aa6d6a76c4c",
     "js/maintenance-review-db.js": "abce31b91fc3c10dba1aebc74324245b67ac75a0c44a68404e366965323506cf",
     "js/maintenance-review-ui.js": "142749ee01bfefeb9a0a11101cda8a1f555310acfeb35337e38751b48badc7a2",
-    "js/report-core.js": "114fe83a7b18652d58e8b8b0fd4cbc0926a6ca27d95f8a3962a605d55296f221",
+    "js/report-core.js": "7070f6dcc0ddfdef377d3d040a282c925decbddd0b9f1c95e48786e37e8ef562",
     "js/report-ui.js": "0dbe1a5edd3d101e244594b03818d21009fd36ad9988a11adef1c5f9fb9d65b1",
     "js/tank-report.js": "250dce16925e1ba593810aa68f32c78c5f3655fd4233aed6838bd0a1632214ab",
     "js/remote-approved-core.js": "4c62b4c1ffa136dfd4036cfb75600e0aed6366a941747baa30a1b246dacd3e19",
@@ -95,6 +95,8 @@
     "js/personal-expense-db.js": "69971e54353bbb8ff993f7eaccfdd652183be9b8bd2ba52a3a58fe078320b0aa",
     "js/personal-expense-ui.js": "9c767cf47a2791ecb0a7c0677d544a31f61b24bb501c6f5160434713d60de4f6",
     "js/weekly-finance-core.js": "0d1a40e45831a747d901f44a45fc14e451c3cc3046cf5234575bdc66da853ef2",
-    "js/weekly-finance-ui.js": "d6f86176907c568d1cfcc0a8fde63f1ef78c82e44d360e938027ba77d4bd602a"
+    "js/weekly-finance-ui.js": "d6f86176907c568d1cfcc0a8fde63f1ef78c82e44d360e938027ba77d4bd602a",
+    "js/statement.js": "cb31e15d18d7ce8dbb86a6d7f5f5ba424a4cfcb7002594470af3a60e42bd8cfe",
+    "js/customer-report.js": "22ac6979fa71aa39d5550afeeb218107eced8d7dbd6cc086cbff6ed458625ef2"
   }
 }
