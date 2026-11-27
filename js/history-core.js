@@ -1,3 +1,4 @@
+import {applyYard} from './yard-core.js';
 import {applyJob,isIncluded,checkDeal} from './job-core.js';
 import {tankTimeline} from './tank-timeline.js';
 import {canonicalVehicleType} from "./vehicle-type-core.js";
@@ -91,6 +92,8 @@ export function readHistoryPackage(value) {
           (r.unit_price!=null && r.unit_price!==''))
         throw Error('Sözleşmeye dahil iş için şantiye, sözleşme sürümü ve fiyatsız kapsam onayı gerekli.');
     }
+    for(const k of ['internal_work','yard_receipt'])if(Object.hasOwn(r,k)&&(r.kind!=='work'||r[k]!==true))throw Error('İç iş/depo kabul işareti yalnız açıkça onaylanmış işte kullanılabilir.');
+    if(r.yard_receipt&&(!r.internal_work||r.unit!=='Sefer'||!text(r.material)||!text(r.dump_site)))throw Error('Depo kabulü için iç iş, malzeme, sefer ve kendi depo sahası gerekli.');
     // Allowlist, excluding executable content, IDs, financial locks and arbitrary backup fields.
     const fields = [
       "row_id",
@@ -109,6 +112,8 @@ export function readHistoryPackage(value) {
       "quarry",
       "description",
       "review_notes",
+      "internal_work",
+      "yard_receipt",
       "contract_included",
       "contract_revision",
       "unit_price",
@@ -286,7 +291,7 @@ export function prepareHistory(
           throw Error("Pozitif miktar gerekli; sefer tam sayı olmalı.");
         if (
           (text(r.dump_site) || c.refs?.dump_site_id) &&
-          !FIELD_METADATA.dump_area.applies_to.includes(r.work_type)
+          !FIELD_METADATA.dump_area.applies_to.includes(r.work_type)&&!(r.yard_receipt&&r.work_type==='Diğer')
         )
           throw Error("Bu iş türünde döküm sahası kullanılmaz.");
         if (
@@ -332,7 +337,16 @@ export function prepareHistory(
             groupIds.set(r.transport_group_key, newRecord().id);
           w.transport_group_id = groupIds.get(r.transport_group_key);
         }
-        if (r.contract_included===true) {
+        if(r.internal_work===true){
+          const customer=(data.customers||[]).find(c=>c.id===customer_id&&isActive(c)&&c.active!==false&&c.internal===true);
+          if(!customer||r.contract_included||(r.unit_price!=null&&r.unit_price!==''&&Number(r.unit_price)!==0))throw Error('İç iş yalnız mevcut iç iş müşterisinde, satış bedeli olmadan aktarılır.');
+          if(r.yard_receipt){
+            const yard=(data.dump_sites||[]).find(x=>x.id===dump_site_id&&isActive(x)&&x.active!==false&&x.own_yard===true);
+            if(!yard)throw Error('Malzeme kabulü yalnız kendi depo sahasına yapılabilir.');
+            w.yard_receipt=true;
+          }
+          const applied=applyYard(data,w);if(applied.price_snapshot?.price_source!=='İç iş (kendi depo)')throw Error('İç iş kartı eşleşmedi');Object.assign(w,applied);
+        } else if (r.contract_included===true) {
           const site=(data.sites||[]).find(s=>s.id===site_id&&isActive(s));
           if (!site || site.active===false || site.updated_at!==r.contract_revision ||
               site.customer_id!==customer_id || site.deal?.basis!=='Götürü' || checkDeal(site.deal))

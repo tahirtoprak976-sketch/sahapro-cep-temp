@@ -35,7 +35,7 @@ export async function savePersonalExpenseReview(packetId,choice,{localApproval=f
   const {writes,link,existing}=personalExpensePlan(packet,data,choice,digest,current.work_revision);
   if(existing){if(!current.result)throw Error('Önceki işlem makbuzu eksik; inceleyin');return {...current.result,replayed:true};}
   for(const [store,rows]of Object.entries(writes))for(const row of rows)t.add(store,row);
-  const result={id:packet.id,channel:consent.channel,digest,at:new Date().toISOString(),status:'saved',batch_id:crypto.randomUUID(),works:0,fuels:0,cards:0,expenses:1,record_ids:[link.expense_id]};
+  const result={id:packet.id,channel:consent.channel,digest,at:new Date().toISOString(),status:'saved',batch_id:crypto.randomUUID(),works:0,fuels:0,cards:0,expenses:1,amount:writes.expense_records[0].amount,vat_status:writes.expense_records[0].kdv_rate==null?'unknown':'confirmed',record_ids:[link.expense_id]};
   t.put('meta',{key,value:{...current,reviewed:true,choice,result}});t.add('meta',{key:receiptKey(consent.channel,packet.id),value:result});
   return result;
  });
