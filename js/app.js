@@ -44,6 +44,7 @@ import { screen as crmScreen } from "./m-crm.js";
 
 // ---- Modül yönlendirme tablosu ----
 const MODULES = {
+  "haftalik-para":async ctx=>(await import("./weekly-finance-ui.js")).screen(ctx),
   "izin-puantaj":async ctx=>(await import("./personnel-legal/ui.js")).screen(ctx),
   "odeme-takibi":async ctx=>(await import('./payment-agenda-ui.js')).screen(ctx),
   "saha-akisi":async ctx=>(await import("./field-stream-ui.js")).screen(ctx),
@@ -86,6 +87,7 @@ const MODULES = {
 const SECTION = {
   "izin-puantaj":"daha",
   "odeme-takibi":"finans",
+  "haftalik-para":"finans",
   "isletme-panosu":"ana",
   "saha-akisi":"ana",
   "": "ana",
