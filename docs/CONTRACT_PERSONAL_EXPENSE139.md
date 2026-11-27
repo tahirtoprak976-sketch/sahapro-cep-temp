@@ -12,4 +12,4 @@ Saving adds one ordinary `expense_records` record (`Personel Ödedi`, `Bekliyor`
 
 Validation: strict plan tests cover agreement revisions, ownership, start date, status, manual-price conflict, duplicate work, payment mismatch, old-format compatibility and single payroll reimbursement. A synthetic 360px browser test covers metadata-only staging, blank/unchecked review, partial-payment hold, retained edits, actual local Save, no company money movement, replay/conflict, transaction rollback and revocation. The release workflow retains all existing checks and tests installed v3.10.38 to this version, including exact business-data preservation and offline worker assets.
 
-The original full-gross-payment restriction described here is superseded by [optional VAT payment in v3.10.40](EXPENSE_VAT_PAYMENT140.md). The source quote is retained; the actual payment and local same-record correction are now explicit.
+The original full-gross-payment restriction described here is superseded by [optional VAT payment in v3.10.41](EXPENSE_VAT_PAYMENT140.md). The source quote is retained; the actual payment and local same-record correction are now explicit.
