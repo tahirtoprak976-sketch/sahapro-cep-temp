@@ -1362,3 +1362,6 @@ body.driver-mode{padding-left:0!important;padding-bottom:20px}
 
 /* Action queue: explicit work-level reasons and bounded mobile pages. */
 .finance-queue-filters{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.finance-queue-item{padding:14px 0;border-top:1px solid var(--line)}.finance-queue-top{display:flex;justify-content:space-between;gap:8px;align-items:start}.finance-queue-top b{overflow-wrap:anywhere}.finance-queue-item p{margin:6px 0}.finance-queue-item ul{padding-left:20px}.finance-queue-item .row{flex-wrap:wrap;gap:6px}.finance-queue-item a{white-space:normal;text-decoration:none;min-height:44px}
+
+/* Weekly source calendar: wrap actions without affecting other finance forms. */
+[data-weekly-finance] .row{flex-wrap:wrap;gap:8px}[data-weekly-finance] .btn{white-space:normal;max-width:100%;min-height:44px}[data-weekly-finance] .stat b{font-size:20px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}[data-weekly-finance] .formgrid2{grid-template-columns:repeat(2,minmax(0,1fr))}[data-weekly-finance] select{min-width:0;max-width:100%}
