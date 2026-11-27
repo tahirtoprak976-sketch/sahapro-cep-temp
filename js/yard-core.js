@@ -32,7 +32,7 @@ export function vehicleFactor(v, settings = {}) {
 // Malzeme grubu: personel aynı yığına bazen moloz bazen hafriyat der → tek grup "Moloz / Hafriyat"; çöp ayrı
 export const YARD_MATS = ["Moloz / Hafriyat", "Çöp", "Diğer"];
 export function yardMaterial(w) {
-  const t = norm([w.material, w.work_type, w.description].filter(Boolean).join(" "));
+  const t = norm((w.yard_receipt===true?[w.material]:[w.material, w.work_type, w.description]).filter(Boolean).join(" "));
   if (/cop|copu|atik|hurda/.test(t)) return "Çöp";
   if (/moloz|beton|tugla|kirinti|hafriyat|harfiyat|toprak/.test(t)) return "Moloz / Hafriyat";
   return "Diğer";
@@ -52,6 +52,7 @@ export function yardMoves(d, { from = "", to = "9999-12-31", settings = {} } = {
   for (const w of live(d, "work_records")) {
     if (w.date < from || w.date > to) continue;
     if (cust && w.customer_id === cust.id) {
+      if(w.yard_receipt===true&&site&&w.dump_site_id===site.id){const l=loads(w,d,settings);ins.push({w,mat:yardMaterial(w),loads:l.n,known:l.known,vehicle:l.vehicle});continue;}
       if (site && w.dump_site_id === site.id) continue; // depodan depoya: sayma
       const l = loads(w, d, settings);
       outs.push({ w, mat: yardMaterial(w), loads: l.n, known: l.known, vehicle: l.vehicle });
@@ -109,7 +110,7 @@ export function yardPL(d, st, { settings = {}, pred = () => true, dumpFee, workA
   const inRows = ins.map((x) => {
     const L = Number(x.w.customer_fuel_allowance_l) || 0;
     const money = workAmount(x.w);
-    return { w: x.w, amount: money, fuelL: L, unpriced: !(money > 0) && !(L > 0) };
+    return { w: x.w, amount: money, fuelL: L, unpriced: x.w.yard_receipt!==true && !(money > 0) && !(L > 0) };
   });
   const income = inRows.reduce((n, r) => n + r.amount, 0);
   const fuelL = Math.round(inRows.reduce((n, r) => n + r.fuelL, 0) * 10) / 10;
