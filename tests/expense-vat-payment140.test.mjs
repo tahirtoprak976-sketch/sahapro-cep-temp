@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {personalExpensePayment,personalExpenseCorrection,canonicalPersonalChoice} from '../js/personal-expense-core.js';
+import {payrollFor} from '../js/payroll-core.js';
+import {buildReport} from '../js/report-core.js';
+const packet={row:{net_amount:125,kdv_rate:20,source_key:'TEST expense140',work_id:'TEST work140'}};
+const net={selected:true,paid_amount:125,vat_paid:false},gross={selected:true,paid_amount:150,vat_paid:true};
+assert.deepEqual(personalExpensePayment(packet,net),{amount:125,net_amount:null,kdv_amount:null,kdv_rate:null});
+assert.deepEqual(personalExpensePayment(packet,gross),{amount:150,net_amount:125,kdv_amount:25,kdv_rate:20});
+assert.deepEqual(personalExpensePayment(packet,{selected:true,paid_amount:150}),personalExpensePayment(packet,gross));assert.deepEqual(canonicalPersonalChoice({selected:true,paid_amount:150}),gross);
+for(const choice of [{...net,paid_amount:150},{...gross,paid_amount:125},{...net,vat_paid:null},{...net,selected:false},{...net,other:1},{...net,paid_amount:NaN},{selected:true,paid_amount:125}])assert.throws(()=>personalExpensePayment(packet,choice));
+const stamp='2026-01-01T00:00:00.000Z',e={id:'TEST expense id140',date:'2026-01-02',personnel_id:'p',payment_method:'Personel Ödedi',reimbursement_status:'Bekliyor',amount:150,net_amount:125,kdv_amount:25,kdv_rate:20,history_source:{row_id:packet.row.source_key},source_id:packet.row.work_id,updated_at:stamp,description:'TEST source preserved'};
+const before=JSON.stringify(e),updated=personalExpenseCorrection(e,packet,net,stamp,{});assert.equal(JSON.stringify(e),before);assert.equal(updated.id,e.id);assert.equal(updated.amount,125);assert.equal(updated.kdv_rate,null);assert.equal(updated.kdv_amount,null);assert.equal(updated.description,e.description);assert.deepEqual(updated.history_source,e.history_source);assert.notEqual(updated.updated_at,stamp);
+for(const patch of [{deleted_at:stamp},{updated_at:'different'},{payment_method:'Nakit'},{reimbursement_status:'Ödendi'},{invoice_no:'TEST invoice'},{ettn:'TEST invoice uuid'},{invoice_paid:true},{supplier_id:'s'},{dump_deposit:true},{history_source:{row_id:'other'}},{source_id:'other'}])assert.throws(()=>personalExpenseCorrection({...e,...patch},packet,net,stamp,{}));
+for(const [store,record]of [['cost_allocations',{source_store:'expense_records',source_id:e.id}],['bank_movements',{source_store:'expense_records',source_id:e.id}],['maintenance_records',{cost_source_store:'expense_records',cost_source_id:e.id}]])assert.throws(()=>personalExpenseCorrection(e,packet,net,stamp,{[store]:[record]}));
+const data={personnel:[{id:'p',name:'TEST employee140'}],expense_records:[updated]};assert.equal(payrollFor(data,data.personnel[0],'2026-01').reimb,125);assert.equal(payrollFor({...data,expense_records:[e]},data.personnel[0],'2026-01').reimb,150);
+console.log('expense VAT payment140 PASS: unchecked means actual base payment with unknown VAT, not zero VAT; checked means confirmed gross; legacy full payments unchanged; same expense correction; one native employee claim; revision, invoice, refund and linked cost guards');

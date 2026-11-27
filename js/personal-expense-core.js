@@ -19,22 +19,39 @@ export function personalExpenseMoney(p){return calcHakedisLine({quantity:1,unit_
 const single=(rows,name)=>{const xs=(rows||[]).filter(x=>isActive(x)&&x.active!==false&&normKey(x.name)===normKey(name));if(xs.length!==1)throw Error('Kart tek ve etkin olmalı: '+name);return xs[0];};
 export function personalExpensePlan(value,data,choice,digest,workRevision){
  const p=readPersonalExpensePacket(value),r=p.row,m=personalExpenseMoney(p);
- if(!exact(choice,['selected','paid_amount'])||choice.selected!==true||!money(choice.paid_amount))throw Error('Gerçek kişisel ödemeyi yazıp gider kartını işaretleyin');
- // A normal expense carries one gross cost and one equal reimbursement claim.
- // Partial payment needs separate payable evidence; never invent a balance or increase a claim.
- if(toKurus(choice.paid_amount)!==toKurus(m.total))throw Error('Gerçek ödeme KDV dahil toplamla farklı. Kayıt bekliyor; eksik tutar için borç veya personel alacağı varsayılmadı.');
+ const payment=personalExpensePayment(p,choice);
  const key=PERSONAL_SOURCE+r.source_key,old=data.meta?.find(x=>x.key===key)?.value;
  if(old){
-  if(old.digest!==digest||stableStringify(old.choice)!==stableStringify(choice))throw Object.assign(Error('OP_CONFLICT: aynı gider kaynağı değişmiş'),{code:'OP_CONFLICT'});
+  if(old.digest!==digest||stableStringify(canonicalPersonalChoice(old.choice))!==stableStringify(canonicalPersonalChoice(choice)))throw Object.assign(Error('OP_CONFLICT: aynı gider kaynağı değişmiş'),{code:'OP_CONFLICT'});
   const e=data.expense_records?.find(x=>x.id===old.expense_id&&isActive(x));
-  if(!e||e.payment_method!=='Personel Ödedi'||toKurus(e.amount)!==toKurus(m.total)||e.personnel_id!==old.personnel_id||e.source_id!==r.work_id)throw Error('Önceki gider bağlantısı değişmiş; ikinci kayıt açılmaz');
+  if(!e||e.payment_method!=='Personel Ödedi'||toKurus(e.amount)!==toKurus(payment.amount)||e.personnel_id!==old.personnel_id||e.source_id!==r.work_id)throw Error('Önceki gider bağlantısı değişmiş; ikinci kayıt açılmaz');
   return {existing:old,writes:{}};
  }
  const person=single(data.personnel,r.personnel),vehicle=single(data.vehicles,r.vehicle),quarry=single(data.quarries,r.quarry);
  const w=(data.work_records||[]).find(x=>x.id===r.work_id&&isActive(x));
  if(!w||w.updated_at!==workRevision||w.history_source?.row_id!==r.work_source_key||w.personnel_id!==person.id||w.vehicle_id!==vehicle.id||w.quarry_id!==quarry.id||w.date!==r.date)throw Error('Kayıtlı iş veya kart eşleşmesi değişmiş; tekrar kontrol edin');
  if((data.expense_records||[]).some(e=>isActive(e)&&(e.history_source?.row_id===r.source_key||(e.source_store==='work_records'&&e.source_id===w.id)||(e.date===r.date&&e.personnel_id===person.id&&toKurus(e.amount)===toKurus(m.total)))))throw Error('Aynı kaynak veya benzer personel gideri var; mükerrer kontrolü gerekli');
- const expense=newRecord({...(w.customer_id?{customer_id:w.customer_id,site_id:w.site_id||null}:{}),date:r.date,category:'Malzeme',amount:m.total,net_amount:m.amount,kdv_amount:m.kdv,kdv_rate:r.kdv_rate,personnel_id:person.id,vehicle_id:vehicle.id,quarry_id:quarry.id,company:quarry.name,payment_method:'Personel Ödedi',receipt:'Hayır',reimbursement_status:'Bekliyor',description:r.description,raw_message:r.raw_message,source_store:'work_records',source_id:w.id,history_source:{row_id:r.source_key,original_row:structuredClone(r),imported_at:new Date().toISOString()}});
- const link={digest,choice:structuredClone(choice),expense_id:expense.id,personnel_id:person.id};
+ const expense=newRecord({...(w.customer_id?{customer_id:w.customer_id,site_id:w.site_id||null}:{}),date:r.date,category:'Malzeme',...payment,personnel_id:person.id,vehicle_id:vehicle.id,quarry_id:quarry.id,company:quarry.name,payment_method:'Personel Ödedi',receipt:'Hayır',reimbursement_status:'Bekliyor',description:r.description,raw_message:r.raw_message,source_store:'work_records',source_id:w.id,history_source:{row_id:r.source_key,original_row:structuredClone(r),imported_at:new Date().toISOString()}});
+ const link={digest,choice:canonicalPersonalChoice(choice),expense_id:expense.id,personnel_id:person.id};
  return {writes:{expense_records:[expense],meta:[{key,value:link}]},link};
 }
+
+// Unticked VAT is an unconfirmed VAT payment, never an assertion of tax exemption.
+export function personalExpensePayment(p,choice){
+ const m=personalExpenseMoney(p),legacy=exact(choice,['selected','paid_amount']);
+ if((!legacy&&!exact(choice,['selected','paid_amount','vat_paid']))||choice.selected!==true||!money(choice.paid_amount)||(!legacy&&typeof choice.vat_paid!=='boolean'))throw Error('Gerçek ödemeyi kontrol edip gider kartını işaretleyin');
+ const vatPaid=legacy||choice.vat_paid,expected=vatPaid?m.total:p.row.net_amount;
+ if(toKurus(choice.paid_amount)!==toKurus(expected))throw Error('Gerçek ödeme seçilen KDV durumuyla farklı; tutarı ve KDV kutusunu kontrol edin.');
+ return vatPaid?{amount:m.total,net_amount:m.amount,kdv_amount:m.kdv,kdv_rate:p.row.kdv_rate}:{amount:p.row.net_amount,net_amount:null,kdv_amount:null,kdv_rate:null};
+}
+export function personalExpenseCorrection(expense,packet,choice,expectedRevision,data){
+ if(!expense||!isActive(expense)||expense.updated_at!==expectedRevision)throw Error('Gider değişmiş; güncel kaydı yeniden açın');
+ if(expense.payment_method!=='Personel Ödedi'||expense.reimbursement_status!=='Bekliyor'||expense.history_source?.row_id!==packet.row.source_key||expense.source_id!==packet.row.work_id)throw Error('Gider kaynağı veya geri ödeme durumu uygun değil');
+ if(expense.invoice_no||expense.ettn||expense.invoice_paid||expense.supplier_id||expense.dump_deposit)throw Error('Belge veya ödeme bağlantısı bulunan gider ayrı kontrol edilmeli');
+ const linked=(data.cost_allocations||[]).some(x=>isActive(x)&&x.source_store==='expense_records'&&x.source_id===expense.id)||(data.bank_movements||[]).some(x=>isActive(x)&&x.source_store==='expense_records'&&x.source_id===expense.id)||(data.maintenance_records||[]).some(x=>isActive(x)&&x.cost_source_store==='expense_records'&&x.cost_source_id===expense.id);
+ if(linked)throw Error('Başka hesaba bağlanmış giderin tutarı bu karttan değiştirilemez');
+ const payment=personalExpensePayment(packet,choice);
+ return {...expense,...payment,updated_at:new Date().toISOString()};
+}
+
+export const canonicalPersonalChoice=choice=>({selected:choice.selected,paid_amount:choice.paid_amount,vat_paid:choice.vat_paid??true});
