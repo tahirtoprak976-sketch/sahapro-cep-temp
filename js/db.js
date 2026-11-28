@@ -166,6 +166,7 @@ function assertFinancialEdit(store, current, next, delta, data) {
   if (!current || current.deleted_at) throw financeError('Kayıt değişmiş veya silinmiş; yeniden açın.', 'STALE');
   if(['fuel_records','cari_movements'].includes(store)&&data.meta?.some(m=>m.key?.startsWith('customer-paid-fuel:')))assertPaidFuelEdit(store,current,next,data.meta);
   const changes = keys => keys.some(key => key in delta && changedField(current, next, key));
+  if(current.remote_cost_review_id&&['fuel_records','cash_records'].includes(store)&&changes(['remote_cost_review_id','date','vehicle_id','personnel_id','amount','total','liters','unit_price','fuel_source','cash_record_id','source_store','source_id','cash_type','payment_method','deleted_at']))throw financeError('Bağlı yakıt ve kasa kaydı ayrı değiştirilemez; mali kaynağı birlikte kontrol edin.','FINANCE_LOCKED');
   if (store === 'contracts' && (current.status === 'İmzalandı' || current.signed_at || current.signed_snapshot))
     throw financeError('Sözleşme imzalanmış; eski ekran imzalı kaydı değiştiremez. Güncel sözleşmeyi açın.', 'SIGNED_LOCKED');
   if (store === 'slips' && (current.status === 'İmzalandı' || current.signed_at || current.signature_attachment_id) &&
