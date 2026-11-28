@@ -12,7 +12,7 @@ import { isActive, todayStr, trDate } from "./core.js";
 import { workAmount, hasWorkPrice, missingCustomerWorkPrice, workReviewContext } from "./collect-core.js";
 import { dumpFee } from "./dump-fees.js";
 import { linkedDumpExpenseIds } from "./dump-ledger-core.js";
-import { customerMovementText } from "./statement.js";
+import { customerMovementText,validateReportPeriod,movementCreditParts } from "./statement.js";
 import { claimWorkResolution } from './hakedis-finance.js';
 
 const live = (d, s) => (d[s] || []).filter(isActive);
@@ -159,6 +159,7 @@ const infoPairs = (r, keys) => keys.map(([k, l, f]) => [l, f ? f(r) : r?.[k]]).f
 
 // ---- Ana fonksiyon ----
 export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(), today = todayStr(), personnel = "", movement = "" } = {}) {
+  validateReportPeriod({from,to});
   if(k === "depo") return buildTankReport(d,{id,personnel,movement,from,to});
   const K = kindOf(k);
   const { nm, inR } = ctx(d, from, to);
@@ -247,8 +248,8 @@ export function buildReport(d, { k = "dokum", id = "", from = "", to = todayStr(
       const inP = movs.filter((m) => inR(m.date));
       const coll = r2(-inP.filter((m) => m.type === "Tahsilat").reduce((n, m) => n + Number(m.amount || 0), 0));
       R.kpis.push(["Tahsilat (dönem)", tl(coll)]);
-      const rows = [["", "Devir", "", "", "", tl(before)], ...inP.map((m) => { bal = r2(bal + Number(m.amount || 0)); const a = Number(m.amount) || 0; return [trDate(m.date), m.type || "", m.reason || m.note || "", a > 0 ? tl(a) : "", a < 0 ? tl(-a) : "", tl(bal)]; })];
-      R.tables.push({ title: "Kayıtlı cari hareketler", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Kayıtlı bakiye"], widths: [10, 12, 42, 12, 12, 12], rows,
+      const rows = [["", "Devir", "", "", "", "",tl(before)], ...inP.map((m) => { bal = r2(bal + Number(m.amount || 0)); const a = Number(m.amount) || 0; return [trDate(m.date), m.type || "", m.reason || m.note || "", a > 0 ? tl(a) : "", movementCreditParts(m).collected ? tl(movementCreditParts(m).collected) : "", movementCreditParts(m).otherDecrease?tl(movementCreditParts(m).otherDecrease):"",tl(bal)]; })];
+      R.tables.push({ title: "Kayıtlı cari hareketler", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Diğer azalış","Kayıtlı bakiye"], widths: [10, 12, 30, 12, 12, 12,12], rows,
         customerRows: rows.map((row, i) => i ? row.map((value, col) => col === 2 ? customerMovementText(inP[i - 1]) : value) : row) });
       R.kpis.push(["Kayıtlı cari bakiye", tl(bal)]);
       R.notes.push("Dönem sonundaki kayıtlı cari bakiye yalnız cari hareketleri kapsar; hakedişe girmemiş işler dahil değildir. Müşteri panosundaki TL bakiye bu işleri de içerir. Mazot litreleri TL bakiyeden ayrıdır.");
@@ -432,12 +433,13 @@ export function forAudience(R, audience = "internal") {
 
 // PDF tanımı (document-engine)
 export function reportSpec(R, { audience = "internal", company = "" } = {}) {
+  validateReportPeriod(R);
   const A = forAudience(R, audience);
   const S = [];
   S.push({ title: "Rapor Bilgileri", pairs: [["Rapor", `${A.kind} raporu`], [A.kind, A.name], ["Dönem", A.period], ...A.info.filter(([l]) => l !== A.kind)] });
   if (A.kpis.length) S.push({ title: "Özet", pairs: A.kpis.map(([l, v]) => [l, v]) });
   // Tutar / ton / litre sütunları sağa yaslı
-  const RIGHT = /tutar|fiyat|maliyet|ton$|litre|borç|ödeme|bakiye|alış|fark|gelir|yakıt|bakım|gider|döküm$|kalan|^iş$|kayıt|^km|saat$/i;
+  const RIGHT = /azalış|tutar|fiyat|maliyet|ton$|litre|borç|ödeme|bakiye|alış|fark|gelir|yakıt|bakım|gider|döküm$|kalan|^iş$|kayıt|^km|saat$/i;
   for (const t of A.tables) S.push({ title: `${t.title} (${t.count ?? t.rows.length})`, headers: t.headers, widths: t.widths, rows: t.rows, align: t.headers.map((h) => (RIGHT.test(h) ? "right" : "left")) });
   for (const n of A.notes) S.push({ layout: "notice", text: n });
   S.push({ layout: "notice", text: `Bu rapor ${company || "işletme"} kayıtlarından ${new Date().toLocaleDateString("tr-TR")} tarihinde hazırlanmıştır. Fiyatı girilmemiş işler tutara katılmamıştır.` });
@@ -448,6 +450,7 @@ export function reportSpec(R, { audience = "internal", company = "" } = {}) {
 
 // CSV: tüm tablolar alt alta
 export function reportCsv(R, audience = "internal") {
+  validateReportPeriod(R);
   const A = forAudience(R, audience);
   const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const out = [[`${A.kind} raporu`, A.name, A.period].map(q).join(";"), ""];

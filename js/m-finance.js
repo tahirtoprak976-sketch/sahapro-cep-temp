@@ -1288,6 +1288,7 @@ async function cariDetail(ctx, cid) {
     <div class="section-title">Ekstre Gönder</div>
     <div class="card">
       <div class="field"><label>Dönem</label><select data-stper><option value="all">Tüm hareketler</option><option value="month">Bu ay</option><option value="q">Son 3 ay</option></select></div>
+      <div data-stpreview aria-live="polite"></div>
       <div class="row" style="gap:8px"><button class="btn primary grow" data-stwa>📤 WhatsApp / Paylaş</button><button class="btn grow" data-stcsv>📊 Excel (CSV)</button></div>
       <div class="muted tiny" style="margin-top:6px">Müşteriye giden metinde iç notlar ve düzeltme nedenleri yer almaz.</div>
     </div>
@@ -1327,6 +1328,12 @@ async function cariDetail(ctx, cid) {
     if (v === "q") return { from: addDays(t, -90), to: t };
     return { from: "", to: "" };
   };
+  const drawStatementPreview = () => {
+    const st = customerStatement(movements, cid, stPeriod());
+    qs('[data-stpreview]', root).innerHTML = `<h3 style="margin:8px 0">Paylaşılacak ekstre özeti</h3><p class="tiny muted">Dönem başı devir: ${fmtTL(st.opening)} ₺ · Dönem borç artışı: ${fmtTL(st.debit)} ₺</p><div class="statgrid" style="grid-template-columns:repeat(2,minmax(0,1fr))">${stat(fmtTL(st.collected), 'Gerçek tahsilat ₺', 'ok')}${stat(fmtTL(st.otherDecrease), 'Diğer borç azalışı ₺')}${stat(fmtTL(st.closing), 'Kayıtlı dönem sonu bakiye ₺')}</div><p class="tiny muted">Diğer azalış, para alındığı anlamına gelmez. Sıfır bakiye tüm işlerin fiyatlandığını veya tahsil edildiğini göstermez.${groups.length ? ` Bu müşteride toplam ${groups.reduce((n,g)=>n+g.works.length,0)} fiyatsız iş bakiyeye dahil değil.` : ''}</p>`;
+  };
+  qs('[data-stper]', root).addEventListener('change', drawStatementPreview);
+  drawStatementPreview();
   qs("[data-stwa]", root).addEventListener("click", async () => {
     const per = stPeriod();
     const st = customerStatement(movements, cid, per);
