@@ -4,6 +4,11 @@ import {validDate} from './driver-delivery.js';
 import {isActive} from './core.js';
 import {appbar,qs,qsa,esc,fSelect,fDate,stat,notice,kv,fmtTL,fmtNum,trDate,pagedRender} from './ui.js';
 
+const siteChoices=(data,customerId,selected='')=>{
+ const rows=(data.sites||[]).filter(s=>isActive(s)&&s.customer_id===customerId).map(s=>({v:s.id,t:(s.name||'Adsız şantiye')+(s.active===false?' (pasif)':'')}));
+ if(selected&&!rows.some(s=>s.v===selected))rows.unshift({v:selected,t:'Şantiye bulunamadı / müşteri eşleşmesini kontrol edin'});
+ return rows;
+};
 const groups={ready:'Hazır',missing:'Eksik bilgi',review:'Kontrol gerekli',agreement:'Anlaşma kapsamı',claimed:'Hakedişe bağlı'};
 const liters=value=>value==null?'Hesaplanamadı':fmtNum(value)+' L';
 const monthRange=(month,today)=>{
@@ -17,9 +22,10 @@ export async function screen(ctx){
  const {root,db}=ctx,today=new Date().toISOString().slice(0,10),initial=await db.dumpAll();
  if(!root.isConnected)return;
  const customers=(initial.customers||[]).filter(isActive),q=ctx.query||{},range=monthRange(today.slice(0,7),today);
- root.innerHTML=appbar('Hakediş hazırlığı','Müşteri + dönem · eksikleri tamamla',{back:'#/hakedis'})+`
+ root.innerHTML=appbar('Hakediş hazırlığı','Müşteri + şantiye + dönem · eksikleri tamamla',{back:'#/hakedis'})+`
  <div class="card" data-prep-filters style="margin-top:10px">
  ${fSelect('Müşteri','prep_customer',customers.map(c=>({v:c.id,t:customerLabel(c,customers)})),q.customer_id||'')}
+ ${fSelect('Şantiye (boşsa tümü)','prep_site',siteChoices(initial,q.customer_id,q.site_id),q.site_id||'')}
  <div class="field"><label for="prep-month">Ay seç</label><input id="prep-month" name="prep_month" type="month" max="${today.slice(0,7)}" value="${validDate(q.date_from)?q.date_from.slice(0,7):today.slice(0,7)}"></div>
  <div class="formgrid2">${fDate('Başlangıç','prep_from',validDate(q.date_from)?q.date_from:range.from)}${fDate('Bitiş','prep_to',validDate(q.date_to)?q.date_to:range.to)}</div>
  <button class="btn block" data-prep-refresh>Kontrol et / yenile</button>
@@ -58,18 +64,20 @@ export async function screen(ctx){
  };
  const load=async()=>{
   const token=++revision;button.disabled=true;output.innerHTML=notice('info','Güncel kayıtlar kontrol ediliyor…');
-  const scope={customer_id:qs('[name=prep_customer]',root).value,from:qs('[name=prep_from]',root).value,to:qs('[name=prep_to]',root).value};
+  const scope={customer_id:qs('[name=prep_customer]',root).value,from:qs('[name=prep_from]',root).value,to:qs('[name=prep_to]',root).value,site_id:qs('[name=prep_site]',root).value};
   try{
    const data=await db.dumpAll();if(token!==revision||!root.isConnected)return;
    const picker=qs('[name=prep_customer]',root),fresh=(data.customers||[]).filter(isActive);
    picker.innerHTML='<option value="">— seç —</option>'+fresh.map(c=>`<option value="${esc(c.id)}" ${c.id===scope.customer_id?'selected':''}>${esc(customerLabel(c,fresh))}</option>`).join('');
+   qs('[name=prep_site]',root).innerHTML='<option value="">Tüm şantiyeler</option>'+siteChoices(data,scope.customer_id,scope.site_id).map(s=>`<option value="${esc(s.v)}" ${s.v===scope.site_id?'selected':''}>${esc(s.t)}</option>`).join('');
    const model=hakedisPreparation(data,{...scope,today});
    history.replaceState(history.state,'',preparationURL('hazirlik',scope));draw(model,data);
   }catch(e){if(token===revision&&root.isConnected)output.innerHTML=notice('warn',e.message||'Kayıtlar okunamadı; tekrar deneyin.');}
   finally{if(token===revision&&root.isConnected)button.disabled=false;}
  };
  button.onclick=load;
- for(const field of ['prep_customer','prep_from','prep_to'])qs('[name='+field+']',root).onchange=load;
+ qs('[name=prep_customer]',root).onchange=()=>{qs('[name=prep_site]',root).value='';void load();};
+ for(const field of ['prep_site','prep_from','prep_to'])qs('[name='+field+']',root).onchange=load;
  qs('[name=prep_month]',root).onchange=()=>{
   const period=monthRange(qs('[name=prep_month]',root).value,today);
   if(period){qs('[name=prep_from]',root).value=period.from;qs('[name=prep_to]',root).value=period.to;}void load();

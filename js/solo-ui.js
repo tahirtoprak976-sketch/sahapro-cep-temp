@@ -1823,7 +1823,9 @@ async function customerDashboard(ctx, id, d) {
   siteSection.querySelector('[data-customer-site-search]').addEventListener('input',drawSites);
   siteSection.querySelector('[data-customer-site-status]').addEventListener('change',drawSites);
   drawSites();
-  let per = "year", subs = false;
+  const followup=document.createElement('section');followup.className='card customer-followup';followup.dataset.customerFollowup='';workspace.after(followup);
+  const collectNotes=await db.metaGet('collect_notes')||{};
+  let per = "year", subs = false, followupSite = "";
   const fmt = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   const tile = (v, l, cls = "") => ui.stat(v, l, cls);
   const draw = () => {
@@ -1831,12 +1833,14 @@ async function customerDashboard(ctx, id, d) {
     const R = CR.customerReportData(d, id, { from: rg.from, to: rg.to, subs });
     const ownReport=subs?CR.customerReportData(d,id,{from:rg.from,to:rg.to,subs:false}):R;
     workspace.innerHTML=customerWorkspaceHTML(d,id,ownReport,{from:rg.from,to:rg.to});
+    followup.innerHTML=`<div class="formgrid2"><div class="field"><label for="followup-period">Takip dönemi</label><select id="followup-period" data-followup-period>${Object.entries(CR.PERIODS).map(([k,[label]])=>`<option value="${k}" ${per===k?'selected':''}>${esc(label)}</option>`).join('')}</select></div><div class="field"><label for="followup-site">İşlerin şantiyesi</label><select id="followup-site" data-followup-site><option value="">Tüm şantiyeler</option>${(d.sites||[]).filter(s=>!s.deleted_at&&s.customer_id===id).map(s=>`<option value="${esc(s.id)}" ${followupSite===s.id?'selected':''}>${esc(s.name)}${s.active===false?' (pasif)':''}</option>`).join('')}</select></div></div><p class="tiny muted">Şantiye seçimi bu takip dosyasının iş ve hakediş listelerine uygulanır. Müşteri hesabı ve aşağıdaki raporlar tüm şantiyeleri kapsar.</p>${customerDeskHtml(d,id,{from:rg.from,to:rg.to,site_id:followupSite,account:ownReport,notes:collectNotes})}`;
+    followup.querySelector('[data-followup-period]').onchange=e=>{per=e.target.value;draw();};
+    followup.querySelector('[data-followup-site]').onchange=e=>{followupSite=e.target.value;draw();};
     const a = R.aging, aSum = a.b0 + a.b30 + a.b60 + a.b90 || 1;
     const PM = CR.panelModel(R, rg.label);
     const fmt1 = (n) => Number(n || 0).toLocaleString("tr-TR", { maximumFractionDigits: 1 });
     sec.innerHTML = `<h2 style="margin:0 0 6px">📊 Müşteri panosu</h2>
       <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${Object.entries(CR.PERIODS).map(([k, [t]]) => `<button class="chip ${per === k ? "on" : ""}" data-dper="${k}">${t}</button>`).join("")}${hasSubs ? `<button class="chip ${subs ? "on" : ""}" data-dsubs>Taşeronlar dahil</button>` : ""}</div>
-      ${customerDeskHtml(d,id,{from:rg.from,to:rg.to})}
       ${R.scopeNote ? ui.notice("info", R.scopeNote) : ""}
       ${R.financialIssues.length ? ui.notice("warn", `${R.financialIssues.length} işte hakediş kaynağı doğrulanamadı. Kayıtlı tutarlar korunarak gösterildi; fatura öncesi Veri Sağlığı ve kaynak işi kontrol edin.`) : ""}
       ${PM.fuel ? `<div class="card" data-fuelpanel style="margin:0 0 10px;border-left:4px solid #c98a00;padding:12px">
