@@ -1,0 +1,21 @@
+import {workDaysOf,payrollFor} from '../js/payroll-core.js';
+import assert from 'node:assert/strict';
+import {HISTORY_FORMAT,HISTORY_STORES,readHistoryPackage,initialHistoryChoices,prepareHistory} from '../js/history-core.js';
+import {isIncludedLoading} from '../js/included-loading-core.js';
+import {exploreWorks} from '../js/work-explorer.js';
+import {missingCustomerWorkPrice,workAmount} from '../js/collect-core.js';
+import {customerReportData} from '../js/customer-report.js';
+const row={row_id:'TEST loading146',kind:'work',date:'2026-01-02',customer:'TEST customer146',vehicle:'TEST excavator146',personnel:'TEST person146',work_type:'Yükleme',quantity:1,unit:'Adet',included_loading:true,included_transport_source:'TEST parent146',settlement_status:'unbilled_unpaid',description:'TEST unknown hours/trucks; transport included',raw_message:'TEST loading completed'};
+const pkg={format:HISTORY_FORMAT,rows:[row]},data=Object.fromEntries(HISTORY_STORES.map(s=>[s,[]]));
+data.customers=[{id:'c',name:row.customer}];data.vehicles=[{id:'v',name:row.vehicle,type:'İş Makinesi'}];data.personnel=[{id:'p',name:row.personnel}];
+const parent={id:'parent',customer_id:'c',date:row.date,work_type:'Hafriyat Nakliye',unit:'Sefer',quantity:9,history_source:{row_id:row.included_transport_source}};data.work_records=[parent];
+const prepare=(d=data)=>prepareHistory(readHistoryPackage(pkg),initialHistoryChoices(pkg),d,{today:'2026-01-03'});
+for(const patch of [{quantity:0},{quantity:2},{unit:'Saat'},{unit:'Sefer'},{unit_price:0},{kdv_rate:20},{work_type:'Hafriyat Nakliye'},{included_transport_source:''},{contract_included:true}])assert.throws(()=>readHistoryPackage({...pkg,rows:[{...row,...patch}]}));
+const before=JSON.stringify(data),plan=prepare();assert(plan.ready,JSON.stringify(plan.errors));assert.equal(JSON.stringify(data),before);const w=plan.writes.work_records[0];assert(isIncludedLoading(w));assert.equal(w.personnel_id,'p');assert.equal(w.included_in_work_id,'parent');assert.equal(w.price_snapshot.kdv_rate,null);assert.equal(w.price_snapshot.kdv,null);assert.equal(workAmount(w,data),0);assert.equal(missingCustomerWorkPrice(w),false);for(const s of HISTORY_STORES.filter(s=>s!=='work_records'))assert.equal(plan.writes[s].length,0);
+for(const patch of [{date:'2026-01-01'},{customer_id:'other'},{deleted_at:'2026-01-03'},{unit:'Saat'}])assert.equal(prepare({...data,work_records:[{...parent,...patch}]}).ready,false);
+assert.equal(prepare({...data,work_records:[parent,w]}).ready,false);
+const res=exploreWorks([parent,w]);assert.deepEqual({...res.units},{Sefer:9});assert.equal(res.rows.length,2);assert.equal(exploreWorks([parent,w],{}, {personnel_id:'p'}).rows.length,1);
+const report=customerReportData({...data,work_records:[parent,w]},'c');assert.deepEqual(report.units,{Sefer:9});assert.equal(report.works.find(x=>x.id===w.id).activityIncluded,true);
+console.log('included loading146 PASS: strict linked activity, own employee, unknown duration, no money/tax or measured quantity, duplicate and parent guards');
+
+const staff={id:'p',pay_type:'Yevmiye',daily_wage:123};const payrollData={...data,work_records:[w]};assert.equal(workDaysOf(payrollData,staff,'2026-01').size,0);assert.equal(payrollFor(payrollData,staff,'2026-01').base,0);assert.equal(exploreWorks([w],{},{personnel_id:'p'}).rows.length,1);

@@ -1,3 +1,4 @@
+import {isIncludedLoading, INCLUDED_LOADING} from './included-loading-core.js';
 import {workAmount,hasWorkPrice,missingCustomerWorkPrice} from "./collect-core.js";
 import {financialResultText,financialResultWarning} from './cost-completeness.js';
 import { enteredTonnageText } from "./work-tonnage.js";
@@ -1742,20 +1743,20 @@ export function customerWorkRows(d, id, { from = "", subs = false } = {}) {
     .map((w) => {
       const amt = workAmount(w, d);
       const where = [nm("sites", w.site_id), nm("quarries", w.quarry_id) || w.quarry, nm("dump_sites", w.dump_site_id) || w.dump_area].filter(Boolean).join(" → ");
-      return { id: w.id, priced:hasWorkPrice(w), date: w.date, vehicle: nm("vehicles", w.vehicle_id), qty: Number(w.quantity) || 0, unit: w.unit || "", type: w.work_type || "", where,
+      return { ...(isIncludedLoading(w)?{activityIncluded:true}:{}), id: w.id, priced:hasWorkPrice(w), date: w.date, vehicle: nm("vehicles", w.vehicle_id), qty: Number(w.quantity) || 0, unit: w.unit || "", type: w.work_type || "", where,
         sub: w.customer_id !== id ? nm("customers", w.customer_id) : "", amount: Number.isFinite(amt) && amt > 0 ? amt : 0,
         fuelL: Number(w.customer_fuel_allowance_l) || 0, unpriced: missingCustomerWorkPrice(w,billed.has(w.id)), included: w.price_snapshot?.price_source === "Sözleşmeye dahil",
         tonnage: Number(w.tonnage) || 0, tonnageLabel: enteredTonnageText(w), slip: w.slip_no || "", material: w.material || "" };
     });
   const units = {};
-  for (const r of rows) units[r.unit] = Math.round(((units[r.unit] || 0) + r.qty) * 100) / 100;
+  for (const r of rows) if(!r.activityIncluded) units[r.unit] = Math.round(((units[r.unit] || 0) + r.qty) * 100) / 100;
   return { rows, units, amount: Math.round(rows.reduce((n, r) => n + r.amount, 0) * 100) / 100, unpriced: rows.filter((r) => r.unpriced).length, fuelL: rows.reduce((n, r) => n + r.fuelL, 0) };
 }
 export function customerWorksText(name, res, label) {
   const tr = (s) => (s ? String(s).slice(0, 10).split("-").reverse().join(".") : "");
   const tl = (n) => Number(n).toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   const lines = [`*${name}* — Yapılan işler (${label})`, ""];
-  for (const r of [...res.rows].reverse()) lines.push(`${tr(r.date)} · ${r.vehicle || "-"} · ${tl(r.qty)} ${r.unit.toLocaleLowerCase("tr-TR")} ${r.type}${r.sub ? " [" + r.sub + "]" : ""}${r.where ? " (" + r.where + ")" : ""}${r.tonnage ? " · " + (r.tonnageLabel || enteredTonnageText({...r,quantity:r.qty})) : ""}${r.amount ? " · " + tl(r.amount) + " ₺" : ""}`);
+  for (const r of [...res.rows].reverse()) lines.push(`${tr(r.date)} · ${r.vehicle || "-"} · ${r.activityIncluded?"Süre belirtilmedi · "+INCLUDED_LOADING:tl(r.qty)+" "+r.unit.toLocaleLowerCase("tr-TR")} ${r.type}${r.sub ? " [" + r.sub + "]" : ""}${r.where ? " (" + r.where + ")" : ""}${r.tonnage ? " · " + (r.tonnageLabel || enteredTonnageText({...r,quantity:r.qty})) : ""}${r.amount ? " · " + tl(r.amount) + " ₺" : ""}`);
   lines.push("", "Toplam: " + Object.entries(res.units).map(([u, q]) => `${tl(q)} ${u.toLocaleLowerCase("tr-TR")}`).join(", ") + (res.amount ? ` · ${tl(res.amount)} ₺` : ""));
   return lines.join("\n");
 }
@@ -1786,7 +1787,7 @@ async function customerWorks(ctx, id, d) {
       <p class="small"><b>${res.rows.length} iş</b> · ${Object.entries(res.units).map(([u, q]) => `${fmt(q)} ${esc(u.toLocaleLowerCase("tr-TR"))}`).join(" · ") || "—"}${res.amount ? ` · <b>${fmt(res.amount)} ₺</b>` : ""}${res.fuelL ? ` · ⛽ ${fmt(res.fuelL)} L mazot karşılığı` : ""}${res.unpriced ? ` · <span class="badge warn">${res.unpriced} fiyatsız</span>` : ""}</p>
       ${pending.length?`<section data-unlinked-slips>${ui.notice('warn',pending.length+' dijital fişin iş bağlantısını inceleyin. Bağsız fişler iş ve TL toplamına dahil değil; farklılıklar otomatik değiştirilmez.')} ${pending.map(({slip:s,link})=>`<a class="btn block" data-unlinked-slip href="#/fisler/${esc(encodeURIComponent(s.id))}${link.state==='unlinked'?'/is-kaydi':''}">FS-${esc(String(s.slip_no).padStart(6,'0'))} · ${esc(core.trDate(s.date))} · ${fmt(s.quantity)} ${esc(s.unit)} — ${link.state==='unlinked'?'İşe bağla':link.state==='missing'?'Kaynak işi incele':'Bilgi farkını incele'} →</a>`).join('')}</section>`:''}
 
-      ${res.rows.length ? res.rows.slice(0, limit).map((r) => `<div class="li" data-go="#/isler/${esc(r.id)}"><div class="ic">${r.unit === "Sefer" ? "🚚" : "⚙"}</div><div class="grow"><div class="t1 ellipsis">${esc(core.trDate(r.date))} · ${fmt(r.qty)} ${esc(r.unit.toLocaleLowerCase("tr-TR"))} ${esc(r.type)}${r.sub ? ` <span class="muted tiny">(${esc(r.sub)})</span>` : ""}</div><div class="t2 ellipsis">${esc([r.vehicle, r.where, r.material, r.tonnage ? r.tonnageLabel : "", r.slip ? "fiş " + r.slip : ""].filter(Boolean).join(" · "))}</div></div><div class="end"><span class="amt">${r.amount ? fmt(r.amount) + " ₺" : r.fuelL ? "⛽ " + fmt(r.fuelL) + " L" : r.included ? "Sözleşmeye dahil" : r.priced ? "0 ₺" : '<span class="muted tiny">fiyatsız</span>'}</span></div></div>`).join("") : '<p class="muted small">Bu dönemde iş yok.</p>'}
+      ${res.rows.length ? res.rows.slice(0, limit).map((r) => `<div class="li" data-go="#/isler/${esc(r.id)}"><div class="ic">${r.unit === "Sefer" ? "🚚" : "⚙"}</div><div class="grow"><div class="t1 ellipsis">${esc(core.trDate(r.date))} · ${r.activityIncluded?"Süre belirtilmedi":fmt(r.qty)+" "+esc(r.unit.toLocaleLowerCase("tr-TR"))} ${esc(r.type)}${r.sub ? ` <span class="muted tiny">(${esc(r.sub)})</span>` : ""}</div><div class="t2 ellipsis">${esc([r.vehicle, r.where, r.material, r.tonnage ? r.tonnageLabel : "", r.slip ? "fiş " + r.slip : ""].filter(Boolean).join(" · "))}</div></div><div class="end"><span class="amt">${r.amount ? fmt(r.amount) + " ₺" : r.fuelL ? "⛽ " + fmt(r.fuelL) + " L" : r.activityIncluded ? INCLUDED_LOADING : r.included ? "Sözleşmeye dahil" : r.priced ? "0 ₺" : '<span class="muted tiny">fiyatsız</span>'}</span></div></div>`).join("") : '<p class="muted small">Bu dönemde iş yok.</p>'}
       ${res.rows.length > limit ? `<button class="btn block sm" data-more>+${res.rows.length - limit} iş daha</button>` : ""}
       <div class="row" style="gap:6px;margin-top:8px"><button class="btn grow" data-go="#/isler/new?customer_id=${esc(id)}">+ Bu müşteriye iş</button><button class="btn grow" data-wshare>📤 Listeyi paylaş</button><button class="btn grow" data-go="#/tahsilat/${esc(id)}">💰 Tahsilat</button></div>`;
     for (const b of sec.querySelectorAll("[data-per]")) b.onclick = () => { per = b.dataset.per; limit = 40; draw(); };

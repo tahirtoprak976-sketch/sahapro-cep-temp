@@ -1,3 +1,4 @@
+import {isIncludedLoading, INCLUDED_LOADING} from './included-loading-core.js';
 // Müşteri panosu ve ayrıntılı müşteri raporu (PDF). Hesaplar saf (customerReportData), çizim ve PDF ayrı.
 // Rakamlar diğer ekranlarla aynı kaynaklardan: bakiye = collect-core, mazot = assistant-rules, ekstre = statement.
 import { isActive, toKurus, fromKurus, todayStr, addDays, trDate } from "./core.js";
@@ -40,7 +41,7 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
   const works = live(d, "work_records").filter((w) => ids.has(w.customer_id) && inR(w.date))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")))
     .map((w) => { const weight = resolveWorkTonnage(w); return {
-      id: w.id, priced:hasWorkPrice(w), unpriced:missingCustomerWorkPrice(w,billed.has(w.id)), date: w.date, customer: w.customer_id !== id ? nm("customers", w.customer_id) : "", vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
+      ...(isIncludedLoading(w)?{activityIncluded:true}:{}), id: w.id, priced:hasWorkPrice(w), unpriced:missingCustomerWorkPrice(w,billed.has(w.id)), date: w.date, customer: w.customer_id !== id ? nm("customers", w.customer_id) : "", vehicle: nm("vehicles", w.vehicle_id), personnel: nm("personnel", w.personnel_id),
       type: w.work_type || "", qty: Number(w.quantity) || 0, unit: w.unit || "", material: w.material || "",
       from: nm("quarries", w.quarry_id) || w.quarry || "", site: nm("sites", w.site_id), to: nm("dump_sites", w.dump_site_id) || w.dump_area || "",
       tonnage: weight.enteredTon == null ? 0 : weight.totalTon, enteredTonnage: weight.enteredTon, tonnageScope: weight.scope, tonnageUnknown: weight.uncertain, tonnagePerTrip: weight.scope === "per_trip" && weight.trips > 1, slip: w.slip_no || "", unit_price: w.price_snapshot?.unit_price==null || w.price_snapshot.unit_price==='' ? null : Number(w.price_snapshot.unit_price), amount: workAmount(w, d),
@@ -48,13 +49,13 @@ export function customerReportData(d, id, { from = "", to = todayStr(), subs = f
       kdv_included: w.price_snapshot ? !!w.price_snapshot.kdv_included : null, kdv_rate: w.price_snapshot?.kdv_rate ?? null,
     }; });
   const units = {};
-  for (const w of works) units[w.unit] = r2((units[w.unit] || 0) + w.qty);
+  for (const w of works) if(!w.activityIncluded) units[w.unit] = r2((units[w.unit] || 0) + w.qty);
   const byType = {}, byVehicle = {};
   for (const w of works) {
     const t = byType[w.type || "Diğer"] ||= { count: 0, amount: 0, fuelL: 0, units: {} };
-    t.count++; t.amount = r2(t.amount + w.amount); t.fuelL = r2(t.fuelL + w.fuelL); t.units[w.unit] = r2((t.units[w.unit] || 0) + w.qty);
+    t.count++; t.amount = r2(t.amount + w.amount); t.fuelL = r2(t.fuelL + w.fuelL); if(!w.activityIncluded) t.units[w.unit] = r2((t.units[w.unit] || 0) + w.qty);
     const v = byVehicle[w.vehicle || "—"] ||= { count: 0, amount: 0, fuelL: 0, units: {} };
-    v.count++; v.amount = r2(v.amount + w.amount); v.fuelL = r2(v.fuelL + w.fuelL); v.units[w.unit] = r2((v.units[w.unit] || 0) + w.qty);
+    v.count++; v.amount = r2(v.amount + w.amount); v.fuelL = r2(v.fuelL + w.fuelL); if(!w.activityIncluded) v.units[w.unit] = r2((v.units[w.unit] || 0) + w.qty);
   }
   // Tahsilatlar: cari hareketlerden (nakit ve havale ikisi de buraya yazılır)
   const collections = live(d, "cari_movements").filter((m) => ids.has(m.customer_id) && m.type === "Tahsilat" && inR(m.date))
@@ -182,9 +183,9 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
   if (chart) S.push({ title: "Son 12 ay: iş tutarı ve tahsilat (TL)", image: chart, image_width: 760, max_h: 200 });
   S.push({ title: "İş Dökümü", headers: ["Tarih", "Araç", "Operatör", "İş", "Miktar", "Nereden → Nereye", "Malzeme", R.totals.tonnagePerTrip || R.totals.tonnageUnknown ? "Toplam Ton" : "Ton", "Fiş No", "Birim Fiyat", "Tutar"],
     widths: [7, 9, 8, 11, 7, 17, 8, 5, 7, 8, 9],
-    rows: R.works.map((w) => [trDate(w.date), w.vehicle, w.personnel, w.type + (w.customer ? ` [${w.customer}]` : ""), `${fmt(w.qty)} ${w.unit}`,
+    rows: R.works.map((w) => [trDate(w.date), w.vehicle, w.personnel, w.type + (w.customer ? ` [${w.customer}]` : ""), w.activityIncluded?"Süre belirtilmedi":`${fmt(w.qty)} ${w.unit}`,
       [w.from, w.site, w.to].filter(Boolean).join(" → "), w.material, w.tonnageUnknown ? fmt(w.enteredTonnage) + " (kapsam?)" : w.tonnage ? fmt(w.tonnage) : "", w.slip,
-      w.priced && w.unit_price!=null ? tl(w.unit_price) : "", w.amount || w.fuelL ? breakdownLabel(w) : w.included ? "Sözleşmeye dahil" : w.priced ? tl(0) : "fiyatsız"]) });
+      !w.activityIncluded && w.priced && w.unit_price!=null ? tl(w.unit_price) : "", w.activityIncluded ? INCLUDED_LOADING : w.amount || w.fuelL ? breakdownLabel(w) : w.included ? "Sözleşmeye dahil" : w.priced ? tl(0) : "fiyatsız"]) });
   S.push({ title: "İş türüne göre", headers: ["İş türü", "İş sayısı", "Miktar", R.fuel ? "Tutar / mazot" : "Tutar"], widths: [40, 15, 25, 20],
     rows: Object.entries(R.byType).map(([k, v]) => [k, String(v.count), unitsText(v.units), breakdownLabel(v)]) });
   S.push({ title: "Araca göre", headers: ["Araç / makine", "İş sayısı", "Miktar", R.fuel ? "Tutar / mazot" : "Tutar"], widths: [40, 15, 25, 20],

@@ -1,3 +1,4 @@
+import {isIncludedLoading} from './included-loading-core.js';
 // Read-only customer/period review. No price lookup, posting, stock change or repair.
 import {isActive, todayStr, calcHakedisTotals, priceForQuantity, toKurus, TRUCK_TYPES} from './core.js';
 import {validDate} from './driver-delivery.js';
@@ -59,9 +60,9 @@ export function hakedisPreparation(d,{customer_id,from,to,site_id='',today=today
   if(duplicateKeys.length)issues.push('Aynı fiş numarası başka iş / belgede de var; kaynağı kontrol edin.');
   if(linked.some(doc=>!ticketKey(doc.doc_no)))issues.push('Bağlı döküm belgesinin fiş numarası eksik.');
   if(new Set(linked.map(doc=>ticketKey(doc.doc_no))).size<linked.length)issues.push('Aynı fiş numarası bu işe birden fazla belgeyle bağlanmış.');
-  if(w.price_snapshot?.locked&&!refs.length)issues.push('Fiyat kilitli, fakat aktif hakediş bağlantısı bulunamadı.');
+  if(w.price_snapshot?.locked&&!refs.length&&!isIncludedLoading(w))issues.push('Fiyat kilitli, fakat aktif hakediş bağlantısı bulunamadı.');
   if(refs.length>1||refs.some(h=>h.customer_id!==customer_id))issues.push('Hakediş bağlantısı birden fazla veya başka müşteriye ait.');
-  const agreement=nonTL.has(w.price_snapshot?.price_source)||customer.internal;
+  const agreement=nonTL.has(w.price_snapshot?.price_source)||isIncludedLoading(w)||customer.internal;
   if(w.price_snapshot?.price_source==='Mazot karşılığı'&&!(num(w.customer_fuel_allowance_l)>0))issues.push('Mazot karşılığı işin hak edilen litresi eksik veya geçersiz; anlaşmayı kontrol edin.');
   if(!refs.length&&nonTL.has(w.price_snapshot?.price_source)&&(num(w.price_snapshot.amount)>0||num(w.price_snapshot.unit_price)>0))issues.push('Anlaşma kapsamı etiketi ile pozitif TL fiyatı birlikte kayıtlı; ödeme esasını kontrol edin.');
   // Existing claims already freeze their own tariff (including manual/legacy net bases).

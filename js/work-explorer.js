@@ -1,3 +1,4 @@
+import {isIncludedLoading} from './included-loading-core.js';
 import {recordNoteText} from './record-notes.js';
 // Work-list query and export model. Read only: never changes financial records.
 import { isActive, addDays, matchSearch, todayStr } from './core.js';
@@ -22,6 +23,7 @@ export function workQuery(query={},today=todayStr()){
  return {...Object.fromEntries(keys.map(k=>[k,String(query[k]||'')])),f,period,from,to,error};
 }
 export function workFlags(w,internal=new Set(),billed=new Set()){
+ if(isIncludedLoading(w))return {noslip:false,musterisiz:false,fiyatsiz:false,driver:false};
  return {noslip:!w.slip_id&&!w.digital_slip_no&&w.slip_status!=='Fiş Var',musterisiz:!w.customer_id,
  fiyatsiz:!!w.customer_id&&!internal.has(w.customer_id)&&missingCustomerWorkPrice(w,billed.has(w.id)),driver:!!w.driver_entry_id};
 }
@@ -36,13 +38,13 @@ export function exploreWorks(all,names={},query={},options={}){
   return matchSearch([names.customers?.[w.customer_id],names.sites?.[w.site_id],names.vehicles?.[w.vehicle_id],names.personnel?.[w.personnel_id],w.work_type,recordNoteText(w,'description',names,'work'),w.material,w.slip_no,w.digital_slip_no].filter(Boolean).join(' '),state.q);
  }).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))||String(b.created_at||'').localeCompare(String(a.created_at||''))||String(a.id).localeCompare(String(b.id)));
  const units=Object.create(null),counts={noslip:0,fiyatsiz:0,musterisiz:0,driver:0};
- for(const w of rows){const u=w.unit||'Birim yok';const q=Number(w.quantity);if(Number.isFinite(q))units[u]=Math.round(((units[u]||0)+q)*1e6)/1e6;for(const [k,v] of Object.entries(workFlags(w,internal,billed)))if(v)counts[k]++;}
+ for(const w of rows){const u=w.unit||'Birim yok';const q=Number(w.quantity);if(!isIncludedLoading(w)&&Number.isFinite(q))units[u]=Math.round(((units[u]||0)+q)*1e6)/1e6;for(const [k,v] of Object.entries(workFlags(w,internal,billed)))if(v)counts[k]++;}
  return {state,rows,units,counts,days:new Set(rows.map(w=>w.date).filter(realDate)).size};
 }
 // Quotes + delimiter/newline handling and formula-injection protection for spreadsheet apps.
 export function csvCell(value){let s=String(value??'');if(/^[\s\uFEFF]*[=+@-]/u.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';}
 export function workCSV(rows,names={}){
  const lines=[['Tarih','Müşteri','Şantiye','Araç','Personel','İş türü','Miktar','Birim','Fiş no','Kaynak','Açıklama']];
- for(const w of rows)lines.push([w.date,names.customers?.[w.customer_id]||'',names.sites?.[w.site_id]||'',names.vehicles?.[w.vehicle_id]||'',names.personnel?.[w.personnel_id]||'',w.work_type,w.quantity,w.unit,w.slip_no||w.digital_slip_no||'',w.driver_entry_id?'Şoför':'Diğer',recordNoteText(w,'description',names,'work')]);
+ for(const w of rows)lines.push([w.date,names.customers?.[w.customer_id]||'',names.sites?.[w.site_id]||'',names.vehicles?.[w.vehicle_id]||'',names.personnel?.[w.personnel_id]||'',w.work_type,isIncludedLoading(w)?"Süre belirtilmedi":w.quantity,isIncludedLoading(w)?"":w.unit,w.slip_no||w.digital_slip_no||'',w.driver_entry_id?'Şoför':'Diğer',recordNoteText(w,'description',names,'work')]);
  return '\uFEFF'+lines.map(l=>l.map(csvCell).join(';')).join('\r\n');
 }

@@ -65,7 +65,7 @@ export function pastWorksFor(d, rule) {
     if (rule.vehicle_type && !vehicleTypeMatches(rule.vehicle_type,ctx)) continue;
     if (rule.valid_from && w.date < rule.valid_from) continue;
     if (rule.valid_to && w.date > rule.valid_to) continue;
-    if (w.fuel_rule_id || w.customer_fuel_allowance_l || ["Mazot karşılığı","Sözleşmeye dahil","İç iş (kendi depo)"].includes(w.price_snapshot?.price_source)) continue; // mazotla ödenen iş
+    if (w.included_loading===true || w.fuel_rule_id || w.customer_fuel_allowance_l || ["Mazot karşılığı","Sözleşmeye dahil","İç iş (kendi depo)"].includes(w.price_snapshot?.price_source)) continue; // mazotla ödenen iş
     const p = w.price_snapshot;
     if (p?.locked || live(d,"hakedis").some(h=>h.status!=="İptal" && h.items?.some(i=>i.work_record_id===w.id))) { out.locked++; continue; } // hakedişe girmiş: dokunulmaz
     if (!p || p.unit_price == null || p.unit_price === "" || !Number.isFinite(Number(p.unit_price))) out.unpriced.push(w);
@@ -242,7 +242,7 @@ export function priceApplicationRows(d,rule){
   else if(rule.vehicle_type&&!vehicleTypeMatches(rule.vehicle_type,ctx))reason='Araç türü kapsam dışında';
   else if(rule.site_id && w.site_id && w.site_id!==rule.site_id)reason='Başka şantiye kayıtlı';
   else if(p?.locked||live(d,'hakedis').some(h=>h.status!=='İptal'&&h.items?.some(i=>i.work_record_id===w.id)))reason='Hakedişe bağlı; fiyatı korunur';
-  else if(w.fuel_rule_id||w.customer_fuel_allowance_l||['Mazot karşılığı','Sözleşmeye dahil','İç iş (kendi depo)'].includes(p?.price_source))reason='Mazot / sözleşme hesabı; bu işlemle değiştirilmez';
+  else if(w.included_loading===true||w.fuel_rule_id||w.customer_fuel_allowance_l||['Mazot karşılığı','Sözleşmeye dahil','İç iş (kendi depo)'].includes(p?.price_source))reason='Mazot / sözleşme hesabı; bu işlemle değiştirilmez';
   else if(rule.valid_from&&w.date<rule.valid_from||rule.valid_to&&w.date>rule.valid_to)reason='Tarih kapsam dışında';
   else if(site&&!w.site_id){
    const source=[w.from_place,w.to_place,w.description,w.note].filter(Boolean).join(' ');

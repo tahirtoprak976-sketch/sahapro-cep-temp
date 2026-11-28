@@ -1,3 +1,4 @@
+import {includedLoadingSnapshot} from './included-loading-core.js';
 import {applyYard} from './yard-core.js';
 import {applyJob,isIncluded,checkDeal} from './job-core.js';
 import {tankTimeline} from './tank-timeline.js';
@@ -92,6 +93,7 @@ export function readHistoryPackage(value) {
           (r.unit_price!=null && r.unit_price!==''))
         throw Error('Sözleşmeye dahil iş için şantiye, sözleşme sürümü ve fiyatsız kapsam onayı gerekli.');
     }
+    if(Object.hasOwn(r,'included_loading')||Object.hasOwn(r,'included_transport_source')){if(r.kind!=='work'||r.included_loading!==true||r.work_type!=='Yükleme'||r.quantity!==1||r.unit!=='Adet'||!text(r.included_transport_source)||r.included_transport_source.length>120||r.unit_price!=null||r.kdv_rate!=null||r.kdv_included!=null||r.contract_included||r.internal_work||r.yard_receipt)throw Error('Dahil yükleme yalnız ayrı ücret ve saat/sefer belirtmeyen tek çalışma kaydı olabilir.');}
     for(const k of ['internal_work','yard_receipt'])if(Object.hasOwn(r,k)&&(r.kind!=='work'||r[k]!==true))throw Error('İç iş/depo kabul işareti yalnız açıkça onaylanmış işte kullanılabilir.');
     if(r.yard_receipt&&(!r.internal_work||r.unit!=='Sefer'||!text(r.material)||!text(r.dump_site)))throw Error('Depo kabulü için iç iş, malzeme, sefer ve kendi depo sahası gerekli.');
     // Allowlist, excluding executable content, IDs, financial locks and arbitrary backup fields.
@@ -112,6 +114,8 @@ export function readHistoryPackage(value) {
       "quarry",
       "description",
       "review_notes",
+      "included_loading",
+      "included_transport_source",
       "internal_work",
       "yard_receipt",
       "contract_included",
@@ -337,7 +341,12 @@ export function prepareHistory(
             groupIds.set(r.transport_group_key, newRecord().id);
           w.transport_group_id = groupIds.get(r.transport_group_key);
         }
-        if(r.internal_work===true){
+        if(r.included_loading===true){
+          const parents=(data.work_records||[]).filter(x=>isActive(x)&&x.history_source?.row_id===r.included_transport_source&&x.date===r.date&&x.customer_id===customer_id&&x.unit==='Sefer'&&Number(x.quantity)>0);
+          if(parents.length!==1)throw Error('Dahil yüklemenin kayıtlı nakliyesi tek ve aynı tarih/müşteriye ait olmalı.');
+          if((data.work_records||[]).some(x=>isActive(x)&&x.included_loading===true&&x.date===r.date&&x.customer_id===customer_id&&x.personnel_id===personnel_id&&x.vehicle_id===vehicle_id))throw Error('Bu personel/makine için dahil yükleme zaten kayıtlı; ikinci satır yazılmaz.');
+          w.included_loading=true;w.included_in_work_id=parents[0].id;w.included_transport_source=r.included_transport_source;w.price_snapshot=includedLoadingSnapshot();
+        } else if(r.internal_work===true){
           const customer=(data.customers||[]).find(c=>c.id===customer_id&&isActive(c)&&c.active!==false&&c.internal===true);
           if(!customer||r.contract_included||(r.unit_price!=null&&r.unit_price!==''&&Number(r.unit_price)!==0))throw Error('İç iş yalnız mevcut iç iş müşterisinde, satış bedeli olmadan aktarılır.');
           if(r.yard_receipt){
