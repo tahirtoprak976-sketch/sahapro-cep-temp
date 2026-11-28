@@ -1,3 +1,4 @@
+import {COST_REVIEW_FORMAT,readCostReview} from './cost-review-core.js';
 import {PERSONAL_EXPENSE_FORMAT,isPersonalExpenseFormat,readPersonalExpensePacket} from './personal-expense-core.js';
 import {isActionsFormat,readActionsPacket} from './remote-actions-core.js';
 import {PAID_WORK_FORMAT,readPaidWorkPacket} from './paid-work-core.js';
@@ -14,6 +15,7 @@ const date=s=>typeof s==='string'&&Number.isFinite(Date.parse(s))&&new Date(s).t
 const name=s=>normKey(String(s||'')).replace(/[^a-z0-9çğıöşü]/g,'');
 export function readApprovedPacket(value,{now=Date.now()}={}){
  const p=typeof value==='string'?JSON.parse(value):value;
+ if(p?.format===COST_REVIEW_FORMAT)return readCostReview(p,{now});
  if(isPersonalExpenseFormat(p?.format))return readPersonalExpensePacket(p,{now});
  if(p?.format===PAID_WORK_FORMAT)return readPaidWorkPacket(p,{now});
  if(isActionsFormat(p?.format))return readActionsPacket(p,{now});

@@ -1,0 +1,21 @@
+import * as db from './db.js';
+import {transaction} from './enterprise-db.js';
+import {backupBeforeHistoryImport} from './backup.js';
+import {paidDigest} from './paid-work-core.js';
+import {stableStringify} from './core.js';
+import {prepareAttachment,safeAttachmentName} from './attachment-safety.js';
+import {readCostReview,costReviewPlan,costBindings,assertCostSaved,COST_REVIEW} from './cost-review-core.js';
+const stores=['meta','vehicles','personnel','suppliers','fuel_records','cash_records','payables','expense_records','attachments'];
+const key=(c,id)=>COST_REVIEW+c+':'+id;
+const consent=(d,c)=>{const a=d.meta.find(m=>m.key==='remote_approved_authority')?.value;if(!a?.enabled||a.channel!==c)throw Error('Aktarım bağlantısı kapalı');};
+export async function stageCostReview(value,channel,{canWrite=()=>false}={}){
+ const p=readCostReview(value),digest=await paidDigest(p);return transaction(stores,(d,t)=>{if(!canWrite())throw Error('Oturum uygun değil');consent(d,channel);const old=d.meta.find(m=>m.key===key(channel,p.id))?.value;if(old){if(old.digest!==digest)throw Object.assign(Error('OP_CONFLICT: kontrol paketi değişmiş'),{code:'OP_CONFLICT'});if(old.result){assertCostSaved(p,d,old.link);return {...old.result,replayed:true};}return {status:'review',id:p.id,replayed:true};}const bindings=costBindings(p,d);t.add('meta',{key:key(channel,p.id),value:{packet:p,digest,bindings,reviewed:false}});return {status:'review',id:p.id};});
+}
+export async function pendingCostReviews(){const a=await db.metaGet('remote_approved_authority');if(!a?.enabled)return [];return(await db.getAll('meta')).filter(m=>m.key.startsWith(COST_REVIEW+a.channel+':')&&!m.value.reviewed).map(m=>m.value);}
+export async function saveCostReview(id,choice,{localApproval=false,canWrite=()=>false,file=null}={}){
+ if(localApproval!==true||!canWrite())throw Error('Mali kontrol kartını telefonda işaretleyip Kaydet seçin');const a=await db.metaGet('remote_approved_authority');if(!a?.enabled)throw Error('Bağlantı kapalı');const entry=await db.metaGet(key(a.channel,id));if(!entry)throw Error('Kontrol paketi yok');const p=readCostReview(entry.packet),digest=await paidDigest(p);if(digest!==entry.digest)throw Error('Kontrol kaynağı değişmiş');let photo=null;
+ if(!entry.reviewed&&p.row.kind==='supplier_credit'){if(!(file instanceof Blob)||!['image/jpeg','image/png','image/webp','application/pdf'].includes(file.type)||file.size<=0||file.size>8*1024*1024)throw Error('Asıl fiş dosyasını seçin (en fazla 8 MB)');const sha=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await file.arrayBuffer()))].map(x=>x.toString(16).padStart(2,'0')).join('');photo={blob:await prepareAttachment(file,{maxBytes:8*1024*1024}),sha,name:safeAttachmentName(file.name||'fis',file.type)};}
+ await backupBeforeHistoryImport(db);return transaction(stores,(d,t)=>{if(!canWrite())throw Error('Oturum kapandı');consent(d,a.channel);const cur=d.meta.find(m=>m.key===key(a.channel,id))?.value;if(!cur||cur.digest!==digest||stableStringify(cur.packet)!==stableStringify(p))throw Error('Kontrol kaynağı değişmiş');const plan=costReviewPlan(p,d,choice,digest,cur.bindings);if(plan.existing){if(!cur.result)throw Error('Önceki işlem makbuzu eksik');return {...cur.result,replayed:true};}
+ if(photo){const b=plan.writes.payables[0];if(d.attachments.some(x=>x.src_sha256===photo.sha))throw Error('Bu fiş zaten kayıtlı');plan.writes.attachments=[{id:crypto.randomUUID(),record_type:'payable',record_id:b.id,name:photo.name,type:photo.blob.type,size:photo.blob.size,blob:photo.blob,src_sha256:photo.sha,kind:'scan_original',derived_of:null,created_at:new Date().toISOString()}];}
+ for(const[s,rows]of Object.entries(plan.writes))for(const row of rows)t.add(s,row);const result={id:p.id,channel:a.channel,digest,at:new Date().toISOString(),status:'saved',batch_id:crypto.randomUUID(),works:0,fuels:p.row.kind==='fuel_cash'?1:0,cards:0,payables:p.row.kind==='supplier_credit'?1:0,cash:p.row.kind==='fuel_cash'?1:0,attachments:photo?1:0,amount:p.row.amount,vat_status:'unknown',record_ids:plan.link.records.map(x=>x.id)};t.put('meta',{key:key(a.channel,id),value:{...cur,reviewed:true,choice,link:plan.link,result}});t.add('meta',{key:'remote-approved:'+a.channel+':'+id,value:result});return result;});
+}
