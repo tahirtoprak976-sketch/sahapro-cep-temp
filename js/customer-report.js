@@ -2,7 +2,7 @@
 // Rakamlar diğer ekranlarla aynı kaynaklardan: bakiye = collect-core, mazot = assistant-rules, ekstre = statement.
 import { isActive, toKurus, fromKurus, todayStr, addDays, trDate } from "./core.js";
 import { customerLedgerMovements, customerOpenItems, customerOpenItemLabel, chequeRows, workAmount, hasWorkPrice, missingCustomerWorkPrice } from "./collect-core.js";
-import { customerStatement } from "./statement.js";
+import { customerStatement,validateReportPeriod,STATEMENT_HEADERS,statementCells } from "./statement.js";
 import { customerFuelLedger, fuelRulesOf } from "./assistant-rules.js";
 import { claimWorkResolution } from './hakedis-finance.js';
 import { resolveWorkTonnage } from './work-tonnage.js';
@@ -28,6 +28,7 @@ export function periodRange(key, today = todayStr()) {
 }
 
 export function customerReportData(d, id, { from = "", to = todayStr(), subs = false, today = todayStr() } = {}) {
+  validateReportPeriod({from,to});
   const me = live(d, "customers").find((c) => c.id === id);
   if (!me) throw Error("Müşteri bulunamadı");
   const children = live(d, "customers").filter((c) => c.parent_customer_id === id);
@@ -156,6 +157,7 @@ export const tonnageScopeNote = R => [R.totals.tonnageUnknown ? `${R.totals.tonn
 
 // PDF tanımı (document-engine bölümleri)
 export function customerReportSpec(R, { audience = "customer", chart = null, fuelChart = null, photos = [], company = "" } = {}) {
+  validateReportPeriod(R);
   const per = R.from ? `${trDate(R.from)} – ${trDate(R.to)}` : `Başlangıç – ${trDate(R.to)}`;
   const internal = audience === "internal";
   const S = [];
@@ -191,8 +193,15 @@ export function customerReportSpec(R, { audience = "customer", chart = null, fue
     rows: R.collections.length ? R.collections.map((c) => [trDate(c.date), c.method, c.note, tl(c.amount)]) : [["", "", "Bu dönemde TL tahsilatı yok", ""]] });
   if (R.fuel) S.push({ title: "Mazot tahsilatları (dönem, L)", headers: ["Tarih", "Müşteri", "Teslim yeri", "Alınan mazot"], widths: [15, 30, 35, 20],
     rows: R.fuelCollections.length ? R.fuelCollections.map((f) => [trDate(f.date), f.customer, f.target, fmt(f.liters) + " L"]) : [["", "", "Bu dönemde mazot tahsilatı kaydedilmemiş", ""]] });
-  S.push({ title: "Cari Ekstre", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Bakiye"], widths: [11, 12, 41, 12, 12, 12],
-    rows: [["", "Devir", "", "", "", tl(R.statement.opening)], ...R.statement.rows.map((r) => [trDate(r.date), r.type, r.text, r.debit ? tl(r.debit) : "", r.credit ? tl(r.credit) : "", tl(r.balance)])] });
+  // Keep the approved compact layout when every decrease is a receipt.
+  // Expand only for actual non-receipt decreases, so no empty extra column crowds the PDF.
+  if (R.statement.otherDecrease > 0) {
+    S.push({ title: "Cari Ekstre", headers: [...STATEMENT_HEADERS], widths: [11, 12, 29, 12, 12, 12,12], align:["left","left","left","right","right","right","right"],
+      rows: [["", "Devir", "", "", "", "",tl(R.statement.opening)], ...R.statement.rows.map(r=>statementCells(r,tl))] });
+  } else {
+    S.push({ title: "Cari Ekstre", headers: ["Tarih", "İşlem", "Açıklama", "Borç", "Tahsilat", "Bakiye"], widths: [11, 12, 41, 12, 12, 12],
+      rows: [["", "Devir", "", "", "", tl(R.statement.opening)], ...R.statement.rows.map((r) => [trDate(r.date), r.type, r.text, r.debit ? tl(r.debit) : "", r.credit ? tl(r.credit) : "", tl(r.balance)])] });
+  }
   if (R.open.length)
     S.push({ title: `Açık kalemler (bugün itibarıyla · toplam ${tl(R.open.reduce((n, o) => n + o.left, 0))})`, headers: ["Tarih", "Kalem", "Gün", "Tutar", "Kalan"], widths: [13, 47, 10, 15, 15],
       rows: R.open.map((o) => [trDate(o.date), internal ? o.label : customerOpenItemLabel(o), String(o.days), tl(o.amount), tl(o.left)]) });
