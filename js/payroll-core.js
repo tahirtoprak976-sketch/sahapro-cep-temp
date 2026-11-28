@@ -1,3 +1,4 @@
+import {isIncludedLoading} from './included-loading-core.js';
 import {legalLeaveEvents} from './leave-core.js';
 // Puantaj ve maaş — SAF katman. Gün durumu: elle işaret (personel hareketi) > iş kaydı (şoför/operatör ya da zimmetli aracı) > pazar.
 // Maaş: aylık (devamsızlık günü maaş/30 düşer) ya da yevmiye (çalışılan gün × yevmiye; yarım gün yarım) + mesai saat × mesai ücreti.
@@ -25,6 +26,8 @@ export function workDaysOf(d, p, period) {
   if (p.vehicle_id) myVehicles.add(p.vehicle_id);
   const out = new Map();
   for (const w of live(d, "work_records")) {
+    // Unknown-duration activity proves a task, not a full paid attendance day.
+    if(isIncludedLoading(w))continue;
     if (!String(w.date).startsWith(period)) continue;
     if (w.personnel_id === p.id || (!w.personnel_id && myVehicles.has(w.vehicle_id))) out.set(w.date, (out.get(w.date) || 0) + 1);
   }

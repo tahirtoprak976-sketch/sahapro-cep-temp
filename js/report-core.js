@@ -1,3 +1,4 @@
+import {isIncludedLoading, INCLUDED_LOADING} from './included-loading-core.js';
 import {customerPaidFuelUnknown} from './customer-paid-fuel.js';
 import {buildTankReport} from './tank-report.js';
 import {resolveWorkTonnage} from './work-tonnage.js';
@@ -26,6 +27,7 @@ const unitsText = (u) => Object.entries(u).filter(([, q]) => q).map(([k, q]) => 
 // Sunum: TL ve litre asla toplanmaz; ikisi de varsa ayrı birimleriyle gösterilir.
 const amountText = (amount, fuelL) => [amount || !fuelL ? tl(amount) : "", fuelL ? `${num(fuelL)} L mazot` : ""].filter(Boolean).join(" · ");
 function workAmountText(x) {
+  if(isIncludedLoading(x.w)) return INCLUDED_LOADING;
   if (x.amount || x.fuelL) return amountText(x.amount, x.fuelL);
   if (x.included) return "Sözleşmeye dahil";
   if (["Mazot karşılığı", "İç iş (kendi depo)"].includes(x.w.price_snapshot?.price_source)) return x.w.price_snapshot.price_source;
@@ -95,14 +97,14 @@ const WCOLS = {
   vehicle: ["Araç", 8, (x) => x.vehicle],
   personnel: ["Şoför / Op.", 8, (x) => x.personnel],
   type: ["İş", 10, (x) => x.type],
-  qty: ["Miktar", 7, (x) => `${num(x.qty)} ${x.unit}`],
+  qty: ["Miktar", 7, (x) => isIncludedLoading(x.w)?"Süre belirtilmedi":`${num(x.qty)} ${x.unit}`],
   material: ["Malzeme", 7, (x) => x.material],
   route: ["Nereden → Nereye", 14, (x) => [x.from, x.to].filter(Boolean).join(" → ")],
   from: ["Alındığı yer", 9, (x) => x.from],
   to: ["Döküm yeri", 9, (x) => x.to],
   ton: ["Ton", 5, (x) => x.tonUncertain ? `${num(x.enteredTon)} (kapsam belirsiz)` : (x.ton ? num(x.ton) : "")],
   slip: ["Fiş No", 8, (x) => x.slip],
-  price: ["Birim Fiyat", 8, (x) => (x.priced && x.unitPrice != null ? tl(x.unitPrice) : "")],
+  price: ["Birim Fiyat", 8, (x) => (!isIncludedLoading(x.w) && x.priced && x.unitPrice != null ? tl(x.unitPrice) : "")],
   amount: ["Tutar", 9, workAmountText],
   dump: ["Döküm Maliyeti", 9, (x) => x.dumpUnverified ? (x.dump ? tl(x.dump)+" + doğrulanmamış" : "Doğrulanmadı") : x.dump ? (x.dumpEst ? "~" : "") + tl(x.dump) : "", true],
   note: ["Not", 12, (x) => x.note],
@@ -118,7 +120,7 @@ function workTable(title, infos, cols) {
 // Tablonun son satırı: TOPLAM (miktar, ton, tutar, döküm maliyeti)
 function totalRow(cols, infos) {
   const units = {};
-  for (const x of infos) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
+  for (const x of infos) if(!isIncludedLoading(x.w)) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
   const s = (f) => r2(infos.reduce((n, x) => n + f(x), 0));
   return cols.map((c, i) => (i === 0 ? "TOPLAM" : c === "qty" ? unitsText(units) : c === "ton" ? (infos.some(x=>x.tonUncertain) ? `${num(s(x=>x.ton))} bilinen + belirsiz` : s((x) => x.ton) ? num(s((x) => x.ton)) : "") : c === "amount" ? amountText(s((x) => x.amount), s((x) => x.fuelL)) : c === "dump" ? tl(s((x) => x.dump)) : ""));
 }
@@ -128,7 +130,7 @@ function groupTable(title, infos, keyFn, label, { dump = false } = {}) {
   for (const x of infos) {
     const k = keyFn(x) || "—";
     const o = g.get(k) || { n: 0, units: {}, ton: 0, tonUncertain: 0, amount: 0, dump: 0, fuelL: 0 };
-    o.n++; o.units[x.unit] = r2((o.units[x.unit] || 0) + x.qty); o.ton = r2(o.ton + x.ton); o.tonUncertain += Number(x.tonUncertain); o.amount = r2(o.amount + x.amount); o.dump = r2(o.dump + x.dump); o.fuelL = r2(o.fuelL + x.fuelL);
+    o.n++; if(!isIncludedLoading(x.w)) o.units[x.unit] = r2((o.units[x.unit] || 0) + x.qty); o.ton = r2(o.ton + x.ton); o.tonUncertain += Number(x.tonUncertain); o.amount = r2(o.amount + x.amount); o.dump = r2(o.dump + x.dump); o.fuelL = r2(o.fuelL + x.fuelL);
     g.set(k, o);
   }
   const rows = [...g.entries()].sort((a, b) => b[1].amount - a[1].amount || b[1].n - a[1].n);
@@ -140,7 +142,7 @@ function groupTable(title, infos, keyFn, label, { dump = false } = {}) {
 const monthKey = (x) => monthName(String(x.date).slice(0, 7));
 function workKpis(infos, { dump = true } = {}) {
   const units = {};
-  for (const x of infos) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
+  for (const x of infos) if(!isIncludedLoading(x.w)) units[x.unit] = r2((units[x.unit] || 0) + x.qty);
   const amount = r2(infos.reduce((n, x) => n + x.amount, 0)), ton = r2(infos.reduce((n, x) => n + x.ton, 0));
   const fuelL = r2(infos.reduce((n, x) => n + x.fuelL, 0)), dumpT = r2(infos.reduce((n, x) => n + x.dump, 0));
   const unpriced = infos.filter((x) => x.unpriced).length, slips = infos.filter((x) => x.slip).length;

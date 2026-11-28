@@ -1,3 +1,4 @@
+import {isIncludedLoading,includedLoadingQuantity} from './included-loading-core.js';
 import {priceVehicleContext} from "./core.js";
 import {slipWorkState,slipWorkCandidates} from './digital-slip-core.js';
 import {createDigitalSlip,updateDigitalSlipDraft} from './digital-slip-db.js';
@@ -150,10 +151,10 @@ async function workList(ctx) {
     const row = (w) => {
       const flags = workFlags(w, internal, billed);
       return `<a class="li work-explorer-row" href="#/isler/${esc(encodeURIComponent(w.id))}">
-        <div class="work-explorer-row-head"><strong>${esc(names.customers[w.customer_id] || "Müşteri yok")}</strong><strong class="work-explorer-quantity">${fmtNum(w.quantity)} ${esc(w.unit || "")}</strong></div>
+        <div class="work-explorer-row-head"><strong>${esc(names.customers[w.customer_id] || "Müşteri yok")}</strong><strong class="work-explorer-quantity">${isIncludedLoading(w)?esc(includedLoadingQuantity(w)):fmtNum(w.quantity)+" "+esc(w.unit || "")}</strong></div>
         <div class="small">${esc(w.work_type || "İş")}${w.site_id ? " · " + esc(names.sites[w.site_id] || "Şantiye arşivde") : ""}</div>
         <div class="small muted">${esc(names.vehicles[w.vehicle_id] || "Araç belirtilmedi")} · ${esc(names.personnel[w.personnel_id] || "Personel belirtilmedi")}</div>
-        <div class="work-explorer-row-tags">${w.slip_id || w.digital_slip_no ? badge(w.digital_slip_no ? "Dijital fiş" : "Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : badge("Fiş yok", "")}${flags.fiyatsiz ? badge("Fiyat yok", "warn") : ""}${flags.driver ? badge("Şoförden", "info") : ""}${Number(w.customer_fuel_allowance_l)>0 ? badge("Mazot karşılığı", "info") : ""}${w.slip_no || w.digital_slip_no ? `<span class="tiny muted">${esc(w.slip_no || w.digital_slip_no)}</span>` : ""}</div>
+        <div class="work-explorer-row-tags">${isIncludedLoading(w)?badge("Nakliye bedeline dahil · ayrı ücret yok","info"):""}${w.slip_id || w.digital_slip_no ? badge(w.digital_slip_no ? "Dijital fiş" : "Fişli", "ok") : w.slip_status === "Fiş Var" ? badge("Fiş Var", "info") : badge("Fiş yok", "")}${flags.fiyatsiz ? badge("Fiyat yok", "warn") : ""}${flags.driver ? badge("Şoförden", "info") : ""}${Number(w.customer_fuel_allowance_l)>0 ? badge("Mazot karşılığı", "info") : ""}${w.slip_no || w.digital_slip_no ? `<span class="tiny muted">${esc(w.slip_no || w.digital_slip_no)}</span>` : ""}</div>
       </a>`;
     };
     let shown = 0;
@@ -215,6 +216,7 @@ async function workForm(ctx, editId) {
     ]);
   if (location.hash !== formHash) return;
   let rec = editId ? await db.get("work_records", editId) : null;
+  if(isIncludedLoading(rec)){root.innerHTML=appbar('Dahil çalışma')+notice('info','Bu kayıt personelin yükleme çalışmasını gösterir. Saat veya sefer sayısı belirtilmemiştir; nakliye bedeline dahil olduğundan ayrıca fiyatlanmaz.')+'<a class="btn" href="#/isler/'+esc(rec.id)+'">Çalışma kaydını aç</a>';return;}
   const linkedSlip = rec?.slip_id ? await db.get('slips',rec.slip_id) : null;
   let planSource = !editId && query.plan_id ? await db.get("shift_assignments", query.plan_id) : null;
   if (query.plan_id && !editId) {
@@ -974,6 +976,7 @@ async function workDetail(ctx, id) {
     root.innerHTML = appbar("İş") + emptyState("⚒", "Kayıt bulunamadı");
     return;
   }
+  if(isIncludedLoading(w)){root.innerHTML=appbar('Dahil yükleme çalışması',trDate(w.date))+`<div class="card" data-included-loading-detail><h2>Yükleme çalışması</h2>${kv('Tarih',trDate(w.date))}${kv('Personel',names.personnel[w.personnel_id]||'—')}${kv('Araç / Makine',names.vehicles[w.vehicle_id]||'—')}${kv('Müşteri',names.customers[w.customer_id]||'—')}${kv('Süre','Belirtilmedi')}${kv('Sefer / kamyon sayısı','Belirtilmedi')}${kv('Ücret','Nakliye sefer bedeline dahil; ayrıca borç oluşturmaz')}<p>Bu bir çalışma kaydıdır; saat, sefer veya kamyon miktarı değildir.</p>${recordNoteHTML(w,'description',names,'work',{source:true,label:'Açıklama'})}<a class="btn block" href="#/isler/${esc(w.included_in_work_id)}">Bağlı nakliye kaydını aç</a></div>`;return;}
   const siblings = w.work_batch_id
     ? (await db.listActive("work_records"))
         .filter((r) => r.work_batch_id === w.work_batch_id)

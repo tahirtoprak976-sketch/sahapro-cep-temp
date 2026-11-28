@@ -1,3 +1,4 @@
+import {isIncludedLoading,INCLUDED_LOADING} from './included-loading-core.js';
 // İş Dosyası: yalnız gerçek kimlik ilişkileri. Benzer gün/araç ayrı genel bağlamdır.
 import { isActive } from "./core.js";
 import { dumpFee } from "./dump-fees.js";
@@ -48,7 +49,7 @@ export function workFileModel(d, id) {
   if (work.site_id && !site) issues.push("Şantiye bağlantısı bulunamadı; müşteri/şantiye ilişkisi yeniden kurulmadı.");
 
   const billed = claims.length > 0;
-  const priceStatus = work.price_snapshot?.price_source === "Mazot karşılığı" ? "Mazot karşılığı (TL gelir değil)" : work.price_snapshot?.price_source === "Sözleşmeye dahil" ? "Sözleşmeye dahil" : missingCustomerWorkPrice(work, billed) ? "Fiyat bekliyor" : hasWorkPrice(work) ? "Fiyat kayıtlı" : "Fiyat durumu incelenmeli";
+  const priceStatus = isIncludedLoading(work)?INCLUDED_LOADING+" · ayrı ücret yok":work.price_snapshot?.price_source === "Mazot karşılığı" ? "Mazot karşılığı (TL gelir değil)" : work.price_snapshot?.price_source === "Sözleşmeye dahil" ? "Sözleşmeye dahil" : missingCustomerWorkPrice(work, billed) ? "Fiyat bekliyor" : hasWorkPrice(work) ? "Fiyat kayıtlı" : "Fiyat durumu incelenmeli";
   const slipStatus = attachments.length || work.slip_no || work.digital_slip_no || work.slip_id ? "Fiş / belge dayanağı var" : "Fiş / belge bekliyor";
   return {
     work, customer, parent, site, plan, attachments, documents, claims, invoices, directPayments, generalPaymentRows, generalCustomerPayments, paymentStatus,

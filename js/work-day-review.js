@@ -1,3 +1,4 @@
+import {isIncludedLoading, INCLUDED_LOADING} from './included-loading-core.js';
 // Read-only day review. A matching quantity alone never proves a WhatsApp item was saved.
 import {isActive,WORK_UNITS} from './core.js';
 import {workReviewContext,missingCustomerWorkPrice} from './collect-core.js';
@@ -44,7 +45,7 @@ export function workDayModel(d,date,{q='',personnel_id='',onlyIssues=false}={}){
     if(search&&!norm([names.customers[r.customer_id],names.vehicles[r.vehicle_id],names.personnel[r.personnel_id],r.work_type,row.note].join(' ')).includes(search))continue;
     const key=r.personnel_id||'',g=groups.get(key)||{id:key,name:names.personnel[key]|| (key?'Personel kartı listede yok':'Personel belirtilmemiş'),rows:[],units:Object.create(null),fuel:0,pendingFuel:0};
     g.rows.push(row);
-    if(row.kind==='work'&&positive(r.quantity))g.units[r.unit||'Birim yok']=Math.round(((g.units[r.unit||'Birim yok']||0)+Number(r.quantity))*1e6)/1e6;
+    if(row.kind==='work'&&!isIncludedLoading(r)&&positive(r.quantity))g.units[r.unit||'Birim yok']=Math.round(((g.units[r.unit||'Birim yok']||0)+Number(r.quantity))*1e6)/1e6;
     if(row.kind==='fuel'&&positive(r.liters))g.fuel+=Number(r.liters);
     if(row.kind==='pending'&&positive(r.liters))g.pendingFuel+=Number(r.liters);
     groups.set(key,g);

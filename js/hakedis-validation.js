@@ -83,7 +83,7 @@ export function assertHakedisSources(claim, data) {
   const ids = new Set();
   for (const item of claim.items) {
     const work = (data.work_records || []).find(row => row.id === item.work_record_id);
-    if (!item.work_record_id || ids.has(item.work_record_id) || !work || !isActive(work) || work.price_snapshot?.locked ||
+    if (!item.work_record_id || ids.has(item.work_record_id) || !work || !isActive(work) || work.included_loading===true || work.price_snapshot?.locked ||
         work.customer_id !== claim.customer_id || item.customer_id !== work.customer_id ||
         !validClaimDate(item.date) || item.date !== work.date || work.date < claim.date_from || work.date > claim.date_to ||
         !item.unit || item.unit !== work.unit || hakedisNumber(item.quantity) !== hakedisNumber(work.quantity) ||
